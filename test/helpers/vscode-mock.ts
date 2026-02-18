@@ -158,7 +158,9 @@ export function createVSCodeMock() {
 		},
 		commands: {
 			executeCommand: mock(() => Promise.resolve()),
-			registerCommand: mock(),
+			registerCommand: mock((id: string, handler: (...args: unknown[]) => unknown) => ({
+				dispose: mock(() => {}),
+			})),
 		},
 		window: {
 			showInformationMessage: mock(),
