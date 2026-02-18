@@ -1,0 +1,14 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- Delicate upward triangle with minimal dot accent -->
+  <!-- Color: Emerald green dark (#34d399) -->
+
+  <!-- Upward-pointing triangle (delicate stroke) -->
+  <path d="M 8 2 L 14 13 L 2 13 Z"
+        fill="none"
+        stroke="#34d399"
+        stroke-width="1"
+        stroke-linejoin="round"/>
+
+  <!-- Readiness dot above tip (minimal accent) -->
+  <circle cx="8" cy="1.2" r="0.6" fill="#34d399"/>
+</svg>

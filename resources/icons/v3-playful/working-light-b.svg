@@ -1,0 +1,18 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- V3 Working Variation B: Spinner with Playful Accent -->
+  <!-- Medium arc with trailing spark and center dot -->
+  <!-- Color: Amber light (#f59e0b) -->
+
+  <!-- Main spinner arc (240 degrees) -->
+  <g stroke="#f59e0b" stroke-width="2" stroke-linecap="round" fill="none">
+    <path d="M 12 6.5 A 5 5 0 1 1 4.5 11"
+          stroke-dasharray="20"
+          stroke-dashoffset="0"/>
+  </g>
+
+  <!-- Center energy dot (perfectly centered for visual balance) -->
+  <circle cx="8" cy="8" r="1" fill="#f59e0b"/>
+
+  <!-- Trailing spark accent (shows motion direction) -->
+  <circle cx="4.5" cy="11" r="0.8" fill="#f59e0b" opacity="0.6"/>
+</svg>

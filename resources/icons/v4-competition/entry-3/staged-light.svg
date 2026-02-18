@@ -1,0 +1,11 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- Essential Triangle: Perfect equilibrium at (8,8), apex pointing upward -->
+  <!-- The archetypal form of "ready" - symmetry and balance -->
+  <!-- Light theme: Emerald green (#10b981) -->
+  <path d="M 8 2.5 L 13.5 12.5 L 2.5 12.5 Z"
+        fill="none"
+        stroke="#10b981"
+        stroke-width="1"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+</svg>

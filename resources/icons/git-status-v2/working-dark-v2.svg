@@ -1,0 +1,10 @@
+<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- Active motion arc (incomplete circle = work in progress) -->
+  <g stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" fill="none">
+    <!-- Primary arc (240 degrees, starting from top-right, going counter-clockwise) -->
+    <path d="M 12 6 A 5 5 0 1 1 4.5 11"/>
+  </g>
+
+  <!-- Dot indicator (shows active motion) -->
+  <circle cx="12" cy="6" r="1.5" fill="#fbbf24"/>
+</svg>

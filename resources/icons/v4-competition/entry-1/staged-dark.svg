@@ -1,0 +1,12 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- Staged Icon - Dark Theme -->
+  <!-- Perfect equilateral triangle pointing upward, centered at (8,8) -->
+  <!-- Same geometry as light, optimized stroke for dark backgrounds -->
+
+  <!-- Equilateral triangle with slightly lighter weight for dark theme contrast -->
+  <path d="M 8 2.5 L 13.5 11.5 L 2.5 11.5 Z"
+        fill="none"
+        stroke="#10b981"
+        stroke-width="1"
+        stroke-linejoin="round"/>
+</svg>

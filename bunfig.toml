@@ -1,0 +1,36 @@
+# Bun configuration for Ghostty Launcher
+
+[install]
+# Automatically install peer dependencies
+auto = "auto"
+
+# Use frozen lockfile in CI
+frozen-lockfile = false
+
+# Prefer offline cache
+prefer-offline = true
+
+[install.scopes]
+"@types" = { version = "latest" }
+
+[test]
+# Test configuration
+root = "./test"
+coverage = true
+coverageReporter = ["text"]
+coverageSkipTestFiles = true
+# Exclude legacy tests from test runs
+ignore = ["**/legacy/**"]
+# Global test setup - prevents test pollution
+preload = ["./test/setup/global-test-cleanup.ts"]
+
+[run]
+# Suppress output during tests
+silent = false
+
+# Hot reload for development
+hot = true
+
+[debug]
+# Enable source maps for debugging
+sourcemap = "external"

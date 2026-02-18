@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Command Central v7: Hexagonal Grid - Premium, futuristic -->
+
+  <!-- Outer hexagon -->
+  <path d="M 12 1 L 21.5 6 L 21.5 18 L 12 23 L 2.5 18 L 2.5 6 Z"
+        fill="none" stroke="currentColor" stroke-width="1.8" opacity="0.5"/>
+
+  <!-- Middle hexagon -->
+  <path d="M 12 4.5 L 18.5 8.25 L 18.5 15.75 L 12 19.5 L 5.5 15.75 L 5.5 8.25 Z"
+        fill="none" stroke="currentColor" stroke-width="1.8" opacity="0.6"/>
+
+  <!-- Inner hexagon -->
+  <path d="M 12 8 L 15.5 10 L 15.5 14 L 12 16 L 8.5 14 L 8.5 10 Z"
+        fill="none" stroke="currentColor" stroke-width="2" opacity="0.7"/>
+
+  <!-- Central command core -->
+  <circle cx="12" cy="12" r="2.5" fill="currentColor" opacity="0.9"/>
+
+  <!-- Connection lines from center to vertices -->
+  <line x1="12" y1="12" x2="12" y2="1" stroke="currentColor" stroke-width="1.2" opacity="0.4"/>
+  <line x1="12" y1="12" x2="21.5" y2="6" stroke="currentColor" stroke-width="1.2" opacity="0.4"/>
+  <line x1="12" y1="12" x2="21.5" y2="18" stroke="currentColor" stroke-width="1.2" opacity="0.4"/>
+  <line x1="12" y1="12" x2="12" y2="23" stroke="currentColor" stroke-width="1.2" opacity="0.4"/>
+  <line x1="12" y1="12" x2="2.5" y2="18" stroke="currentColor" stroke-width="1.2" opacity="0.4"/>
+  <line x1="12" y1="12" x2="2.5" y2="6" stroke="currentColor" stroke-width="1.2" opacity="0.4"/>
+
+  <!-- Vertex nodes -->
+  <circle cx="12" cy="1" r="1.5" fill="currentColor" opacity="0.7"/>
+  <circle cx="21.5" cy="6" r="1.5" fill="currentColor" opacity="0.7"/>
+  <circle cx="21.5" cy="18" r="1.5" fill="currentColor" opacity="0.7"/>
+  <circle cx="12" cy="23" r="1.5" fill="currentColor" opacity="0.7"/>
+  <circle cx="2.5" cy="18" r="1.5" fill="currentColor" opacity="0.7"/>
+  <circle cx="2.5" cy="6" r="1.5" fill="currentColor" opacity="0.7"/>
+</svg>

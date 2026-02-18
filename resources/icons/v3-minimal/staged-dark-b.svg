@@ -1,0 +1,17 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- Medium weight triangle with base line for stability -->
+  <!-- Color: Emerald green dark (#34d399) -->
+
+  <!-- Upward-pointing triangle -->
+  <path d="M 8 2.5 L 13.5 12.5 L 2.5 12.5 Z"
+        fill="none"
+        stroke="#34d399"
+        stroke-width="1.2"
+        stroke-linejoin="round"/>
+
+  <!-- Stability base line (shows grounded readiness) -->
+  <line x1="2.5" y1="12.5" x2="13.5" y2="12.5"
+        stroke="#34d399"
+        stroke-width="1.2"
+        stroke-linecap="round"/>
+</svg>

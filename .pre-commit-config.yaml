@@ -1,0 +1,50 @@
+# Pre-commit hooks configuration
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+# Update hooks: pre-commit autoupdate
+#
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+repos:
+  # Local hooks using justfile commands
+  - repo: local
+    hooks:
+      # Fast code quality check (Biome CI + TypeScript + Knip)
+      - id: quality-check
+        name: Code Quality (Biome CI + TypeScript + Knip)
+        entry: just check
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        description: 'Run comprehensive validation (read-only, CI-optimized)'
+
+      # Optional: Auto-fix before committing
+      # Uncomment to automatically fix code quality issues
+      # - id: auto-fix
+      #   name: Auto-fix Code Quality
+      #   entry: just fix
+      #   language: system
+      #   pass_filenames: false
+      #   stages: [pre-commit]
+      #   description: 'Auto-fix formatting and linting issues'
+
+  # Git hooks for common issues
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: end-of-file-fixer
+        exclude: '\.vsix$'
+      - id: check-yaml
+        exclude: '\.github/workflows/.*\.yml$'
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+# Configuration
+default_stages: [pre-commit]
+fail_fast: true  # Stop on first failure (fail fast principle)
+minimum_pre_commit_version: '3.0.0'

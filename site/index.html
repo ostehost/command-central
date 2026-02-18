@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Command Central — Git changes, organized by time</title>
+  <meta name="description" content="A VS Code extension that groups git changes by time — Today, Yesterday, Last Week. Free, open source, zero config.">
+  <meta property="og:title" content="Command Central — Git changes, organized by time">
+  <meta property="og:description" content="Stop scrolling alphabetical file lists. See what changed today, yesterday, and last week.">
+  <meta property="og:image" content="assets/hero-shot.png">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog&&window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once unregister opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing identify setPersonProperties group resetGroups reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted debug getFeatureFlag isFeatureEnabled onFeatureFlags reloadFeatureFlags".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+    posthog.init('phc_Q17dJHthy7nLMODScwfo7kvbT6hO0SIkSpNpcFMXtTD',{api_host:'https://us.i.posthog.com',person_profiles:'identified_only',autocapture:false});
+  </script>
+  <script>
+    document.addEventListener('DOMContentLoaded',function(){
+      document.querySelectorAll('[data-track]').forEach(function(el){
+        el.addEventListener('click',function(){posthog.capture(el.dataset.track,{source:el.dataset.source||'landing',label:el.textContent.trim()})})
+      });
+      var depths=[25,50,75,100],fired={};
+      window.addEventListener('scroll',function(){
+        var pct=Math.round((window.scrollY/(document.body.scrollHeight-window.innerHeight))*100);
+        depths.forEach(function(d){if(pct>=d&&!fired[d]){fired[d]=true;posthog.capture('scroll_depth',{depth:d})}})
+      });
+    });
+  </script>
+</head>
+<body>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">Free &amp; open source</div>
+      <h1>Git changes, organized by time</h1>
+      <p class="subtitle">Today. Yesterday. Last week. Not alphabetical.</p>
+      <div class="cta-group">
+        <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-primary" data-track="install_click" data-source="hero">Install for VS Code</a>
+        <a href="https://github.com/ostehost/vs-code-extension" class="btn btn-secondary" data-track="github_click" data-source="hero">GitHub</a>
+      </div>
+      <div class="hero-screenshot">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 320" width="100%" height="auto">
+  <defs>
+    <style>
+      .hero-bg { fill: #161b22; }
+      .hero-header { fill: #21262d; }
+      .hero-bright { fill: #e6edf3; font-family: 'Segoe UI', system-ui, sans-serif; }
+      .hero-muted { fill: #8b949e; font-family: 'Segoe UI', system-ui, sans-serif; }
+      .hero-accent { fill: #58a6ff; font-family: 'Segoe UI', system-ui, sans-serif; }
+      .hero-mono { font-family: 'Cascadia Code', 'Fira Code', monospace; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="400" height="320" class="hero-bg" rx="8"/>
+
+  <!-- Header bar -->
+  <rect x="0" y="0" width="400" height="28" class="hero-header" rx="8"/>
+  <rect x="0" y="14" width="400" height="14" class="hero-header"/>
+  <text x="12" y="18" class="hero-bright" font-size="10" font-weight="600" letter-spacing="1.5">COMMAND CENTRAL</text>
+  <text x="388" y="18" class="hero-muted" font-size="9" text-anchor="end">⟲ ⚙</text>
+
+  <!-- Section: Today -->
+  <rect x="0" y="32" width="400" height="22" fill="#1c2128"/>
+  <text x="20" y="47" class="hero-accent" font-size="10" font-weight="600">▾ Today</text>
+  <text x="68" y="47" class="hero-muted" font-size="9">(7 files)</text>
+
+  <!-- Row 1 (odd) -->
+  <rect x="0" y="54" width="400" height="20" fill="transparent"/>
+  <rect x="22" y="57" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="67.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+  <text x="44" y="67" class="hero-bright hero-mono" font-size="10">auth.service.ts</text>
+  <text x="310" y="67" fill="#8b949e" font-size="8" text-anchor="end">2h ago</text>
+    <text x="370" y="67" fill="#6e7681" font-size="8" text-anchor="end">src/auth</text>
+  <text x="380" y="67" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
+
+  <!-- Row 2 (even) -->
+  <rect x="0" y="74" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+  <rect x="22" y="77" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="87.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+  <text x="44" y="87" class="hero-bright hero-mono" font-size="10">user.controller.ts</text>
+  <text x="310" y="87" fill="#8b949e" font-size="8" text-anchor="end">3h ago</text>
+    <text x="370" y="87" fill="#6e7681" font-size="8" text-anchor="end">src/api</text>
+  <text x="380" y="87" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
+
+  <!-- Row 3 (odd) -->
+  <rect x="0" y="94" width="400" height="20" fill="transparent"/>
+  <rect x="22" y="97" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="30" y="107.5" fill="#cbcb41" font-size="9" font-weight="400" font-family="system-ui" text-anchor="middle">{}</text>
+  <text x="44" y="107" class="hero-bright hero-mono" font-size="10">package.json</text>
+  <text x="310" y="107" fill="#8b949e" font-size="8" text-anchor="end">4h ago</text>
+    <text x="370" y="107" fill="#6e7681" font-size="8" text-anchor="end">root</text>
+  <text x="380" y="107" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
+
+  <!-- Row 4 (even) -->
+  <rect x="0" y="114" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+  <rect x="22" y="117" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="127.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+  <text x="44" y="127" class="hero-bright hero-mono" font-size="10">db.migration.ts</text>
+  <text x="310" y="127" fill="#8b949e" font-size="8" text-anchor="end">5h ago</text>
+    <text x="370" y="127" fill="#6e7681" font-size="8" text-anchor="end">src/db</text>
+  <text x="380" y="127" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">A</text>
+
+  <!-- Row 5 (odd) -->
+  <rect x="0" y="134" width="400" height="20" fill="transparent"/>
+  <rect x="22" y="137" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="30" y="147.5" fill="#cbcb41" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">JS</text>
+  <text x="44" y="147" class="hero-bright hero-mono" font-size="10">webpack.config.js</text>
+  <text x="310" y="147" fill="#8b949e" font-size="8" text-anchor="end">6h ago</text>
+    <text x="370" y="147" fill="#6e7681" font-size="8" text-anchor="end">root</text>
+  <text x="380" y="147" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
+
+  <!-- Row 6 (even) -->
+  <rect x="0" y="154" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+  <rect x="22" y="157" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="167.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+  <text x="44" y="167" class="hero-bright hero-mono" font-size="10">index.ts</text>
+  <text x="310" y="167" fill="#8b949e" font-size="8" text-anchor="end">7h ago</text>
+    <text x="370" y="167" fill="#6e7681" font-size="8" text-anchor="end">src</text>
+  <text x="380" y="167" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">U</text>
+
+  <!-- Row 7 (odd) -->
+  <rect x="0" y="174" width="400" height="20" fill="transparent"/>
+  <rect x="22" y="177" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="187.5" fill="#519aba" font-size="7" font-weight="700" font-family="system-ui" text-anchor="middle">MD</text>
+  <text x="44" y="187" class="hero-bright hero-mono" font-size="10">README.md</text>
+  <text x="310" y="187" fill="#8b949e" font-size="8" text-anchor="end">8h ago</text>
+    <text x="370" y="187" fill="#6e7681" font-size="8" text-anchor="end">root</text>
+  <text x="380" y="187" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
+
+  <!-- Section: Yesterday -->
+  <rect x="0" y="198" width="400" height="22" fill="#1c2128"/>
+  <text x="20" y="213" class="hero-accent" font-size="10" font-weight="600">▾ Yesterday</text>
+  <text x="88" y="213" class="hero-muted" font-size="9">(3 files)</text>
+
+  <!-- Row 1 (odd) -->
+  <rect x="0" y="220" width="400" height="20" fill="transparent"/>
+  <rect x="22" y="223" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="233.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+  <text x="44" y="233" class="hero-bright hero-mono" font-size="10">logger.service.ts</text>
+  <text x="310" y="233" fill="#8b949e" font-size="8" text-anchor="end">yesterday</text>
+    <text x="370" y="233" fill="#6e7681" font-size="8" text-anchor="end">src/core</text>
+  <text x="380" y="233" fill="#f85149" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">D</text>
+
+  <!-- Row 2 (even) -->
+  <rect x="0" y="240" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+  <rect x="22" y="243" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="30" y="253.5" fill="#cbcb41" font-size="9" font-weight="400" font-family="system-ui" text-anchor="middle">{}</text>
+  <text x="44" y="253" class="hero-bright hero-mono" font-size="10">tsconfig.json</text>
+  <text x="310" y="253" fill="#8b949e" font-size="8" text-anchor="end">yesterday</text>
+    <text x="370" y="253" fill="#6e7681" font-size="8" text-anchor="end">root</text>
+  <text x="380" y="253" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
+
+  <!-- Row 3 (odd) -->
+  <rect x="0" y="260" width="400" height="20" fill="transparent"/>
+  <rect x="22" y="263" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="30" y="273.5" fill="#cbcb41" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">JS</text>
+  <text x="44" y="273" class="hero-bright hero-mono" font-size="10">jest.config.js</text>
+  <text x="310" y="273" fill="#8b949e" font-size="8" text-anchor="end">yesterday</text>
+    <text x="370" y="273" fill="#6e7681" font-size="8" text-anchor="end">root</text>
+  <text x="380" y="273" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
+
+  <!-- Section: Last Week (collapsed) -->
+  <rect x="0" y="284" width="400" height="22" fill="#1c2128"/>
+  <text x="20" y="299" class="hero-muted" font-size="10" font-weight="600">▸ Last Week</text>
+  <text x="90" y="299" class="hero-muted" font-size="9">(12 files)</text>
+</svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trust & Compatibility -->
+  <section class="trust-compat">
+    <div class="container">
+      <div class="trust-compat-inner">
+        <div class="compat-row">
+          <span class="compat-label">Works with</span>
+          <div class="compat-pills">
+            <span class="compat-pill">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M23.15 2.587L18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.13a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.13 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zM18.25 16.71L9.13 12l9.12-4.71z" fill="currentColor"/></svg>
+              VS Code
+            </span>
+            <span class="compat-pill">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+              Cursor
+            </span>
+            <span class="compat-pill">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+              Claude Code
+            </span>
+            <span class="compat-pill">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M12 2v4m0 12v4m-7.07-2.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              Copilot
+            </span>
+            <span class="compat-pill">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+              Windsurf
+            </span>
+          </div>
+        </div>
+        <div class="trust-divider" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="trust-row">
+          <div class="trust-signal">
+            <span class="trust-number">640</span>
+            <span class="trust-label">tests passing</span>
+          </div>
+          <div class="trust-signal">
+            <span class="trust-number">MIT</span>
+            <span class="trust-label">licensed</span>
+          </div>
+          <div class="trust-signal">
+            <span class="trust-number">Zero</span>
+            <span class="trust-label">config needed</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features — alternating layout -->
+  <!-- Order: Multi-workspace → Git status → Filter -->
+  <section class="features">
+    <div class="container">
+
+      <!-- Card 1: Text LEFT, SVG RIGHT -->
+      <div class="feature-card">
+        <div class="feature-content">
+          <h3>Every repo, one panel</h3>
+          <p>Monorepos and multi-root workspaces turn into a wall of files. Each folder gets its own panel and icon — you see which project changed at a glance.</p>
+        </div>
+        <div class="feature-visual">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 320" width="100%" height="auto">
+  <!-- Background -->
+  <rect width="400" height="320" fill="#161b22" rx="8"/>
+
+  <!-- Header bar -->
+  <rect x="0" y="0" width="400" height="28" fill="#21262d" rx="8"/>
+  <rect x="0" y="14" width="400" height="14" fill="#21262d"/>
+  <text x="12" y="18" fill="#e6edf3" font-family="system-ui" font-size="10" font-weight="600" letter-spacing="1.5">COMMAND CENTRAL</text>
+  <text x="388" y="18" fill="#8b949e" font-family="system-ui" font-size="9" text-anchor="end">3 workspaces</text>
+
+  <!-- Workspace: api-server -->
+  <rect x="0" y="32" width="400" height="22" fill="#1c2128"/>
+  <text x="12" y="47" font-size="13">🔷</text>
+  <text x="30" y="47" fill="#58a6ff" font-family="system-ui" font-size="10" font-weight="600">▾ api-server</text>
+  <text x="114" y="47" fill="#8b949e" font-family="system-ui" font-size="9">(5 files)</text>
+
+  <g font-family="'Cascadia Code', monospace" font-size="10">
+    <rect x="0" y="54" width="400" height="20" fill="transparent"/>
+    <rect x="28" y="57" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="36" y="67.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="50" y="67" fill="#e6edf3">auth.service.ts</text>
+    <text x="310" y="67" fill="#8b949e" font-size="8" text-anchor="end">2h</text>
+    <text x="370" y="67" fill="#6e7681" font-size="8" text-anchor="end">src/auth</text>
+    <text x="380" y="67" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+
+    <rect x="0" y="74" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+    <rect x="28" y="77" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="36" y="87.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="50" y="87" fill="#e6edf3">user.controller.ts</text>
+    <text x="310" y="87" fill="#8b949e" font-size="8" text-anchor="end">3h</text>
+    <text x="370" y="87" fill="#6e7681" font-size="8" text-anchor="end">src/api</text>
+    <text x="380" y="87" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+
+    <rect x="0" y="94" width="400" height="20" fill="transparent"/>
+    <rect x="28" y="97" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="36" y="107.5" fill="#cbcb41" font-size="9" font-weight="400" font-family="system-ui" text-anchor="middle">{}</text>
+    <text x="50" y="107" fill="#e6edf3">package.json</text>
+    <text x="310" y="107" fill="#8b949e" font-size="8" text-anchor="end">4h</text>
+    <text x="370" y="107" fill="#6e7681" font-size="8" text-anchor="end">root</text>
+    <text x="380" y="107" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+
+    <text x="50" y="125" fill="#8b949e" font-size="9">+ 2 more files</text>
+  </g>
+
+  <!-- Workspace: frontend-app -->
+  <rect x="0" y="134" width="400" height="22" fill="#1c2128"/>
+  <text x="12" y="149" font-size="13">🟢</text>
+  <text x="30" y="149" fill="#58a6ff" font-family="system-ui" font-size="10" font-weight="600">▾ frontend-app</text>
+  <text x="124" y="149" fill="#8b949e" font-family="system-ui" font-size="9">(4 files)</text>
+
+  <g font-family="'Cascadia Code', monospace" font-size="10">
+    <rect x="0" y="156" width="400" height="20" fill="transparent"/>
+    <rect x="28" y="159" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="36" y="169.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="50" y="169" fill="#e6edf3">App.tsx</text>
+    <text x="310" y="169" fill="#8b949e" font-size="8" text-anchor="end">1h</text>
+    <text x="370" y="169" fill="#6e7681" font-size="8" text-anchor="end">src</text>
+    <text x="380" y="169" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+
+    <rect x="0" y="176" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+    <rect x="28" y="179" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="36" y="189.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="50" y="189" fill="#e6edf3">useAuth.hook.ts</text>
+    <text x="310" y="189" fill="#8b949e" font-size="8" text-anchor="end">2h</text>
+    <text x="370" y="189" fill="#6e7681" font-size="8" text-anchor="end">src/hooks</text>
+    <text x="380" y="189" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end">A</text>
+
+    <rect x="0" y="196" width="400" height="20" fill="transparent"/>
+    <rect x="28" y="199" width="16" height="14" rx="3" fill="#42b883" opacity="0.2"/><text x="36" y="209.5" fill="#42b883" font-size="7" font-weight="700" font-family="system-ui" text-anchor="middle">CSS</text>
+    <text x="50" y="209" fill="#e6edf3">globals.css</text>
+    <text x="310" y="209" fill="#8b949e" font-size="8" text-anchor="end">3h</text>
+    <text x="370" y="209" fill="#6e7681" font-size="8" text-anchor="end">src/styles</text>
+    <text x="380" y="209" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+
+    <rect x="0" y="216" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+    <rect x="28" y="219" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="36" y="229.5" fill="#cbcb41" font-size="9" font-weight="400" font-family="system-ui" text-anchor="middle">{}</text>
+    <text x="50" y="229" fill="#e6edf3">tailwind.config.js</text>
+    <text x="310" y="229" fill="#8b949e" font-size="8" text-anchor="end">1d</text>
+    <text x="370" y="229" fill="#6e7681" font-size="8" text-anchor="end">root</text>
+    <text x="380" y="229" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+  </g>
+
+  <!-- Workspace: shared-lib -->
+  <rect x="0" y="240" width="400" height="22" fill="#1c2128"/>
+  <text x="12" y="255" font-size="13">📦</text>
+  <text x="30" y="255" fill="#58a6ff" font-family="system-ui" font-size="10" font-weight="600">▾ shared-lib</text>
+  <text x="108" y="255" fill="#8b949e" font-family="system-ui" font-size="9">(2 files)</text>
+
+  <g font-family="'Cascadia Code', monospace" font-size="10">
+    <rect x="0" y="262" width="400" height="20" fill="transparent"/>
+    <rect x="28" y="265" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="36" y="275.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="50" y="275" fill="#e6edf3">types.d.ts</text>
+    <text x="310" y="275" fill="#8b949e" font-size="8" text-anchor="end">6h</text>
+    <text x="370" y="275" fill="#6e7681" font-size="8" text-anchor="end">src</text>
+    <text x="380" y="275" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+
+    <rect x="0" y="282" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+    <rect x="28" y="285" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="36" y="295.5" fill="#cbcb41" font-size="9" font-weight="400" font-family="system-ui" text-anchor="middle">{}</text>
+    <text x="50" y="295" fill="#e6edf3">package.json</text>
+    <text x="310" y="295" fill="#8b949e" font-size="8" text-anchor="end">1d</text>
+    <text x="370" y="295" fill="#6e7681" font-size="8" text-anchor="end">root</text>
+    <text x="380" y="295" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+  </g>
+</svg>
+        </div>
+      </div>
+
+      <!-- Card 2: SVG LEFT, Text RIGHT (reversed) -->
+      <div class="feature-card feature-card--reverse">
+        <div class="feature-content">
+          <h3>See what changed — and when</h3>
+          <p>Staged or unstaged — still sorted by when you changed them.</p>
+        </div>
+        <div class="feature-visual">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 320" width="100%" height="auto">
+  <!-- Background -->
+  <rect width="400" height="320" fill="#161b22" rx="8"/>
+
+  <!-- Header bar -->
+  <rect x="0" y="0" width="400" height="28" fill="#21262d" rx="8"/>
+  <rect x="0" y="14" width="400" height="14" fill="#21262d"/>
+  <text x="12" y="18" fill="#e6edf3" font-family="system-ui" font-size="10" font-weight="600" letter-spacing="1.5">COMMAND CENTRAL</text>
+  <text x="388" y="18" fill="#8b949e" font-family="system-ui" font-size="9" text-anchor="end">Group: Git Status</text>
+
+  <!-- Staged section -->
+  <rect x="0" y="32" width="400" height="22" fill="#1c2128"/>
+  <text x="20" y="47" fill="#3fb950" font-family="system-ui" font-size="10" font-weight="600">▾ Staged</text>
+  <text x="72" y="47" fill="#8b949e" font-family="system-ui" font-size="9">· 3 ready to commit</text>
+
+  <g font-family="'Cascadia Code', monospace" font-size="10">
+    <rect x="0" y="54" width="400" height="20" fill="transparent"/>
+    <rect x="22" y="57" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="67.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="44" y="67" fill="#e6edf3">auth.service.ts</text>
+    <text x="310" y="67" fill="#8b949e" font-size="8" text-anchor="end">2h</text>
+    <text x="370" y="67" fill="#6e7681" font-size="8" text-anchor="end">src/auth</text>
+    <text x="380" y="67" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end">A</text>
+
+    <rect x="0" y="74" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+    <rect x="22" y="77" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="87.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="44" y="87" fill="#e6edf3">db.migration.ts</text>
+    <text x="310" y="87" fill="#8b949e" font-size="8" text-anchor="end">5h</text>
+    <text x="370" y="87" fill="#6e7681" font-size="8" text-anchor="end">src/db</text>
+    <text x="380" y="87" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end">A</text>
+
+    <rect x="0" y="94" width="400" height="20" fill="transparent"/>
+    <rect x="22" y="97" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="107.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="44" y="107" fill="#e6edf3">schema.types.ts</text>
+    <text x="310" y="107" fill="#8b949e" font-size="8" text-anchor="end">5d</text>
+    <text x="370" y="107" fill="#6e7681" font-size="8" text-anchor="end">src/types</text>
+    <text x="380" y="107" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end">A</text>
+  </g>
+
+  <!-- Working section -->
+  <rect x="0" y="118" width="400" height="22" fill="#1c2128"/>
+  <text x="20" y="133" fill="#d29922" font-family="system-ui" font-size="10" font-weight="600">▾ Working</text>
+  <text x="82" y="133" fill="#8b949e" font-family="system-ui" font-size="9">· 7 files changed</text>
+
+  <!-- Today sub-group header -->
+  <rect x="0" y="140" width="400" height="20" fill="transparent"/>
+  <text x="34" y="154" fill="#58a6ff" font-family="system-ui" font-size="9" font-weight="600">▾ Today</text>
+  <text x="74" y="154" fill="#8b949e" font-family="system-ui" font-size="8">(4 files)</text>
+
+  <g font-family="'Cascadia Code', monospace" font-size="10">
+    <rect x="0" y="160" width="400" height="20" fill="transparent"/>
+    <rect x="34" y="163" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="42" y="173.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="56" y="173" fill="#e6edf3">user.controller.ts</text>
+    <text x="310" y="173" fill="#8b949e" font-size="8" text-anchor="end">3h</text>
+    <text x="370" y="173" fill="#6e7681" font-size="8" text-anchor="end">src/api</text>
+    <text x="380" y="173" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+
+    <rect x="0" y="180" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+    <rect x="34" y="183" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="42" y="193.5" fill="#cbcb41" font-size="9" font-weight="400" font-family="system-ui" text-anchor="middle">{}</text>
+    <text x="56" y="193" fill="#e6edf3">package.json</text>
+    <text x="310" y="193" fill="#8b949e" font-size="8" text-anchor="end">4h</text>
+    <text x="370" y="193" fill="#6e7681" font-size="8" text-anchor="end">root</text>
+    <text x="380" y="193" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+
+    <rect x="0" y="200" width="400" height="20" fill="transparent"/>
+    <rect x="34" y="203" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="42" y="213.5" fill="#cbcb41" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">JS</text>
+    <text x="56" y="213" fill="#e6edf3">webpack.config.js</text>
+    <text x="310" y="213" fill="#8b949e" font-size="8" text-anchor="end">6h</text>
+    <text x="370" y="213" fill="#6e7681" font-size="8" text-anchor="end">root</text>
+    <text x="380" y="213" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+
+    <rect x="0" y="220" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+    <rect x="34" y="223" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="42" y="233.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="56" y="233" fill="#e6edf3">index.ts</text>
+    <text x="310" y="233" fill="#8b949e" font-size="8" text-anchor="end">7h</text>
+    <text x="370" y="233" fill="#6e7681" font-size="8" text-anchor="end">src</text>
+    <text x="380" y="233" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end">U</text>
+  </g>
+
+  <!-- Collapsed sub-groups -->
+  <rect x="0" y="244" width="400" height="20" fill="transparent"/>
+  <text x="34" y="258" fill="#8b949e" font-family="system-ui" font-size="9" font-weight="600">▸ Yesterday</text>
+  <text x="100" y="258" fill="#8b949e" font-family="system-ui" font-size="8">(2 files)</text>
+
+  <rect x="0" y="264" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+  <text x="34" y="278" fill="#8b949e" font-family="system-ui" font-size="9" font-weight="600">▸ Last Week</text>
+  <text x="100" y="278" fill="#8b949e" font-family="system-ui" font-size="8">(1 file)</text>
+</svg>
+        </div>
+      </div>
+
+      <!-- Card 3: Text LEFT, SVG RIGHT -->
+      <div class="feature-card">
+        <div class="feature-content">
+          <h3>Filter by file type</h3>
+          <p>Show only <code>.ts</code> — everything else disappears. One click to reset.</p>
+        </div>
+        <div class="feature-visual">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 320" width="100%" height="auto">
+  <!-- Background -->
+  <rect width="400" height="320" fill="#161b22" rx="8"/>
+
+  <!-- Header bar -->
+  <rect x="0" y="0" width="400" height="28" fill="#21262d" rx="8"/>
+  <rect x="0" y="14" width="400" height="14" fill="#21262d"/>
+  <text x="12" y="18" fill="#e6edf3" font-family="system-ui" font-size="10" font-weight="600" letter-spacing="1.5">COMMAND CENTRAL</text>
+
+  <!-- Filter pill -->
+  <rect x="12" y="34" width="90" height="18" rx="9" fill="#1f6feb" opacity="0.3"/>
+  <rect x="12" y="34" width="90" height="18" rx="9" fill="none" stroke="#58a6ff" stroke-width="1"/>
+  <text x="22" y="46" fill="#58a6ff" font-family="system-ui" font-size="9">⏏ Filter: .ts</text>
+  <text x="112" y="47" fill="#8b949e" font-family="system-ui" font-size="9">showing 6 of 18 files</text>
+
+  <!-- Section: Today -->
+  <rect x="0" y="56" width="400" height="22" fill="#1c2128"/>
+  <text x="20" y="71" fill="#58a6ff" font-family="system-ui" font-size="10" font-weight="600">▾ Today</text>
+  <text x="68" y="71" fill="#8b949e" font-family="system-ui" font-size="9">(4 files)</text>
+
+  <g font-family="'Cascadia Code', monospace" font-size="10">
+    <rect x="0" y="78" width="400" height="20" fill="transparent"/>
+    <rect x="22" y="81" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="91.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="44" y="91" fill="#e6edf3">auth.service.ts</text>
+    <text x="310" y="91" fill="#8b949e" font-size="8" text-anchor="end">2h</text>
+    <text x="370" y="91" fill="#6e7681" font-size="8" text-anchor="end">src/auth</text>
+    <text x="380" y="91" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+
+    <rect x="0" y="98" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+    <rect x="22" y="101" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="111.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="44" y="111" fill="#e6edf3">user.controller.ts</text>
+    <text x="310" y="111" fill="#8b949e" font-size="8" text-anchor="end">3h</text>
+    <text x="370" y="111" fill="#6e7681" font-size="8" text-anchor="end">src/api</text>
+    <text x="380" y="111" fill="#d29922" font-size="9" font-weight="700" text-anchor="end">M</text>
+
+    <rect x="0" y="118" width="400" height="20" fill="transparent"/>
+    <rect x="22" y="121" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="131.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="44" y="131" fill="#e6edf3">db.migration.ts</text>
+    <text x="310" y="131" fill="#8b949e" font-size="8" text-anchor="end">5h</text>
+    <text x="370" y="131" fill="#6e7681" font-size="8" text-anchor="end">src/db</text>
+    <text x="380" y="131" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end">A</text>
+
+    <rect x="0" y="138" width="400" height="20" fill="#1c2128" opacity="0.4"/>
+    <rect x="22" y="141" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="151.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="44" y="151" fill="#e6edf3">index.ts</text>
+    <text x="310" y="151" fill="#8b949e" font-size="8" text-anchor="end">7h</text>
+    <text x="370" y="151" fill="#6e7681" font-size="8" text-anchor="end">src</text>
+    <text x="380" y="151" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end">U</text>
+  </g>
+
+  <!-- Section: Yesterday -->
+  <rect x="0" y="162" width="400" height="22" fill="#1c2128"/>
+  <text x="20" y="177" fill="#58a6ff" font-family="system-ui" font-size="10" font-weight="600">▾ Yesterday</text>
+  <text x="88" y="177" fill="#8b949e" font-family="system-ui" font-size="9">(1 file)</text>
+
+  <g font-family="'Cascadia Code', monospace" font-size="10">
+    <rect x="0" y="184" width="400" height="20" fill="transparent"/>
+    <rect x="22" y="187" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="197.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="44" y="197" fill="#e6edf3">logger.service.ts</text>
+    <text x="310" y="197" fill="#8b949e" font-size="8" text-anchor="end">1d</text>
+    <text x="370" y="197" fill="#6e7681" font-size="8" text-anchor="end">src/core</text>
+    <text x="380" y="197" fill="#f85149" font-size="9" font-weight="700" text-anchor="end">D</text>
+  </g>
+
+  <!-- Section: Last Week -->
+  <rect x="0" y="208" width="400" height="22" fill="#1c2128"/>
+  <text x="20" y="223" fill="#58a6ff" font-family="system-ui" font-size="10" font-weight="600">▾ Last Week</text>
+  <text x="94" y="223" fill="#8b949e" font-family="system-ui" font-size="9">(1 file)</text>
+
+  <g font-family="'Cascadia Code', monospace" font-size="10">
+    <rect x="0" y="230" width="400" height="20" fill="transparent"/>
+    <rect x="22" y="233" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="243.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="44" y="243" fill="#e6edf3">schema.types.ts</text>
+    <text x="310" y="243" fill="#8b949e" font-size="8" text-anchor="end">5d</text>
+    <text x="370" y="243" fill="#6e7681" font-size="8" text-anchor="end">src/types</text>
+    <text x="380" y="243" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end">A</text>
+  </g>
+</svg>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section class="install-snippet">
+    <div class="container">
+      <h2>One click to install</h2>
+      <div class="snippet-block">
+        <code>ext install oste.command-central</code>
+      </div>
+      <p class="snippet-note">Or <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" data-track="install_click" data-source="install-section">install from the Marketplace</a></p>
+    </div>
+  </section>
+
+  <!-- Email -->
+  <section class="stay-connected">
+    <div class="container">
+      <h2>Stay in the loop</h2>
+      <p class="quiet-note">Release notes only. No spam.</p>
+      <div class="email-form">
+        <form action="https://buttondown.com/api/emails/embed-subscribe/ostehost" method="post" target="popupwindow" class="signup-form">
+          <input type="email" name="email" placeholder="you@example.com" required aria-label="Email address">
+          <button type="submit" class="btn btn-primary" data-track="email_submit" data-source="footer">Notify me</button>
+        </form>
+        <p class="form-note">Or <a href="https://github.com/ostehost/vs-code-extension" data-track="github_click" data-source="email-section">star the repo</a> for release notifications.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer CTA -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://github.com/ostehost/vs-code-extension">MIT licensed</a>
+        <span class="footer-dot">·</span>
+        <a href="https://github.com/ostehost/vs-code-extension">GitHub</a>
+        <span class="footer-dot">·</span>
+        <a href="https://x.com/mikeoste" class="footer-x" data-track="x_click" data-source="footer">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-label="X"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+          <span>@mikeoste</span>
+        </a>
+      </div>
+      <p class="footer-tagline">Built for developers who ship.</p>
+    </div>
+  </footer>
+
+</body>
+</html>

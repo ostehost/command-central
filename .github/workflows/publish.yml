@@ -1,0 +1,30 @@
+name: Publish Extension
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: git config --global user.name "CI Test" && git config --global user.email "ci@test.com" && git config --global init.defaultBranch main
+      - run: bun install --frozen-lockfile
+      - run: bun test test/commands test/git-sort test/mocks test/security test/services test/tree-view test/ui test/utils test/types test/builders
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run dist -- --no-install
+      - run: npx @vscode/vsce publish --no-dependencies
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

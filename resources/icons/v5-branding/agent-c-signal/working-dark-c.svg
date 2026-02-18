@@ -1,0 +1,41 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- Variation C: Maximum Signal - Working (Searching) -->
+  <!-- Multiple wave patterns with triangulation lines showing active search -->
+  <!-- Complex signal tracking visualization -->
+  <!-- Color: Amber dark (#d97706) for working/searching state -->
+
+  <!-- Outer triangulation ray 1 (45 degrees) -->
+  <line x1="8" y1="8" x2="13" y2="3" stroke="#d97706" stroke-width="0.6" opacity="0.4" stroke-linecap="round"/>
+
+  <!-- Outer triangulation ray 2 (315 degrees) -->
+  <line x1="8" y1="8" x2="13" y2="13" stroke="#d97706" stroke-width="0.6" opacity="0.4" stroke-linecap="round"/>
+
+  <!-- Outer expansion wave (largest radius, faintest) -->
+  <path d="M 8 2 A 6 6 0 0 1 14 8"
+        fill="none"
+        stroke="#d97706"
+        stroke-width="0.65"
+        stroke-linecap="round"
+        opacity="0.3"/>
+
+  <!-- Mid wave expansion (medium radius and visibility) -->
+  <path d="M 8 4 A 4 4 0 0 1 12 8"
+        fill="none"
+        stroke="#d97706"
+        stroke-width="0.8"
+        stroke-linecap="round"
+        opacity="0.6"/>
+
+  <!-- Inner active wave (closest to source, most visible) -->
+  <path d="M 8 6 A 2 2 0 0 1 10 8"
+        fill="none"
+        stroke="#d97706"
+        stroke-width="1"
+        stroke-linecap="round"/>
+
+  <!-- Central active transmitter (pulsing origin) -->
+  <circle cx="8" cy="8" r="0.8" fill="#d97706"/>
+
+  <!-- Micro confirmation marker (shows active transmission) -->
+  <circle cx="8" cy="8" r="0.25" fill="none" stroke="#d97706" stroke-width="0.6" opacity="0.5"/>
+</svg>

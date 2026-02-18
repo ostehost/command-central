@@ -1,0 +1,8 @@
+{
+  "commandCentral.project.icon": "🧩",
+  "commandCentral.terminal.theme": "GitHub Dark",
+  "commandCentral.project.name": "Visual Studio Code Extension",
+  "commandCentral.terminal.app": "/path/to/your/Ghostty.app",
+  "window.title": "🧩 ${activeEditorShort}${separator}${rootName}${separator}${profileName}",
+  "commandCentral.gitSort.enabled": true
+}

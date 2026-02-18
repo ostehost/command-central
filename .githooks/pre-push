@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Pre-push: full CI equivalent locally
+# Catches what pre-commit doesn't: test failures, dist build errors, version mismatches
+# This is the gate. If this passes, CI will pass.
+
+set -euo pipefail
+
+echo "🔒 Checking version alignment..."
+ENGINE_VS=$(node -e "console.log(require('./package.json').engines.vscode.replace('^',''))")
+TYPES_VS=$(node -e "console.log(require('./package.json').devDependencies['@types/vscode'].replace('^',''))")
+if [ "$(printf '%s\n' "$ENGINE_VS" "$TYPES_VS" | sort -V | head -1)" != "$ENGINE_VS" ]; then
+  # types version should be <= engine version
+  if [ "$TYPES_VS" != "$ENGINE_VS" ]; then
+    echo "❌ @types/vscode ($TYPES_VS) > engines.vscode ($ENGINE_VS)"
+    echo "   VSCE will reject this. Fix package.json."
+    exit 1
+  fi
+fi
+echo "   ✓ @types/vscode ($TYPES_VS) ≤ engines.vscode ($ENGINE_VS)"
+
+echo "🧪 Running tests..."
+bun test 2>&1 | tail -5
+
+echo "🔍 Running full lint (CI mode)..."
+bunx biome ci .
+
+echo "📦 Verifying dist build..."
+bun run dist -- --no-install --dry-run
+
+echo "✅ All checks passed. Pushing."

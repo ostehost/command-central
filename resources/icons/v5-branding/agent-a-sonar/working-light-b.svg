@@ -1,0 +1,9 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- Balanced sonar: expanding rings with clear source -->
+  <!-- Center source point -->
+  <circle cx="8" cy="8" r="1" fill="#f59e0b"/>
+  <!-- Three expanding detection rings -->
+  <circle cx="8" cy="8" r="3.2" fill="none" stroke="#f59e0b" stroke-width="0.9"/>
+  <circle cx="8" cy="8" r="5.2" fill="none" stroke="#f59e0b" stroke-width="0.7" opacity="0.6"/>
+  <circle cx="8" cy="8" r="7" fill="none" stroke="#f59e0b" stroke-width="0.5" opacity="0.3"/>
+</svg>

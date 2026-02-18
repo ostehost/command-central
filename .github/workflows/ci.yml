@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: extractions/setup-just@v2
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "CI Test"
+          git config --global user.email "ci@test.com"
+          git config --global init.defaultBranch main
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build -- --no-install
+
+      - name: Lint
+        run: bunx biome ci .
+
+      - name: Test
+        run: bun test test/commands test/git-sort test/mocks test/security test/services test/tree-view test/ui test/utils test/types test/builders
+
+      - name: Package
+        run: bun run dist -- --no-install

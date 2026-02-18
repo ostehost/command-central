@@ -1,0 +1,13 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- Working Icon - Dark Theme -->
+  <!-- 240-degree spinner arc, perfectly centered at (8,8) -->
+  <!-- Same arc geometry as light theme, optimal for dark backgrounds -->
+
+  <!-- Motion arc: 240° (from -120° to 120°) with consistent stroke weight -->
+  <path d="M 8 3.5 A 4.5 4.5 0 0 1 12.5 11.5"
+        fill="none"
+        stroke="#f59e0b"
+        stroke-width="1"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+</svg>

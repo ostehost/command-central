@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Pre-commit: lint only staged files (fast)
+# Philosophy: catch errors before they hit CI, don't slow down commits
+
+set -euo pipefail
+
+# Only lint staged .ts files
+STAGED_TS=$(git diff --cached --name-only --diff-filter=ACM | grep '\.ts$' || true)
+
+if [ -z "$STAGED_TS" ]; then
+  exit 0
+fi
+
+echo "🔍 Linting staged files..."
+echo "$STAGED_TS" | xargs bunx biome check --no-errors-on-unmatched

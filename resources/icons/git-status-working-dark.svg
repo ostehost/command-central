@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Git Status: Working (Dark Theme) -->
+  <!-- Radar/Mission Control Theme: Scanning/In Progress -->
+  <!-- Bright amber with glow effect - active status highly visible -->
+
+  <defs>
+    <filter id="working-dark-glow">
+      <feGaussianBlur stdDeviation="0.5" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Outer radar ring (subtle background) -->
+  <circle cx="12" cy="12" r="10" fill="none" stroke="#374151" stroke-width="1"/>
+
+  <!-- Middle radar ring -->
+  <circle cx="12" cy="12" r="7" fill="none" stroke="#4b5563" stroke-width="1" opacity="0.7"/>
+
+  <!-- Inner radar ring (bright amber for working status) -->
+  <circle cx="12" cy="12" r="4" fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="1" filter="url(#working-dark-glow)"/>
+
+  <!-- Central monitoring point (solid bright amber with glow) -->
+  <circle cx="12" cy="12" r="2" fill="#fbbf24" filter="url(#working-dark-glow)"/>
+
+  <!-- Radar sweep line - primary scanner beam (red-orange for urgency awareness) -->
+  <line x1="12" y1="12" x2="17.5" y2="6.5" stroke="#fb923c" stroke-width="1.5" opacity="0.9" stroke-linecap="round" filter="url(#working-dark-glow)"/>
+
+  <!-- Secondary scan sweep line (scanning coverage pattern) -->
+  <line x1="12" y1="12" x2="6.5" y2="17.5" stroke="#fbbf24" stroke-width="1.5" opacity="0.7" stroke-linecap="round" filter="url(#working-dark-glow)"/>
+
+  <!-- Tertiary monitoring beam (full spectrum coverage) -->
+  <line x1="12" y1="12" x2="12" y2="4" stroke="#fbbf24" stroke-width="1.2" opacity="0.6" filter="url(#working-dark-glow)"/>
+
+  <!-- Active sensor markers (scanning stations with glow) -->
+  <circle cx="6" cy="6" r="1" fill="#fb923c" opacity="0.9" filter="url(#working-dark-glow)"/>
+  <circle cx="18" cy="6" r="1" fill="#fbbf24" opacity="0.9" filter="url(#working-dark-glow)"/>
+  <circle cx="6" cy="18" r="1" fill="#fbbf24" opacity="0.9" filter="url(#working-dark-glow)"/>
+  <circle cx="18" cy="18" r="1" fill="#fb923c" opacity="0.9" filter="url(#working-dark-glow)"/>
+
+  <!-- Activity indicator - monitoring active dots -->
+  <circle cx="15" cy="12" r="0.8" fill="#fbbf24" opacity="0.8" filter="url(#working-dark-glow)"/>
+  <circle cx="9" cy="12" r="0.8" fill="#fbbf24" opacity="0.8" filter="url(#working-dark-glow)"/>
+</svg>

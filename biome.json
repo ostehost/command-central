@@ -1,0 +1,68 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.3.1/schema.json",
+	"formatter": {
+		"indentStyle": "tab",
+		"indentWidth": 2,
+		"lineWidth": 80,
+		"lineEnding": "lf"
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double"
+		}
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"complexity": {
+				"useLiteralKeys": "off",
+				"useOptionalChain": "error",
+				"noBannedTypes": "error"
+			},
+			"style": {
+				"useImportType": "error",
+				"useTemplate": "error",
+				"useNodejsImportProtocol": "error"
+			},
+			"suspicious": {
+				"noAssignInExpressions": "off",
+				"noExplicitAny": "error",
+				"noImplicitAnyLet": "error"
+			}
+		}
+	},
+	"files": {
+		"includes": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"],
+		"ignoreUnknown": false
+	},
+	"overrides": [
+		{
+			"includes": ["_deleted/**", "test/.legacy/**"],
+			"linter": {
+				"enabled": false
+			},
+			"formatter": {
+				"enabled": false
+			}
+		},
+		{
+			"includes": ["test/**/*.ts", "test/**/*.test.ts"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noExplicitAny": "warn",
+						"noImplicitAnyLet": "warn",
+						"noTemplateCurlyInString": "off"
+					},
+					"complexity": {
+						"noBannedTypes": "warn",
+						"noStaticOnlyClass": "off"
+					},
+					"correctness": {
+						"noUnusedFunctionParameters": "off"
+					}
+				}
+			}
+		}
+	]
+}

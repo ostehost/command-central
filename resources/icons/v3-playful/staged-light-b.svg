@@ -1,0 +1,16 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- V3 Staged Variation B: Triangle with Spark Accent -->
+  <!-- Playful readiness indicator with small spark at tip -->
+  <!-- Color: Emerald green light (#10b981) -->
+
+  <!-- Upward-pointing triangle (medium weight) -->
+  <path d="M 8 2.5 L 13.5 12.5 L 2.5 12.5 Z"
+        fill="none"
+        stroke="#10b981"
+        stroke-width="1.2"
+        stroke-linejoin="round"
+        stroke-linecap="round"/>
+
+  <!-- Spark accent at tip (small circle for energy) -->
+  <circle cx="8" cy="2.5" r="0.75" fill="#10b981"/>
+</svg>

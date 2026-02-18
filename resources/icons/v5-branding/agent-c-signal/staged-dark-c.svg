@@ -1,0 +1,45 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- Variation C: Maximum Signal - Staged (Acquired) -->
+  <!-- Full lock system with multiple confirmation layers and markers -->
+  <!-- Represents complete signal lock with integrity verification -->
+  <!-- Color: Emerald green dark (#059669) for staged/locked state -->
+
+  <!-- Outer integrity ring (verification complete) -->
+  <circle cx="8" cy="8" r="4" fill="none" stroke="#059669" stroke-width="0.65" opacity="0.5"/>
+
+  <!-- Inner confirmation ring (secondary verification) -->
+  <circle cx="8" cy="8" r="3" fill="none" stroke="#059669" stroke-width="0.75" opacity="0.75"/>
+
+  <!-- Left lock bracket upper stem -->
+  <line x1="5" y1="5.5" x2="5" y2="9.5" stroke="#059669" stroke-width="1" stroke-linecap="round"/>
+
+  <!-- Left lock bracket lower curl -->
+  <path d="M 5 9.5 Q 5 10.5 6 10.5"
+        fill="none"
+        stroke="#059669"
+        stroke-width="1"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Right lock bracket upper stem -->
+  <line x1="11" y1="5.5" x2="11" y2="9.5" stroke="#059669" stroke-width="1" stroke-linecap="round"/>
+
+  <!-- Right lock bracket lower curl -->
+  <path d="M 11 9.5 Q 11 10.5 10 10.5"
+        fill="none"
+        stroke="#059669"
+        stroke-width="1"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Center primary lock indicator (confirmed lock) -->
+  <circle cx="8" cy="8" r="1" fill="#059669"/>
+
+  <!-- Checkmark confirmation (transmission verified) -->
+  <path d="M 7 8 L 7.5 8.5 L 8.5 7.5"
+        fill="none"
+        stroke="#ffffff"
+        stroke-width="0.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- Target acquired: center dot + confirmation rings -->
+  <circle cx="8" cy="8" r="3" fill="none" stroke="#10b981" stroke-width="0.8"/>
+  <circle cx="8" cy="8" r="5" fill="none" stroke="#10b981" stroke-width="0.6" opacity="0.5"/>
+  <!-- Center blip (target) -->
+  <circle cx="8" cy="8" r="1.2" fill="#10b981"/>
+</svg>

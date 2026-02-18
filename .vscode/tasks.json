@@ -1,0 +1,84 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "bun: build",
+      "type": "shell",
+      "command": "bun",
+      "args": ["run", "build"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$tsc",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "bun: build production",
+      "type": "shell",
+      "command": "NODE_ENV=production bun",
+      "args": ["run", "build"],
+      "group": "build",
+      "problemMatcher": "$tsc"
+    },
+    {
+      "label": "bun: typecheck",
+      "type": "shell",
+      "command": "bun",
+      "args": ["run", "typecheck"],
+      "group": "build",
+      "problemMatcher": "$tsc"
+    },
+    {
+      "label": "bun: test",
+      "type": "shell",
+      "command": "bun",
+      "args": ["test"],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "bun: test security",
+      "type": "shell",
+      "command": "bun",
+      "args": ["run", "test:security"],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "bun: package",
+      "type": "shell",
+      "command": "bun",
+      "args": ["run", "package"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "bun: dev",
+      "type": "shell",
+      "command": "bun",
+      "args": ["run", "dev"],
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^([^:]+):(\\d+):(\\d+):\\s+(error|warning):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^🚀 Starting",
+          "endsPattern": "^👀 Watching"
+        }
+      }
+    }
+  ]
+}

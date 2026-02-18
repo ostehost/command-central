@@ -1,0 +1,23 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- V3 Working Variation C: Energetic Spinner with Full Motion -->
+  <!-- Bold arc with leading spark, center energy core, and motion tail -->
+  <!-- Color: Amber light (#f59e0b) -->
+
+  <!-- Bold spinner arc (240 degrees, maximum personality) -->
+  <g stroke="#f59e0b" stroke-width="2.2" stroke-linecap="round" fill="none">
+    <path d="M 12 5.5 A 5.5 5.5 0 1 1 4 11.5"
+          stroke-dasharray="22"
+          stroke-dashoffset="0"/>
+  </g>
+
+  <!-- Center energy core (pulsing presence) -->
+  <circle cx="8" cy="8" r="1.5" fill="none"
+          stroke="#f59e0b" stroke-width="0.8" opacity="0.7"/>
+  <circle cx="8" cy="8" r="0.8" fill="#f59e0b"/>
+
+  <!-- Leading spark (shows energy direction) -->
+  <circle cx="12" cy="5.5" r="0.9" fill="#f59e0b" opacity="0.8"/>
+
+  <!-- Trailing spark for balance -->
+  <circle cx="4" cy="11.5" r="0.7" fill="#f59e0b" opacity="0.5"/>
+</svg>

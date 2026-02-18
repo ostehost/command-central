@@ -1,0 +1,11 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- Balanced target: locked target with acquisition rings -->
+  <!-- Outer acquisition ring -->
+  <circle cx="8" cy="8" r="5" fill="none" stroke="#10b981" stroke-width="0.6" opacity="0.5"/>
+  <!-- Mid-range ring -->
+  <circle cx="8" cy="8" r="3.5" fill="none" stroke="#10b981" stroke-width="0.8"/>
+  <!-- Target center -->
+  <circle cx="8" cy="8" r="1.5" fill="#10b981"/>
+  <!-- Small crosshair marker (confidence) -->
+  <path d="M 8 6.5 L 8 7 M 8 9 L 8 9.5 M 6.5 8 L 7 8 M 9 8 L 9.5 8" stroke="#10b981" stroke-width="0.6" stroke-linecap="round"/>
+</svg>

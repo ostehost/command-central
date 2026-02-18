@@ -1,0 +1,16 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- V3 Working Variation A: Minimal Spinner -->
+  <!-- Clean arc with centered dot indicator -->
+  <!-- Color: Amber light (#f59e0b) -->
+
+  <!-- Centered arc (270 degrees, thinned for elegance) -->
+  <g stroke="#f59e0b" stroke-width="1.8" stroke-linecap="round" fill="none">
+    <!-- Arc starting from top, sweeping counter-clockwise -->
+    <path d="M 8 3 A 5 5 0 0 1 13 8 A 5 5 0 0 1 8 13 A 5 5 0 0 1 3.5 9"
+          stroke-dasharray="17"
+          stroke-dashoffset="0"/>
+  </g>
+
+  <!-- Center energy dot (perfectly centered at 8,8) -->
+  <circle cx="8" cy="8" r="1.2" fill="#f59e0b"/>
+</svg>

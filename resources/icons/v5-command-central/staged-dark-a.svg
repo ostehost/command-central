@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Targeting crosshair (horizontal) -->
+  <line x1="4" y1="8" x2="6.5" y2="8" stroke="#34d399" stroke-width="1.2" stroke-linecap="round"/>
+  <line x1="9.5" y1="8" x2="12" y2="8" stroke="#34d399" stroke-width="1.2" stroke-linecap="round"/>
+
+  <!-- Targeting crosshair (vertical) -->
+  <line x1="8" y1="4" x2="8" y2="6.5" stroke="#34d399" stroke-width="1.2" stroke-linecap="round"/>
+  <line x1="8" y1="9.5" x2="8" y2="12" stroke="#34d399" stroke-width="1.2" stroke-linecap="round"/>
+
+  <!-- Targeting circle (lock indicator) -->
+  <circle cx="8" cy="8" r="5" fill="none" stroke="#34d399" stroke-width="1" opacity="0.7"/>
+
+  <!-- Center lock point -->
+  <circle cx="8" cy="8" r="1.5" fill="#34d399" opacity="0.9"/>
+</svg>

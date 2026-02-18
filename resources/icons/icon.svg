@@ -1,0 +1,38 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="128" height="128" rx="16" fill="#1e1e1e"/>
+  
+  <!-- Terminal window frame -->
+  <rect x="12" y="12" width="104" height="104" rx="8" fill="#2d2d2d" stroke="#4a4a4a" stroke-width="2"/>
+  
+  <!-- Terminal header bar -->
+  <rect x="12" y="12" width="104" height="24" rx="8" fill="#3c3c3c"/>
+  <rect x="12" y="30" width="104" height="6" fill="#3c3c3c"/>
+  
+  <!-- Window controls -->
+  <circle cx="26" cy="24" r="4" fill="#ff5f56"/>
+  <circle cx="40" cy="24" r="4" fill="#ffbd2e"/>
+  <circle cx="54" cy="24" r="4" fill="#27c93f"/>
+  
+  <!-- Terminal prompt and cursor -->
+  <text x="20" y="56" font-family="monospace" font-size="14" fill="#00ff00">$</text>
+  <text x="32" y="56" font-family="monospace" font-size="14" fill="#ffffff">ghostty</text>
+  <rect x="88" y="44" width="8" height="14" fill="#00ff00" opacity="0.8">
+    <animate attributeName="opacity" values="0.8;0;0.8" dur="1s" repeatCount="indefinite"/>
+  </rect>
+  
+  <!-- Ghost icon (Ghostty mascot hint) -->
+  <g transform="translate(64, 80)">
+    <ellipse cx="0" cy="0" rx="18" ry="20" fill="#ffffff" opacity="0.9"/>
+    <path d="M -18 5 Q -18 20 -12 25 L -6 20 L 0 25 L 6 20 L 12 25 Q 18 20 18 5" fill="#ffffff" opacity="0.9"/>
+    <circle cx="-6" cy="-5" r="3" fill="#1e1e1e"/>
+    <circle cx="6" cy="-5" r="3" fill="#1e1e1e"/>
+    <ellipse cx="0" cy="5" rx="4" ry="3" fill="#1e1e1e"/>
+  </g>
+  
+  <!-- VS Code badge -->
+  <g transform="translate(96, 96)">
+    <rect x="0" y="0" width="24" height="24" rx="4" fill="#007ACC"/>
+    <text x="12" y="16" font-family="Arial" font-size="10" fill="#ffffff" text-anchor="middle">VS</text>
+  </g>
+</svg>

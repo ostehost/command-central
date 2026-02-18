@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Working: Balanced Arc (Spinner Metaphor) -->
+  <!-- Light Theme: Amber (#f59e0b) -->
+  <!-- Geometric approach: 270° arc with calculated curvature -->
+  <!-- Arc from 90° to 360° (clockwise from top), radius 5.5, centered at 8,8 -->
+  <!-- Opening at bottom-right creates visual momentum suggesting active work -->
+  <path d="M 8 2.5 A 5.5 5.5 0 0 1 13.5 8 A 5.5 5.5 0 0 1 8 13.5" fill="none" stroke="#f59e0b" stroke-width="1.2" stroke-linecap="round"/>
+  <!-- Motion indicator: Small dash at leading edge (suggests rotation direction) -->
+  <line x1="13.8" y1="7.8" x2="14.5" y2="8.5" stroke="#f59e0b" stroke-width="0.9" opacity="0.6" stroke-linecap="round"/>
+</svg>

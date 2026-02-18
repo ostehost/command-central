@@ -1,0 +1,64 @@
+# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+*.vsix
+!releases/.gitkeep
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# VS Code workspace settings (may contain local paths)
+.vscode/settings.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+
+# Archive and backup directories
+_deleted/
+_deleted/**
+test/.legacy/
+test/.legacy/**
+*.BACKUP-*/
+src.BACKUP-*/
+test.BACKUP-*/
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Temporary files
+*-temp/
+*-tmp/
+.temp/
+.tmp/
+
+# Bundled terminal app (synced at build time, ~50MB)
+# Only .terminal-version is committed for tracking
+resources/app/
+!resources/app/.terminal-version

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Git Status: Staged (Light Theme) -->
+  <!-- Radar/Mission Control Theme: Target Locked, Ready to Deploy -->
+  <!-- Green indicates "go" status - files ready for commit -->
+
+  <defs>
+    <linearGradient id="staged-light-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#059669;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#10b981;stop-opacity:0.6" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer radar ring (faded background) -->
+  <circle cx="12" cy="12" r="10" fill="none" stroke="#e5e7eb" stroke-width="1"/>
+
+  <!-- Middle radar ring -->
+  <circle cx="12" cy="12" r="7" fill="none" stroke="#d1d5db" stroke-width="1" opacity="0.7"/>
+
+  <!-- Inner radar ring (highlighted green for staged status) -->
+  <circle cx="12" cy="12" r="4" fill="none" stroke="#059669" stroke-width="1.5" opacity="0.9"/>
+
+  <!-- Central confirmation point (solid green) -->
+  <circle cx="12" cy="12" r="2" fill="#059669"/>
+
+  <!-- Targeting crosshair - horizontal line (locked-on indicator) -->
+  <line x1="6" y1="12" x2="18" y2="12" stroke="#10b981" stroke-width="1.5" opacity="0.8"/>
+
+  <!-- Targeting crosshair - vertical line (locked-on indicator) -->
+  <line x1="12" y1="6" x2="12" y2="18" stroke="#10b981" stroke-width="1.5" opacity="0.8"/>
+
+  <!-- Confirmation corners (acquisition lock markers) -->
+  <circle cx="6" cy="6" r="1" fill="#059669" opacity="0.8"/>
+  <circle cx="18" cy="6" r="1" fill="#059669" opacity="0.8"/>
+  <circle cx="6" cy="18" r="1" fill="#059669" opacity="0.8"/>
+  <circle cx="18" cy="18" r="1" fill="#059669" opacity="0.8"/>
+
+  <!-- Small checkmark accent (deployment ready) -->
+  <path d="M 9 12 L 11 14 L 15 10" stroke="#059669" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+</svg>

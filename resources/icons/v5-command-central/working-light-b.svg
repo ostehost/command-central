@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Outer sonar ring -->
+  <circle cx="8" cy="8" r="6" fill="none" stroke="#f59e0b" stroke-width="0.7" opacity="0.4"/>
+
+  <!-- Inner sonar ring (expanding effect) -->
+  <circle cx="8" cy="8" r="4" fill="none" stroke="#f59e0b" stroke-width="0.9" opacity="0.6"/>
+
+  <!-- Active innermost ring -->
+  <circle cx="8" cy="8" r="2.5" fill="none" stroke="#f59e0b" stroke-width="1.1" opacity="0.85"/>
+
+  <!-- Radar sweep line from top (active scan) -->
+  <line x1="8" y1="2" x2="8" y2="8" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round" opacity="0.9"/>
+
+  <!-- Center pulse core -->
+  <circle cx="8" cy="8" r="1" fill="#f59e0b" opacity="0.9"/>
+</svg>

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <defs>
+    <linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(9,12)">
+    <circle r="5" fill="url(#gg)"/>
+    <rect x="-1" y="-6.5" width="2" height="1.5" fill="url(#gg)"/>
+    <rect x="4.5" y="-2" width="1.5" height="2" fill="url(#gg)"/>
+    <rect x="4.5" y="0" width="1.5" height="2" fill="url(#gg)"/>
+    <rect x="-1" y="5" width="2" height="1.5" fill="url(#gg)"/>
+    <rect x="-6" y="-2" width="1.5" height="2" fill="url(#gg)"/>
+    <rect x="-6" y="0" width="1.5" height="2" fill="url(#gg)"/>
+    <circle r="2" fill="#fff" stroke="#d97706" stroke-width="0.3"/>
+  </g>
+  <g transform="translate(15,8)">
+    <circle r="4" fill="#f59e0b" opacity="0.7"/>
+    <rect x="-0.8" y="-5" width="1.6" height="1" fill="#f59e0b"/>
+    <rect x="3.5" y="-1.5" width="1" height="1.6" fill="#f59e0b"/>
+    <rect x="-4.5" y="-1" width="1" height="1.8" fill="#f59e0b"/>
+    <circle r="1.5" fill="#fff" opacity="0.6"/>
+  </g>
+  <line x1="17" y1="5" x2="19" y2="2" stroke="#ef4444" stroke-width="1" stroke-linecap="round"/>
+  <circle cx="19" cy="2" r="0.5" fill="#ef4444" opacity="0.8"/>
+  <line x1="19.5" y1="8" x2="22" y2="9" stroke="#ef4444" stroke-width="1" stroke-linecap="round"/>
+  <circle cx="22" cy="9" r="0.5" fill="#ef4444" opacity="0.8"/>
+  <line x1="16" y1="16" x2="18" y2="19" stroke="#ef4444" stroke-width="1" stroke-linecap="round"/>
+  <circle cx="18" cy="19" r="0.5" fill="#ef4444" opacity="0.7"/>
+</svg>
