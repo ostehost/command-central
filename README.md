@@ -25,6 +25,7 @@ Or search **"Command Central"** in VS Code Extensions.
 - **File type filtering** — Focus on code, config, docs, tests, or custom extensions.
 - **Active file tracking** — Current file auto-highlights in the tree view as you work.
 - **Multi-root workspace support** — Each workspace folder gets its own isolated git tracking view (up to 10).
+- **Two layout modes** — Vertical in the sidebar for deep dives, horizontal in the Panel for cross-project comparison.
 - **Custom project icons** — Set emoji or text icons per workspace via `commandCentral.project.icon` in `.vscode/settings.json`.
 - **Deleted file persistence** — Deleted files tracked with stable ordering across sessions.
 
