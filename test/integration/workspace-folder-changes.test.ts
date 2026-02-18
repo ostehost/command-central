@@ -241,6 +241,60 @@ describe("Workspace Folder Changes", () => {
 		expect(disposalLog).toBe(true);
 	});
 
+	test("reload does not throw command registration collision", async () => {
+		// Regression test: v0.1.6 crashed with "command already exists" on reload
+		// because per-view commands weren't disposed before re-registration.
+		const mockConfigSource: ProjectConfigSource = {
+			loadProjects: mock(
+				async (): Promise<ProjectViewConfig[]> => [
+					{
+						id: "slot1",
+						displayName: "Project 1",
+						iconPath: "resources/icons/icon1.svg",
+						gitPath: "/workspace/p1",
+						sortOrder: 1,
+					},
+				],
+			),
+		};
+
+		// Track registerCommand calls to verify disposal pattern
+		const registeredCommands = new Set<string>();
+		const vscode = await import("vscode");
+		const originalRegister = vscode.commands.registerCommand;
+		(vscode.commands.registerCommand as ReturnType<typeof mock>) = mock(
+			(id: string, handler: () => void) => {
+				if (registeredCommands.has(id)) {
+					throw new Error(`command '${id}' already exists`);
+				}
+				registeredCommands.add(id);
+				const disposable = { dispose: () => registeredCommands.delete(id) };
+				return disposable;
+			},
+		);
+
+		const mockProviderFactory: ProviderFactory = {
+			createProvider: mock(async () => createMockProvider()),
+			dispose: mock(async () => {}),
+			getProviderForFile: mock((_fileUri: vscode.Uri) => undefined),
+		};
+
+		const manager = new ProjectViewManager(
+			mockContext,
+			mockLogger,
+			mockConfigSource,
+			mockProviderFactory,
+		);
+
+		await manager.registerAllProjects();
+
+		// This is the critical assertion: reload must not throw
+		await expect(manager.reload()).resolves.toBeUndefined();
+
+		// Restore original mock
+		vscode.commands.registerCommand = originalRegister;
+	});
+
 	test("views are properly registered in both Activity Bar and Panel", async () => {
 		const mockConfigSource: ProjectConfigSource = {
 			loadProjects: mock(
