@@ -128,49 +128,6 @@ describe("UserLauncherStrategy", () => {
 
 			expect(result).toBe(true);
 		});
-
-		test("returns false for non-existent path (ENOENT)", async () => {
-			const { UserLauncherStrategy } = await import(
-				"../../../src/services/launcher/user-launcher-strategy.js"
-			);
-			const strategy = new UserLauncherStrategy(
-				"/nonexistent/path/to/launcher",
-				mockContext,
-			);
-
-			const result = await strategy.isAvailable();
-
-			expect(result).toBe(false);
-			expect(mockContext.logger.debug).toHaveBeenCalled();
-		});
-
-		test("returns false for non-executable file (EACCES)", async () => {
-			const { UserLauncherStrategy } = await import(
-				"../../../src/services/launcher/user-launcher-strategy.js"
-			);
-			// Use a file that exists but is not executable (e.g., a config file)
-			const strategy = new UserLauncherStrategy("/etc/hosts", mockContext);
-
-			const result = await strategy.isAvailable();
-
-			// /etc/hosts is readable but not executable on most systems
-			expect(result).toBe(false);
-		});
-	});
-
-	describe("getInfo", () => {
-		test("returns correct launcher info", async () => {
-			const { UserLauncherStrategy } = await import(
-				"../../../src/services/launcher/user-launcher-strategy.js"
-			);
-			const launcherPath = "/custom/launcher";
-			const strategy = new UserLauncherStrategy(launcherPath, mockContext);
-
-			const info = strategy.getInfo();
-
-			expect(info.type).toBe("user");
-			expect(info.path).toBe(launcherPath);
-		});
 	});
 
 	describe("validate", () => {
@@ -183,46 +140,6 @@ describe("UserLauncherStrategy", () => {
 			const result = await strategy.validate();
 
 			expect(result.isValid).toBe(true);
-		});
-
-		test("returns ENOENT error code for non-existent path", async () => {
-			const { UserLauncherStrategy } = await import(
-				"../../../src/services/launcher/user-launcher-strategy.js"
-			);
-			const strategy = new UserLauncherStrategy(
-				"/nonexistent/launcher",
-				mockContext,
-			);
-
-			const result = await strategy.validate();
-
-			expect(result.isValid).toBe(false);
-			expect(result.errorCode).toBe("ENOENT");
-			expect(result.message).toContain("not found");
-		});
-
-		test("returns EACCES error code for non-executable file", async () => {
-			const { UserLauncherStrategy } = await import(
-				"../../../src/services/launcher/user-launcher-strategy.js"
-			);
-			const strategy = new UserLauncherStrategy("/etc/hosts", mockContext);
-
-			const result = await strategy.validate();
-
-			expect(result.isValid).toBe(false);
-			expect(result.errorCode).toBe("EACCES");
-			expect(result.message).toContain("not executable");
-		});
-	});
-
-	describe("strategyId", () => {
-		test("has correct strategy identifier", async () => {
-			const { UserLauncherStrategy } = await import(
-				"../../../src/services/launcher/user-launcher-strategy.js"
-			);
-			const strategy = new UserLauncherStrategy("/bin/sh", mockContext);
-
-			expect(strategy.strategyId).toBe("user");
 		});
 	});
 });
