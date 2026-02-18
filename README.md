@@ -7,7 +7,7 @@
 
 **Know what changed in your codebase while you were away.**
 
-<!-- SCREENSHOT: hero.png -->
+![Command Central — Multi-workspace sidebar with custom project icons](site/screenshots/hero-icons.png)
 
 Open a project after a day, a week, or a month — instantly see what happened. Git changes sorted by time, not alphabetically. Works for your own coding sessions and for catching up after AI agents make changes.
 
@@ -25,9 +25,10 @@ Or search **"Command Central"** in VS Code Extensions.
 - **File type filtering** — Focus on code, config, docs, tests, or custom extensions.
 - **Active file tracking** — Current file auto-highlights in the tree view as you work.
 - **Multi-root workspace support** — Each workspace folder gets its own isolated git tracking view (up to 10).
-- **Deleted file persistence** — Deleted files tracked with stable ordering across sessions via SQLite.
+- **Custom project icons** — Set emoji or text icons per workspace via `commandCentral.project.icon` in `.vscode/settings.json`.
+- **Deleted file persistence** — Deleted files tracked with stable ordering across sessions.
 
-640 tests. Passes CI on every commit.
+537 tests. Passes CI on every commit.
 
 ## Requirements
 
