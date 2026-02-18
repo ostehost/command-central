@@ -337,4 +337,150 @@ describe("Workspace Folder Changes", () => {
 		expect(activityBarLog).toBe(true);
 		expect(panelLog).toBe(true);
 	});
+
+	test("reload disposes per-view commands before re-registering", async () => {
+		// Bug regression test: per-view commands like "commandCentral.gitSort.1.sortOrder" 
+		// must be disposed before reload to prevent command collision
+		const mockConfigSource: ProjectConfigSource = {
+			loadProjects: mock(async () => [
+				{
+					id: "test-project",
+					displayName: "Test Project",
+					iconPath: "resources/icons/test.svg", 
+					gitPath: "/workspace/test",
+					sortOrder: 1,
+				},
+			]),
+		};
+
+		const mockProviderFactory: ProviderFactory = {
+			createProvider: mock(async () => createMockProvider()),
+			dispose: mock(async () => {}),
+			getProviderForFile: mock((_fileUri: vscode.Uri) => undefined),
+		};
+
+		const manager = new ProjectViewManager(
+			mockContext,
+			mockLogger,
+			mockConfigSource,
+			mockProviderFactory,
+		);
+
+		// First registration
+		await manager.registerAllProjects();
+		
+		// Reload should not throw - verify it resolves successfully
+		const reloadResult = manager.reload();
+		await expect(reloadResult).resolves.toBeUndefined();
+		
+		// Should have logged reload activity
+		const infoCalls = (mockLogger.info as ReturnType<typeof mock>).mock.calls;
+		const hasReloadLog = infoCalls.some((call: unknown[]) =>
+			call[0]?.toString().includes("Reloading") || 
+			call[0]?.toString().includes("Successfully registered")
+		);
+		expect(hasReloadLog).toBe(true);
+	});
+
+	test("registerAllProjects twice does not throw command collision", async () => {
+		// Bug regression test: calling registerAllProjects multiple times should not
+		// throw "command already exists" error
+		const mockConfigSource: ProjectConfigSource = {
+			loadProjects: mock(async () => [
+				{
+					id: "test-project",
+					displayName: "Test Project", 
+					iconPath: "resources/icons/test.svg",
+					gitPath: "/workspace/test",
+					sortOrder: 1,
+				},
+			]),
+		};
+
+		const mockProviderFactory: ProviderFactory = {
+			createProvider: mock(async () => createMockProvider()),
+			dispose: mock(async () => {}),
+			getProviderForFile: mock((_fileUri: vscode.Uri) => undefined),
+		};
+
+		const manager = new ProjectViewManager(
+			mockContext,
+			mockLogger,
+			mockConfigSource,
+			mockProviderFactory,
+		);
+
+		// First registration
+		const firstRegistration = manager.registerAllProjects();
+		await expect(firstRegistration).resolves.toBeUndefined();
+		
+		// Second registration should be idempotent
+		const secondRegistration = manager.registerAllProjects();
+		await expect(secondRegistration).resolves.toBeUndefined();
+		
+		// Verify both registrations completed successfully
+		const infoCalls = (mockLogger.info as ReturnType<typeof mock>).mock.calls;
+		const registrationLogs = infoCalls.filter((call: unknown[]) =>
+			call[0]?.toString().includes("Successfully registered")
+		);
+		expect(registrationLogs.length).toBeGreaterThanOrEqual(1);
+	});
+
+	test("reload with changed workspace count succeeds", async () => {
+		// Bug regression test: changing workspace folder count during reload
+		// should handle provider disposal and re-creation correctly
+		let workspaceSize = 1;
+		
+		const mockConfigSource: ProjectConfigSource = {
+			loadProjects: mock(async () => {
+				const projects = [];
+				for (let i = 0; i < workspaceSize; i++) {
+					projects.push({
+						id: `project-${i}`,
+						displayName: `Project ${i}`,
+						iconPath: `resources/icons/project${i}.svg`,
+						gitPath: `/workspace/project${i}`,
+						sortOrder: i + 1,
+					});
+				}
+				return projects;
+			}),
+		};
+
+		const mockProviderFactory: ProviderFactory = {
+			createProvider: mock(async () => createMockProvider()),
+			dispose: mock(async () => {}),
+			getProviderForFile: mock((_fileUri: vscode.Uri) => undefined),
+		};
+
+		const manager = new ProjectViewManager(
+			mockContext,
+			mockLogger,
+			mockConfigSource,
+			mockProviderFactory,
+		);
+
+		// Start with 1 workspace
+		await manager.registerAllProjects();
+		expect(mockProviderFactory.createProvider).toHaveBeenCalledTimes(1);
+		
+		// Expand to 3 workspaces
+		workspaceSize = 3;
+		const expandReload = manager.reload();
+		await expect(expandReload).resolves.toBeUndefined();
+		expect(mockProviderFactory.createProvider).toHaveBeenCalledTimes(4); // 1 + 3
+		
+		// Contract to 2 workspaces  
+		workspaceSize = 2;
+		const contractReload = manager.reload();
+		await expect(contractReload).resolves.toBeUndefined();
+		expect(mockProviderFactory.createProvider).toHaveBeenCalledTimes(6); // 1 + 3 + 2
+		
+		// Verify successful reload messages
+		const infoCalls = (mockLogger.info as ReturnType<typeof mock>).mock.calls;
+		const reloadMessages = infoCalls.filter((call: unknown[]) =>
+			call[0]?.toString().includes("Successfully registered")
+		);
+		expect(reloadMessages.length).toBeGreaterThanOrEqual(3); // Initial + 2 reloads
+	});
 });

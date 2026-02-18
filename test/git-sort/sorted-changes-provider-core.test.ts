@@ -405,4 +405,112 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		const icon = treeItem.iconPath as typeof vscode.ThemeIcon.prototype;
 		expect(icon.id).toBe("calendar");
 	});
+
+	test("initialize() with pre-existing repositories regression test", async () => {
+		// Bug regression test: Verify provider can handle initialization 
+		// with existing repositories without issues
+		const vscode = await import("vscode");
+		const { SortedGitChangesProvider } = await import(
+			"../../src/git-sort/sorted-changes-provider.js"
+		);
+
+		// Mock Git extension with existing repositories (common scenario)
+		vscode.extensions.getExtension = mock(() => ({
+			exports: {
+				getAPI: mock(() => ({
+					repositories: [{ state: { workingTreeChanges: [], indexChanges: [] } }],
+					onDidOpenRepository: mock(() => ({ dispose: mock() })),
+					onDidCloseRepository: mock(() => ({ dispose: mock() })),
+				})),
+			},
+			isActive: true,
+		}));
+
+		const mockContext = createMockExtensionContext();
+		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
+
+		// The key test: should initialize without throwing
+		const initResult = provider.initialize();
+		await expect(initResult).resolves.toBeUndefined();
+	});
+
+	test("concurrent initialize() calls regression test", async () => {
+		// Bug regression test: Multiple concurrent initialize() calls should be safe
+		const vscode = await import("vscode");
+		const { SortedGitChangesProvider } = await import(
+			"../../src/git-sort/sorted-changes-provider.js"
+		);
+
+		vscode.extensions.getExtension = mock(() => ({
+			exports: {
+				getAPI: mock(() => ({
+					repositories: [],
+					onDidOpenRepository: mock(() => ({ dispose: mock() })),
+					onDidCloseRepository: mock(() => ({ dispose: mock() })),
+				})),
+			},
+			isActive: true,
+		}));
+
+		const mockContext = createMockExtensionContext();
+		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
+
+		// The key test: concurrent calls should not cause race condition crashes
+		const initPromises = [
+			provider.initialize(),
+			provider.initialize(), 
+			provider.initialize(),
+		];
+
+		// All should complete successfully
+		const results = await Promise.allSettled(initPromises);
+		for (const result of results) {
+			expect(result.status).toBe("fulfilled");
+		}
+	});
+
+	test("getChildren returns empty array (not empty groups) when no changes", async () => {
+		// Bug regression test: When there are no git changes, getChildren should return
+		// empty array, not empty groups with zero totalCount (which creates empty headers)
+		const vscode = await import("vscode");
+		const { SortedGitChangesProvider } = await import(
+			"../../src/git-sort/sorted-changes-provider.js"
+		);
+
+		// Mock Git extension with repository that has no changes
+		const mockRepository = {
+			state: {
+				workingTreeChanges: [], // No changes
+				indexChanges: [], // No changes
+			},
+			rootUri: vscode.Uri.file("/workspace/test"),
+		};
+
+		vscode.extensions.getExtension = mock(() => ({
+			exports: {
+				getAPI: mock(() => ({
+					repositories: [mockRepository],
+					onDidOpenRepository: mock(() => ({ dispose: mock() })),
+					onDidCloseRepository: mock(() => ({ dispose: mock() })),
+				})),
+			},
+			isActive: true,
+		}));
+
+		const mockContext = createMockExtensionContext();
+		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
+		await provider.initialize();
+
+		const children = await provider.getChildren();
+
+		// Should return empty array, not empty groups
+		expect(children).toEqual([]);
+		expect(children.length).toBe(0);
+		
+		// Specifically check it's not returning empty groups with totalCount: 0
+		const hasEmptyGroups = children.some((child: any) => 
+			child.type === "GitStatusGroup" && child.totalCount === 0
+		);
+		expect(hasEmptyGroups).toBe(false);
+	});
 });
