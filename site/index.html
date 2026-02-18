@@ -17,14 +17,42 @@
   </script>
   <script>
     document.addEventListener('DOMContentLoaded',function(){
+      // Click tracking via data-track attributes
       document.querySelectorAll('[data-track]').forEach(function(el){
-        el.addEventListener('click',function(){posthog.capture(el.dataset.track,{source:el.dataset.source||'landing',label:el.textContent.trim()})})
+        // Skip email_submit on the button — handled via form submit below
+        if(el.dataset.track==='email_submit') return;
+        el.addEventListener('click',function(){
+          posthog.capture(el.dataset.track,{source:el.dataset.source||'landing',label:el.textContent.trim().substring(0,80)})
+        })
       });
+
+      // Email form submit (captures actual submissions, not just button clicks)
+      var form=document.querySelector('.signup-form');
+      if(form){form.addEventListener('submit',function(){
+        posthog.capture('email_submit',{source:'footer'})
+      })}
+
+      // Scroll depth via IntersectionObserver (no scroll event spam)
       var depths=[25,50,75,100],fired={};
-      window.addEventListener('scroll',function(){
-        var pct=Math.round((window.scrollY/(document.body.scrollHeight-window.innerHeight))*100);
-        depths.forEach(function(d){if(pct>=d&&!fired[d]){fired[d]=true;posthog.capture('scroll_depth',{depth:d})}})
+      var sentinels=depths.map(function(d){
+        var el=document.createElement('div');
+        el.style.cssText='position:absolute;left:0;width:1px;height:1px;pointer-events:none';
+        el.style.top=d+'%';
+        el.dataset.depth=d;
+        document.body.appendChild(el);
+        return el;
       });
+      // body needs position:relative for absolute sentinels
+      document.body.style.position='relative';
+      var obs=new IntersectionObserver(function(entries){
+        entries.forEach(function(e){
+          if(e.isIntersecting){
+            var d=parseInt(e.target.dataset.depth);
+            if(!fired[d]){fired[d]=true;posthog.capture('scroll_depth',{depth:d})}
+          }
+        })
+      },{threshold:0});
+      sentinels.forEach(function(s){obs.observe(s)});
     });
   </script>
 </head>
@@ -217,7 +245,7 @@
     <div class="container">
 
       <!-- Card 1: Text LEFT, SVG RIGHT -->
-      <div class="feature-card">
+      <div class="feature-card" data-track="feature_card_click" data-source="multi-workspace">
         <div class="feature-content">
           <h3>Every repo, one panel</h3>
           <p>Monorepos and multi-root workspaces turn into a wall of files. Each folder gets its own panel and icon — you see which project changed at a glance.</p>
@@ -326,7 +354,7 @@
       </div>
 
       <!-- Card 2: SVG LEFT, Text RIGHT (reversed) -->
-      <div class="feature-card feature-card--reverse">
+      <div class="feature-card feature-card--reverse" data-track="feature_card_click" data-source="git-status">
         <div class="feature-content">
           <h3>See what changed — and when</h3>
           <p>Staged or unstaged — still sorted by when you changed them.</p>
@@ -423,7 +451,7 @@
       </div>
 
       <!-- Card 3: Text LEFT, SVG RIGHT -->
-      <div class="feature-card">
+      <div class="feature-card" data-track="feature_card_click" data-source="filter">
         <div class="feature-content">
           <h3>Filter by file type</h3>
           <p>Show only <code>.ts</code> — everything else disappears. One click to reset.</p>

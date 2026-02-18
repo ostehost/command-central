@@ -2,7 +2,7 @@
 	"name": "command-central",
 	"displayName": "Command Central",
 	"description": "Track and sort git changes by time, manage workspaces, and launch terminal commands — your mission control for the dev process.",
-	"version": "0.1.6",
+	"version": "0.1.7",
 	"publisher": "oste",
 	"icon": "resources/icons/icon.png",
 	"type": "module",
@@ -826,26 +826,86 @@
 			]
 		},
 		"viewsWelcome": [
-			{"view": "commandCentral.project.slot1", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot1Panel", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot2", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot2Panel", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot3", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot3Panel", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot4", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot4Panel", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot5", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot5Panel", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot6", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot6Panel", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot7", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot7Panel", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot8", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot8Panel", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot9", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot9Panel", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot10", "contents": "Open a Git repository to see time-sorted changes."},
-			{"view": "commandCentral.project.slot10Panel", "contents": "Open a Git repository to see time-sorted changes."}
+			{
+				"view": "commandCentral.project.slot1",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot1Panel",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot2",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot2Panel",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot3",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot3Panel",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot4",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot4Panel",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot5",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot5Panel",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot6",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot6Panel",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot7",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot7Panel",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot8",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot8Panel",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot9",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot9Panel",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot10",
+				"contents": "Open a Git repository to see time-sorted changes."
+			},
+			{
+				"view": "commandCentral.project.slot10Panel",
+				"contents": "Open a Git repository to see time-sorted changes."
+			}
 		],
 		"menus": {
 			"commandPalette": [

@@ -402,14 +402,18 @@ describe("ProjectViewManager Per-View Commands", () => {
 
 		await manager.registerAllProjects();
 
-		// Should have registered multiple commands per view:
-		// - 2 sort commands (Activity Bar + Panel)
-		// - 2 refresh commands (Activity Bar + Panel)
-		// - 2 filter commands (Activity Bar + Panel)
-		// Plus other subscriptions (active file tracking, providers ready event, etc.)
-		expect(mockContext.subscriptions.length).toBeGreaterThan(
-			initialSubscriptions + 5,
+		// Per-view commands are now tracked internally (perViewCommandDisposables)
+		// rather than on context.subscriptions, to support clean reload.
+		// Verify commands were registered via registerCommand calls.
+		const vscodeMod = await import("vscode");
+		const registerCalls = (
+			vscodeMod.commands.registerCommand as ReturnType<typeof mock>
+		).mock.calls;
+		const perViewCmds = registerCalls.filter((call: unknown[]) =>
+			call[0]?.toString().includes(".slot"),
 		);
+		// At least 6 per-view commands (sort, refresh, filter × AB + Panel)
+		expect(perViewCmds.length).toBeGreaterThanOrEqual(6);
 	});
 
 	test("sort order command toggles from newest to oldest", async () => {

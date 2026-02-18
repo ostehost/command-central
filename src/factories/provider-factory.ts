@@ -12,13 +12,12 @@
  * - REQ-TEST-002: Testable provider creation
  */
 
-import crypto from "node:crypto";
 import * as vscode from "vscode";
 import type { ProjectViewConfig } from "../config/project-views.js";
 import type { SortedGitChangesProvider } from "../git-sort/sorted-changes-provider.js";
 import { SortedGitChangesProvider as SortedGitChangesProviderImpl } from "../git-sort/sorted-changes-provider.js";
 import {
-	SQLiteStorageAdapter,
+	WorkspaceStateStorageAdapter,
 	type StorageAdapter,
 } from "../git-sort/storage/index.js";
 import type { LoggerService } from "../services/logger-service.js";
@@ -100,30 +99,21 @@ export class ProjectProviderFactory implements ProviderFactory {
 			return existing;
 		}
 
-		// Create per-workspace storage database
-		// Hash workspace path for stable naming across slot reassignments
-		const workspacePath = config.gitPath || config.id;
-		const pathHash = crypto
-			.createHash("sha256")
-			.update(workspacePath)
-			.digest("hex")
-			.substring(0, 16);
-
-		const dbPath = vscode.Uri.joinPath(
-			this.context.globalStorageUri,
-			`workspace-${pathHash}.db`,
-		).fsPath;
-
+		// Create per-workspace storage using VS Code's native workspaceState
 		let storage: StorageAdapter | undefined;
 		try {
-			storage = await SQLiteStorageAdapter.create(dbPath);
-			this.logger.debug(`Created storage for ${config.displayName}: ${dbPath}`);
+			storage = await WorkspaceStateStorageAdapter.create(
+				this.context.workspaceState,
+			);
+			this.logger.debug(
+				`Created workspaceState storage for ${config.displayName}`,
+			);
 		} catch (error) {
 			this.logger.error(
 				`Failed to create storage for ${config.displayName}, using in-memory fallback:`,
 				error,
 			);
-			storage = undefined; // Provider will use in-memory DeletedFileTracker
+			storage = undefined;
 		}
 
 		// Create provider bound to specific workspace folder

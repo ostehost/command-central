@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2025-11-16: 593 tests across 46 files.
 
+## [0.1.7] - 2026-02-18
+
+### Removed
+- **SQLite dependency eliminated** — replaced with VS Code's native `workspaceState` API for deleted file persistence. Zero external dependencies.
+
+### Fixed
+- **Command registration collision on reload** — per-view commands (sort, refresh, filter) now properly dispose before re-registration, fixing "command already exists" crash on window reload.
+
 ## [0.1.6] - 2026-02-18
 
 ### Fixed

@@ -48,6 +48,9 @@ export class ProjectViewManager {
 
 	private providerSlotMap = new Map<SortedGitChangesProvider, string>();
 
+	// Per-view command disposables — disposed on reload to prevent "already exists" errors
+	private perViewCommandDisposables: vscode.Disposable[] = [];
+
 	// Clean workspace display names (for filter UI)
 	// Maps slotId -> original displayName (without dynamic decorations like ▼, file counts)
 	private slotDisplayNames = new Map<string, string>();
@@ -261,6 +264,12 @@ export class ProjectViewManager {
 
 		try {
 			this.logger.info("Reloading project views...");
+
+			// Dispose per-view commands first (prevents "already exists" on re-register)
+			for (const d of this.perViewCommandDisposables) {
+				d?.dispose();
+			}
+			this.perViewCommandDisposables = [];
 
 			// Dispose all views
 			for (const view of this.registeredViews.values()) {
@@ -524,7 +533,7 @@ export class ProjectViewManager {
 		const slotId = config.id; // e.g., "slot1", "slot2"
 
 		// Register sort order toggle for both Activity Bar and Panel views
-		this.context.subscriptions.push(
+		this.perViewCommandDisposables.push(
 			vscode.commands.registerCommand(
 				`commandCentral.gitSort.changeSortOrder.${slotId}`,
 				() => {
@@ -549,7 +558,7 @@ export class ProjectViewManager {
 			),
 		);
 
-		this.context.subscriptions.push(
+		this.perViewCommandDisposables.push(
 			vscode.commands.registerCommand(
 				`commandCentral.gitSort.changeSortOrder.${slotId}Panel`,
 				() => {
@@ -571,7 +580,7 @@ export class ProjectViewManager {
 		);
 
 		// Register refresh commands
-		this.context.subscriptions.push(
+		this.perViewCommandDisposables.push(
 			vscode.commands.registerCommand(
 				`commandCentral.gitSort.refreshView.${slotId}`,
 				() => {
@@ -581,7 +590,7 @@ export class ProjectViewManager {
 			),
 		);
 
-		this.context.subscriptions.push(
+		this.perViewCommandDisposables.push(
 			vscode.commands.registerCommand(
 				`commandCentral.gitSort.refreshView.${slotId}Panel`,
 				() => {
@@ -592,7 +601,7 @@ export class ProjectViewManager {
 		);
 
 		// Register file filter commands
-		this.context.subscriptions.push(
+		this.perViewCommandDisposables.push(
 			vscode.commands.registerCommand(
 				`commandCentral.gitSort.changeFileFilter.${slotId}`,
 				async () => {
@@ -601,7 +610,7 @@ export class ProjectViewManager {
 			),
 		);
 
-		this.context.subscriptions.push(
+		this.perViewCommandDisposables.push(
 			vscode.commands.registerCommand(
 				`commandCentral.gitSort.changeFileFilter.${slotId}Panel`,
 				async () => {
@@ -783,6 +792,12 @@ export class ProjectViewManager {
 	 */
 	dispose(): void {
 		this.logger.info("Disposing project view manager...");
+
+		// Dispose per-view commands
+		for (const d of this.perViewCommandDisposables) {
+			d?.dispose();
+		}
+		this.perViewCommandDisposables = [];
 
 		// Dispose event emitter
 		this._onProvidersReady.dispose();

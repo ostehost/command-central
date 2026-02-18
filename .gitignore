@@ -62,3 +62,10 @@ test.BACKUP-*/
 # Only .terminal-version is committed for tracking
 resources/app/
 !resources/app/.terminal-version
+BUG_INVESTIGATION.md
+FILTER_FIX_DESIGN.md
+FILTER_TEST_GAPS.md
+FILTER_UX_RESEARCH.md
+GIT_CODE_PATH.md
+PERSISTENCE_ANALYSIS.md
+RUNTIME_DEBUG.md
