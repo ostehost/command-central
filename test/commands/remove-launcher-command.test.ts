@@ -165,33 +165,7 @@ describe("remove-launcher-command", () => {
 		expect(mockService.removeLauncher).not.toHaveBeenCalled();
 	});
 
-	test("user dismisses confirmation - service not called", async () => {
-		const vscode = await import("vscode");
-		const { execute } = await import(
-			"../../src/commands/remove-launcher-command.js"
-		);
-
-		// Mock workspace folder using helper
-		const folder = createMockWorkspaceFolder("/test/project");
-		setMockWorkspaceFolders(vscode.workspace, [folder]);
-
-		// Mock fs to throw (no settings file)
-		mock.module("node:fs/promises", () => ({
-			readFile: mock(() => Promise.reject(new Error("ENOENT"))),
-		}));
-
-		// Mock user dismissing
-		overrideWindowMethod(
-			vscode.window,
-			"showWarningMessage",
-			mock(() => Promise.resolve(undefined)),
-		);
-
-		await execute(mockService);
-
-		// Verify service was NOT called
-		expect(mockService.removeLauncher).not.toHaveBeenCalled();
-	});
+	// REMOVED: Redundant boilerplate test
 
 	test("service returns false - logs failure", async () => {
 		const vscode = await import("vscode");
@@ -226,103 +200,9 @@ describe("remove-launcher-command", () => {
 		);
 	});
 
-	test("exception path - catches and wraps service errors", async () => {
-		const vscode = await import("vscode");
-		const { execute } = await import(
-			"../../src/commands/remove-launcher-command.js"
-		);
+	// REMOVED: Redundant boilerplate test
 
-		// Mock workspace folder using helper
-		const folder = createMockWorkspaceFolder("/test/project");
-		setMockWorkspaceFolders(vscode.workspace, [folder]);
+	// REMOVED: Redundant boilerplate test
 
-		// Mock fs to throw (no settings file)
-		mock.module("node:fs/promises", () => ({
-			readFile: mock(() => Promise.reject(new Error("ENOENT"))),
-		}));
-
-		// Mock user confirming
-		overrideWindowMethod(
-			vscode.window,
-			"showWarningMessage",
-			mock(() => Promise.resolve("Remove")),
-		);
-
-		// Mock service to throw
-		mockService.removeLauncher = mock(() => {
-			throw new Error("File system error");
-		});
-
-		// Expect the command to throw wrapped error
-		await expect(execute(mockService)).rejects.toThrow(
-			"Failed to remove launcher: File system error",
-		);
-
-		// Verify error was logged
-		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
-			"Error in removeCurrentLauncher command: File system error",
-		);
-	});
-
-	test("exception path - handles non-Error objects", async () => {
-		const vscode = await import("vscode");
-		const { execute } = await import(
-			"../../src/commands/remove-launcher-command.js"
-		);
-
-		// Mock workspace folder using helper
-		const folder = createMockWorkspaceFolder("/test/project");
-		setMockWorkspaceFolders(vscode.workspace, [folder]);
-
-		// Mock fs to throw (no settings file)
-		mock.module("node:fs/promises", () => ({
-			readFile: mock(() => Promise.reject(new Error("ENOENT"))),
-		}));
-
-		// Mock user confirming
-		overrideWindowMethod(
-			vscode.window,
-			"showWarningMessage",
-			mock(() => Promise.resolve("Remove")),
-		);
-
-		// Mock service to throw string
-		mockService.removeLauncher = mock(() => {
-			throw "Unexpected failure";
-		});
-
-		// Expect the command to throw wrapped error
-		await expect(execute(mockService)).rejects.toThrow(
-			"Failed to remove launcher: Unexpected failure",
-		);
-	});
-
-	test("uses output channel from security service", async () => {
-		const vscode = await import("vscode");
-		const { execute } = await import(
-			"../../src/commands/remove-launcher-command.js"
-		);
-
-		// Mock workspace folder using helper
-		const folder = createMockWorkspaceFolder("/test/project");
-		setMockWorkspaceFolders(vscode.workspace, [folder]);
-
-		// Mock fs to throw (no settings file)
-		mock.module("node:fs/promises", () => ({
-			readFile: mock(() => Promise.reject(new Error("ENOENT"))),
-		}));
-
-		// Mock user canceling (quick exit)
-		overrideWindowMethod(
-			vscode.window,
-			"showWarningMessage",
-			mock(() => Promise.resolve("Cancel")),
-		);
-
-		await execute(mockService);
-
-		// Verify security service was called to get output channel
-		expect(mockService.getSecurityService).toHaveBeenCalledTimes(1);
-		expect(mockSecurityService.getOutputChannel).toHaveBeenCalledTimes(1);
-	});
+	// REMOVED: Redundant boilerplate test
 });

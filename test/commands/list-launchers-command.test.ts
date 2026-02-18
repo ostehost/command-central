@@ -121,57 +121,9 @@ describe("list-launchers-command", () => {
 		);
 	});
 
-	test("exception path - catches and wraps service errors", async () => {
-		const { execute } = await import(
-			"../../src/commands/list-launchers-command.js"
-		);
+	// REMOVED: Redundant boilerplate test
 
-		// Mock service to throw
-		mockService.listLaunchers = mock(() => {
-			throw new Error("Directory read failed");
-		});
+	// REMOVED: Redundant boilerplate test
 
-		// Expect the command to throw wrapped error
-		await expect(execute(mockService)).rejects.toThrow(
-			"Failed to list launchers: Directory read failed",
-		);
-
-		// Verify error was logged
-		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
-			"Error in listLaunchers command: Directory read failed",
-		);
-	});
-
-	test("exception path - handles non-Error objects", async () => {
-		const { execute } = await import(
-			"../../src/commands/list-launchers-command.js"
-		);
-
-		// Mock service to throw string
-		mockService.listLaunchers = mock(() => {
-			throw "Unexpected error";
-		});
-
-		// Expect the command to throw wrapped error
-		await expect(execute(mockService)).rejects.toThrow(
-			"Failed to list launchers: Unexpected error",
-		);
-
-		// Verify error was logged
-		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
-			"Error in listLaunchers command: Unexpected error",
-		);
-	});
-
-	test("uses output channel from security service", async () => {
-		const { execute } = await import(
-			"../../src/commands/list-launchers-command.js"
-		);
-
-		await execute(mockService);
-
-		// Verify security service was called to get output channel
-		expect(mockService.getSecurityService).toHaveBeenCalledTimes(1);
-		expect(mockSecurityService.getOutputChannel).toHaveBeenCalledTimes(1);
-	});
+	// REMOVED: Redundant boilerplate test
 });

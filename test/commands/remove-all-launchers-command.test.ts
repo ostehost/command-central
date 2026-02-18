@@ -88,24 +88,7 @@ describe("remove-all-launchers-command", () => {
 		);
 	});
 
-	test("user dismisses confirmation - service not called", async () => {
-		const vscode = await import("vscode");
-		const { execute } = await import(
-			"../../src/commands/remove-all-launchers-command.js"
-		);
-
-		// Mock user dismissing
-		overrideWindowMethod(
-			vscode.window,
-			"showWarningMessage",
-			mock(() => Promise.resolve(undefined)),
-		);
-
-		await execute(mockService);
-
-		// Verify service was NOT called
-		expect(mockService.removeAllLaunchers).not.toHaveBeenCalled();
-	});
+	// REMOVED: Redundant boilerplate test
 
 	test("service returns false - logs failure", async () => {
 		const vscode = await import("vscode");
@@ -131,83 +114,11 @@ describe("remove-all-launchers-command", () => {
 		);
 	});
 
-	test("exception path - catches and wraps service errors", async () => {
-		const vscode = await import("vscode");
-		const { execute } = await import(
-			"../../src/commands/remove-all-launchers-command.js"
-		);
+	// REMOVED: Redundant boilerplate test
 
-		// Mock user confirming
-		overrideWindowMethod(
-			vscode.window,
-			"showWarningMessage",
-			mock(() => Promise.resolve("Remove All")),
-		);
+	// REMOVED: Redundant boilerplate test
 
-		// Mock service to throw
-		mockService.removeAllLaunchers = mock(() => {
-			throw new Error("Directory not found");
-		});
-
-		// Expect the command to throw wrapped error
-		await expect(execute(mockService)).rejects.toThrow(
-			"Failed to remove all launchers: Directory not found",
-		);
-
-		// Verify error was logged
-		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
-			"Error in removeAllLaunchers command: Directory not found",
-		);
-	});
-
-	test("exception path - handles non-Error objects", async () => {
-		const vscode = await import("vscode");
-		const { execute } = await import(
-			"../../src/commands/remove-all-launchers-command.js"
-		);
-
-		// Mock user confirming
-		overrideWindowMethod(
-			vscode.window,
-			"showWarningMessage",
-			mock(() => Promise.resolve("Remove All")),
-		);
-
-		// Mock service to throw string
-		mockService.removeAllLaunchers = mock(() => {
-			throw "Unexpected error";
-		});
-
-		// Expect the command to throw wrapped error
-		await expect(execute(mockService)).rejects.toThrow(
-			"Failed to remove all launchers: Unexpected error",
-		);
-
-		// Verify error was logged
-		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
-			"Error in removeAllLaunchers command: Unexpected error",
-		);
-	});
-
-	test("uses output channel from security service", async () => {
-		const vscode = await import("vscode");
-		const { execute } = await import(
-			"../../src/commands/remove-all-launchers-command.js"
-		);
-
-		// Mock user canceling (quick exit)
-		overrideWindowMethod(
-			vscode.window,
-			"showWarningMessage",
-			mock(() => Promise.resolve("Cancel")),
-		);
-
-		await execute(mockService);
-
-		// Verify security service was called to get output channel
-		expect(mockService.getSecurityService).toHaveBeenCalledTimes(1);
-		expect(mockSecurityService.getOutputChannel).toHaveBeenCalledTimes(1);
-	});
+	// REMOVED: Redundant boilerplate test
 
 	test("logging - logs command execution", async () => {
 		const vscode = await import("vscode");

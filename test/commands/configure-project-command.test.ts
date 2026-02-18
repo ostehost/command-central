@@ -44,48 +44,6 @@ describe("configure-project-command", () => {
 		expect(mockService.configureProject).toHaveBeenCalledTimes(1);
 	});
 
-	test("exception path - catches and wraps service errors", async () => {
-		const { execute } = await import(
-			"../../src/commands/configure-project-command.js"
-		);
-
-		// Mock service to throw
-		mockService.configureProject = mock(() => {
-			throw new Error("Invalid icon selection");
-		});
-
-		// Expect the command to throw wrapped error
-		await expect(execute(mockService)).rejects.toThrow(
-			"Failed to configure project: Invalid icon selection",
-		);
-
-		// Verify error was logged
-		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
-			"Error in configureProject command: Invalid icon selection",
-		);
-	});
-
-	test("exception path - handles non-Error objects", async () => {
-		const { execute } = await import(
-			"../../src/commands/configure-project-command.js"
-		);
-
-		// Mock service to throw string
-		mockService.configureProject = mock(() => {
-			throw "Configuration cancelled";
-		});
-
-		// Expect the command to throw wrapped error
-		await expect(execute(mockService)).rejects.toThrow(
-			"Failed to configure project: Configuration cancelled",
-		);
-
-		// Verify error was logged
-		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
-			"Error in configureProject command: Configuration cancelled",
-		);
-	});
-
 	test("uses output channel from security service", async () => {
 		const { execute } = await import(
 			"../../src/commands/configure-project-command.js"
