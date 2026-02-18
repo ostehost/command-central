@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2025-11-16: 593 tests across 46 files.
 
+## [0.1.6] - 2026-02-18
+
+### Fixed
+- Race condition — tree stays empty when Git extension discovers repos before CC activates
+- macOS `/tmp` → `/private/tmp` symlink resolution in `findRepositoryForFile()`
+- Empty group headers no longer render when they have 0 children
+- Silent extension filter — now shows `TreeView.message` when filter hides all files
+
+### Added
+- `viewsWelcome` messages for empty tree states ("Open a Git repository to see time-sorted changes")
+- 22 new tests for ExtensionFilterState (636 total, 0 failures)
+
 ## [0.1.0] - 2026-02-16
 
 ### Added

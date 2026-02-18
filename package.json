@@ -2,7 +2,7 @@
 	"name": "command-central",
 	"displayName": "Command Central",
 	"description": "Track and sort git changes by time, manage workspaces, and launch terminal commands — your mission control for the dev process.",
-	"version": "0.1.5",
+	"version": "0.1.6",
 	"publisher": "oste",
 	"icon": "resources/icons/icon.png",
 	"type": "module",
