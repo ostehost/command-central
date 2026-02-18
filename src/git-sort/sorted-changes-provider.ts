@@ -4,6 +4,7 @@
  */
 
 import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ExtensionFilterState } from "../services/extension-filter-state.js";
@@ -222,6 +223,14 @@ export class SortedGitChangesProvider
 					this.debounceRefresh();
 				}),
 			);
+
+			// Trigger initial refresh if repositories already exist.
+			// When the Git extension discovers repos before Command Central activates,
+			// onDidOpenRepository won't fire for those repos. Without this, the tree
+			// stays empty until the user makes a change.
+			if (this.gitApi.repositories.length > 0) {
+				this.debounceRefresh();
+			}
 
 			this.logger.info("SortedGitChangesProvider initialized");
 		} catch (error) {
@@ -1769,7 +1778,10 @@ export class SortedGitChangesProvider
 					"unstaged",
 				);
 
-				rootElements = [stagedGroup, unstagedGroup];
+				// Only include groups that have files (avoid empty headers)
+				rootElements = [stagedGroup, unstagedGroup].filter(
+					(g) => g.totalCount > 0,
+				);
 
 				// Update cached count (sum of both groups)
 				const totalCount = stagedGroup.totalCount + unstagedGroup.totalCount;
@@ -2323,11 +2335,25 @@ export class SortedGitChangesProvider
 			return undefined;
 		}
 
+		const filePath = uri.fsPath;
+
 		// Sort by longest path first (most specific match wins in multi-root workspaces)
 		return this.gitApi.repositories
 			.slice()
 			.sort((a, b) => b.rootUri.fsPath.length - a.rootUri.fsPath.length)
-			.find((r) => uri.fsPath.startsWith(r.rootUri.fsPath));
+			.find((r) => {
+				const repoPath = r.rootUri.fsPath;
+				// Direct match
+				if (filePath.startsWith(repoPath)) return true;
+				// Symlink-resolved match (e.g., macOS /tmp → /private/tmp)
+				try {
+					const resolvedFile = fsSync.realpathSync(filePath);
+					const resolvedRepo = fsSync.realpathSync(repoPath);
+					return resolvedFile.startsWith(resolvedRepo);
+				} catch {
+					return false;
+				}
+			});
 	}
 
 	/**
