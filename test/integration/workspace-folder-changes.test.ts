@@ -339,14 +339,14 @@ describe("Workspace Folder Changes", () => {
 	});
 
 	test("reload disposes per-view commands before re-registering", async () => {
-		// Bug regression test: per-view commands like "commandCentral.gitSort.1.sortOrder" 
+		// Bug regression test: per-view commands like "commandCentral.gitSort.1.sortOrder"
 		// must be disposed before reload to prevent command collision
 		const mockConfigSource: ProjectConfigSource = {
 			loadProjects: mock(async () => [
 				{
 					id: "test-project",
 					displayName: "Test Project",
-					iconPath: "resources/icons/test.svg", 
+					iconPath: "resources/icons/test.svg",
 					gitPath: "/workspace/test",
 					sortOrder: 1,
 				},
@@ -368,16 +368,17 @@ describe("Workspace Folder Changes", () => {
 
 		// First registration
 		await manager.registerAllProjects();
-		
+
 		// Reload should not throw - verify it resolves successfully
 		const reloadResult = manager.reload();
 		await expect(reloadResult).resolves.toBeUndefined();
-		
+
 		// Should have logged reload activity
 		const infoCalls = (mockLogger.info as ReturnType<typeof mock>).mock.calls;
-		const hasReloadLog = infoCalls.some((call: unknown[]) =>
-			call[0]?.toString().includes("Reloading") || 
-			call[0]?.toString().includes("Successfully registered")
+		const hasReloadLog = infoCalls.some(
+			(call: unknown[]) =>
+				call[0]?.toString().includes("Reloading") ||
+				call[0]?.toString().includes("Successfully registered"),
 		);
 		expect(hasReloadLog).toBe(true);
 	});
@@ -389,7 +390,7 @@ describe("Workspace Folder Changes", () => {
 			loadProjects: mock(async () => [
 				{
 					id: "test-project",
-					displayName: "Test Project", 
+					displayName: "Test Project",
 					iconPath: "resources/icons/test.svg",
 					gitPath: "/workspace/test",
 					sortOrder: 1,
@@ -413,15 +414,15 @@ describe("Workspace Folder Changes", () => {
 		// First registration
 		const firstRegistration = manager.registerAllProjects();
 		await expect(firstRegistration).resolves.toBeUndefined();
-		
+
 		// Second registration should be idempotent
 		const secondRegistration = manager.registerAllProjects();
 		await expect(secondRegistration).resolves.toBeUndefined();
-		
+
 		// Verify both registrations completed successfully
 		const infoCalls = (mockLogger.info as ReturnType<typeof mock>).mock.calls;
 		const registrationLogs = infoCalls.filter((call: unknown[]) =>
-			call[0]?.toString().includes("Successfully registered")
+			call[0]?.toString().includes("Successfully registered"),
 		);
 		expect(registrationLogs.length).toBeGreaterThanOrEqual(1);
 	});
@@ -430,7 +431,7 @@ describe("Workspace Folder Changes", () => {
 		// Bug regression test: changing workspace folder count during reload
 		// should handle provider disposal and re-creation correctly
 		let workspaceSize = 1;
-		
+
 		const mockConfigSource: ProjectConfigSource = {
 			loadProjects: mock(async () => {
 				const projects = [];
@@ -463,23 +464,23 @@ describe("Workspace Folder Changes", () => {
 		// Start with 1 workspace
 		await manager.registerAllProjects();
 		expect(mockProviderFactory.createProvider).toHaveBeenCalledTimes(1);
-		
+
 		// Expand to 3 workspaces
 		workspaceSize = 3;
 		const expandReload = manager.reload();
 		await expect(expandReload).resolves.toBeUndefined();
 		expect(mockProviderFactory.createProvider).toHaveBeenCalledTimes(4); // 1 + 3
-		
-		// Contract to 2 workspaces  
+
+		// Contract to 2 workspaces
 		workspaceSize = 2;
 		const contractReload = manager.reload();
 		await expect(contractReload).resolves.toBeUndefined();
 		expect(mockProviderFactory.createProvider).toHaveBeenCalledTimes(6); // 1 + 3 + 2
-		
+
 		// Verify successful reload messages
 		const infoCalls = (mockLogger.info as ReturnType<typeof mock>).mock.calls;
 		const reloadMessages = infoCalls.filter((call: unknown[]) =>
-			call[0]?.toString().includes("Successfully registered")
+			call[0]?.toString().includes("Successfully registered"),
 		);
 		expect(reloadMessages.length).toBeGreaterThanOrEqual(3); // Initial + 2 reloads
 	});

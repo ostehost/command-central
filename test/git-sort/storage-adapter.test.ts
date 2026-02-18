@@ -17,8 +17,7 @@ describe("StorageAdapter Interface Contract", () => {
 		await adapter.initialize();
 	});
 
-	describe("Lifecycle Management", () => {
-	});
+	describe("Lifecycle Management", () => {});
 
 	describe("Repository Management", () => {
 		test("should create new repository and return ID", async () => {
@@ -28,7 +27,6 @@ describe("StorageAdapter Interface Contract", () => {
 			);
 			expect(repoId).toBeGreaterThan(0);
 		});
-
 	});
 
 	describe("Persistence Operations", () => {
@@ -124,7 +122,6 @@ describe("StorageAdapter Interface Contract", () => {
 			expect(results).toHaveLength(1);
 			// Should be the most recent file
 		});
-
 	});
 
 	describe("Maintenance Operations", () => {

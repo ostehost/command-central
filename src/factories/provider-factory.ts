@@ -17,8 +17,8 @@ import type { ProjectViewConfig } from "../config/project-views.js";
 import type { SortedGitChangesProvider } from "../git-sort/sorted-changes-provider.js";
 import { SortedGitChangesProvider as SortedGitChangesProviderImpl } from "../git-sort/sorted-changes-provider.js";
 import {
-	WorkspaceStateStorageAdapter,
 	type StorageAdapter,
+	WorkspaceStateStorageAdapter,
 } from "../git-sort/storage/index.js";
 import type { LoggerService } from "../services/logger-service.js";
 

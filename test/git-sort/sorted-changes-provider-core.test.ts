@@ -407,7 +407,7 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 	});
 
 	test("initialize() with pre-existing repositories regression test", async () => {
-		// Bug regression test: Verify provider can handle initialization 
+		// Bug regression test: Verify provider can handle initialization
 		// with existing repositories without issues
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
@@ -418,7 +418,9 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		vscode.extensions.getExtension = mock(() => ({
 			exports: {
 				getAPI: mock(() => ({
-					repositories: [{ state: { workingTreeChanges: [], indexChanges: [] } }],
+					repositories: [
+						{ state: { workingTreeChanges: [], indexChanges: [] } },
+					],
 					onDidOpenRepository: mock(() => ({ dispose: mock() })),
 					onDidCloseRepository: mock(() => ({ dispose: mock() })),
 				})),
@@ -458,7 +460,7 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		// The key test: concurrent calls should not cause race condition crashes
 		const initPromises = [
 			provider.initialize(),
-			provider.initialize(), 
+			provider.initialize(),
 			provider.initialize(),
 		];
 
@@ -506,10 +508,10 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		// Should return empty array, not empty groups
 		expect(children).toEqual([]);
 		expect(children.length).toBe(0);
-		
+
 		// Specifically check it's not returning empty groups with totalCount: 0
-		const hasEmptyGroups = children.some((child: any) => 
-			child.type === "GitStatusGroup" && child.totalCount === 0
+		const hasEmptyGroups = children.some(
+			(child: any) => child.type === "GitStatusGroup" && child.totalCount === 0,
 		);
 		expect(hasEmptyGroups).toBe(false);
 	});

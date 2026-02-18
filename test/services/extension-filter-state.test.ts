@@ -31,11 +31,7 @@ describe("ExtensionFilterState", () => {
 	// =========================================================================
 
 	test("default state: isFiltered returns false for unknown workspace", () => {
-		const state = new ExtensionFilterState(
-			undefined,
-			"none",
-			undefined,
-		);
+		const state = new ExtensionFilterState(undefined, "none", undefined);
 		expect(state.isFiltered("unknown-workspace")).toBe(false);
 	});
 
@@ -155,7 +151,10 @@ describe("Tree view message behavior", () => {
 
 	test("filter cleared → tree message is cleared", () => {
 		const mockTreeView = {
-			message: "No files match the current filter (.py). Use the Extension Filter to adjust." as string | undefined,
+			message:
+				"No files match the current filter (.py). Use the Extension Filter to adjust." as
+					| string
+					| undefined,
 		};
 
 		// Simulate clearing the filter

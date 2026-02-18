@@ -1,6 +1,6 @@
 /**
  * Provider Disposal Bug Regression Tests
- * 
+ *
  * Tests specific production bugs that shipped:
  * - Bug #1: SQLite loading failures should fall back gracefully
  * - Bug #2: Command registration collisions on reload
@@ -17,7 +17,10 @@ describe("Provider Disposal Bug Regressions", () => {
 	test("Bug #1: Extension handles missing SQLite gracefully", async () => {
 		// Simulate SQLite module not available (common in VS Code environments)
 		const mockRequire = mock((moduleName: string) => {
-			if (moduleName.includes("better-sqlite3") || moduleName.includes("@vscode/sqlite3")) {
+			if (
+				moduleName.includes("better-sqlite3") ||
+				moduleName.includes("@vscode/sqlite3")
+			) {
 				throw new Error("Cannot find module 'better-sqlite3'");
 			}
 			// Return dummy for other modules
@@ -25,10 +28,10 @@ describe("Provider Disposal Bug Regressions", () => {
 		});
 
 		// Mock extension behavior - should fall back to workspace storage
-		const fallbackStorageCreated = mock(() => ({ 
-			initialize: mock(), 
-			save: mock(), 
-			load: mock() 
+		const fallbackStorageCreated = mock(() => ({
+			initialize: mock(),
+			save: mock(),
+			load: mock(),
 		}));
 
 		// This represents what should happen when SQLite fails
@@ -56,7 +59,7 @@ describe("Provider Disposal Bug Regressions", () => {
 			return {
 				dispose: mock(() => {
 					registeredCommands.delete(commandId);
-				})
+				}),
 			};
 		});
 
@@ -92,7 +95,7 @@ describe("Provider Disposal Bug Regressions", () => {
 					listener.dispose();
 				}
 				mockProviderDispose();
-			})
+			}),
 		};
 
 		// Simulate factory disposal
@@ -118,16 +121,16 @@ describe("Provider Disposal Bug Regressions", () => {
 				isInitializing = true;
 				initializationCount++;
 				// Simulate async initialization work
-				await new Promise(resolve => setTimeout(resolve, 1));
+				await new Promise((resolve) => setTimeout(resolve, 1));
 				isInitializing = false;
-			})
+			}),
 		};
 
 		// Simulate race condition - multiple rapid initialization calls
 		const initPromises = [
 			mockProvider.initialize(),
 			mockProvider.initialize(),
-			mockProvider.initialize()
+			mockProvider.initialize(),
 		];
 
 		await Promise.all(initPromises);
@@ -145,15 +148,15 @@ describe("Provider Disposal Bug Regressions", () => {
 					// Root level - check if we have any groups with actual content
 					const groups = [
 						{ type: "staged", totalCount: 0 },
-						{ type: "unstaged", totalCount: 0 }
+						{ type: "unstaged", totalCount: 0 },
 					];
-					
+
 					// Filter out empty groups (this was the bug - wasn't filtering)
-					const nonEmptyGroups = groups.filter(group => group.totalCount > 0);
+					const nonEmptyGroups = groups.filter((group) => group.totalCount > 0);
 					return nonEmptyGroups;
 				}
 				return [];
-			})
+			}),
 		};
 
 		// When all groups are empty, should return empty array (not empty groups)
@@ -161,10 +164,10 @@ describe("Provider Disposal Bug Regressions", () => {
 
 		expect(children).toEqual([]);
 		expect(children.length).toBe(0);
-		
+
 		// Specifically check we didn't return empty groups
-		const hasEmptyGroups = children.some((child: any) => 
-			child.type && child.totalCount === 0
+		const hasEmptyGroups = children.some(
+			(child: any) => child.type && child.totalCount === 0,
 		);
 		expect(hasEmptyGroups).toBe(false);
 	});

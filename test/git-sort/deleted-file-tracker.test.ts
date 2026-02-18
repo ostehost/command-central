@@ -61,7 +61,6 @@ describe("DeletedFileTracker", () => {
 
 			expect(tracker.getOrder("/project/src/file1.ts")).toBe(1);
 		});
-
 	});
 
 	describe("Visibility Management", () => {

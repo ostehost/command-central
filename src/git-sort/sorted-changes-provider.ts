@@ -3,8 +3,8 @@
  * This provides a custom view that we can fully control
  */
 
-import * as fs from "node:fs/promises";
 import * as fsSync from "node:fs";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ExtensionFilterState } from "../services/extension-filter-state.js";

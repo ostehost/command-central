@@ -8,8 +8,8 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { DeletedFileRecord } from "../../src/git-sort/deleted-file-tracker.js";
-import { WorkspaceStateStorageAdapter } from "../../src/git-sort/storage/workspace-state-storage-adapter.js";
 import type { StorageAdapter } from "../../src/git-sort/storage/storage-adapter.js";
+import { WorkspaceStateStorageAdapter } from "../../src/git-sort/storage/workspace-state-storage-adapter.js";
 
 /**
  * Minimal Memento mock that behaves like VS Code's workspaceState.
@@ -39,8 +39,7 @@ describe("WorkspaceStateStorageAdapter", () => {
 
 	// ─── Core Contract (same as StorageAdapter interface tests) ───
 
-	describe("Lifecycle", () => {
-	});
+	describe("Lifecycle", () => {});
 
 	describe("Repository Management", () => {
 		test("creates new repo with incrementing IDs", async () => {
@@ -49,7 +48,6 @@ describe("WorkspaceStateStorageAdapter", () => {
 			expect(id1).toBe(1);
 			expect(id2).toBe(2);
 		});
-
 	});
 
 	describe("Save / Load Round-Trip", () => {
@@ -101,11 +99,26 @@ describe("WorkspaceStateStorageAdapter", () => {
 			const r2 = await adapter.ensureRepository("/repo2", "r2");
 
 			await adapter.save(r1, [
-				{ filePath: "/repo1/old.ts", order: 1, timestamp: oneDayAgo, isVisible: true },
-				{ filePath: "/repo1/recent.ts", order: 2, timestamp: oneHourAgo, isVisible: true },
+				{
+					filePath: "/repo1/old.ts",
+					order: 1,
+					timestamp: oneDayAgo,
+					isVisible: true,
+				},
+				{
+					filePath: "/repo1/recent.ts",
+					order: 2,
+					timestamp: oneHourAgo,
+					isVisible: true,
+				},
 			]);
 			await adapter.save(r2, [
-				{ filePath: "/repo2/new.ts", order: 1, timestamp: now, isVisible: true },
+				{
+					filePath: "/repo2/new.ts",
+					order: 1,
+					timestamp: now,
+					isVisible: true,
+				},
 			]);
 		});
 
@@ -120,12 +133,16 @@ describe("WorkspaceStateStorageAdapter", () => {
 			const results = await adapter.queryByTimeRange(twoHoursAgo, now);
 			expect(results).toHaveLength(2); // oneHourAgo + now
 			// Sorted newest first
-			expect(results[0]!.timestamp).toBeGreaterThanOrEqual(results[1]!.timestamp);
+			expect(results[0]!.timestamp).toBeGreaterThanOrEqual(
+				results[1]!.timestamp,
+			);
 		});
 
 		test("queryByTimeRange returns empty for future range", async () => {
 			const future = now + 1_000_000;
-			expect(await adapter.queryByTimeRange(future, future + 1000)).toHaveLength(0);
+			expect(
+				await adapter.queryByTimeRange(future, future + 1000),
+			).toHaveLength(0);
 		});
 
 		test("queryRecent respects limit", async () => {
@@ -133,7 +150,6 @@ describe("WorkspaceStateStorageAdapter", () => {
 			expect(results).toHaveLength(1);
 			expect(results[0]!.timestamp).toBe(now); // Most recent
 		});
-
 	});
 
 	describe("Stats", () => {
@@ -188,7 +204,12 @@ describe("WorkspaceStateStorageAdapter", () => {
 			// First instance writes data
 			const repoId = await adapter.ensureRepository("/project", "p");
 			await adapter.save(repoId, [
-				{ filePath: "/project/x.ts", order: 1, timestamp: 5000, isVisible: true },
+				{
+					filePath: "/project/x.ts",
+					order: 1,
+					timestamp: 5000,
+					isVisible: true,
+				},
 			]);
 
 			// Second instance from same memento
@@ -219,18 +240,38 @@ describe("WorkspaceStateStorageAdapter", () => {
 
 			// Tracker detects file1 deleted
 			await adapter.save(repoId, [
-				{ filePath: "/workspace/file1.ts", order: 1, timestamp: 1000, isVisible: true },
+				{
+					filePath: "/workspace/file1.ts",
+					order: 1,
+					timestamp: 1000,
+					isVisible: true,
+				},
 			]);
 
 			// Tracker detects file2 deleted, sends complete state
 			await adapter.save(repoId, [
-				{ filePath: "/workspace/file1.ts", order: 1, timestamp: 1000, isVisible: true },
-				{ filePath: "/workspace/file2.ts", order: 2, timestamp: 2000, isVisible: true },
+				{
+					filePath: "/workspace/file1.ts",
+					order: 1,
+					timestamp: 1000,
+					isVisible: true,
+				},
+				{
+					filePath: "/workspace/file2.ts",
+					order: 2,
+					timestamp: 2000,
+					isVisible: true,
+				},
 			]);
 
 			// Tracker detects file1 restored (re-added), sends state without it
 			await adapter.save(repoId, [
-				{ filePath: "/workspace/file2.ts", order: 1, timestamp: 2000, isVisible: true },
+				{
+					filePath: "/workspace/file2.ts",
+					order: 1,
+					timestamp: 2000,
+					isVisible: true,
+				},
 			]);
 
 			const loaded = await adapter.load(repoId);

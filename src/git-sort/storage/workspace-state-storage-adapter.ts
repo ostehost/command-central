@@ -121,10 +121,8 @@ export class WorkspaceStateStorageAdapter implements StorageAdapter {
 			const records = await this.load(entry.id);
 			totalDeletions += records.length;
 			for (const r of records) {
-				if (oldest === undefined || r.timestamp < oldest)
-					oldest = r.timestamp;
-				if (newest === undefined || r.timestamp > newest)
-					newest = r.timestamp;
+				if (oldest === undefined || r.timestamp < oldest) oldest = r.timestamp;
+				if (newest === undefined || r.timestamp > newest) newest = r.timestamp;
 			}
 		}
 

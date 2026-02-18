@@ -124,5 +124,4 @@ describe("launch-here-command", () => {
 			"Failed to launch terminal here: Invalid path",
 		);
 	});
-
 });

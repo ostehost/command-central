@@ -25,7 +25,6 @@ describe("formatRelativeTime", () => {
 			const result = formatRelativeTime(recent, now);
 			expect(result).toBe("now");
 		});
-
 	});
 
 	/**
@@ -109,8 +108,7 @@ describe("formatRelativeTime", () => {
 	/**
 	 * Formatting Options
 	 */
-	describe("formatting options", () => {
-	});
+	describe("formatting options", () => {});
 
 	/**
 	 * Real-world scenarios
