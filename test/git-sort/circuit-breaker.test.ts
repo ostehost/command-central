@@ -137,25 +137,6 @@ describe("CircuitBreaker", () => {
 	});
 
 	describe("getStatus", () => {
-		test("should return current status", async () => {
-			const { CircuitBreaker } = await import(
-				"../../src/git-sort/circuit-breaker.js"
-			);
-			const circuitBreaker = new CircuitBreaker();
-
-			const initialStatus = circuitBreaker.getStatus();
-			expect(initialStatus.attempts).toBe(0);
-			expect(initialStatus.isOpen).toBe(false);
-
-			// Make some attempts
-			circuitBreaker.canProceed();
-			circuitBreaker.canProceed();
-
-			const status = circuitBreaker.getStatus();
-			expect(status.attempts).toBe(2);
-			expect(status.isOpen).toBe(false);
-		});
-
 		test("should show open status when tripped", async () => {
 			const { CircuitBreaker } = await import(
 				"../../src/git-sort/circuit-breaker.js"

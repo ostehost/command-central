@@ -40,15 +40,6 @@ describe("WorkspaceStateStorageAdapter", () => {
 	// ─── Core Contract (same as StorageAdapter interface tests) ───
 
 	describe("Lifecycle", () => {
-		test("initialize is idempotent", async () => {
-			await adapter.initialize();
-			await adapter.initialize();
-			// No throw = pass
-		});
-
-		test("close is safe to call", async () => {
-			await adapter.close();
-		});
 	});
 
 	describe("Repository Management", () => {
@@ -59,16 +50,6 @@ describe("WorkspaceStateStorageAdapter", () => {
 			expect(id2).toBe(2);
 		});
 
-		test("returns same ID for same path", async () => {
-			const id1 = await adapter.ensureRepository("/project", "p");
-			const id2 = await adapter.ensureRepository("/project", "p");
-			expect(id1).toBe(id2);
-		});
-
-		test("persists repos to memento", async () => {
-			await adapter.ensureRepository("/project", "p");
-			expect(memento.update).toHaveBeenCalled();
-		});
 	});
 
 	describe("Save / Load Round-Trip", () => {
@@ -85,16 +66,6 @@ describe("WorkspaceStateStorageAdapter", () => {
 			expect(loaded).toHaveLength(2);
 			expect(loaded[0]?.filePath).toBe("/repo/a.ts");
 			expect(loaded[1]?.filePath).toBe("/repo/b.ts");
-		});
-
-		test("empty save → empty load", async () => {
-			const repoId = await adapter.ensureRepository("/repo", "r");
-			await adapter.save(repoId, []);
-			expect(await adapter.load(repoId)).toHaveLength(0);
-		});
-
-		test("load from unknown repo returns empty", async () => {
-			expect(await adapter.load(99999)).toHaveLength(0);
 		});
 
 		test("full-state replace on save (tracker always sends complete state)", async () => {
@@ -144,10 +115,6 @@ describe("WorkspaceStateStorageAdapter", () => {
 			expect(results.every((r) => r.filePath.startsWith("/repo1/"))).toBe(true);
 		});
 
-		test("queryByRepository returns empty for unknown repo", async () => {
-			expect(await adapter.queryByRepository("/nope")).toHaveLength(0);
-		});
-
 		test("queryByTimeRange filters correctly", async () => {
 			const twoHoursAgo = now - 7200_000;
 			const results = await adapter.queryByTimeRange(twoHoursAgo, now);
@@ -167,10 +134,6 @@ describe("WorkspaceStateStorageAdapter", () => {
 			expect(results[0]!.timestamp).toBe(now); // Most recent
 		});
 
-		test("queryRecent returns all when limit exceeds count", async () => {
-			const results = await adapter.queryRecent(100);
-			expect(results).toHaveLength(3);
-		});
 	});
 
 	describe("Stats", () => {

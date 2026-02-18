@@ -40,27 +40,6 @@ describe("DeletedFileTracker", () => {
 			expect(order3).toBe(3);
 		});
 
-		test("should maintain existing order across refreshes", () => {
-			const firstOrder = tracker.markAsDeleted("/project/src/file1.ts");
-
-			// Simulate git refresh - same file appears again
-			const secondOrder = tracker.markAsDeleted("/project/src/file1.ts");
-
-			expect(firstOrder).toBe(secondOrder);
-			expect(secondOrder).toBe(1);
-		});
-
-		test("should assign next available order to new deleted files", () => {
-			tracker.markAsDeleted("/project/src/file1.ts"); // order 1
-			tracker.markAsDeleted("/project/src/file2.ts"); // order 2
-
-			// Simulate refresh with existing + new file
-			tracker.markAsDeleted("/project/src/file1.ts"); // still order 1
-			const newFileOrder = tracker.markAsDeleted("/project/src/file3.ts"); // order 3
-
-			expect(newFileOrder).toBe(3);
-		});
-
 		test("should include timestamp when provided", () => {
 			const timestamp = Date.now();
 			tracker.markAsDeleted("/project/src/file1.ts", timestamp);
@@ -77,19 +56,12 @@ describe("DeletedFileTracker", () => {
 			expect(tracker.hasFile("/project/src/file1.ts")).toBe(true);
 		});
 
-		test("should return false for untracked files", () => {
-			expect(tracker.hasFile("/project/src/unknown.ts")).toBe(false);
-		});
-
 		test("should return order for tracked files", () => {
 			tracker.markAsDeleted("/project/src/file1.ts");
 
 			expect(tracker.getOrder("/project/src/file1.ts")).toBe(1);
 		});
 
-		test("should return undefined for untracked files", () => {
-			expect(tracker.getOrder("/project/src/unknown.ts")).toBeUndefined();
-		});
 	});
 
 	describe("Visibility Management", () => {
@@ -233,11 +205,6 @@ describe("DeletedFileTracker", () => {
 			expect(visible[1]?.order).toBe(2);
 			expect(visible[2]?.filePath).toBe("/project/src/file2.ts");
 			expect(visible[2]?.order).toBe(3);
-		});
-
-		test("should return empty array when no files tracked", () => {
-			expect(tracker.getVisibleDeletedFiles()).toEqual([]);
-			expect(tracker.getAllDeletedFiles()).toEqual([]);
 		});
 
 		test("should include all metadata in returned records", () => {

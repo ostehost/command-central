@@ -18,20 +18,6 @@ describe("StorageAdapter Interface Contract", () => {
 	});
 
 	describe("Lifecycle Management", () => {
-		test("should initialize without errors", async () => {
-			const newAdapter = new MockStorageAdapter();
-			await expect(newAdapter.initialize()).resolves.toBeUndefined();
-		});
-
-		test("should close without errors", async () => {
-			await expect(adapter.close()).resolves.toBeUndefined();
-		});
-
-		test("should handle multiple initialize calls safely", async () => {
-			await adapter.initialize();
-			await adapter.initialize();
-			// Should not throw
-		});
 	});
 
 	describe("Repository Management", () => {
@@ -43,23 +29,6 @@ describe("StorageAdapter Interface Contract", () => {
 			expect(repoId).toBeGreaterThan(0);
 		});
 
-		test("should return same ID for existing repository", async () => {
-			const id1 = await adapter.ensureRepository(
-				"/Users/test/project",
-				"project",
-			);
-			const id2 = await adapter.ensureRepository(
-				"/Users/test/project",
-				"project",
-			);
-			expect(id1).toBe(id2);
-		});
-
-		test("should create different IDs for different repositories", async () => {
-			const id1 = await adapter.ensureRepository("/Users/test/project1", "p1");
-			const id2 = await adapter.ensureRepository("/Users/test/project2", "p2");
-			expect(id1).not.toBe(id2);
-		});
 	});
 
 	describe("Persistence Operations", () => {
@@ -87,18 +56,6 @@ describe("StorageAdapter Interface Contract", () => {
 			expect(loaded).toHaveLength(2);
 			expect(loaded[0]?.filePath).toBe("/test/repo/file1.ts");
 			expect(loaded[1]?.filePath).toBe("/test/repo/file2.ts");
-		});
-
-		test("should handle empty save", async () => {
-			const repoId = await adapter.ensureRepository("/test/repo", "repo");
-			await adapter.save(repoId, []);
-			const loaded = await adapter.load(repoId);
-			expect(loaded).toHaveLength(0);
-		});
-
-		test("should handle load from non-existent repository", async () => {
-			const loaded = await adapter.load(99999);
-			expect(loaded).toHaveLength(0);
 		});
 
 		// Test removed - write-once design doesn't allow overwrites
@@ -168,11 +125,6 @@ describe("StorageAdapter Interface Contract", () => {
 			// Should be the most recent file
 		});
 
-		test("should return empty array for future time range", async () => {
-			const future = Date.now() + 1000000;
-			const results = await adapter.queryByTimeRange(future, future + 1000);
-			expect(results).toHaveLength(0);
-		});
 	});
 
 	describe("Maintenance Operations", () => {

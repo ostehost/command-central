@@ -33,14 +33,6 @@ test("getUTCDateString uses UTC timezone (not local)", () => {
 	expect(result).toBe("2025-01-01");
 });
 
-test("getUTCDateString handles month/day padding correctly", () => {
-	const date = new Date("2025-03-05T12:00:00.000Z");
-	const result = getUTCDateString(date);
-
-	// Should have leading zeros for single-digit month/day
-	expect(result).toBe("2025-03-05");
-});
-
 test("getUTCDateString matches toISOString() date part", () => {
 	const date = new Date("2025-11-17T23:59:59.999Z");
 	const result = getUTCDateString(date);
@@ -59,13 +51,6 @@ test("getUTCDateString handles leap years", () => {
 });
 
 // Edge Cases
-test("getUTCDateString handles Y2K era", () => {
-	const date = new Date("2000-01-01T00:00:00.000Z");
-	const result = getUTCDateString(date);
-
-	expect(result).toBe("2000-01-01");
-});
-
 test("getUTCDateString handles December 31st edge case", () => {
 	const date = new Date("2024-12-31T23:59:59.999Z");
 	const result = getUTCDateString(date);

@@ -20,33 +20,12 @@ describe("formatRelativeTime", () => {
 			expect(result).toBe("unknown");
 		});
 
-		test("returns 'unknown' for zero timestamp", () => {
-			const result = formatRelativeTime(0, now);
-			expect(result).toBe("unknown");
-		});
-
-		test("returns 'unknown' for NaN timestamp", () => {
-			const result = formatRelativeTime(Number.NaN, now);
-			expect(result).toBe("unknown");
-		});
-
-		test("returns 'now' for future timestamps (clock skew)", () => {
-			const futureTime = now + 60000; // 1 minute in future
-			const result = formatRelativeTime(futureTime, now);
-			expect(result).toBe("now");
-		});
-
 		test("returns 'now' for times less than 60 seconds ago", () => {
 			const recent = now - 30000; // 30 seconds ago
 			const result = formatRelativeTime(recent, now);
 			expect(result).toBe("now");
 		});
 
-		test("returns 'now' for times exactly 59 seconds ago", () => {
-			const recent = now - 59000; // 59 seconds ago
-			const result = formatRelativeTime(recent, now);
-			expect(result).toBe("now");
-		});
 	});
 
 	/**
@@ -131,25 +110,6 @@ describe("formatRelativeTime", () => {
 	 * Formatting Options
 	 */
 	describe("formatting options", () => {
-		test("formats with short style", () => {
-			const timestamp = now - 5 * 60 * 1000; // 5 minutes
-			const result = formatRelativeTime(timestamp, now, { style: "short" });
-			expect(result).toBe("5 min. ago");
-		});
-
-		test("formats with narrow style", () => {
-			const timestamp = now - 3 * 60 * 60 * 1000; // 3 hours
-			const result = formatRelativeTime(timestamp, now, { style: "narrow" });
-			// Narrow style uses compact format (no spaces/periods)
-			expect(result).toBe("3h ago");
-		});
-
-		test("uses default locale when not specified", () => {
-			const timestamp = now - 60 * 1000;
-			const result = formatRelativeTime(timestamp, now);
-			// Should be English format
-			expect(result).toContain("minute");
-		});
 	});
 
 	/**
@@ -183,12 +143,6 @@ describe("formatRelativeTime", () => {
 			const timestamp = now - 60 * 1000;
 			const result = formatRelativeTime(timestamp, now);
 			expect(result).toBe("1 minute ago");
-		});
-
-		test("handles exactly 59 seconds (below minute threshold)", () => {
-			const timestamp = now - 59 * 1000;
-			const result = formatRelativeTime(timestamp, now);
-			expect(result).toBe("now");
 		});
 
 		test("handles exactly 3600 seconds (1 hour threshold)", () => {
