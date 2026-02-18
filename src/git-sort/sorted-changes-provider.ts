@@ -429,6 +429,44 @@ export class SortedGitChangesProvider
 		}
 	}
 
+	/**
+	 * Updates TreeView.message based on filter state and results.
+	 *
+	 * - Filter active + zero matches → informational message
+	 * - Filter active + some matches → clear message
+	 * - No filter → clear message
+	 *
+	 * Uses TreeView.message API which renders above tree content or alone if empty.
+	 */
+	private updateTreeViewMessage(
+		unfilteredCount: number,
+		filteredCount: number,
+	): void {
+		const isFiltered =
+			this.extensionFilterState?.isFiltered(this.workspaceId ?? "") ?? false;
+
+		let message: string | undefined;
+
+		if (isFiltered && filteredCount === 0 && unfilteredCount > 0) {
+			const extensions = Array.from(
+				this.extensionFilterState?.getEnabledExtensions(
+					this.workspaceId ?? "",
+				) ?? [],
+			)
+				.sort()
+				.join(", ");
+			message = `No files match the current filter (${extensions}). Use the Extension Filter to adjust.`;
+		}
+
+		// Set message on all registered tree views
+		if (this.activityBarTreeView) {
+			this.activityBarTreeView.message = message;
+		}
+		if (this.panelTreeView) {
+			this.panelTreeView.message = message;
+		}
+	}
+
 	setSortOrder(order: "newest" | "oldest"): void {
 		this.logger.info(`Setting sort order to: ${order}`);
 		this.sortOrder = order;
@@ -828,6 +866,14 @@ export class SortedGitChangesProvider
 		this.logger.info(
 			`[${this.workspaceId}] Filtered ${changes.length} files → ${filtered.length} files matching filter`,
 		);
+
+		// Safety: warn when filter hides ALL files
+		if (filtered.length === 0 && changes.length > 0) {
+			this.logger.warn(
+				`[${this.workspaceId}] Extension filter hides ALL ${changes.length} files! ` +
+					`Filter: [${Array.from(enabledExtensions).join(", ")}]`,
+			);
+		}
 
 		return filtered;
 	}
@@ -1783,6 +1829,13 @@ export class SortedGitChangesProvider
 					(g) => g.totalCount > 0,
 				);
 
+				// Update tree view message for filter feedback
+				const totalFilteredCount =
+					stagedGroup.totalCount + unstagedGroup.totalCount;
+				const totalUnfilteredCount =
+					enrichedStaged.length + enrichedWorking.length;
+				this.updateTreeViewMessage(totalUnfilteredCount, totalFilteredCount);
+
 				// Update cached count (sum of both groups)
 				const totalCount = stagedGroup.totalCount + unstagedGroup.totalCount;
 				const previousCount = this.lastKnownFileCount;
@@ -1856,6 +1909,13 @@ export class SortedGitChangesProvider
 				// Build 2-level hierarchy: TimeGroup → GitChangeItem
 				const timeGroups = this.sortAndFilter(allChanges);
 				rootElements = timeGroups;
+
+				// Update tree view message for filter feedback
+				const filteredCount = timeGroups.reduce(
+					(sum, g) => sum + g.children.length,
+					0,
+				);
+				this.updateTreeViewMessage(allChanges.length, filteredCount);
 			}
 
 			// CRITICAL: Populate parent map for getParent() and reveal()
