@@ -38,7 +38,7 @@ just dist       # Build distribution (smart version-aware builds)
 ```bash
 # 1. Clone the repository
 git clone <repo-url>
-cd vs-code-extension-bun
+cd command-central
 
 # 2. Install dependencies
 just install
