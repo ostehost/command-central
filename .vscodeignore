@@ -1,0 +1,34 @@
+# Source & config
+src/**
+test/**
+.github/**
+.githooks/**
+.vscode/**
+screenshots/**
+site/**
+docs/**
+
+# Build & tooling
+tsconfig*.json
+biome.json
+bunfig.toml
+Justfile
+bun.lock
+
+# Dev files
+*.test.ts
+*.spec.ts
+.gitignore
+.editorconfig
+
+# Docs (keep README, CHANGELOG, LICENSE)
+CLAUDE.md
+ARCHITECTURE.md
+CONTRIBUTING.md
+TEST_DESIGN_BEST_PRACTICES.md
+TEST_REFACTORING_COMPLETE.md
+WORKFLOW.md
+
+# Artifacts
+*.vsix
+node_modules/**

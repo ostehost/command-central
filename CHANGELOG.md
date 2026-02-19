@@ -5,7 +5,7 @@ All notable changes to the Command Central extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2025-11-16: 593 tests across 46 files.
+**Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2026-02-18: 537 tests across 51 files.
 
 ## [0.1.7] - 2026-02-18
 

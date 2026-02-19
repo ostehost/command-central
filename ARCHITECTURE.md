@@ -2,7 +2,7 @@
 
 **AI-Powered Mission Control for VS Code**
 
-Version: 0.1.3 | Last Updated: 2026-02-17
+Version: 0.1.7 | Last Updated: 2026-02-18
 
 ---
 
@@ -69,7 +69,7 @@ Command Central is a sophisticated VS Code extension that provides intelligent g
 │  │  Layer 2: Provider Factory                             │   │
 │  │  - ProjectProviderFactory                              │   │
 │  │  - Per-workspace provider instances                    │   │
-│  │  - Isolated storage (SQLite per folder)                │   │
+│  │  - Isolated storage (workspaceState per folder)                │   │
 │  │  - Extension filter state                              │   │
 │  │  - Git status cache                                    │   │
 │  │  - Grouping state manager                              │   │
@@ -148,7 +148,7 @@ activate() {
 
 **Responsibilities:**
 - Create `SortedGitChangesProvider` instances
-- Manage per-workspace storage (SQLite)
+- Manage per-workspace storage (workspaceState)
 - Share state across providers (extension filter, grouping)
 - Handle provider disposal
 
@@ -213,7 +213,7 @@ enum TimeGroup {
 }
 ```
 
-**Storage:** SQLite (desktop) or in-memory (remote/web)
+**Storage:** VS Code workspaceState API (native, zero dependencies)
 
 **Reference:** src/git-sort/sorted-changes-provider.ts
 
@@ -226,8 +226,7 @@ enum TimeGroup {
 **Storage Strategy:**
 ```
 Path Hash (SHA-256) → Sequence Number
-Persisted to SQLite on desktop
-Falls back to in-memory on remote/web
+Persisted via VS Code workspaceState API
 ```
 
 **Reference:** src/git-sort/deleted-file-tracker.ts
@@ -551,7 +550,7 @@ test/
 └── helpers/             # Mocks & helpers (4 files)
 ```
 
-**Total:** 640 tests across 50 files
+**Total:** 537 tests across 51 files
 
 ### Testing Philosophy
 
@@ -585,7 +584,7 @@ class Manager {
 
 **Bun Test Framework:**
 - Native mocking (`mock()`, `mock.module()`)
-- Fast execution (~5s for 640 tests)
+- Fast execution (~5s for 537 tests)
 - Built-in coverage
 
 **VS Code Mocking:**
@@ -748,7 +747,7 @@ src/
 Command Central demonstrates a clean, layered architecture with strong separation of concerns. The dependency injection pattern at the composition root (extension.ts) allows for testable, maintainable code. The multi-workspace support through provider-per-folder architecture enables isolation while sharing state where appropriate.
 
 Key architectural strengths:
-- **Testability:** 640 tests with observable effects testing
+- **Testability:** 537 tests with observable effects testing
 - **Performance:** Sub-second operations throughout
 - **Maintainability:** Clear boundaries, explicit dependencies
 - **Extensibility:** Plugin-ready architecture for future features
