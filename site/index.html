@@ -7,7 +7,8 @@
   <meta name="description" content="A VS Code extension that groups git changes by time — Today, Yesterday, Last Week. Free, open source, zero config.">
   <meta property="og:title" content="Command Central — Git changes, organized by time">
   <meta property="og:description" content="Stop scrolling alphabetical file lists. See what changed today, yesterday, and last week.">
-  <meta property="og:image" content="assets/hero-shot.png">
+  <meta property="og:image" content="https://partnerai.dev/screenshots/hero.png">
+  <meta property="og:url" content="https://partnerai.dev">
   <meta property="og:type" content="website">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
   <link rel="stylesheet" href="style.css">
@@ -69,122 +70,7 @@
         <a href="https://github.com/ostehost/command-central" class="btn btn-secondary" data-track="github_click" data-source="hero">GitHub</a>
       </div>
       <div class="hero-screenshot">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 320" width="100%" height="auto">
-  <defs>
-    <style>
-      .hero-bg { fill: #161b22; }
-      .hero-header { fill: #21262d; }
-      .hero-bright { fill: #e6edf3; font-family: 'Segoe UI', system-ui, sans-serif; }
-      .hero-muted { fill: #8b949e; font-family: 'Segoe UI', system-ui, sans-serif; }
-      .hero-accent { fill: #58a6ff; font-family: 'Segoe UI', system-ui, sans-serif; }
-      .hero-mono { font-family: 'Cascadia Code', 'Fira Code', monospace; }
-    </style>
-  </defs>
-
-  <!-- Background -->
-  <rect width="400" height="320" class="hero-bg" rx="8"/>
-
-  <!-- Header bar -->
-  <rect x="0" y="0" width="400" height="28" class="hero-header" rx="8"/>
-  <rect x="0" y="14" width="400" height="14" class="hero-header"/>
-  <text x="12" y="18" class="hero-bright" font-size="10" font-weight="600" letter-spacing="1.5">COMMAND CENTRAL</text>
-  <text x="388" y="18" class="hero-muted" font-size="9" text-anchor="end">⟲ ⚙</text>
-
-  <!-- Section: Today -->
-  <rect x="0" y="32" width="400" height="22" fill="#1c2128"/>
-  <text x="20" y="47" class="hero-accent" font-size="10" font-weight="600">▾ Today</text>
-  <text x="68" y="47" class="hero-muted" font-size="9">(7 files)</text>
-
-  <!-- Row 1 (odd) -->
-  <rect x="0" y="54" width="400" height="20" fill="transparent"/>
-  <rect x="22" y="57" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="67.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
-  <text x="44" y="67" class="hero-bright hero-mono" font-size="10">auth.service.ts</text>
-  <text x="310" y="67" fill="#8b949e" font-size="8" text-anchor="end">2h ago</text>
-    <text x="370" y="67" fill="#6e7681" font-size="8" text-anchor="end">src/auth</text>
-  <text x="380" y="67" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
-
-  <!-- Row 2 (even) -->
-  <rect x="0" y="74" width="400" height="20" fill="#1c2128" opacity="0.4"/>
-  <rect x="22" y="77" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="87.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
-  <text x="44" y="87" class="hero-bright hero-mono" font-size="10">user.controller.ts</text>
-  <text x="310" y="87" fill="#8b949e" font-size="8" text-anchor="end">3h ago</text>
-    <text x="370" y="87" fill="#6e7681" font-size="8" text-anchor="end">src/api</text>
-  <text x="380" y="87" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
-
-  <!-- Row 3 (odd) -->
-  <rect x="0" y="94" width="400" height="20" fill="transparent"/>
-  <rect x="22" y="97" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="30" y="107.5" fill="#cbcb41" font-size="9" font-weight="400" font-family="system-ui" text-anchor="middle">{}</text>
-  <text x="44" y="107" class="hero-bright hero-mono" font-size="10">package.json</text>
-  <text x="310" y="107" fill="#8b949e" font-size="8" text-anchor="end">4h ago</text>
-    <text x="370" y="107" fill="#6e7681" font-size="8" text-anchor="end">root</text>
-  <text x="380" y="107" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
-
-  <!-- Row 4 (even) -->
-  <rect x="0" y="114" width="400" height="20" fill="#1c2128" opacity="0.4"/>
-  <rect x="22" y="117" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="127.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
-  <text x="44" y="127" class="hero-bright hero-mono" font-size="10">db.migration.ts</text>
-  <text x="310" y="127" fill="#8b949e" font-size="8" text-anchor="end">5h ago</text>
-    <text x="370" y="127" fill="#6e7681" font-size="8" text-anchor="end">src/db</text>
-  <text x="380" y="127" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">A</text>
-
-  <!-- Row 5 (odd) -->
-  <rect x="0" y="134" width="400" height="20" fill="transparent"/>
-  <rect x="22" y="137" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="30" y="147.5" fill="#cbcb41" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">JS</text>
-  <text x="44" y="147" class="hero-bright hero-mono" font-size="10">webpack.config.js</text>
-  <text x="310" y="147" fill="#8b949e" font-size="8" text-anchor="end">6h ago</text>
-    <text x="370" y="147" fill="#6e7681" font-size="8" text-anchor="end">root</text>
-  <text x="380" y="147" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
-
-  <!-- Row 6 (even) -->
-  <rect x="0" y="154" width="400" height="20" fill="#1c2128" opacity="0.4"/>
-  <rect x="22" y="157" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="167.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
-  <text x="44" y="167" class="hero-bright hero-mono" font-size="10">index.ts</text>
-  <text x="310" y="167" fill="#8b949e" font-size="8" text-anchor="end">7h ago</text>
-    <text x="370" y="167" fill="#6e7681" font-size="8" text-anchor="end">src</text>
-  <text x="380" y="167" fill="#3fb950" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">U</text>
-
-  <!-- Row 7 (odd) -->
-  <rect x="0" y="174" width="400" height="20" fill="transparent"/>
-  <rect x="22" y="177" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="187.5" fill="#519aba" font-size="7" font-weight="700" font-family="system-ui" text-anchor="middle">MD</text>
-  <text x="44" y="187" class="hero-bright hero-mono" font-size="10">README.md</text>
-  <text x="310" y="187" fill="#8b949e" font-size="8" text-anchor="end">8h ago</text>
-    <text x="370" y="187" fill="#6e7681" font-size="8" text-anchor="end">root</text>
-  <text x="380" y="187" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
-
-  <!-- Section: Yesterday -->
-  <rect x="0" y="198" width="400" height="22" fill="#1c2128"/>
-  <text x="20" y="213" class="hero-accent" font-size="10" font-weight="600">▾ Yesterday</text>
-  <text x="88" y="213" class="hero-muted" font-size="9">(3 files)</text>
-
-  <!-- Row 1 (odd) -->
-  <rect x="0" y="220" width="400" height="20" fill="transparent"/>
-  <rect x="22" y="223" width="16" height="14" rx="3" fill="#519aba" opacity="0.2"/><text x="30" y="233.5" fill="#519aba" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
-  <text x="44" y="233" class="hero-bright hero-mono" font-size="10">logger.service.ts</text>
-  <text x="310" y="233" fill="#8b949e" font-size="8" text-anchor="end">yesterday</text>
-    <text x="370" y="233" fill="#6e7681" font-size="8" text-anchor="end">src/core</text>
-  <text x="380" y="233" fill="#f85149" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">D</text>
-
-  <!-- Row 2 (even) -->
-  <rect x="0" y="240" width="400" height="20" fill="#1c2128" opacity="0.4"/>
-  <rect x="22" y="243" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="30" y="253.5" fill="#cbcb41" font-size="9" font-weight="400" font-family="system-ui" text-anchor="middle">{}</text>
-  <text x="44" y="253" class="hero-bright hero-mono" font-size="10">tsconfig.json</text>
-  <text x="310" y="253" fill="#8b949e" font-size="8" text-anchor="end">yesterday</text>
-    <text x="370" y="253" fill="#6e7681" font-size="8" text-anchor="end">root</text>
-  <text x="380" y="253" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
-
-  <!-- Row 3 (odd) -->
-  <rect x="0" y="260" width="400" height="20" fill="transparent"/>
-  <rect x="22" y="263" width="16" height="14" rx="3" fill="#cbcb41" opacity="0.2"/><text x="30" y="273.5" fill="#cbcb41" font-size="8" font-weight="700" font-family="system-ui" text-anchor="middle">JS</text>
-  <text x="44" y="273" class="hero-bright hero-mono" font-size="10">jest.config.js</text>
-  <text x="310" y="273" fill="#8b949e" font-size="8" text-anchor="end">yesterday</text>
-    <text x="370" y="273" fill="#6e7681" font-size="8" text-anchor="end">root</text>
-  <text x="380" y="273" fill="#d29922" font-size="9" font-weight="700" text-anchor="end" font-family="monospace">M</text>
-
-  <!-- Section: Last Week (collapsed) -->
-  <rect x="0" y="284" width="400" height="22" fill="#1c2128"/>
-  <text x="20" y="299" class="hero-muted" font-size="10" font-weight="600">▸ Last Week</text>
-  <text x="90" y="299" class="hero-muted" font-size="9">(12 files)</text>
-</svg>
+        <img src="screenshots/hero.png" alt="Command Central — Multi-workspace sidebar with custom project icons showing time-grouped git changes" width="1200" height="800" loading="eager">
       </div>
     </div>
   </section>
@@ -223,7 +109,7 @@
         </div>
         <div class="trust-row">
           <div class="trust-signal">
-            <span class="trust-number">640</span>
+            <span class="trust-number">536</span>
             <span class="trust-label">tests passing</span>
           </div>
           <div class="trust-signal">
