@@ -34,17 +34,21 @@
       })}
 
       // Scroll depth via IntersectionObserver (no scroll event spam)
+      // Uses document.body.scrollHeight to place sentinels at actual content depth
       var depths=[25,50,75,100],fired={};
-      var sentinels=depths.map(function(d){
-        var el=document.createElement('div');
-        el.style.cssText='position:absolute;left:0;width:1px;height:1px;pointer-events:none';
-        el.style.top=d+'%';
-        el.dataset.depth=d;
-        document.body.appendChild(el);
-        return el;
-      });
-      // body needs position:relative for absolute sentinels
+      function placeSentinels(){
+        var h=document.body.scrollHeight;
+        return depths.map(function(d){
+          var el=document.createElement('div');
+          el.style.cssText='position:absolute;left:0;width:1px;height:1px;pointer-events:none';
+          el.style.top=Math.floor(h*d/100)+'px';
+          el.dataset.depth=d;
+          document.body.appendChild(el);
+          return el;
+        });
+      }
       document.body.style.position='relative';
+      var sentinels=placeSentinels();
       var obs=new IntersectionObserver(function(entries){
         entries.forEach(function(e){
           if(e.isIntersecting){
@@ -54,6 +58,15 @@
         })
       },{threshold:0});
       sentinels.forEach(function(s){obs.observe(s)});
+
+      // Time on page / bounce detection
+      var pageLoadTime=Date.now();
+      document.addEventListener('visibilitychange',function(){
+        if(document.visibilityState==='hidden'){
+          var t=Math.round((Date.now()-pageLoadTime)/1000);
+          posthog.capture('page_leave',{time_on_page_seconds:t,bounced:t<10});
+        }
+      });
     });
   </script>
 </head>

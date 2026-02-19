@@ -5,7 +5,7 @@
 [![CI](https://github.com/ostehost/command-central/actions/workflows/ci.yml/badge.svg)](https://github.com/ostehost/command-central/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Know what changed in your codebase while you were away.**
+**Know what changed in your codebase while you were away.** — [partnerai.dev](https://partnerai.dev/?utm_source=github&utm_medium=referral&utm_campaign=launch-2026-02&utm_content=readme-hero)
 
 ![Command Central — Multi-workspace sidebar with custom project icons](screenshots/hero.png)
 
