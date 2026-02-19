@@ -7,7 +7,7 @@
 
 **Know what changed in your codebase while you were away.**
 
-![Command Central — Multi-workspace sidebar with custom project icons](site/screenshots/hero-icons.png)
+![Command Central — Multi-workspace sidebar with custom project icons](screenshots/hero.png)
 
 Open a project after a day, a week, or a month — instantly see what happened. Git changes sorted by time, not alphabetically. Works for your own coding sessions and for catching up after AI agents make changes.
 
