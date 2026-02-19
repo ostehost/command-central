@@ -124,7 +124,7 @@ describe("Tree view message behavior", () => {
 		const filteredCount = 5;
 		const unfilteredCount = 10;
 
-		if (isFiltered && filteredCount === 0 && unfilteredCount > 0) {
+		if (isFiltered && filteredCount === (0 as number) && unfilteredCount > 0) {
 			mockTreeView.message = "No files match...";
 		} else {
 			mockTreeView.message = undefined;
@@ -140,7 +140,7 @@ describe("Tree view message behavior", () => {
 		const filteredCount = 10;
 		const unfilteredCount = 10;
 
-		if (isFiltered && filteredCount === 0 && unfilteredCount > 0) {
+		if (isFiltered && filteredCount === (0 as number) && unfilteredCount > 0) {
 			mockTreeView.message = "No files match...";
 		} else {
 			mockTreeView.message = undefined;
@@ -162,7 +162,7 @@ describe("Tree view message behavior", () => {
 		const filteredCount = 10;
 		const unfilteredCount = 10;
 
-		if (isFiltered && filteredCount === 0 && unfilteredCount > 0) {
+		if (isFiltered && filteredCount === (0 as number) && unfilteredCount > 0) {
 			mockTreeView.message = "No files match...";
 		} else {
 			mockTreeView.message = undefined;

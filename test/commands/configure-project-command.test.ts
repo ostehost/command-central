@@ -3,7 +3,7 @@
  * Project configuration command
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type { TerminalLauncherService } from "../../src/services/terminal-launcher-service.js";
 import {
 	createMockOutputChannel,

@@ -263,7 +263,7 @@ describe("Workspace Folder Changes", () => {
 		const vscode = await import("vscode");
 		const originalRegister = vscode.commands.registerCommand;
 		(vscode.commands.registerCommand as ReturnType<typeof mock>) = mock(
-			(id: string, handler: () => void) => {
+			(id: string, _handler: () => void) => {
 				if (registeredCommands.has(id)) {
 					throw new Error(`command '${id}' already exists`);
 				}

@@ -415,7 +415,7 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		);
 
 		// Mock Git extension with existing repositories (common scenario)
-		vscode.extensions.getExtension = mock(() => ({
+		vscode.extensions.getExtension = mock<any>(() => ({
 			exports: {
 				getAPI: mock(() => ({
 					repositories: [
@@ -443,7 +443,7 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
 
-		vscode.extensions.getExtension = mock(() => ({
+		vscode.extensions.getExtension = mock<any>(() => ({
 			exports: {
 				getAPI: mock(() => ({
 					repositories: [],
@@ -488,7 +488,7 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 			rootUri: vscode.Uri.file("/workspace/test"),
 		};
 
-		vscode.extensions.getExtension = mock(() => ({
+		vscode.extensions.getExtension = mock<any>(() => ({
 			exports: {
 				getAPI: mock(() => ({
 					repositories: [mockRepository],

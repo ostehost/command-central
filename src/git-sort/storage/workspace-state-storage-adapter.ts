@@ -83,12 +83,13 @@ export class WorkspaceStateStorageAdapter implements StorageAdapter {
 		for (const entry of this.repos.values()) {
 			const records = await this.load(entry.id);
 			for (const r of records) {
-				if (r.timestamp >= start && r.timestamp <= end) {
+				const ts = r.timestamp ?? 0;
+				if (ts >= start && ts <= end) {
 					all.push(r);
 				}
 			}
 		}
-		return all.sort((a, b) => b.timestamp - a.timestamp);
+		return all.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
 	}
 
 	async queryRecent(limit: number): Promise<DeletedFileRecord[]> {
@@ -96,12 +97,14 @@ export class WorkspaceStateStorageAdapter implements StorageAdapter {
 		for (const entry of this.repos.values()) {
 			all.push(...(await this.load(entry.id)));
 		}
-		return all.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
+		return all
+			.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+			.slice(0, limit);
 	}
 
 	async backup(): Promise<Uint8Array> {
 		const data: Record<string, unknown> = {};
-		data.repos = Object.fromEntries(this.repos.entries());
+		data["repos"] = Object.fromEntries(this.repos.entries());
 		for (const entry of this.repos.values()) {
 			data[`deleted.${entry.id}`] = await this.load(entry.id);
 		}
@@ -121,8 +124,9 @@ export class WorkspaceStateStorageAdapter implements StorageAdapter {
 			const records = await this.load(entry.id);
 			totalDeletions += records.length;
 			for (const r of records) {
-				if (oldest === undefined || r.timestamp < oldest) oldest = r.timestamp;
-				if (newest === undefined || r.timestamp > newest) newest = r.timestamp;
+				const ts = r.timestamp ?? 0;
+				if (oldest === undefined || ts < oldest) oldest = ts;
+				if (newest === undefined || ts > newest) newest = ts;
 			}
 		}
 

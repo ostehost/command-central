@@ -69,9 +69,9 @@ export function extractFileReferences(line: string): FileReference[] {
 
 		while ((match = pattern.regex.exec(line)) !== null) {
 			const groups = match.groups;
-			if (!groups?.file) continue;
+			if (!groups?.["file"]) continue;
 
-			const filePath = groups.file;
+			const filePath = groups["file"];
 
 			// Skip obvious non-files
 			if (filePath.startsWith("http://") || filePath.startsWith("https://"))
@@ -86,8 +86,8 @@ export function extractFileReferences(line: string): FileReference[] {
 
 			refs.push({
 				filePath,
-				line: groups.line ? Number.parseInt(groups.line, 10) : undefined,
-				column: groups.col ? Number.parseInt(groups.col, 10) : undefined,
+				line: groups["line"] ? Number.parseInt(groups["line"], 10) : undefined,
+				column: groups["col"] ? Number.parseInt(groups["col"], 10) : undefined,
 				matchStart: match.index,
 				matchLength: match[0].length,
 			});

@@ -133,8 +133,8 @@ describe("WorkspaceStateStorageAdapter", () => {
 			const results = await adapter.queryByTimeRange(twoHoursAgo, now);
 			expect(results).toHaveLength(2); // oneHourAgo + now
 			// Sorted newest first
-			expect(results[0]!.timestamp).toBeGreaterThanOrEqual(
-				results[1]!.timestamp,
+			expect(results[0]!.timestamp ?? 0).toBeGreaterThanOrEqual(
+				results[1]!.timestamp ?? 0,
 			);
 		});
 

@@ -25,7 +25,11 @@ export function slugify(name: string): string {
 }
 
 export function getAppDir(): string {
-	return path.join(process.env.HOME || "~", "Applications", "CommandCentral");
+	return path.join(
+		process.env["HOME"] || "~",
+		"Applications",
+		"CommandCentral",
+	);
 }
 
 export function getAppPath(projectName: string): string {

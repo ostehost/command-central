@@ -51,17 +51,19 @@ describe("Provider Disposal Bug Regressions", () => {
 	test("Bug #2: Command registration collision on reload", async () => {
 		// Simulate VS Code command registration
 		const registeredCommands = new Set<string>();
-		const mockRegisterCommand = mock((commandId: string, handler: Function) => {
-			if (registeredCommands.has(commandId)) {
-				throw new Error(`command '${commandId}' already exists`);
-			}
-			registeredCommands.add(commandId);
-			return {
-				dispose: mock(() => {
-					registeredCommands.delete(commandId);
-				}),
-			};
-		});
+		const mockRegisterCommand = mock(
+			(commandId: string, _handler: Function) => {
+				if (registeredCommands.has(commandId)) {
+					throw new Error(`command '${commandId}' already exists`);
+				}
+				registeredCommands.add(commandId);
+				return {
+					dispose: mock(() => {
+						registeredCommands.delete(commandId);
+					}),
+				};
+			},
+		);
 
 		// First registration - should succeed
 		const disposable1 = mockRegisterCommand("commandCentral.test", () => {});
