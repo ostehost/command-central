@@ -1,38 +1,37 @@
 #!/usr/bin/env bash
 # take-screenshots.sh — Deterministic screenshot capture for Command Central
 #
-# Produces clean marketing screenshots by:
-# 1. Creating a temporary VS Code profile (no Chat/Copilot/other extensions)
-# 2. Setting precise window dimensions via AppleScript
-# 3. Using screencapture -l (window ID) for isolated capture
-# 4. Closing panels/sidebars that pollute the shot
+# STABLE WORKFLOW (documented 2026-02-18):
+#   1. Uses a dedicated VS Code profile "cc-screenshots" with only Command Central
+#   2. Profile settings disable minimap, breadcrumbs, and other visual noise
+#   3. Uses `open -a` to launch VS Code (background `code &` doesn't work via node runner)
+#   4. System Events process name for VS Code is "Electron" (not "Code")
+#   5. CGWindowListCopyWindowInfo owner name IS "Code" (different from System Events!)
+#   6. Use Swift + CoreGraphics to get CGWindowID, then `screencapture -l<id>`
+#   7. Cmd+Option+B closes Chat/secondary sidebar, Cmd+J closes bottom panel
 #
-# Prerequisites:
-#   - macOS with screencapture
-#   - VS Code installed at /usr/local/bin/code
-#   - Command Central extension .vsix built or installed
-#   - Demo workspace at /tmp/command-central-demo/
+# SETUP (one-time per machine):
+#   1. Install the extension in the profile:
+#      code --profile cc-screenshots --install-extension /tmp/command-central-latest.vsix --force
+#   2. Uninstall copilot from the profile:
+#      code --profile cc-screenshots --uninstall-extension github.copilot-chat
+#   3. Write clean settings to the profile's settings.json (see setup_profile below)
+#   4. Run setup-demo.sh to create /tmp/command-central-demo/
 #
 # Usage:
-#   ./take-screenshots.sh              # All screenshots
-#   ./take-screenshots.sh hero         # Just the hero shot
-#   ./take-screenshots.sh multiroot    # Multi-root workspace shot
+#   ./take-screenshots.sh [hero|single|gitstatus|all]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EXT_DIR="$(dirname "$SCRIPT_DIR")"
-OUTPUT_DIR="${OUTPUT_DIR:-/tmp/cc-screenshots}"
+OUTPUT_DIR="${OUTPUT_DIR:-$SCRIPT_DIR}"
 DEMO_DIR="/tmp/command-central-demo"
 WORKSPACE_FILE="$DEMO_DIR/demo.code-workspace"
 PROFILE="cc-screenshots"
 
-# Window dimensions (logical pixels — screencapture handles Retina 2x automatically)
-WIN_WIDTH=1200
-WIN_HEIGHT=800
-WIN_X=100
-WIN_Y=100
-
-mkdir -p "$OUTPUT_DIR"
+# Window dimensions (logical pixels — Retina 2x captured automatically)
+WIN_W=1200
+WIN_H=800
 
 log() { printf '📸 %s\n' "$*"; }
 die() { printf '❌ %s\n' "$*" >&2; exit 1; }
@@ -41,173 +40,176 @@ die() { printf '❌ %s\n' "$*" >&2; exit 1; }
 # Preflight
 ###############################################################################
 
-[[ -d "$DEMO_DIR" ]] || die "Demo workspace not found. Run: bash $SCRIPT_DIR/setup-demo.sh"
-command -v code &>/dev/null || die "VS Code CLI not found"
+[[ -d "$DEMO_DIR" ]] || die "Demo not found. Run: bash $SCRIPT_DIR/setup-demo.sh"
 command -v osascript &>/dev/null || die "Not macOS"
 
 ###############################################################################
-# VS Code profile setup — clean profile with only Command Central
+# Profile settings (idempotent)
 ###############################################################################
 
-setup_profile_settings() {
-  local profile_dir="$HOME/Library/Application Support/Code/User/profiles"
+setup_profile() {
+  local profile_dir
+  profile_dir=$(find "$HOME/Library/Application Support/Code/User/profiles" \
+    -maxdepth 1 -mindepth 1 -type d 2>/dev/null | head -1)
   
-  # We'll use VS Code's --profile flag which auto-creates profiles.
-  # But we need to pass settings that disable distracting UI.
-  # Use a temp settings file via CLI args.
-  :
-}
-
-# Build a clean user settings JSON for screenshot profile
-SCREENSHOT_SETTINGS=$(cat <<'JSON'
+  [[ -z "$profile_dir" ]] && {
+    log "No profile dir found. Open VS Code with --profile cc-screenshots first."
+    return 1
+  }
+  
+  cat > "$profile_dir/settings.json" << 'JSON'
 {
   "workbench.colorTheme": "Default Dark+",
-  "workbench.activityBar.location": "side",
-  "workbench.sideBar.location": "left",
   "workbench.startupEditor": "none",
   "workbench.tips.enabled": false,
-  "workbench.welcomePage.enabled": false,
   "editor.minimap.enabled": false,
   "editor.renderWhitespace": "none",
-  "editor.bracketPairColorization.enabled": true,
-  "window.commandCenter": false,
-  "window.menuBarVisibility": "compact",
-  "window.titleBarStyle": "custom",
   "breadcrumbs.enabled": false,
-  "chat.editor.enabled": false,
-  "chat.commandCenter.enabled": false,
-  "github.copilot.chat.enabled": false,
-  "github.copilot.editor.enableAutoCompletions": false,
-  "terminal.integrated.defaultProfile.osx": "zsh",
-  "workbench.editor.showTabs": "single",
-  "workbench.panel.defaultLocation": "bottom",
-  "explorer.openEditors.visible": 0,
-  "workbench.statusBar.visible": true,
-  "commandCentral.project.icon": "",
-  "files.exclude": {
-    "**/.git": true,
-    "**/.DS_Store": true
-  }
+  "editor.stickyScroll.enabled": false,
+  "scm.diffDecorations": "none",
+  "window.commandCenter": true,
+  "workbench.editor.showTabs": "single"
 }
 JSON
-)
+  log "Profile settings written to $profile_dir/settings.json"
+}
 
 ###############################################################################
-# Core functions
+# VS Code window management via System Events (process name = "Electron")
 ###############################################################################
 
 kill_vscode() {
-  log "Closing VS Code..."
   osascript -e 'tell application "Visual Studio Code" to quit' 2>/dev/null || true
-  # Wait for full quit
   for _ in $(seq 1 10); do
-    pgrep -q "Electron.*Code" 2>/dev/null || break
+    pgrep -q "Electron" 2>/dev/null || break
     sleep 0.5
   done
   sleep 1
 }
 
-start_vscode() {
+open_vscode() {
   local target="$1"
-  log "Opening VS Code: $target (profile: $PROFILE)"
-  code --profile "$PROFILE" "$target" --new-window 2>/dev/null &
+  log "Opening: $target"
+  open -a "Visual Studio Code" "$target"
   
-  # Wait for window to appear
-  log "Waiting for VS Code window..."
+  # Wait for Electron process
   for _ in $(seq 1 30); do
-    if osascript -e 'tell application "System Events" to get name of first process whose name is "Code"' &>/dev/null; then
-      break
-    fi
+    osascript -e 'tell application "System Events" to get name of first process whose name is "Electron"' &>/dev/null && break
     sleep 0.5
   done
   sleep 4  # Let extension load
 }
 
 position_window() {
-  local x="${1:-$WIN_X}" y="${2:-$WIN_Y}" w="${3:-$WIN_WIDTH}" h="${4:-$WIN_HEIGHT}"
-  osascript <<EOF
-tell application "Visual Studio Code" to activate
-delay 0.3
-tell application "System Events"
-  tell process "Code"
-    set position of window 1 to {${x}, ${y}}
-    set size of window 1 to {${w}, ${h}}
+  osascript -e "
+tell application \"System Events\"
+  tell process \"Electron\"
+    set frontmost to true
+    set position of window 1 to {100, 100}
+    set size of window 1 to {${WIN_W}, ${WIN_H}}
   end tell
-end tell
-EOF
+end tell"
   sleep 0.5
 }
 
-# Close all panels (bottom panel, secondary sidebar, chat) 
+# Close distracting panels
 close_panels() {
-  log "Closing panels..."
-  osascript <<'EOF'
-tell application "Visual Studio Code" to activate
-delay 0.3
+  osascript -e '
 tell application "System Events"
-  tell process "Code"
+  tell process "Electron"
+    set frontmost to true
+    delay 0.3
     -- Close bottom panel (Cmd+J)
     keystroke "j" using {command down}
     delay 0.3
-    -- Close secondary/right sidebar (Cmd+Option+B)
+    -- Close Chat/secondary sidebar (Cmd+Option+B)
     keystroke "b" using {command down, option down}
     delay 0.3
+    -- Close Welcome tab (Cmd+W)
+    keystroke "w" using {command down}
+    delay 0.5
   end tell
-end tell
-EOF
-  sleep 0.5
+end tell'
 }
 
-# Focus Command Central in the primary sidebar
-focus_cc_sidebar() {
-  log "Focusing Command Central sidebar..."
-  osascript <<'EOF'
-tell application "Visual Studio Code" to activate
-delay 0.3
+# Focus Command Central sidebar
+focus_cc() {
+  osascript -e '
 tell application "System Events"
-  tell process "Code"
-    -- Open command palette
+  tell process "Electron"
+    set frontmost to true
+    delay 0.3
     keystroke "p" using {command down, shift down}
-    delay 0.8
-    -- Type to find our view
-    keystroke "View: Show Command Central"
     delay 1.0
+    keystroke "View: Show Command Central"
+    delay 1.5
+    keystroke return
+    delay 2.0
+  end tell
+end tell'
+  sleep 1
+}
+
+# Open a file in the editor
+open_file() {
+  local filename="$1"
+  osascript -e "
+tell application \"System Events\"
+  tell process \"Electron\"
+    set frontmost to true
+    delay 0.3
+    keystroke \"p\" using {command down}
+    delay 0.8
+    keystroke \"${filename}\"
+    delay 0.5
+    keystroke return
+    delay 1.0
+  end tell
+end tell"
+}
+
+# Run VS Code command via palette
+run_command() {
+  local cmd="$1"
+  osascript -e "
+tell application \"System Events\"
+  tell process \"Electron\"
+    set frontmost to true
+    delay 0.3
+    keystroke \"p\" using {command down, shift down}
+    delay 0.8
+    keystroke \"${cmd}\"
+    delay 0.8
     keystroke return
     delay 1.5
   end tell
-end tell
-EOF
-  sleep 2
+end tell"
 }
 
-# Get VS Code window ID for screencapture -l
+###############################################################################
+# Window ID via Swift + CoreGraphics (CGWindowID ≠ AppleScript window id)
+# Owner name in CGWindowList is "Code", NOT "Electron"
+###############################################################################
+
 get_window_id() {
-  osascript <<'EOF'
-tell application "System Events"
-  tell process "Code"
-    set frontWindow to first window
-    -- Get the window's subrole to find it, then use CGWindowListCopyWindowInfo
-  end tell
-end tell
-EOF
-  # AppleScript can't directly give CGWindowID. Use CGWindowListCopyWindowInfo via Python.
-  python3 -c "
-import Quartz
-windows = Quartz.CGWindowListCopyWindowInfo(
-    Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
-    Quartz.kCGNullWindowID
-)
-for w in windows:
-    owner = w.get('kCGWindowOwnerName', '')
-    name = w.get('kCGWindowName', '')
-    if 'Code' in owner and name and 'Command Central' not in name:
-        # Skip small utility windows
-        bounds = w.get('kCGWindowBounds', {})
-        if bounds.get('Width', 0) > 500:
-            print(w['kCGWindowNumber'])
-            break
-" 2>/dev/null
+  swift -e '
+import CoreGraphics
+let windowList = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as! [[String: Any]]
+for w in windowList {
+    let owner = w["kCGWindowOwnerName"] as? String ?? ""
+    let bounds = w["kCGWindowBounds"] as? [String: Any] ?? [:]
+    let width = bounds["Width"] as? Int ?? 0
+    if owner == "Code" && width > 500 {
+        print(w["kCGWindowNumber"] as! Int)
+        break
+    }
 }
+' 2>/dev/null
+}
+
+###############################################################################
+# Capture
+###############################################################################
 
 capture() {
   local name="$1"
@@ -215,75 +217,60 @@ capture() {
   
   local wid
   wid=$(get_window_id)
-  if [[ -z "$wid" ]]; then
-    die "Could not find VS Code window ID"
-  fi
+  [[ -z "$wid" ]] && die "Could not get VS Code window ID"
   
   log "Capturing window $wid → $output"
   screencapture -l"$wid" -o -x "$output"
   
-  if [[ -f "$output" ]]; then
-    local dims
-    dims=$(sips -g pixelWidth -g pixelHeight "$output" 2>/dev/null | grep pixel | awk '{print $2}' | tr '\n' 'x' | sed 's/x$//')
-    log "✅ ${name}.png — ${dims}"
-  else
-    die "Capture failed: $output"
-  fi
+  local dims
+  dims=$(sips -g pixelWidth -g pixelHeight "$output" 2>/dev/null | grep pixel | awk '{print $2}' | tr '\n' 'x' | sed 's/x$//')
+  log "✅ ${name}.png — ${dims}"
 }
 
 ###############################################################################
-# Screenshot scenarios
+# Scenarios
 ###############################################################################
 
 shot_hero() {
-  log "=== HERO: Multi-root with emoji icons ==="
+  log "=== HERO: Multi-root workspace with emoji icons ==="
   kill_vscode
-  start_vscode "$WORKSPACE_FILE"
+  open_vscode "$WORKSPACE_FILE"
   position_window
   close_panels
-  focus_cc_sidebar
+  focus_cc
+  open_file "App.ts"
+  # Close panels again (opening file can trigger Chat)
   sleep 1
-  # Give tree view time to populate
-  sleep 2
+  osascript -e '
+tell application "System Events"
+  tell process "Electron"
+    keystroke "b" using {command down, option down}
+    delay 0.2
+    keystroke "j" using {command down}
+  end tell
+end tell'
+  sleep 1
   capture "hero"
-}
-
-shot_single() {
-  log "=== SINGLE: One project focused ==="
-  kill_vscode
-  start_vscode "$DEMO_DIR/my-app"
-  position_window
-  close_panels
-  focus_cc_sidebar
-  sleep 2
-  capture "single-project"
 }
 
 shot_gitstatus() {
   log "=== GIT STATUS: Staged/unstaged grouping ==="
-  # Reuse current window if open, otherwise open workspace
   kill_vscode
-  start_vscode "$WORKSPACE_FILE"
+  open_vscode "$WORKSPACE_FILE"
   position_window
   close_panels
-  focus_cc_sidebar
+  focus_cc
+  run_command "Command Central: Toggle Git Status Grouping"
   sleep 2
-  
-  # Toggle git status grouping via command palette
-  log "Toggling git status grouping..."
-  osascript <<'EOF'
+  osascript -e '
 tell application "System Events"
-  tell process "Code"
-    keystroke "p" using {command down, shift down}
-    delay 0.8
-    keystroke "Command Central: Toggle Git Status Grouping"
-    delay 0.8
-    keystroke return
-    delay 2
+  tell process "Electron"
+    keystroke "b" using {command down, option down}
+    delay 0.2
+    keystroke "j" using {command down}
   end tell
-end tell
-EOF
-  sleep 2
+end tell'
+  sleep 1
   capture "git-status"
 }
 
@@ -291,24 +278,21 @@ EOF
 # Main
 ###############################################################################
 
+setup_profile
+
 TARGETS=("${@:-hero}")
-[[ "$1" == "all" ]] 2>/dev/null && TARGETS=(hero single gitstatus)
+[[ "${1:-}" == "all" ]] && TARGETS=(hero gitstatus)
 
 log "Output: $OUTPUT_DIR"
-log "Targets: ${TARGETS[*]}"
-log ""
-
 for t in "${TARGETS[@]}"; do
   case "$t" in
     hero)       shot_hero ;;
-    single)     shot_single ;;
     gitstatus)  shot_gitstatus ;;
-    multiroot)  shot_hero ;;  # alias
-    *)          die "Unknown target: $t" ;;
+    all)        shot_hero; shot_gitstatus ;;
+    *)          die "Unknown: $t" ;;
   esac
 done
 
 kill_vscode
-log ""
-log "🎉 All done! Screenshots in: $OUTPUT_DIR"
-ls -lh "$OUTPUT_DIR"/*.png 2>/dev/null
+log "🎉 Done! Screenshots in $OUTPUT_DIR"
+ls -lh "$OUTPUT_DIR"/*.png 2>/dev/null || true
