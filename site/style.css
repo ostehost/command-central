@@ -44,7 +44,7 @@ a:hover {
 
 /* ─── Hero ─── */
 .hero {
-  padding: 120px 0 80px;
+  padding: 140px 0 80px;
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -829,4 +829,60 @@ a:hover {
   .placeholder-hero { min-height: 280px; }
   .placeholder-compare { min-height: 220px; }
   .placeholder-walkthrough { min-height: 200px; }
+}
+
+/* ─── Site Nav ─── */
+.site-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: rgba(13, 17, 23, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+}
+
+.nav-brand {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+
+.nav-brand:hover {
+  color: var(--text-bright);
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.nav-link {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.nav-link:hover {
+  color: var(--text-bright);
+  text-decoration: none;
+}
+
+.nav-link--active {
+  color: var(--text-bright);
 }

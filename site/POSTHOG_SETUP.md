@@ -1,67 +1,69 @@
-# PostHog Analytics Setup — Command Central Landing Page
+# PostHog Analytics — Partner AI Products
 
 ## Project Info
 - **PostHog Project ID:** 316491
 - **Cloud:** US (`us.i.posthog.com`)
 - **Autocapture:** Disabled (manual events only)
+- **Session Replay:** Enabled, 10% sample rate (launch), mask inputs
+- **Page Leave:** Built-in (`capture_pageleave: true`)
 
-## Events Tracked
+## Event Taxonomy
+
+**Format:** `site_{object}_{action}` — all events include `product` property (`cc`, `dg`, etc.)
 
 | Event | Trigger | Properties |
 |---|---|---|
-| `$pageview` | Automatic (PostHog snippet) | — |
-| `install_click` | Click on install/marketplace links | `source`, `label` |
-| `github_click` | Click on GitHub repo links | `source`, `label` |
-| `email_submit` | Form submission (Buttondown) | `source` |
-| `feature_card_click` | Click on feature cards | `source` (multi-workspace, git-status, filter) |
-| `scroll_depth` | IntersectionObserver at 25/50/75/100% | `depth` (25, 50, 75, 100) |
-| `x_click` | Click on Twitter/X link | `source`, `label` |
+| `$pageview` | Automatic (PostHog) | UTM params auto-captured |
+| `$pageleave` | Automatic (PostHog) | time on page auto-captured |
+| `site_install_click` | Click on install/marketplace links | `product`, `source`, `label` |
+| `site_github_click` | Click on GitHub repo links | `product`, `source`, `label` |
+| `site_email_submit` | Buttondown form submission | `product`, `source` |
+| `site_feature_click` | Click on feature cards | `product`, `source` |
+| `site_scroll_depth` | IntersectionObserver at 25/50/75/100% | `product`, `depth` |
+| `site_x_click` | Click on Twitter/X link | `product`, `source`, `label` |
 
-## Dashboard Setup
+## UTM Conventions
 
-### Dashboard 1: Launch Funnel
+```
+https://partnerai.dev/?utm_source={source}&utm_medium={medium}&utm_campaign=launch-2026-02
+```
 
-1. Go to **PostHog → Dashboards → New Dashboard**
-2. Name: **"Launch Funnel"**
-3. Add insight → **Funnels**
-4. Steps:
-   - Step 1: `$pageview`
-   - Step 2: `feature_card_click`
-   - Step 3: `install_click`
-5. Set window: **Same session** (or 1 day)
-6. Save
+| Channel | utm_source | utm_medium | utm_content |
+|---|---|---|---|
+| Show HN | `hackernews` | `social` | `show-hn` |
+| Reddit r/vscode | `reddit` | `social` | `r-vscode` |
+| Reddit r/programming | `reddit` | `social` | `r-programming` |
+| Twitter/X | `twitter` | `social` | `tweet-main` |
+| GitHub README | `github` | `referral` | `readme-hero` |
+| Buttondown email | `buttondown` | `email` | `newsletter` |
 
-### Dashboard 2: Engagement
+## Dashboards
 
-1. Go to **PostHog → Dashboards → New Dashboard**
-2. Name: **"Engagement"**
-3. Add these insights:
+### Launch Command Center (real-time during launch)
+1. Visitors today — `$pageview`, daily
+2. Traffic by source — `$pageview` breakdown by `utm_source`
+3. Install click rate — `site_install_click / $pageview`
+4. Top referrers — `$pageview` breakdown by `$referring_domain`
+5. Email signups — `site_email_submit` count
+6. Scroll depth — `site_scroll_depth` breakdown by `depth`
 
-#### Scroll Depth Distribution
-- **Insight type:** Trends
-- **Event:** `scroll_depth`
-- **Breakdown by:** `depth` property
-- **Display:** Bar chart
+### Product Funnel (permanent)
+Steps: `$pageview` → `site_scroll_depth (depth=50)` → `site_feature_click` → `site_install_click`
 
-#### Email Submit Rate
-- **Insight type:** Trends
-- **Series A:** `$pageview` (total)
-- **Series B:** `email_submit` (total)
-- **Formula:** `B / A` for conversion rate
-- **Display:** Line chart
+### Weekly KPIs (all products)
+- Unique visitors, install clicks, email signups (PostHog)
+- Marketplace installs, stars (manual Monday check)
 
-#### GitHub Click Rate
-- **Insight type:** Trends
-- **Series A:** `$pageview`
-- **Series B:** `github_click`
-- **Formula:** `B / A`
-- **Display:** Line chart
+## Multi-Product Strategy
+- Single PostHog project, `product` property on all events
+- Clone dashboards per product, filter by `product`
+- Event prefix `site_` for landing pages, `cc_` for in-extension (future), `dg_` for DiffGuard
 
-4. Save all insights to the dashboard.
+## Free Tier Budget
+- 1M events/month, 5K session recordings
+- ~5-6 events/visitor → handles 150K visitors/month
+- Session replay at 10% → covers ~50K visitors before hitting limit
+- If budget tightens: scroll_depth (4 events/visitor) is first to cut
 
-## Implementation Notes
-
-- All click events use `data-track` attributes for clean binding
-- Scroll depth uses `IntersectionObserver` with sentinel divs at 25/50/75/100% of body height — no scroll event listeners
-- Email submit fires on `form.submit` event (not button click) to capture actual submissions
-- Event labels are truncated to 80 chars to keep data clean
+## Full Playbook
+See `~/.openclaw/workspace/memory/posthog-playbook-2026-02-19.md` for complete reference.

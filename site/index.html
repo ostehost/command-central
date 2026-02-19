@@ -11,30 +11,37 @@
   <meta property="og:url" content="https://partnerai.dev">
   <meta property="og:type" content="website">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
+  <link rel="canonical" href="https://partnerai.dev/">
   <link rel="stylesheet" href="style.css">
   <script>
     !function(t,e){var o,n,p,r;e.__SV||(window.posthog&&window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once unregister opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing identify setPersonProperties group resetGroups reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted debug getFeatureFlag isFeatureEnabled onFeatureFlags reloadFeatureFlags".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
-    posthog.init('phc_Q17dJHthy7nLMODScwfo7kvbT6hO0SIkSpNpcFMXtTD',{api_host:'https://us.i.posthog.com',person_profiles:'identified_only',autocapture:false});
+    posthog.init('phc_Q17dJHthy7nLMODScwfo7kvbT6hO0SIkSpNpcFMXtTD',{
+      api_host:'https://us.i.posthog.com',
+      autocapture:false,
+      person_profiles:'identified_only',
+      capture_pageleave:true,
+      disable_surveys:true,
+      session_recording:{maskAllInputs:true,recordCrossOriginIframes:false,sampleRate:0.1}
+    });
   </script>
   <script>
     document.addEventListener('DOMContentLoaded',function(){
       // Click tracking via data-track attributes
+      // Event taxonomy: site_{object}_{action} — see posthog-playbook
       document.querySelectorAll('[data-track]').forEach(function(el){
-        // Skip email_submit on the button — handled via form submit below
-        if(el.dataset.track==='email_submit') return;
+        if(el.dataset.track==='site_email_submit') return;
         el.addEventListener('click',function(){
-          posthog.capture(el.dataset.track,{source:el.dataset.source||'landing',label:el.textContent.trim().substring(0,80)})
+          posthog.capture(el.dataset.track,{product:'cc',source:el.dataset.source||'landing',label:el.textContent.trim().substring(0,80)})
         })
       });
 
-      // Email form submit (captures actual submissions, not just button clicks)
+      // Email form submit
       var form=document.querySelector('.signup-form');
       if(form){form.addEventListener('submit',function(){
-        posthog.capture('email_submit',{source:'footer'})
+        posthog.capture('site_email_submit',{product:'cc',source:'footer'})
       })}
 
-      // Scroll depth via IntersectionObserver (no scroll event spam)
-      // Uses document.body.scrollHeight to place sentinels at actual content depth
+      // Scroll depth via IntersectionObserver
       var depths=[25,50,75,100],fired={};
       function placeSentinels(){
         var h=document.body.scrollHeight;
@@ -53,24 +60,27 @@
         entries.forEach(function(e){
           if(e.isIntersecting){
             var d=parseInt(e.target.dataset.depth);
-            if(!fired[d]){fired[d]=true;posthog.capture('scroll_depth',{depth:d})}
+            if(!fired[d]){fired[d]=true;posthog.capture('site_scroll_depth',{product:'cc',depth:d})}
           }
         })
       },{threshold:0});
       sentinels.forEach(function(s){obs.observe(s)});
-
-      // Time on page / bounce detection
-      var pageLoadTime=Date.now();
-      document.addEventListener('visibilitychange',function(){
-        if(document.visibilityState==='hidden'){
-          var t=Math.round((Date.now()-pageLoadTime)/1000);
-          posthog.capture('page_leave',{time_on_page_seconds:t,bounced:t<10});
-        }
-      });
+      // page_leave handled by PostHog capture_pageleave:true
     });
   </script>
 </head>
 <body>
+
+  <!-- Nav -->
+  <nav class="site-nav">
+    <div class="container nav-inner">
+      <a href="https://partnerai.dev" class="nav-brand">Partner AI</a>
+      <div class="nav-links">
+        <a href="https://partnerai.dev" class="nav-link nav-link--active">Command Central</a>
+        <a href="https://github.com/ostehost" class="nav-link">GitHub</a>
+      </div>
+    </div>
+  </nav>
 
   <!-- Hero -->
   <section class="hero">
@@ -79,8 +89,8 @@
       <h1>Git changes, organized by time</h1>
       <p class="subtitle">Today. Yesterday. Last week. Not alphabetical.</p>
       <div class="cta-group">
-        <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-primary" data-track="install_click" data-source="hero">Install for VS Code</a>
-        <a href="https://github.com/ostehost/command-central" class="btn btn-secondary" data-track="github_click" data-source="hero">GitHub</a>
+        <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-primary" data-track="site_install_click" data-source="hero">Install for VS Code</a>
+        <a href="https://github.com/ostehost/command-central" class="btn btn-secondary" data-track="site_github_click" data-source="hero">GitHub</a>
       </div>
       <div class="hero-screenshot">
         <img src="assets/hero-v4.svg" alt="Command Central — Multi-workspace sidebar with custom project icons showing time-grouped git changes" width="100%" loading="eager">
@@ -144,7 +154,7 @@
     <div class="container">
 
       <!-- Card 1: Text LEFT, SVG RIGHT — Multi-workspace -->
-      <div class="feature-card" data-track="feature_card_click" data-source="multi-workspace">
+      <div class="feature-card" data-track="site_feature_click" data-source="multi-workspace">
         <div class="feature-content">
           <h3>Every repo, one panel</h3>
           <p>Monorepos and multi-root workspaces turn into a wall of files. Each folder gets its own panel and icon — you see which project changed at a glance.</p>
@@ -155,7 +165,7 @@
       </div>
 
       <!-- Card 2: SVG LEFT, Text RIGHT (reversed) — Filter -->
-      <div class="feature-card feature-card--reverse" data-track="feature_card_click" data-source="filter">
+      <div class="feature-card feature-card--reverse" data-track="site_feature_click" data-source="filter">
         <div class="feature-content">
           <h3>Filter by file type</h3>
           <p>Show only <code>.ts</code> — everything else disappears. One click to reset. Useful when AI tools scatter changes across 30 files and you only care about your module.</p>
@@ -166,7 +176,7 @@
       </div>
 
       <!-- Card 3: Text LEFT, SVG RIGHT — Staging -->
-      <div class="feature-card" data-track="feature_card_click" data-source="git-status">
+      <div class="feature-card" data-track="site_feature_click" data-source="git-status">
         <div class="feature-content">
           <h3>Staged vs. working, sorted by time</h3>
           <p>See what's ready to commit and what's still in progress — grouped by when you touched each file. No more hunting through a flat list to remember what you're about to ship.</p>
@@ -186,7 +196,7 @@
       <div class="snippet-block">
         <code>ext install oste.command-central</code>
       </div>
-      <p class="snippet-note">Or <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" data-track="install_click" data-source="install-section">install from the Marketplace</a></p>
+      <p class="snippet-note">Or <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" data-track="site_install_click" data-source="install-section">install from the Marketplace</a></p>
     </div>
   </section>
 
@@ -198,9 +208,9 @@
       <div class="email-form">
         <form action="https://buttondown.com/api/emails/embed-subscribe/ostehost" method="post" target="popupwindow" class="signup-form">
           <input type="email" name="email" placeholder="you@example.com" required aria-label="Email address">
-          <button type="submit" class="btn btn-primary" data-track="email_submit" data-source="footer">Notify me</button>
+          <button type="submit" class="btn btn-primary" data-track="site_email_submit" data-source="footer">Notify me</button>
         </form>
-        <p class="form-note">Or <a href="https://github.com/ostehost/command-central" data-track="github_click" data-source="email-section">star the repo</a> for release notifications.</p>
+        <p class="form-note">Or <a href="https://github.com/ostehost/command-central" data-track="site_github_click" data-source="email-section">star the repo</a> for release notifications.</p>
       </div>
     </div>
   </section>
@@ -213,7 +223,7 @@
         <span class="footer-dot">·</span>
         <a href="https://github.com/ostehost/command-central">GitHub</a>
         <span class="footer-dot">·</span>
-        <a href="https://x.com/mikeoste" class="footer-x" data-track="x_click" data-source="footer">
+        <a href="https://x.com/mikeoste" class="footer-x" data-track="site_x_click" data-source="footer">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-label="X"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
           <span>@mikeoste</span>
         </a>
