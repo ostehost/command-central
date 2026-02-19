@@ -126,11 +126,11 @@
   </section>
 
   <!-- Features — alternating layout -->
-  <!-- Order: Multi-workspace → Git status → Filter -->
+  <!-- Order: Multi-workspace → Filter → Staging (simple→complex, recency effect) -->
   <section class="features">
     <div class="container">
 
-      <!-- Card 1: Text LEFT, SVG RIGHT -->
+      <!-- Card 1: Text LEFT, SVG RIGHT — Multi-workspace -->
       <div class="feature-card" data-track="feature_card_click" data-source="multi-workspace">
         <div class="feature-content">
           <h3>Every repo, one panel</h3>
@@ -141,25 +141,25 @@
         </div>
       </div>
 
-      <!-- Card 2: SVG LEFT, Text RIGHT (reversed) -->
-      <div class="feature-card feature-card--reverse" data-track="feature_card_click" data-source="git-status">
-        <div class="feature-content">
-          <h3>See what changed — and when</h3>
-          <p>Staged or unstaged — still sorted by when you changed them.</p>
-        </div>
-        <div class="feature-visual">
-          <img src="assets/git-status-v4.svg" alt="Git status grouping showing staged and working changes with time sub-groups" width="100%">
-        </div>
-      </div>
-
-      <!-- Card 3: Text LEFT, SVG RIGHT -->
-      <div class="feature-card" data-track="feature_card_click" data-source="filter">
+      <!-- Card 2: SVG LEFT, Text RIGHT (reversed) — Filter -->
+      <div class="feature-card feature-card--reverse" data-track="feature_card_click" data-source="filter">
         <div class="feature-content">
           <h3>Filter by file type</h3>
-          <p>Show only <code>.ts</code> — everything else disappears. One click to reset.</p>
+          <p>Show only <code>.ts</code> — everything else disappears. One click to reset. Useful when AI tools scatter changes across 30 files and you only care about your module.</p>
         </div>
         <div class="feature-visual">
           <img src="assets/filter-v4.svg" alt="Extension filter showing TypeScript files only with active filter indicator" width="100%">
+        </div>
+      </div>
+
+      <!-- Card 3: Text LEFT, SVG RIGHT — Staging -->
+      <div class="feature-card" data-track="feature_card_click" data-source="git-status">
+        <div class="feature-content">
+          <h3>Staged vs. working, sorted by time</h3>
+          <p>See what's ready to commit and what's still in progress — grouped by when you touched each file. No more hunting through a flat list to remember what you're about to ship.</p>
+        </div>
+        <div class="feature-visual">
+          <img src="assets/git-status-v5.svg" alt="Staged and working changes split into clear groups, each time-sorted" width="100%">
         </div>
       </div>
 
