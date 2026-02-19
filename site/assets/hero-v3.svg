@@ -42,9 +42,8 @@
   <rect x="38" y="75" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="84" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="84.5" class="bright mono" font-size="10" font-weight="700">App.ts</text>
-  <text x="104" y="84.5" class="muted" font-size="8.5">2 hours ago</text>
-  <text x="185" y="84.5" class="muted" font-size="8.5">•</text>
-  <text x="192" y="84.5" class="muted" font-size="8.5">my-app/src/components</text>
+  <text x="230" y="84.5" class="muted" font-size="8.5">2 hours ago</text>
+  <text x="420" y="84.5" class="muted" font-size="8" text-anchor="end">my-app/src/components</text>
   <text x="508" y="84.5" class="yellow" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">M</text>
 
   <!-- Row 2: index.ts (active, red) -->
@@ -53,9 +52,8 @@
   <rect x="38" y="94" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="103" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="103.5" fill="#f85149" font-size="10" font-weight="700" font-family="'Cascadia Code', monospace">index.ts</text>
-  <text x="118" y="103.5" class="muted" font-size="8.5">3 hours ago</text>
-  <text x="199" y="103.5" class="muted" font-size="8.5">•</text>
-  <text x="206" y="103.5" class="muted" font-size="8.5">my-app/src</text>
+  <text x="230" y="103.5" class="muted" font-size="8.5">3 hours ago</text>
+  <text x="420" y="103.5" class="muted" font-size="8" text-anchor="end">my-app/src</text>
   <text x="508" y="103.5" class="red" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">4, M</text>
 
   <!-- Row 3: config.ts -->
@@ -64,9 +62,8 @@
   <rect x="38" y="113" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="122" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="122.5" class="bright mono" font-size="10">config.ts</text>
-  <text x="120" y="122.5" class="muted" font-size="8.5">3 hours ago</text>
-  <text x="201" y="122.5" class="muted" font-size="8.5">•</text>
-  <text x="208" y="122.5" class="muted" font-size="8.5">my-app/src</text>
+  <text x="230" y="122.5" class="muted" font-size="8.5">3 hours ago</text>
+  <text x="420" y="122.5" class="muted" font-size="8" text-anchor="end">my-app/src</text>
   <text x="508" y="122.5" class="green" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- Yesterday (3 files) -->
@@ -78,9 +75,8 @@
   <rect x="38" y="152" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="161" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="161.5" class="bright mono" font-size="10">utils.ts</text>
-  <text x="108" y="161.5" class="muted" font-size="8.5">13 hours ago</text>
-  <text x="196" y="161.5" class="muted" font-size="8.5">•</text>
-  <text x="203" y="161.5" class="muted" font-size="8.5">my-app/src</text>
+  <text x="230" y="161.5" class="muted" font-size="8.5">13 hours ago</text>
+  <text x="420" y="161.5" class="muted" font-size="8" text-anchor="end">my-app/src</text>
   <text x="508" y="161.5" class="green" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- Row 5: settings.json -->
@@ -89,9 +85,8 @@
   <rect x="38" y="171" width="16" height="12" rx="3" fill="#cbcb41" opacity="0.2"/>
   <text x="46" y="180" fill="#cbcb41" font-size="8" font-weight="400" font-family="system-ui" text-anchor="middle">{}</text>
   <text x="60" y="180.5" class="bright mono" font-size="10">settings.json</text>
-  <text x="142" y="180.5" class="muted" font-size="8.5">14 hours ago</text>
-  <text x="230" y="180.5" class="muted" font-size="8.5">•</text>
-  <text x="237" y="180.5" class="muted" font-size="8.5">my-app/.vscode</text>
+  <text x="230" y="180.5" class="muted" font-size="8.5">14 hours ago</text>
+  <text x="420" y="180.5" class="muted" font-size="8" text-anchor="end">my-app/.vscode</text>
   <text x="508" y="180.5" class="green" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- Row 6: api.ts -->
@@ -100,9 +95,8 @@
   <rect x="38" y="190" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="199" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="199.5" class="bright mono" font-size="10">api.ts</text>
-  <text x="94" y="199.5" class="muted" font-size="8.5">14 hours ago</text>
-  <text x="182" y="199.5" class="muted" font-size="8.5">•</text>
-  <text x="189" y="199.5" class="muted" font-size="8.5">my-app/src/services</text>
+  <text x="230" y="199.5" class="muted" font-size="8.5">14 hours ago</text>
+  <text x="420" y="199.5" class="muted" font-size="8" text-anchor="end">my-app/src/services</text>
   <text x="508" y="199.5" class="green" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- Workspace 2: ⚡ API-SERVER -->
@@ -121,9 +115,8 @@
   <rect x="38" y="259" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="268" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="268.5" class="bright mono" font-size="10" font-weight="700">server.ts</text>
-  <text x="118" y="268.5" class="muted" font-size="8.5">12 hours ago</text>
-  <text x="206" y="268.5" class="muted" font-size="8.5">•</text>
-  <text x="213" y="268.5" class="muted" font-size="8.5">api-server/src</text>
+  <text x="230" y="268.5" class="muted" font-size="8.5">12 hours ago</text>
+  <text x="420" y="268.5" class="muted" font-size="8" text-anchor="end">api-server/src</text>
   <text x="508" y="268.5" class="yellow" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">M</text>
 
   <!-- Row 8: config.ts -->
@@ -132,9 +125,8 @@
   <rect x="38" y="278" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="287" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="287.5" class="bright mono" font-size="10">config.ts</text>
-  <text x="120" y="287.5" class="muted" font-size="8.5">12 hours ago</text>
-  <text x="208" y="287.5" class="muted" font-size="8.5">•</text>
-  <text x="215" y="287.5" class="muted" font-size="8.5">api-server/src</text>
+  <text x="230" y="287.5" class="muted" font-size="8.5">12 hours ago</text>
+  <text x="420" y="287.5" class="muted" font-size="8" text-anchor="end">api-server/src</text>
   <text x="508" y="287.5" class="green" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- Row 9: auth.ts -->
@@ -143,9 +135,8 @@
   <rect x="38" y="297" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="306" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="306.5" class="bright mono" font-size="10">auth.ts</text>
-  <text x="100" y="306.5" class="muted" font-size="8.5">12 hours ago</text>
-  <text x="188" y="306.5" class="muted" font-size="8.5">•</text>
-  <text x="195" y="306.5" class="muted" font-size="8.5">api-server/src/middleware</text>
+  <text x="230" y="306.5" class="muted" font-size="8.5">12 hours ago</text>
+  <text x="420" y="306.5" class="muted" font-size="8" text-anchor="end">api-server/src/middleware</text>
   <text x="508" y="306.5" class="yellow" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">M</text>
 
   <!-- Row 10: settings.json -->
@@ -154,9 +145,8 @@
   <rect x="38" y="316" width="16" height="12" rx="3" fill="#cbcb41" opacity="0.2"/>
   <text x="46" y="325" fill="#cbcb41" font-size="8" font-weight="400" font-family="system-ui" text-anchor="middle">{}</text>
   <text x="60" y="325.5" class="bright mono" font-size="10">settings.json</text>
-  <text x="142" y="325.5" class="muted" font-size="8.5">12 hours ago</text>
-  <text x="230" y="325.5" class="muted" font-size="8.5">•</text>
-  <text x="237" y="325.5" class="muted" font-size="8.5">api-server/.vscode</text>
+  <text x="230" y="325.5" class="muted" font-size="8.5">12 hours ago</text>
+  <text x="420" y="325.5" class="muted" font-size="8" text-anchor="end">api-server/.vscode</text>
   <text x="508" y="325.5" class="green" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- Row 11: posts.ts -->
@@ -165,9 +155,8 @@
   <rect x="38" y="335" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="344" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="344.5" class="bright mono" font-size="10">posts.ts</text>
-  <text x="108" y="344.5" class="muted" font-size="8.5">12 hours ago</text>
-  <text x="196" y="344.5" class="muted" font-size="8.5">•</text>
-  <text x="203" y="344.5" class="muted" font-size="8.5">api-server/src/routes</text>
+  <text x="230" y="344.5" class="muted" font-size="8.5">12 hours ago</text>
+  <text x="420" y="344.5" class="muted" font-size="8" text-anchor="end">api-server/src/routes</text>
   <text x="508" y="344.5" class="green" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- Workspace 3: 📦 SHARED-LIB -->
@@ -186,8 +175,7 @@
   <rect x="38" y="403" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="412" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="412.5" class="bright mono" font-size="10">utils.ts</text>
-  <text x="108" y="412.5" class="muted" font-size="8.5">12 hours ago</text>
-  <text x="196" y="412.5" class="muted" font-size="8.5">•</text>
-  <text x="203" y="412.5" class="muted" font-size="8.5">shared-lib/src</text>
+  <text x="230" y="412.5" class="muted" font-size="8.5">12 hours ago</text>
+  <text x="420" y="412.5" class="muted" font-size="8" text-anchor="end">shared-lib/src</text>
   <text x="508" y="412.5" class="yellow" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">M</text>
 </svg>

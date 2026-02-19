@@ -62,9 +62,8 @@
   <rect x="38" y="157" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="166" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="166.5" class="bright mono" font-size="10" font-weight="700">App.ts</text>
-  <text x="104" y="166.5" class="muted" font-size="8.5">2 hours ago</text>
-  <text x="185" y="166.5" class="muted" font-size="8.5">•</text>
-  <text x="192" y="166.5" class="muted" font-size="8.5">my-app/src/components</text>
+  <text x="230" y="166.5" class="muted" font-size="8.5">2 hours ago</text>
+  <text x="420" y="166.5" class="muted" font-size="8" text-anchor="end">my-app/src/components</text>
   <text x="508" y="166.5" class="yellow" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">M</text>
 
   <!-- Row 2: index.ts -->
@@ -73,9 +72,8 @@
   <rect x="38" y="176" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="185" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="185.5" class="bright mono" font-size="10">index.ts</text>
-  <text x="112" y="185.5" class="muted" font-size="8.5">3 hours ago</text>
-  <text x="193" y="185.5" class="muted" font-size="8.5">•</text>
-  <text x="200" y="185.5" class="muted" font-size="8.5">my-app/src</text>
+  <text x="230" y="185.5" class="muted" font-size="8.5">3 hours ago</text>
+  <text x="420" y="185.5" class="muted" font-size="8" text-anchor="end">my-app/src</text>
   <text x="508" y="185.5" class="yellow" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">M</text>
 
   <!-- Row 3: config.ts -->
@@ -84,9 +82,8 @@
   <rect x="38" y="195" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="204" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="204.5" class="bright mono" font-size="10">config.ts</text>
-  <text x="120" y="204.5" class="muted" font-size="8.5">3 hours ago</text>
-  <text x="201" y="204.5" class="muted" font-size="8.5">•</text>
-  <text x="208" y="204.5" class="muted" font-size="8.5">my-app/src</text>
+  <text x="230" y="204.5" class="muted" font-size="8.5">3 hours ago</text>
+  <text x="420" y="204.5" class="muted" font-size="8" text-anchor="end">my-app/src</text>
   <text x="508" y="204.5" class="green" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- Yesterday (3 files) -->
@@ -98,9 +95,8 @@
   <rect x="38" y="234" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="243" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="243.5" class="bright mono" font-size="10">utils.ts</text>
-  <text x="108" y="243.5" class="muted" font-size="8.5">13 hours ago</text>
-  <text x="196" y="243.5" class="muted" font-size="8.5">•</text>
-  <text x="203" y="243.5" class="muted" font-size="8.5">my-app/src</text>
+  <text x="230" y="243.5" class="muted" font-size="8.5">13 hours ago</text>
+  <text x="420" y="243.5" class="muted" font-size="8" text-anchor="end">my-app/src</text>
   <text x="508" y="243.5" class="green" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- Row 5: api.ts -->
@@ -109,9 +105,8 @@
   <rect x="38" y="253" width="16" height="12" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="46" y="262" fill="#519aba" font-size="7.5" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="60" y="262.5" class="bright mono" font-size="10">api.ts</text>
-  <text x="94" y="262.5" class="muted" font-size="8.5">14 hours ago</text>
-  <text x="182" y="262.5" class="muted" font-size="8.5">•</text>
-  <text x="189" y="262.5" class="muted" font-size="8.5">my-app/src/services</text>
+  <text x="230" y="262.5" class="muted" font-size="8.5">14 hours ago</text>
+  <text x="420" y="262.5" class="muted" font-size="8" text-anchor="end">my-app/src/services</text>
   <text x="508" y="262.5" class="green" font-size="9.5" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- Workspace 2: ⚡ API-SERVER (collapsed) -->
