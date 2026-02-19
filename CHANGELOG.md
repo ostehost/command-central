@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2026-02-18: 537 tests across 51 files.
 
+## [0.1.8] - 2026-02-18
+
+### Changed
+- **Zero external dependencies** — SQLite storage adapter removed entirely (1,113 lines deleted). Deleted file persistence now uses VS Code's native `workspaceState` API via `WorkspaceStateStorageAdapter` (~140 LOC). No native modules, no build complexity, no platform compatibility issues.
+- **Architecture docs updated** — all SQLite references replaced with workspaceState throughout ARCHITECTURE.md
+- **Repository links updated** — all URLs now point to `ostehost/command-central`
+
+### Fixed
+- **VSIX package size reduced** — `package.json` `files` field properly scopes the published package to only include dist, icons, and docs
+
+### Improved
+- **Test suite streamlined** — 658→537 tests. Removed 132 low-value mock-theater tests, added 11 bug-catching tests including provider disposal regression and workspace-state storage validation. Mock `registerCommand` now returns proper Disposable (was hiding real disposal bugs).
+
 ## [0.1.7] - 2026-02-18
 
 ### Removed
