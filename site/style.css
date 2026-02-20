@@ -133,6 +133,7 @@ a:hover {
 
 .hero-screenshot {
   margin-top: 56px;
+  margin-bottom: 16px;
   max-width: 760px;
   margin-left: auto;
   margin-right: auto;
@@ -359,6 +360,14 @@ a:hover {
   gap: clamp(48px, 6vw, 80px);
 }
 
+.features-heading {
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin-bottom: -16px;
+}
+
 /* ─── Feature Card: 2-column grid ─── */
 .feature-card {
   display: grid;
@@ -425,6 +434,8 @@ a:hover {
 .feature-visual img {
   width: 100%;
   height: auto;
+  max-height: 340px;
+  object-fit: contain;
   display: block;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.06);
