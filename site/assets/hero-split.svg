@@ -15,6 +15,10 @@
       .mono { font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace; }
       .label { fill: #8b949e; font-family: system-ui, -apple-system, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; }
     </style>
+    <linearGradient id="fadeLeft" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#13171d" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#13171d" stop-opacity="1"/>
+    </linearGradient>
   </defs>
 
   <!-- Background -->
@@ -87,12 +91,6 @@
 
   <!-- Fade out at bottom of left panel -->
   <rect x="0" y="350" width="396" height="70" fill="url(#fadeLeft)" rx="0"/>
-  <defs>
-    <linearGradient id="fadeLeft" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#13171d" stop-opacity="0"/>
-      <stop offset="100%" stop-color="#13171d" stop-opacity="1"/>
-    </linearGradient>
-  </defs>
 
   <!-- Scrollbar hint on left -->
   <rect x="388" y="70" width="4" height="120" rx="2" fill="#6e7681" opacity="0.3"/>

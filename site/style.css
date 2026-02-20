@@ -133,7 +133,7 @@ a:hover {
 
 .hero-screenshot {
   margin-top: 56px;
-  max-width: 520px;
+  max-width: 760px;
   margin-left: auto;
   margin-right: auto;
   position: relative;
@@ -362,7 +362,7 @@ a:hover {
 /* ─── Feature Card: 2-column grid ─── */
 .feature-card {
   display: grid;
-  grid-template-columns: minmax(0, 400px) minmax(450px, 1fr);
+  grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
   gap: clamp(32px, 4vw, 64px);
   align-items: center;
   padding: clamp(24px, 3vw, 40px);
@@ -376,7 +376,7 @@ a:hover {
 
 /* Reversed card: visual left, text right */
 .feature-card--reverse {
-  grid-template-columns: minmax(450px, 1fr) minmax(0, 400px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 400px);
 }
 
 .feature-card--reverse .feature-content {
@@ -421,7 +421,8 @@ a:hover {
   min-width: 0;
 }
 
-.feature-visual svg {
+.feature-visual svg,
+.feature-visual img {
   width: 100%;
   height: auto;
   display: block;
@@ -431,7 +432,8 @@ a:hover {
   transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 
-.feature-card:hover .feature-visual svg {
+.feature-card:hover .feature-visual svg,
+.feature-card:hover .feature-visual img {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   transform: translateY(-2px);
 }
@@ -749,18 +751,7 @@ a:hover {
   box-shadow: 0 16px 48px rgba(0,0,0,0.3);
 }
 
-/* ─── Features Responsive: Tablet ─── */
-@media (max-width: 1024px) and (min-width: 769px) {
-  .feature-card {
-    grid-template-columns: minmax(0, 340px) minmax(350px, 1fr);
-    gap: 24px;
-    padding: 20px;
-  }
-
-  .feature-card--reverse {
-    grid-template-columns: minmax(350px, 1fr) minmax(0, 340px);
-  }
-}
+/* Tablet breakpoint removed — base grid uses minmax(0, 1fr) which scales naturally */
 
 /* ─── Features Responsive: Mobile ─── */
 @media (max-width: 768px) {
@@ -783,7 +774,8 @@ a:hover {
     max-width: 100%;
   }
 
-  .feature-visual svg {
+  .feature-visual svg,
+  .feature-visual img {
     max-width: 500px;
   }
 }
