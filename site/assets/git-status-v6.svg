@@ -15,6 +15,7 @@
   <text x="464" y="21" font-size="13" fill="#888888" text-anchor="end">⋯</text>
 
   <!-- Workspace header -->
+  <rect x="0" y="36" width="480" height="26" fill="#2D2D2D"/>
   <g transform="translate(12, 42)">
     <text x="0" y="14" font-size="11" fill="#E0E0E0">▾</text>
     <text x="16" y="14" font-size="13">🚀</text>
@@ -23,120 +24,116 @@
   </g>
 
   <!-- Vertical guide from workspace -->
-  <line x1="28" y1="62" x2="28" y2="374" stroke="#404040" stroke-width="1"/>
+  <line x1="28" y1="66" x2="28" y2="374" stroke="#404040" stroke-width="1"/>
 
   <!-- STAGED section -->
-  <g transform="translate(34, 68)">
-    <!-- Green [+] icon -->
+  <g transform="translate(34, 72)">
     <rect x="0" y="1" width="14" height="14" rx="2" fill="#2EA04366" stroke="#73C991" stroke-width="1"/>
     <text x="7" y="12" font-size="10" fill="#73C991" text-anchor="middle" class="bold">+</text>
     <text x="20" y="12" font-size="11.5" fill="#73C991" class="bold">Staged</text>
     <text x="64" y="12" font-size="11" fill="#888888">· 2 ready to commit</text>
   </g>
 
-  <!-- Vertical guide for staged -->
-  <line x1="42" y1="88" x2="42" y2="170" stroke="#404040" stroke-width="1"/>
+  <line x1="42" y1="92" x2="42" y2="170" stroke="#404040" stroke-width="1"/>
 
-  <!-- Time group under staged -->
-  <g transform="translate(48, 92)">
+  <!-- Time group: Yesterday -->
+  <g transform="translate(48, 96)">
     <text x="0" y="14" font-size="11" fill="#E0E0E0">▾</text>
     <text x="16" y="14" font-size="12">📅</text>
     <text x="32" y="14" font-size="11.5" fill="#E0E0E0">Yesterday</text>
     <text x="96" y="14" font-size="11" fill="#888888">(2 files)</text>
   </g>
 
-  <!-- Vertical guide for staged files -->
-  <line x1="58" y1="112" x2="58" y2="166" stroke="#404040" stroke-width="1"/>
+  <line x1="58" y1="116" x2="58" y2="166" stroke="#404040" stroke-width="1"/>
 
-  <!-- Staged file 1 -->
-  <g transform="translate(66, 116)">
+  <!-- COLUMN LAYOUT (relative to g@66): timestamp@150 dot@226 path@234 git@396(end) -->
+
+  <!-- Staged file 1: Dialog.tsx -->
+  <g transform="translate(66, 120)">
     <rect x="0" y="0" width="18" height="16" rx="2" fill="#3C7A8A"/>
     <text x="9" y="12" font-size="8" fill="#E0E0E0" text-anchor="middle" class="mono bold">TS</text>
     <text x="24" y="12" font-size="11.5" fill="#73C991" class="mono bold">Dialog.tsx</text>
-    <text x="106" y="12" font-size="10" fill="#888888">18 hours ago</text>
-    <text x="182" y="12" font-size="10" fill="#666666">·</text>
-    <text x="190" y="12" font-size="10" fill="#888888">src/components</text>
+    <text x="150" y="12" font-size="10" fill="#888888">18 hours ago</text>
+    <text x="226" y="12" font-size="10" fill="#666666">·</text>
+    <text x="234" y="12" font-size="10" fill="#888888">src/components</text>
     <text x="396" y="12" font-size="11" fill="#73C991" class="mono" text-anchor="end">A</text>
   </g>
 
-  <!-- Staged file 2 -->
-  <g transform="translate(66, 142)">
+  <!-- Staged file 2: routes.ts -->
+  <g transform="translate(66, 146)">
     <rect x="0" y="0" width="18" height="16" rx="2" fill="#3C7A8A"/>
     <text x="9" y="12" font-size="8" fill="#E0E0E0" text-anchor="middle" class="mono bold">TS</text>
     <text x="24" y="12" font-size="11.5" fill="#73C991" class="mono bold">routes.ts</text>
-    <text x="104" y="12" font-size="10" fill="#888888">20 hours ago</text>
-    <text x="182" y="12" font-size="10" fill="#666666">·</text>
-    <text x="190" y="12" font-size="10" fill="#888888">src/api</text>
+    <text x="150" y="12" font-size="10" fill="#888888">20 hours ago</text>
+    <text x="226" y="12" font-size="10" fill="#666666">·</text>
+    <text x="234" y="12" font-size="10" fill="#888888">src/api</text>
     <text x="396" y="12" font-size="11" fill="#73C991" class="mono" text-anchor="end">A</text>
   </g>
 
   <!-- Separator -->
-  <line x1="34" y1="174" x2="460" y2="174" stroke="#333333" stroke-width="0.5"/>
+  <line x1="34" y1="178" x2="460" y2="178" stroke="#333333" stroke-width="0.5"/>
 
   <!-- WORKING section -->
-  <g transform="translate(34, 184)">
-    <!-- Orange circle icon -->
+  <g transform="translate(34, 188)">
     <circle cx="7" cy="8" r="7" fill="#E8AB5222" stroke="#D7BA7D" stroke-width="1.2"/>
     <circle cx="7" cy="8" r="3" fill="#D7BA7D"/>
     <text x="20" y="12" font-size="11.5" fill="#D7BA7D" class="bold">Working</text>
     <text x="72" y="12" font-size="11" fill="#888888">· 4 files changed</text>
   </g>
 
-  <!-- Vertical guide for working -->
-  <line x1="42" y1="204" x2="42" y2="370" stroke="#404040" stroke-width="1"/>
+  <line x1="42" y1="208" x2="42" y2="370" stroke="#404040" stroke-width="1"/>
 
-  <!-- Time group under working -->
-  <g transform="translate(48, 208)">
+  <!-- Time group: Yesterday -->
+  <g transform="translate(48, 212)">
     <text x="0" y="14" font-size="11" fill="#E0E0E0">▾</text>
     <text x="16" y="14" font-size="12">📅</text>
     <text x="32" y="14" font-size="11.5" fill="#E0E0E0">Yesterday</text>
     <text x="96" y="14" font-size="11" fill="#888888">(4 files)</text>
   </g>
 
-  <!-- Vertical guide for working files -->
-  <line x1="58" y1="228" x2="58" y2="362" stroke="#404040" stroke-width="1"/>
+  <line x1="58" y1="232" x2="58" y2="362" stroke="#404040" stroke-width="1"/>
 
-  <!-- Working file 1 -->
-  <g transform="translate(66, 232)">
+  <!-- Working file 1: App.tsx -->
+  <g transform="translate(66, 236)">
     <rect x="0" y="0" width="18" height="16" rx="2" fill="#3C7A8A"/>
     <text x="9" y="12" font-size="8" fill="#E0E0E0" text-anchor="middle" class="mono bold">TS</text>
     <text x="24" y="12" font-size="11.5" fill="#E0E0E0" class="mono bold">App.tsx</text>
-    <text x="86" y="12" font-size="10" fill="#888888">13 hours ago</text>
-    <text x="162" y="12" font-size="10" fill="#666666">·</text>
-    <text x="170" y="12" font-size="10" fill="#888888">src/components</text>
+    <text x="150" y="12" font-size="10" fill="#888888">13 hours ago</text>
+    <text x="226" y="12" font-size="10" fill="#666666">·</text>
+    <text x="234" y="12" font-size="10" fill="#888888">src/components</text>
     <text x="396" y="12" font-size="11" fill="#D7BA7D" class="mono" text-anchor="end">M</text>
   </g>
 
-  <!-- Working file 2 -->
-  <g transform="translate(66, 258)">
+  <!-- Working file 2: Header.tsx -->
+  <g transform="translate(66, 262)">
     <rect x="0" y="0" width="18" height="16" rx="2" fill="#3C7A8A"/>
     <text x="9" y="12" font-size="8" fill="#E0E0E0" text-anchor="middle" class="mono bold">TS</text>
     <text x="24" y="12" font-size="11.5" fill="#E0E0E0" class="mono bold">Header.tsx</text>
-    <text x="114" y="12" font-size="10" fill="#888888">14 hours ago</text>
-    <text x="186" y="12" font-size="10" fill="#666666">·</text>
-    <text x="194" y="12" font-size="10" fill="#888888">src/components</text>
+    <text x="150" y="12" font-size="10" fill="#888888">14 hours ago</text>
+    <text x="226" y="12" font-size="10" fill="#666666">·</text>
+    <text x="234" y="12" font-size="10" fill="#888888">src/components</text>
     <text x="396" y="12" font-size="11" fill="#D7BA7D" class="mono" text-anchor="end">M</text>
   </g>
 
-  <!-- Working file 3 -->
-  <g transform="translate(66, 284)">
+  <!-- Working file 3: package.json -->
+  <g transform="translate(66, 288)">
     <rect x="0" y="0" width="18" height="16" rx="2" fill="#C8963E"/>
     <text x="9" y="12" font-size="8" fill="#1E1E1E" text-anchor="middle" class="mono bold">{}</text>
     <text x="24" y="12" font-size="11.5" fill="#E0E0E0" class="mono bold">package.json</text>
-    <text x="126" y="12" font-size="10" fill="#888888">16 hours ago</text>
-    <text x="198" y="12" font-size="10" fill="#666666">·</text>
-    <text x="206" y="12" font-size="10" fill="#888888">root</text>
+    <text x="150" y="12" font-size="10" fill="#888888">16 hours ago</text>
+    <text x="226" y="12" font-size="10" fill="#666666">·</text>
+    <text x="234" y="12" font-size="10" fill="#888888">root</text>
     <text x="396" y="12" font-size="11" fill="#D7BA7D" class="mono" text-anchor="end">M</text>
   </g>
 
-  <!-- Working file 4 -->
-  <g transform="translate(66, 310)">
+  <!-- Working file 4: logger.ts (untracked) -->
+  <g transform="translate(66, 314)">
     <rect x="0" y="0" width="18" height="16" rx="2" fill="#3C7A8A"/>
     <text x="9" y="12" font-size="8" fill="#E0E0E0" text-anchor="middle" class="mono bold">TS</text>
     <text x="24" y="12" font-size="11.5" fill="#73C991" class="mono bold">logger.ts</text>
-    <text x="100" y="12" font-size="10" fill="#888888">19 hours ago</text>
-    <text x="174" y="12" font-size="10" fill="#666666">·</text>
-    <text x="182" y="12" font-size="10" fill="#888888">src/utils</text>
+    <text x="150" y="12" font-size="10" fill="#888888">19 hours ago</text>
+    <text x="226" y="12" font-size="10" fill="#666666">·</text>
+    <text x="234" y="12" font-size="10" fill="#888888">src/utils</text>
     <text x="396" y="12" font-size="11" fill="#73C991" class="mono" text-anchor="end">U</text>
   </g>
 </svg>
