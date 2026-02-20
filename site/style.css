@@ -854,6 +854,13 @@ a:hover {
   box-shadow: 0 16px 48px rgba(0,0,0,0.3);
 }
 
+.features-also {
+  text-align: center;
+  color: var(--text-muted, #8b949e);
+  font-size: 0.95rem;
+  margin-top: var(--space-5, 24px);
+}
+
 /* ═══════════════════════════════════════════
    RESPONSIVE BREAKPOINTS (mobile-first)
    ═══════════════════════════════════════════ */

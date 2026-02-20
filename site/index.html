@@ -149,43 +149,45 @@
   </section>
 
   <!-- Features — alternating layout -->
-  <!-- Order: Multi-workspace → Filter → Staging (simple→complex, recency effect) -->
+  <!-- Order: Time-ordering → Git-status → Filter -->
   <section class="features">
     <div class="container">
       <h2 class="features-heading">What it does</h2>
 
-      <!-- Card 1: Text LEFT, SVG RIGHT — Multi-workspace -->
-      <div class="feature-card" data-track="site_feature_click" data-source="multi-workspace">
+      <!-- Card 1: Text LEFT, SVG RIGHT — Time ordering -->
+      <div class="feature-card" data-track="site_feature_click" data-source="time-ordering">
         <div class="feature-content">
-          <h3>Stop switching between repos to check what changed</h3>
-          <p>Monorepos and multi-root workspaces turn into a wall of files. Each folder gets its own panel and icon — you see which project changed without scrolling.</p>
+          <h3>See what changed today — not last month</h3>
+          <p>Files sorted by when they actually changed. Today's work on top, yesterday's below, last week fading out. Your sidebar finally matches how your brain works.</p>
         </div>
         <div class="feature-visual">
-          <img src="assets/workspaces-v3.svg" alt="Three workspaces with emoji icons showing file counts per project" width="100%">
+          <img src="assets/hero-v4.svg" alt="Command Central sidebar showing time-grouped file changes" width="100%">
         </div>
       </div>
 
-      <!-- Card 2: SVG LEFT, Text RIGHT (reversed) — Filter -->
-      <div class="feature-card feature-card--reverse" data-track="site_feature_click" data-source="filter">
-        <div class="feature-content">
-          <h3>AI scattered changes across 30 files. Find yours.</h3>
-          <p>Filter by <code>.ts</code>, <code>.py</code>, or any extension — everything else hides. One click to reset.</p>
-        </div>
-        <div class="feature-visual">
-          <img src="assets/filter-v5.svg" alt="Extension filter showing TypeScript files only with active filter indicator" width="100%">
-        </div>
-      </div>
-
-      <!-- Card 3: Text LEFT, SVG RIGHT — Staging -->
-      <div class="feature-card" data-track="site_feature_click" data-source="git-status">
+      <!-- Card 2: SVG LEFT, Text RIGHT (reversed) — Git status -->
+      <div class="feature-card feature-card--reverse" data-track="site_feature_click" data-source="git-status">
         <div class="feature-content">
           <h3>Know what you're about to ship</h3>
-          <p>Staged and working changes, grouped by when you touched each file. You can tell what's ready to commit without re-reading the list.</p>
+          <p>Staged files separated from work-in-progress. See exactly what's in your next commit without running <code>git status</code> in your head.</p>
         </div>
         <div class="feature-visual">
-          <img src="assets/git-status-v8.svg" alt="Staged and working changes split into clear groups, each time-sorted" width="100%">
+          <img src="assets/git-status-v8.svg" alt="Staged and working changes split into clear groups" width="100%">
         </div>
       </div>
+
+      <!-- Card 3: Text LEFT, SVG RIGHT — Filter -->
+      <div class="feature-card" data-track="site_feature_click" data-source="filter">
+        <div class="feature-content">
+          <h3>AI touched 30 files. Find yours.</h3>
+          <p>Filter by <code>.ts</code>, <code>.py</code>, <code>.css</code> — whatever you care about. One click to cut through the noise when Copilot went on a refactoring spree.</p>
+        </div>
+        <div class="feature-visual">
+          <img src="assets/filter-v5.svg" alt="Extension filter showing filtered files with active filter indicator" width="100%">
+        </div>
+      </div>
+
+      <p class="features-also">Plus: multi-repo workspaces, customizable time grouping, and zero config.</p>
 
     </div>
   </section>
