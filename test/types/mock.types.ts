@@ -85,51 +85,9 @@ export interface VSCodeMock {
  * Security service mock interface
  * Matches ISecurityService from src/types/service-interfaces.ts
  */
-export interface SecurityServiceMock {
-	checkWorkspaceTrust: Mock<() => Promise<boolean>>;
-	isCommandAllowed: Mock<(command: unknown) => boolean>;
-	validateCommand: Mock<
-		(
-			command: string,
-			args: string[],
-		) => Promise<{ command: string; args: string[]; isValid: boolean }>
-	>;
-	getExecutionLimits: Mock<
-		() => {
-			timeout: number;
-			maxBuffer: number;
-			killSignal: "SIGTERM" | "SIGKILL";
-			shell: boolean;
-		}
-	>;
-	auditLog: Mock<
-		(
-			command: string,
-			args: string[],
-			result: { success: boolean; error?: string },
-		) => void
-	>;
-	sanitizePath: Mock<(path: string) => string>;
-	getOutputChannel: Mock<() => vscode.OutputChannel>;
-	dispose: Mock<() => void>;
-}
-
 /**
  * Process manager mock interface
  */
-export interface ProcessManagerMock {
-	track: Mock<(pid: number) => boolean>;
-	untrack: Mock<(pid: number) => void>;
-	isTracked: Mock<(pid: number) => boolean>;
-	getActiveCount: Mock<() => number>;
-	healthCheck: Mock<() => void>;
-	cleanup: Mock<() => Promise<void>>;
-	isAlive: Mock<(pid: number) => boolean>;
-	getProcessInfo: Mock<
-		(pid: number) => { pid: number; startTime: number } | undefined
-	>;
-}
-
 /**
  * Spawn mock for subprocess testing
  * Matches Node.js spawn signature: (command, args?, options?) => SpawnResult

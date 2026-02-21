@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
-  <!-- Minimal radar-guided triangle: targeting brackets only -->
-  <!-- Upward triangle centered at 8,8 -->
-  <path d="M 8 3 L 12 11 L 4 11 Z" fill="none" stroke="#10b981" stroke-width="1.2" stroke-linejoin="round"/>
-  <!-- Top-left targeting bracket -->
-  <path d="M 4.5 4 L 4 4 L 4 4.5" stroke="#10b981" stroke-width="1" fill="none" stroke-linecap="round"/>
-  <!-- Top-right targeting bracket -->
-  <path d="M 11.5 4 L 12 4 L 12 4.5" stroke="#10b981" stroke-width="1" fill="none" stroke-linecap="round"/>
-</svg>

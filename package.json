@@ -2,7 +2,7 @@
 	"name": "command-central",
 	"displayName": "Command Central",
 	"description": "Code changes, sorted by time. See what changed, in the order it changed.",
-	"version": "0.1.8",
+	"version": "0.2.0",
 	"publisher": "oste",
 	"icon": "resources/icons/icon.png",
 	"type": "module",
@@ -18,7 +18,6 @@
 	"keywords": [
 		"ai",
 		"command",
-		"terminal",
 		"git",
 		"sort",
 		"scm",
@@ -86,64 +85,6 @@
 		"configuration": {
 			"title": "Command Central",
 			"properties": {
-				"commandCentral.terminal.launcherPath": {
-					"type": "string",
-					"default": "",
-					"description": "Path to the terminal launcher executable",
-					"scope": "machine"
-				},
-				"commandCentral.terminal.app": {
-					"type": "string",
-					"markdownDescription": "Path to custom terminal application to use instead of default (e.g., `/Applications/iTerm.app`, `/Applications/WezTerm.app`, `/Applications/Kitty.app`)",
-					"examples": [
-						"/Applications/iTerm.app",
-						"/Applications/WezTerm.app",
-						"/Applications/Kitty.app",
-						"/Applications/Alacritty.app"
-					],
-					"scope": "machine-overridable"
-				},
-				"commandCentral.terminal.autoConfigureProject": {
-					"type": "boolean",
-					"default": true,
-					"description": "Prompt to configure project settings when opening new workspaces"
-				},
-				"commandCentral.terminal.logLevel": {
-					"type": "string",
-					"enum": [
-						"debug",
-						"info",
-						"warn",
-						"error"
-					],
-					"default": "info",
-					"enumDescriptions": [
-						"Show all messages including debug information",
-						"Show informational messages and above",
-						"Show warnings and errors only",
-						"Show errors only"
-					],
-					"description": "Logging level for terminal operations"
-				},
-				"commandCentral.terminal.executionTimeout": {
-					"type": "number",
-					"default": 30000,
-					"minimum": 1000,
-					"maximum": 300000,
-					"markdownDescription": "Maximum execution time in milliseconds for terminal operations (1-300 seconds)"
-				},
-				"commandCentral.terminal.maxBuffer": {
-					"type": "number",
-					"default": 10485760,
-					"minimum": 1024,
-					"maximum": 52428800,
-					"markdownDescription": "Maximum buffer size in bytes for terminal output (1KB - 50MB)"
-				},
-				"commandCentral.terminal.theme": {
-					"type": "string",
-					"default": "GitHub Dark",
-					"description": "Terminal theme to use"
-				},
 				"commandCentral.project.icon": {
 					"type": "string",
 					"markdownDescription": "Icon/emoji to display in status bar for this workspace (e.g., `🚀`, `📦`, `🎨`)",
@@ -256,11 +197,6 @@
 		},
 		"commands": [
 			{
-				"command": "commandCentral.launchTerminal",
-				"title": "Command Central: Launch Project Terminal",
-				"icon": "$(terminal)"
-			},
-			{
 				"command": "commandCentral.gitSort.enable",
 				"title": "Command Central: Enable Git Sort",
 				"icon": "$(check)"
@@ -269,41 +205,6 @@
 				"command": "commandCentral.gitSort.disable",
 				"title": "Command Central: Disable Git Sort",
 				"icon": "$(x)"
-			},
-			{
-				"command": "commandCentral.terminal.launch",
-				"title": "Command Central: Launch Terminal",
-				"icon": "$(terminal)"
-			},
-			{
-				"command": "commandCentral.terminal.launchHere",
-				"title": "Command Central: Launch Terminal Here",
-				"icon": "$(terminal)"
-			},
-			{
-				"command": "commandCentral.terminal.launchWorkspace",
-				"title": "Command Central: Launch Terminal in Workspace",
-				"icon": "$(folder-opened)"
-			},
-			{
-				"command": "commandCentral.terminal.configure",
-				"title": "Command Central: Configure Project",
-				"icon": "$(settings-gear)"
-			},
-			{
-				"command": "commandCentral.terminal.listLaunchers",
-				"title": "Command Central: List Terminal Launchers",
-				"icon": "$(list-unordered)"
-			},
-			{
-				"command": "commandCentral.terminal.removeLauncher",
-				"title": "Command Central: Remove Terminal Launcher",
-				"icon": "$(trash)"
-			},
-			{
-				"command": "commandCentral.terminal.removeAllLaunchers",
-				"title": "Command Central: Remove All Terminal Launchers",
-				"icon": "$(clear-all)"
 			},
 			{
 				"command": "commandCentral.gitSort.refreshView",
@@ -898,44 +799,12 @@
 		"menus": {
 			"commandPalette": [
 				{
-					"command": "commandCentral.launchTerminal",
-					"when": "isMac"
-				},
-				{
 					"command": "commandCentral.gitSort.enable",
 					"when": "true"
 				},
 				{
 					"command": "commandCentral.gitSort.disable",
 					"when": "true"
-				},
-				{
-					"command": "commandCentral.terminal.launch",
-					"when": "isMac"
-				},
-				{
-					"command": "commandCentral.terminal.launchHere",
-					"when": "isMac"
-				},
-				{
-					"command": "commandCentral.terminal.launchWorkspace",
-					"when": "isMac && workspaceFolderCount >= 1"
-				},
-				{
-					"command": "commandCentral.terminal.configure",
-					"when": "isMac && workspaceFolderCount >= 1"
-				},
-				{
-					"command": "commandCentral.terminal.listLaunchers",
-					"when": "isMac"
-				},
-				{
-					"command": "commandCentral.terminal.removeLauncher",
-					"when": "isMac"
-				},
-				{
-					"command": "commandCentral.terminal.removeAllLaunchers",
-					"when": "isMac"
 				}
 			],
 			"view/item/context": [

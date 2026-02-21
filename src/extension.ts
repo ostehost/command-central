@@ -1,19 +1,10 @@
 /**
- * Command Central Extension - Mission Control for AI
- * A Swiss Army knife VS Code extension with multiple features
+ * Command Central Extension — Code changes, sorted by time
  */
 
 import * as vscode from "vscode";
-import * as configureProjectCommand from "./commands/configure-project-command.js";
 import * as disableSortCommand from "./commands/disable-sort.js";
 import * as enableSortCommand from "./commands/enable-sort.js";
-import * as launchCommand from "./commands/launch-command.js";
-import * as launchHereCommand from "./commands/launch-here-command.js";
-import * as launchTerminalCommand from "./commands/launch-terminal-command.js";
-import * as launchWorkspaceCommand from "./commands/launch-workspace-command.js";
-import * as listLaunchersCommand from "./commands/list-launchers-command.js";
-import * as removeAllLaunchersCommand from "./commands/remove-all-launchers-command.js";
-import * as removeLauncherCommand from "./commands/remove-launcher-command.js";
 import {
 	compareWithSelected,
 	copyPath,
@@ -33,21 +24,17 @@ import { GroupingStateManager } from "./services/grouping-state-manager.js";
 import { LoggerService, LogLevel } from "./services/logger-service.js";
 import { ProjectIconService } from "./services/project-icon-service.js";
 import { ProjectViewManager } from "./services/project-view-manager.js";
-import { TerminalLauncherService } from "./services/terminal-launcher-service.js";
-import { CommandCentralTerminalLinkProvider } from "./terminal/terminal-link-provider.js";
 import type { GitChangeItem } from "./types/tree-element.js";
 import { GroupingViewManager } from "./ui/grouping-view-manager.js";
 
 let gitSorter: GitSorter | undefined;
 let projectViewManager: ProjectViewManager | undefined;
-let terminalService: TerminalLauncherService | undefined;
 let projectIconService: ProjectIconService | undefined;
 let extensionFilterViewManager: ExtensionFilterViewManager | undefined;
 let groupingStateManager: GroupingStateManager | undefined;
 let groupingViewManager: GroupingViewManager | undefined;
 let mainLogger: LoggerService;
 let gitSortLogger: LoggerService;
-let terminalLogger: LoggerService;
 
 export async function activate(
 	context: vscode.ExtensionContext,
@@ -59,10 +46,6 @@ export async function activate(
 		mainLogger = new LoggerService("Command Central", LogLevel.INFO);
 		gitSortLogger = new LoggerService(
 			"Command Central: Git Sort",
-			LogLevel.INFO,
-		);
-		terminalLogger = new LoggerService(
-			"Command Central: Terminal",
 			LogLevel.INFO,
 		);
 
@@ -82,26 +65,6 @@ export async function activate(
 
 		mainLogger.info(`Extension starting... (v${version})`);
 		mainLogger.info(`Command Central v${version}`);
-
-		// Initialize Terminal Service
-		// We need to create SecurityService and ProcessManager for TerminalLauncherService
-		const { SecurityService } = await import("./security/security-service.js");
-		const { ProcessManager } = await import("./utils/process-manager.js");
-
-		const securityService = new SecurityService(
-			vscode.workspace,
-			vscode.window,
-			terminalLogger.getOutputChannel(),
-		);
-		const processManager = new ProcessManager();
-
-		terminalService = new TerminalLauncherService(
-			securityService,
-			processManager,
-			vscode.workspace,
-			vscode.window,
-			context.extensionPath, // For bundled launcher resources
-		);
 
 		// Initialize Project Icon Service
 		projectIconService = new ProjectIconService(mainLogger, context);
@@ -226,110 +189,6 @@ export async function activate(
 				await providerFactory.dispose();
 			},
 		});
-
-		// Register Terminal Commands
-		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.terminal.launch",
-				async () => {
-					if (!terminalService) return;
-					const trusted = await terminalService
-						.getSecurityService()
-						.checkWorkspaceTrust();
-					if (!trusted) return;
-					await launchCommand.execute(terminalService);
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.terminal.launchHere",
-				async () => {
-					if (!terminalService) return;
-					const trusted = await terminalService
-						.getSecurityService()
-						.checkWorkspaceTrust();
-					if (!trusted) return;
-					await launchHereCommand.execute(terminalService);
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.terminal.launchWorkspace",
-				async () => {
-					if (!terminalService) return;
-					const trusted = await terminalService
-						.getSecurityService()
-						.checkWorkspaceTrust();
-					if (!trusted) return;
-					await launchWorkspaceCommand.execute(terminalService);
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.terminal.configure",
-				async () => {
-					if (!terminalService) return;
-					const trusted = await terminalService
-						.getSecurityService()
-						.checkWorkspaceTrust();
-					if (!trusted) return;
-					await configureProjectCommand.execute(terminalService);
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.terminal.listLaunchers",
-				async () => {
-					if (!terminalService) return;
-					const trusted = await terminalService
-						.getSecurityService()
-						.checkWorkspaceTrust();
-					if (!trusted) return;
-					await listLaunchersCommand.execute(terminalService);
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.terminal.removeLauncher",
-				async () => {
-					if (!terminalService) return;
-					const trusted = await terminalService
-						.getSecurityService()
-						.checkWorkspaceTrust();
-					if (!trusted) return;
-					await removeLauncherCommand.execute(terminalService);
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.terminal.removeAllLaunchers",
-				async () => {
-					if (!terminalService) return;
-					const trusted = await terminalService
-						.getSecurityService()
-						.checkWorkspaceTrust();
-					if (!trusted) return;
-					await removeAllLaunchersCommand.execute(terminalService);
-				},
-			),
-		);
-
-		// Register Launch Terminal Command (Phase 1)
-		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.launchTerminal",
-				async () => {
-					await launchTerminalCommand.execute();
-				},
-			),
-		);
-
-		// Register Terminal Link Provider (Phase 3)
-		context.subscriptions.push(
-			vscode.window.registerTerminalLinkProvider(
-				new CommandCentralTerminalLinkProvider(),
-			),
-		);
 
 		// Register Grouping Commands
 		context.subscriptions.push(
@@ -713,14 +572,7 @@ export async function activate(
 		const activationTime = performance.now() - start;
 		mainLogger.info(`✅ Extension activated in ${activationTime.toFixed(0)}ms`);
 		mainLogger.info(`📦 Command Central v${version} ready`);
-		mainLogger.info("📝 Available features:");
-		mainLogger.info(
-			"  - Terminal Launcher: Launch and manage terminal sessions",
-		);
-		mainLogger.info("  - Git Sort: Sort git changes by modification time");
-		mainLogger.info(
-			"  - Project Icons: Display project-specific icons in status bar",
-		);
+		mainLogger.info("📝 Git Sort + Project Views ready");
 	} catch (error) {
 		mainLogger.error("Failed to activate", error as Error);
 		vscode.window.showErrorMessage(
@@ -741,11 +593,6 @@ export async function deactivate(): Promise<void> {
 	// Clean up Project View Manager
 	if (projectViewManager) {
 		projectViewManager.dispose();
-	}
-
-	// Clean up Terminal Service
-	if (terminalService) {
-		terminalService.dispose();
 	}
 
 	// Clean up Project Icon Service
@@ -771,7 +618,6 @@ export async function deactivate(): Promise<void> {
 	// Clean up loggers
 	mainLogger?.dispose();
 	gitSortLogger?.dispose();
-	terminalLogger?.dispose();
 
 	mainLogger?.info("Extension deactivated");
 }

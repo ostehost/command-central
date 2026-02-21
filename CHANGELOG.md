@@ -5,7 +5,29 @@ All notable changes to the Command Central extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2026-02-21: 455 tests across 46 files (94 tests for dead code removed in v1 stability audit).
+**Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2026-02-21: 297 tests across 30 files.
+
+## [0.2.0] - 2026-02-21
+
+### Fixed
+- **Nested git repository detection** — Extension now works when workspace folder is a parent of the git root (e.g., opening `~/.openclaw` when git repo is at `~/.openclaw/workspace`). Previously showed "Open a Git repository" despite VS Code SCM detecting changes.
+- **Path boundary bug** in repository matching — `/workspace` no longer incorrectly matches `/workspace-other`.
+
+### Changed
+- **Terminal launcher moved to v2** — 2,800+ LOC terminal launcher subsystem moved to `v2/terminal-launcher` branch. Not core to git change viewing; will be reworked for v2 with native `vscode.window.createTerminal()`.
+- **Shared repository utility** — `findRepositoryForFile()` extracted to `src/utils/git-repo-utils.ts`, eliminating duplicate implementations.
+
+### Removed
+- **4 dead modules** (1,042 LOC): circuit breaker, git status cache, config validator, tree element validator — none were imported anywhere.
+- **24 dead menu entries** referencing views that no longer exist.
+- **Unused `gitSort.logLevel` setting** — declared but never wired up.
+- **Exploration SVGs** (~750KB) — old icon iterations removed from repo. Only production icons remain.
+- **Terminal commands and settings** removed from package.json (7 settings, 8 commands).
+
+### Improved
+- **`.vscodeignore` added** — VSIX no longer packages src, tests, or dev files.
+- **Landing page and README aligned** — restored 3 shipped features (active file tracking, two layout modes, deleted file persistence) to Plus section.
+- **Package.json reduced** from 44KB to ~35KB.
 
 ## [0.1.8] - 2026-02-18
 

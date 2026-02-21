@@ -1,9 +1,0 @@
-<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-  <!-- Minimal radar sweep: rotating arc indicating active scanning (dark theme) -->
-  <!-- Center point -->
-  <circle cx="8" cy="8" r="1.5" fill="#fbbf24"/>
-  <!-- Sweep arc (quarter circle) - represents active scanning rotation -->
-  <path d="M 8 3 A 5 5 0 0 1 13 8" stroke="#fbbf24" stroke-width="1.2" fill="none" stroke-linecap="round"/>
-  <!-- Faint background scan ring -->
-  <circle cx="8" cy="8" r="5" stroke="#fbbf24" stroke-width="0.6" fill="none" opacity="0.3"/>
-</svg>

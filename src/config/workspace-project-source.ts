@@ -40,12 +40,7 @@ export class WorkspaceProjectSource implements ProjectConfigSource {
 	 * Icons cycle through this array: slot7 reuses icon from slot1, etc.
 	 */
 	private readonly AVAILABLE_ICONS = [
-		"activity-bar-v2-refined-radar.svg",
-		"activity-bar-v3-command-hub.svg",
-		"activity-bar-v4-satellite.svg",
-		"activity-bar-v5-circuit-hub.svg",
-		"activity-bar-v6-command-tower.svg",
-		"activity-bar-v7-hexagonal-grid.svg",
+		"activity-bar.svg",
 	];
 
 	constructor(private logger: LoggerService) {}

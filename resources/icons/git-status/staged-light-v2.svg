@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
-  <!-- Simple upward-pointing triangle (rocket nose) -->
-  <path d="M 12 4 L 18 14 L 6 14 Z" fill="#10b981"/>
-  <!-- Small flame accent at bottom -->
-  <path d="M 11 14 L 12 16 L 13 14 Z" fill="#10b981"/>
-</svg>

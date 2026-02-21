@@ -24,15 +24,10 @@ import type {
 	StorageAdapter,
 } from "../../src/git-sort/storage/storage-adapter.js";
 import type { LoggerService } from "../../src/services/logger-service.js";
-import { TerminalLauncherService } from "../../src/services/terminal-launcher-service.js";
 import type {
 	IGroupingStateManager,
-	ISecurityService,
 } from "../../src/types/service-interfaces.js";
-import type { ProcessManager } from "../../src/utils/process-manager.js";
 import type {
-	ProcessManagerMock,
-	SecurityServiceMock,
 	VSCodeMock,
 } from "../types/mock.types.js";
 
@@ -459,65 +454,6 @@ export function createMockFileSystem(
 }
 
 /**
- * Create a complete typed SecurityService mock
- *
- * Returns proper SecurityServiceMock with realistic default behaviors
- * Use this instead of creating ad-hoc security service mocks
- *
- * @example
- * ```typescript
- * import { createMockSecurityService } from '../helpers/typed-mocks.js';
- * const security = createMockSecurityService();
- * ```
- */
-export function createMockSecurityService(): import("../types/mock.types.js").SecurityServiceMock {
-	return {
-		checkWorkspaceTrust: mock(async () => true),
-		isCommandAllowed: mock(() => true),
-		validateCommand: mock(async (command: string, args: string[]) => ({
-			command,
-			args,
-			isValid: true,
-		})),
-		getExecutionLimits: mock(() => ({
-			timeout: 30000,
-			maxBuffer: 10485760,
-			killSignal: "SIGTERM" as "SIGTERM" | "SIGKILL",
-			shell: false,
-		})),
-		auditLog: mock(() => {}),
-		sanitizePath: mock((path: string) => path),
-		getOutputChannel: mock(() => createMockOutputChannel("Security")),
-		dispose: mock(() => {}),
-	};
-}
-
-/**
- * Create a complete typed ProcessManager mock
- *
- * Returns proper ProcessManagerMock with realistic default behaviors
- * Includes all 8 methods from ProcessManager interface
- *
- * @example
- * ```typescript
- * import { createMockProcessManager } from '../helpers/typed-mocks.js';
- * const processManager = createMockProcessManager();
- * ```
- */
-export function createMockProcessManager(): import("../types/mock.types.js").ProcessManagerMock {
-	return {
-		track: mock(() => true),
-		untrack: mock(),
-		isTracked: mock(() => false),
-		getActiveCount: mock(() => 0),
-		healthCheck: mock(),
-		cleanup: mock(() => Promise.resolve()),
-		isAlive: mock(() => false),
-		getProcessInfo: mock(() => undefined),
-	};
-}
-
-/**
  * Create a complete typed Subprocess mock
  *
  * Returns proper SubprocessMock with all required properties
@@ -626,20 +562,3 @@ export function createMockGroupingStateManager(
  * });
  * ```
  */
-export function createTerminalLauncherService(deps: {
-	security: SecurityServiceMock;
-	processManager: ProcessManagerMock;
-	workspace: VSCodeMock["workspace"];
-	window: VSCodeMock["window"];
-	extensionPath?: string;
-	spawn: ReturnType<typeof mock>;
-}): TerminalLauncherService {
-	return new TerminalLauncherService(
-		deps.security as unknown as ISecurityService,
-		deps.processManager as unknown as ProcessManager,
-		deps.workspace as unknown as typeof vscode.workspace,
-		deps.window as unknown as typeof vscode.window,
-		deps.extensionPath ?? "",
-		deps.spawn,
-	);
-}
