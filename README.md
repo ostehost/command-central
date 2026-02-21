@@ -37,9 +37,9 @@ See only the file types that matter.
 
 ### Plus
 
-- **Multi repo workspaces** — each folder gets its own isolated view (up to 10)
-- **Emoji icons per project** — set an icon per workspace in `.vscode/settings.json`
-- **Zero config** — install and go. 536 tests passing, MIT licensed.
+- **Multi repo workspaces.** Each folder gets its own isolated view (up to 10).
+- **Emoji icons per project.** Set an icon per workspace in `.vscode/settings.json`.
+- **Zero config.** Install and go. 536 tests passing, MIT licensed.
 
 ## You've been here
 
