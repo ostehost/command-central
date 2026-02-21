@@ -1,0 +1,58 @@
+# Source code (bundled into dist/)
+src/**
+test/**
+scripts-v2/**
+
+# Development config
+tsconfig.json
+biome.json
+.editorconfig
+.prettierrc*
+.eslintrc*
+justfile
+knip.json
+knip.ts
+
+# Build artifacts & tooling
+node_modules/**
+*.tsbuildinfo
+.turbo/**
+
+# Git & CI
+.git/**
+.github/**
+.gitignore
+
+# Development docs
+AGENTS.md
+TODO.md
+memory/**
+docs/**
+.cursor/**
+
+# Unused icon explorations (not referenced in code)
+resources/icons/v3-minimal/**
+resources/icons/v3-playful/**
+resources/icons/v3-radar/**
+resources/icons/v4-competition/**
+resources/icons/v5-branding/**
+resources/icons/v5-command-central/**
+resources/icons/git-status-v2/**
+resources/icons/staged-dark-v2.svg
+resources/icons/staged-light-v2.svg
+resources/icons/working-dark-v2.svg
+resources/icons/working-light-v2.svg
+resources/icons/staged-dark.svg
+resources/icons/staged-light.svg
+resources/icons/working-dark.svg
+resources/icons/working-light.svg
+resources/icons/icon.svg
+resources/icons/git-status-staged-dark.svg
+resources/icons/git-status-staged-light.svg
+resources/icons/git-status-working-dark.svg
+resources/icons/git-status-working-light.svg
+
+# Test & dev artifacts
+coverage/**
+*.test.ts
+bun.lock
