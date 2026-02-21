@@ -39,9 +39,7 @@ export class WorkspaceProjectSource implements ProjectConfigSource {
 	 * Available custom SVG icons (verified to exist in resources/icons/)
 	 * Icons cycle through this array: slot7 reuses icon from slot1, etc.
 	 */
-	private readonly AVAILABLE_ICONS = [
-		"activity-bar.svg",
-	];
+	private readonly AVAILABLE_ICONS = ["activity-bar.svg"];
 
 	constructor(private logger: LoggerService) {}
 

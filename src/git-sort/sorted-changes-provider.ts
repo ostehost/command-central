@@ -9,7 +9,6 @@ import * as vscode from "vscode";
 import type { ExtensionFilterState } from "../services/extension-filter-state.js";
 import type { GroupingStateManager } from "../services/grouping-state-manager.js";
 import type { LoggerService } from "../services/logger-service.js";
-import { findRepositoryForFile as findRepoForFile } from "../utils/git-repo-utils.js";
 import {
 	type Change,
 	type GitAPI,
@@ -23,6 +22,7 @@ import type {
 	TimeGroup,
 	TreeElement,
 } from "../types/tree-element.js";
+import { findRepositoryForFile as findRepoForFile } from "../utils/git-repo-utils.js";
 import { formatRelativeTime } from "../utils/relative-time.js";
 import { DeletedFileTracker } from "./deleted-file-tracker.js";
 import { getGitAwareTimestamps } from "./git-timestamps.js";

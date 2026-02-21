@@ -259,9 +259,7 @@ describe("Nested Repository Detection", () => {
 		);
 		await provider.initialize();
 
-		const repo = provider.findRepositoryForFile(
-			vscode.Uri.file("/workspace"),
-		);
+		const repo = provider.findRepositoryForFile(vscode.Uri.file("/workspace"));
 		expect(repo).toBeUndefined();
 	});
 
@@ -304,9 +302,7 @@ describe("Nested Repository Detection", () => {
 		);
 		await provider.initialize();
 
-		const repo = provider.findRepositoryForFile(
-			vscode.Uri.file("/workspace"),
-		);
+		const repo = provider.findRepositoryForFile(vscode.Uri.file("/workspace"));
 		expect(repo).toBeUndefined();
 	});
 
@@ -325,9 +321,7 @@ describe("Nested Repository Detection", () => {
 			vscode.Uri.file("/workspace"),
 		);
 
-		const repo = provider.findRepositoryForFile(
-			vscode.Uri.file("/workspace"),
-		);
+		const repo = provider.findRepositoryForFile(vscode.Uri.file("/workspace"));
 		expect(repo).toBeUndefined();
 	});
 
