@@ -7,9 +7,11 @@
 
 ## Code changes, sorted by time
 
-See what changed, in the order it changed. — [partnerai.dev](https://partnerai.dev/?utm_source=github&utm_medium=referral&utm_campaign=launch-2026-02&utm_content=readme-hero)
+See what changed, in the order it changed.
 
-![Command Central — Multi-workspace sidebar with time-grouped file changes](https://partnerai.dev/assets/hero-v4.png)
+[partnerai.dev](https://partnerai.dev/?utm_source=github&utm_medium=referral&utm_campaign=launch-2026-02&utm_content=readme-hero)
+
+![Command Central showing three workspaces with time-grouped file changes](https://partnerai.dev/assets/hero-v4.png)
 
 ## Install
 
@@ -27,19 +29,25 @@ Works with **VS Code**, **Cursor**, and **Windsurf**.
 
 Adjustable time groups. Minutes, hours, days.
 
+![Time-grouped file changes](https://partnerai.dev/assets/hero-v4.png)
+
 ### Staged vs. working
 
 Toggle to separate staged from working.
+
+![Staged and working changes split into clear groups](https://partnerai.dev/assets/git-status-v8.png)
 
 ### Filter by extension
 
 See only the file types that matter.
 
+![Extension filter showing filtered files](https://partnerai.dev/assets/filter-v5.png)
+
 ### Plus
 
 - **Multi repo workspaces.** Each folder gets its own isolated view (up to 10).
-- **Active file tracking.** Current file auto-highlights in the tree as you work.
-- **Two layout modes.** Sidebar for deep dives, Panel for cross-project comparison.
+- **Active file tracking.** Current file highlights in the tree as you work.
+- **Two layout modes.** Sidebar for deep dives, Panel for cross project comparison.
 - **Deleted file persistence.** Deleted files stay visible with stable ordering across sessions.
 - **Emoji icons per project.** Set an icon per workspace in `.vscode/settings.json`.
 - **Zero config.** Install and go. 297 tests passing, MIT licensed.
@@ -69,10 +77,12 @@ See [CONFIG.md](./CONFIG.md) for the full settings reference. Key settings:
 | `commandCentral.gitSort.enabled` | `true` | Enable time sorted git changes |
 | `commandCentral.gitStatusGrouping.enabled` | `false` | Group by staged/working with time subgroups |
 | `commandCentral.gitSort.fileTypeFilter` | `all` | Filter by file type |
-| `commandCentral.trackActiveFile` | `true` | Auto highlight active file in tree |
+| `commandCentral.trackActiveFile` | `true` | Highlight active file in tree |
 
 ## License
 
-[MIT](./LICENSE) — Free and open source. Always.
+[MIT](./LICENSE)
+
+Free and open source. Always.
 
 A [Partner AI™](https://partnerai.dev) project.
