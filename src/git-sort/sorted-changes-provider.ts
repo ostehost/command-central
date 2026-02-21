@@ -3,13 +3,13 @@
  * This provides a custom view that we can fully control
  */
 
-import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ExtensionFilterState } from "../services/extension-filter-state.js";
 import type { GroupingStateManager } from "../services/grouping-state-manager.js";
 import type { LoggerService } from "../services/logger-service.js";
+import { findRepositoryForFile as findRepoForFile } from "../utils/git-repo-utils.js";
 import {
 	type Change,
 	type GitAPI,
@@ -2386,34 +2386,16 @@ export class SortedGitChangesProvider
 
 	/**
 	 * Finds the repository that contains the given file URI
-	 * Uses longest-match strategy for multi-root workspaces
+	 * Delegates to shared utility in utils/git-repo-utils.ts
+	 *
 	 * @param uri - File URI to find repository for
 	 * @returns Repository containing the file, or undefined if not found
 	 */
-	private findRepositoryForFile(uri: vscode.Uri): Repository | undefined {
+	findRepositoryForFile(uri: vscode.Uri): Repository | undefined {
 		if (!this.gitApi) {
 			return undefined;
 		}
-
-		const filePath = uri.fsPath;
-
-		// Sort by longest path first (most specific match wins in multi-root workspaces)
-		return this.gitApi.repositories
-			.slice()
-			.sort((a, b) => b.rootUri.fsPath.length - a.rootUri.fsPath.length)
-			.find((r) => {
-				const repoPath = r.rootUri.fsPath;
-				// Direct match
-				if (filePath.startsWith(repoPath)) return true;
-				// Symlink-resolved match (e.g., macOS /tmp → /private/tmp)
-				try {
-					const resolvedFile = fsSync.realpathSync(filePath);
-					const resolvedRepo = fsSync.realpathSync(repoPath);
-					return resolvedFile.startsWith(resolvedRepo);
-				} catch {
-					return false;
-				}
-			});
+		return findRepoForFile(uri, this.gitApi);
 	}
 
 	/**

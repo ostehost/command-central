@@ -13,8 +13,9 @@
 
 import * as path from "node:path";
 import type * as vscode from "vscode";
-import type { GitAPI, Repository } from "../types/git-extension.types.js";
+import type { GitAPI } from "../types/git-extension.types.js";
 import type { GitChangeItem } from "../types/tree-element.js";
+import { findRepositoryForFile } from "../utils/git-repo-utils.js";
 
 /**
  * Opens three-way diff view for files with both staged and unstaged changes
@@ -121,21 +122,4 @@ export async function openThreeWayDiff(
 	}
 }
 
-/**
- * Finds the Git repository containing the specified file
- *
- * @param uri - File URI to find repository for
- * @param gitApi - Git API instance
- * @returns Repository containing the file, or undefined if not found
- */
-function findRepositoryForFile(
-	uri: vscode.Uri,
-	gitApi: GitAPI,
-): Repository | undefined {
-	// Find repository whose root contains this file
-	return gitApi.repositories.find((repo) => {
-		const repoPath = repo.rootUri.fsPath;
-		const filePath = uri.fsPath;
-		return filePath.startsWith(repoPath);
-	});
-}
+// findRepositoryForFile is imported from ../utils/git-repo-utils.js
