@@ -26,7 +26,7 @@
   --space-6: 32px;
   --space-7: 48px;
   --space-8: 64px;
-  --space-9: 64px;
+  --space-9: 72px;
   --space-10: 80px;
 
   /* ─── Section spacing ─── */
@@ -55,6 +55,24 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+
+/* ─── Focus States (keyboard navigation) ─── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent-hover);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.2);
+}
+
+.signup-form input[type="email"]:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
 }
 
 .container {
@@ -108,6 +126,7 @@ a:hover {
   color: var(--text-muted);
   text-decoration: none;
   transition: color 0.15s;
+  padding: var(--space-2) 0;
 }
 
 .nav-link:hover {
@@ -193,6 +212,10 @@ a:hover {
   transition: all 0.2s;
   cursor: pointer;
   border: none;
+}
+
+.btn:hover {
+  text-decoration: none;
 }
 
 .btn-primary {
@@ -361,12 +384,28 @@ a:hover {
   font-weight: 600;
   color: var(--text-bright);
   margin-bottom: 0;
+  position: relative;
+  padding-bottom: var(--space-4);
+  letter-spacing: -0.02em;
+}
+
+.features-heading::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  opacity: 0.8;
 }
 
 /* ─── Feature Card: 2-column grid ─── */
 .feature-card {
   display: grid;
-  grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+  grid-template-columns: 2fr 3fr;
   gap: var(--space-6);
   align-items: center;
   padding: var(--space-5);
@@ -380,7 +419,7 @@ a:hover {
 
 /* Reversed card: visual left, text right */
 .feature-card--reverse {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 400px);
+  grid-template-columns: 3fr 2fr;
 }
 
 .feature-card--reverse .feature-content {
@@ -393,7 +432,7 @@ a:hover {
 
 /* ─── Text Content ─── */
 .feature-content {
-  max-width: 400px;
+  max-width: 100%;
 }
 
 .feature-content h3 {
@@ -429,8 +468,6 @@ a:hover {
 .feature-visual img {
   width: 100%;
   height: auto;
-  max-height: 340px;
-  object-fit: contain;
   display: block;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -456,6 +493,22 @@ a:hover {
   font-weight: 600;
   color: var(--text-bright);
   margin-bottom: var(--space-6);
+  position: relative;
+  padding-bottom: var(--space-4);
+  letter-spacing: -0.02em;
+}
+
+.use-cases h2::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  opacity: 0.8;
 }
 
 .use-case-grid {
@@ -466,13 +519,44 @@ a:hover {
 
 .use-case {
   text-align: left;
-  padding: var(--space-4) var(--space-3);
+  padding: var(--space-5);
+  background: rgba(28, 33, 40, 0.8);
+  border: 1px solid rgba(48, 54, 61, 0.8);
+  border-radius: 12px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.use-case:hover {
+  border-color: rgba(88, 166, 255, 0.2);
 }
 
 .use-case-emoji {
-  font-size: 1.75rem;
-  display: block;
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  background: rgba(88, 166, 255, 0.08);
+  border: 1px solid rgba(88, 166, 255, 0.15);
+  border-radius: 12px;
+  margin-bottom: var(--space-4);
+  line-height: 1;
+}
+
+.use-case-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-bright);
   margin-bottom: var(--space-2);
+  line-height: 1.4;
+}
+
+.use-case-desc {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+  margin: 0;
 }
 
 .use-case p {
@@ -496,6 +580,10 @@ a:hover {
   font-size: 1.4rem;
   font-weight: 600;
   color: var(--text-bright);
+  margin-bottom: var(--space-3);
+}
+
+.install-snippet .quiet-note {
   margin-bottom: var(--space-5);
 }
 
@@ -529,6 +617,7 @@ a:hover {
 
 .snippet-note a:hover {
   border-bottom-color: var(--accent);
+  text-decoration: none;
 }
 
 /* ─── Stay Connected ─── */
@@ -635,6 +724,7 @@ a:hover {
 
 .footer a:hover {
   color: var(--text-bright);
+  text-decoration: none;
 }
 
 .footer-x {
@@ -855,10 +945,49 @@ a:hover {
 }
 
 .features-also {
-  text-align: center;
-  color: var(--text-muted, #8b949e);
-  font-size: 0.95rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
   margin-top: var(--space-5, 24px);
+  padding: var(--space-4) 0;
+}
+
+.features-also-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-right: var(--space-2);
+}
+
+.features-also-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-bright);
+  background: rgba(88, 166, 255, 0.12);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.features-also-item:hover {
+  border-color: rgba(88, 166, 255, 0.45);
+  background: rgba(88, 166, 255, 0.18);
+}
+
+.features-also-item::before {
+  content: '✓';
+  font-size: 0.75rem;
+  color: var(--accent);
+  flex-shrink: 0;
+  font-weight: 700;
 }
 
 /* ═══════════════════════════════════════════
@@ -888,6 +1017,7 @@ a:hover {
     font-size: 0.9rem;
     width: 100%;
     justify-content: center;
+    min-height: 44px;
   }
 
   .cta-group {
@@ -912,6 +1042,36 @@ a:hover {
   .placeholder-hero { min-height: 260px; }
   .placeholder-compare { min-height: 200px; }
   .placeholder-walkthrough { min-height: 180px; }
+
+  /* Plus features pills: tighter on small screens */
+  .features-also {
+    gap: var(--space-2);
+  }
+
+  .features-also-item {
+    padding: 6px 14px;
+    font-size: 0.8rem;
+  }
+
+  /* Use case cards: slightly less padding */
+  .use-case {
+    padding: var(--space-4);
+  }
+
+  .use-case-emoji {
+    font-size: 2rem;
+  }
+
+  /* Section headings: scale down accent line */
+  .features-heading::after,
+  .use-cases h2::after {
+    width: 36px;
+  }
+
+  /* Prevent snippet overflow on small screens */
+  .snippet-block code {
+    font-size: 0.85rem;
+  }
 }
 
 /* ─── Phones & small tablets (≤768px) ─── */
@@ -940,9 +1100,8 @@ a:hover {
     max-width: 100%;
   }
 
-  .feature-visual svg,
-  .feature-visual img {
-    max-width: 500px;
+  .feature-visual {
+    max-width: 480px;
     margin: 0 auto;
   }
 
@@ -1012,12 +1171,12 @@ a:hover {
 /* ─── Tablets (≤1024px) ─── */
 @media (max-width: 1024px) {
   .feature-card {
-    gap: var(--space-6);
-    padding: var(--space-5);
+    gap: var(--space-5);
+    padding: var(--space-4);
   }
 
   .feature-card--reverse {
-    gap: var(--space-6);
+    gap: var(--space-5);
   }
 }
 

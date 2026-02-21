@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 370" font-family="system-ui, -apple-system, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 400" font-family="system-ui, -apple-system, sans-serif">
   <defs>
     <style>
       .bg { fill: #161b22; }
@@ -35,116 +35,103 @@
   <line x1="28" y1="66" x2="28" y2="380" class="indent"/>
 
   <!-- ═══════ STAGED SECTION ═══════ -->
-  <!-- Staged header row with green tint -->
-  <rect x="0" y="72" width="480" height="24" fill="#3fb950" opacity="0.06"/>
+  <!-- Green left border bar -->
+  <rect x="0" y="72" width="3" height="100" fill="#3fb950" rx="1"/>
 
-  <!-- Staged header: icon center=8, text center=8 -->
+  <!-- Staged header -->
   <g transform="translate(34, 72)">
     <rect x="0" y="1" width="14" height="14" rx="2" fill="#3fb95033" stroke="#3fb950" stroke-width="1"/>
     <text x="7" y="12" font-size="10" class="green" text-anchor="middle" font-weight="700">+</text>
-    <text x="20" y="13" font-size="13" class="bright" font-weight="700">Staged</text>
-    <text x="72" y="13" class="muted" font-size="12">· 2 ready to commit</text>
+    <text x="20" y="12" font-size="13" class="bright" font-weight="700">Staged</text>
+    <text x="72" y="12" class="muted" font-size="12">· 2 ready to commit</text>
   </g>
 
-  <line x1="42" y1="96" x2="42" y2="168" class="indent"/>
+  <line x1="42" y1="92" x2="42" y2="168" class="indent"/>
 
   <!-- Time group: Yesterday -->
-  <g transform="translate(48, 100)">
+  <g transform="translate(48, 96)">
     <text x="0" y="14" class="accent" font-size="13" font-weight="600">▾ Yesterday</text>
     <text x="100" y="14" class="muted" font-size="12">(2 files)</text>
   </g>
 
-  <line x1="58" y1="120" x2="58" y2="172" class="indent"/>
+  <line x1="58" y1="116" x2="58" y2="168" class="indent"/>
 
-  <!-- Staged file 1: config.ts — A -->
-  <rect x="0" y="122" width="480" height="30" fill="transparent"/>
-  <g transform="translate(66, 130)">
+  <!-- Staged file 1: Dialog.tsx — A -->
+  <rect x="0" y="118" width="480" height="30" fill="transparent"/>
+  <g transform="translate(66, 122)">
     <rect x="0" y="0" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
     <text x="10" y="11" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
-    <text x="26" y="12" class="mono" font-size="13" font-weight="700" fill="#3fb950">config.ts</text>
-    <text x="150" y="12" class="muted" font-size="12">13 hours ago</text>
+    <text x="26" y="12" class="mono" font-size="13" font-weight="700" fill="#3fb950">Dialog.tsx</text>
+    <text x="150" y="12" class="muted" font-size="12">18 hours ago</text>
     <text x="248" y="12" class="muted" font-size="11">·</text>
-    <text x="256" y="12" class="muted" font-size="12">my-app/src</text>
+    <text x="256" y="12" class="muted" font-size="12">src/components</text>
     <text x="396" y="12" class="green mono" font-size="13" font-weight="700" text-anchor="end">A</text>
   </g>
 
-  <!-- Staged file 2: settings.json — A -->
-  <rect x="0" y="152" width="480" height="30" class="row-alt"/>
-  <g transform="translate(66, 160)">
-    <rect x="0" y="0" width="20" height="15" rx="3" fill="#C8963E" opacity="0.2"/>
-    <text x="10" y="11" fill="#C8963E" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">{}</text>
-    <text x="26" y="12" class="mono" font-size="13" font-weight="700" fill="#3fb950">settings.json</text>
-    <text x="150" y="12" class="muted" font-size="12">14 hours ago</text>
+  <!-- Staged file 2: routes.ts — A -->
+  <rect x="0" y="148" width="480" height="30" class="row-alt"/>
+  <g transform="translate(66, 152)">
+    <rect x="0" y="0" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
+    <text x="10" y="11" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="26" y="12" class="mono" font-size="13" font-weight="700" fill="#3fb950">routes.ts</text>
+    <text x="150" y="12" class="muted" font-size="12">20 hours ago</text>
     <text x="248" y="12" class="muted" font-size="11">·</text>
-    <text x="256" y="12" class="muted" font-size="12">my-app/vscode</text>
+    <text x="256" y="12" class="muted" font-size="12">src/api</text>
     <text x="396" y="12" class="green mono" font-size="13" font-weight="700" text-anchor="end">A</text>
   </g>
 
   <!-- Separator -->
-  <line x1="34" y1="188" x2="460" y2="188" stroke="#30363d" stroke-width="0.5"/>
+  <line x1="34" y1="184" x2="460" y2="184" stroke="#30363d" stroke-width="0.5"/>
 
   <!-- ═══════ WORKING SECTION ═══════ -->
-  <!-- Working header row with yellow tint -->
-  <rect x="0" y="194" width="480" height="24" fill="#d29922" opacity="0.06"/>
+  <!-- Yellow left border bar -->
+  <rect x="0" y="190" width="3" height="190" fill="#d29922" rx="1"/>
 
-  <!-- Working header: icon center=8, text center=8 -->
+  <!-- Working header -->
   <g transform="translate(34, 194)">
     <circle cx="7" cy="8" r="7" fill="#d2992233" stroke="#d29922" stroke-width="1.2"/>
     <circle cx="7" cy="8" r="3" fill="#d29922"/>
-    <text x="20" y="13" font-size="13" class="bright" font-weight="700">Working</text>
-    <text x="80" y="13" class="muted" font-size="12">· 4 files changed</text>
+    <text x="20" y="12" font-size="13" class="bright" font-weight="700">Working</text>
+    <text x="80" y="12" class="muted" font-size="12">· 4 files changed</text>
   </g>
 
-  <line x1="42" y1="218" x2="42" y2="376" class="indent"/>
+  <line x1="42" y1="214" x2="42" y2="376" class="indent"/>
 
   <!-- Time group: Yesterday -->
-  <g transform="translate(48, 222)">
+  <g transform="translate(48, 218)">
     <text x="0" y="14" class="accent" font-size="13" font-weight="600">▾ Yesterday</text>
     <text x="100" y="14" class="muted" font-size="12">(4 files)</text>
   </g>
 
-  <line x1="58" y1="242" x2="58" y2="370" class="indent"/>
+  <line x1="58" y1="238" x2="58" y2="370" class="indent"/>
 
-  <!-- Working file 1: App.ts — M -->
-  <rect x="0" y="244" width="480" height="30" fill="transparent"/>
-  <g transform="translate(66, 252)">
+  <!-- Working file 1: App.tsx — M -->
+  <rect x="0" y="240" width="480" height="30" fill="transparent"/>
+  <g transform="translate(66, 244)">
     <rect x="0" y="0" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
     <text x="10" y="11" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
-    <text x="26" y="12" class="bright mono" font-size="13" font-weight="700">App.ts</text>
+    <text x="26" y="12" class="bright mono" font-size="13" font-weight="700">App.tsx</text>
     <text x="150" y="12" class="muted" font-size="12">13 hours ago</text>
     <text x="248" y="12" class="muted" font-size="11">·</text>
-    <text x="256" y="12" class="muted" font-size="12">my-app/src/components</text>
+    <text x="256" y="12" class="muted" font-size="12">src/components</text>
     <text x="396" y="12" class="yellow mono" font-size="13" font-weight="700" text-anchor="end">M</text>
   </g>
 
-  <!-- Working file 2: index.ts — M (with errors) -->
-  <rect x="0" y="274" width="480" height="30" fill="#f8514910"/>
-  <g transform="translate(66, 282)">
+  <!-- Working file 2: Header.tsx — M -->
+  <rect x="0" y="270" width="480" height="30" class="row-alt"/>
+  <g transform="translate(66, 274)">
     <rect x="0" y="0" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
     <text x="10" y="11" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
-    <text x="26" y="12" class="mono" font-size="13" font-weight="700" fill="#f85149">index.ts</text>
-    <text x="150" y="12" class="muted" font-size="12">13 hours ago</text>
+    <text x="26" y="12" class="bright mono" font-size="13" font-weight="700">Header.tsx</text>
+    <text x="150" y="12" class="muted" font-size="12">14 hours ago</text>
     <text x="248" y="12" class="muted" font-size="11">·</text>
-    <text x="256" y="12" class="muted" font-size="12">my-app/src</text>
-    <text x="370" y="12" class="yellow mono" font-size="13" font-weight="700" text-anchor="end">4,</text>
+    <text x="256" y="12" class="muted" font-size="12">src/components</text>
     <text x="396" y="12" class="yellow mono" font-size="13" font-weight="700" text-anchor="end">M</text>
   </g>
 
-  <!-- Working file 3: utils.ts — U -->
-  <rect x="0" y="304" width="480" height="30" fill="transparent"/>
-  <g transform="translate(66, 312)">
-    <rect x="0" y="0" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
-    <text x="10" y="11" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
-    <text x="26" y="12" class="mono" font-size="13" font-weight="700" fill="#3fb950">utils.ts</text>
-    <text x="150" y="12" class="muted" font-size="12">13 hours ago</text>
-    <text x="248" y="12" class="muted" font-size="11">·</text>
-    <text x="256" y="12" class="muted" font-size="12">my-app/src</text>
-    <text x="396" y="12" class="green mono" font-size="13" font-weight="700" text-anchor="end">U</text>
-  </g>
-
-  <!-- Working file 4: package.json — M -->
-  <rect x="0" y="334" width="480" height="30" class="row-alt"/>
-  <g transform="translate(66, 342)">
+  <!-- Working file 3: package.json — M -->
+  <rect x="0" y="300" width="480" height="30" fill="transparent"/>
+  <g transform="translate(66, 304)">
     <rect x="0" y="0" width="20" height="15" rx="3" fill="#C8963E" opacity="0.2"/>
     <text x="10" y="11" fill="#C8963E" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">{}</text>
     <text x="26" y="12" class="bright mono" font-size="13" font-weight="700">package.json</text>
@@ -152,5 +139,17 @@
     <text x="248" y="12" class="muted" font-size="11">·</text>
     <text x="256" y="12" class="muted" font-size="12">root</text>
     <text x="396" y="12" class="yellow mono" font-size="13" font-weight="700" text-anchor="end">M</text>
+  </g>
+
+  <!-- Working file 4: logger.ts — U -->
+  <rect x="0" y="330" width="480" height="30" class="row-alt"/>
+  <g transform="translate(66, 334)">
+    <rect x="0" y="0" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
+    <text x="10" y="11" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
+    <text x="26" y="12" class="mono" font-size="13" font-weight="700" fill="#3fb950">logger.ts</text>
+    <text x="150" y="12" class="muted" font-size="12">19 hours ago</text>
+    <text x="248" y="12" class="muted" font-size="11">·</text>
+    <text x="256" y="12" class="muted" font-size="12">src/utils</text>
+    <text x="396" y="12" class="green mono" font-size="13" font-weight="700" text-anchor="end">U</text>
   </g>
 </svg>

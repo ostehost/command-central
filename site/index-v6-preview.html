@@ -6,7 +6,7 @@
   <title>Command Central — Code changes, sorted by time</title>
   <meta name="description" content="A VS Code extension that sorts code changes by time. Today, yesterday, last week. Free, open source, zero config.">
   <meta property="og:title" content="Command Central — Code changes, sorted by time">
-  <meta property="og:description" content="A VS Code extension that sorts code changes by time. See what changed, in the order it changed.">
+  <meta property="og:description" content="Code changes sorted by time. Today, yesterday, last week. Not alphabetical.">
   <meta property="og:image" content="https://partnerai.dev/screenshots/hero.png">
   <meta property="og:url" content="https://partnerai.dev">
   <meta property="og:type" content="website">
@@ -93,7 +93,7 @@
         <a href="https://github.com/ostehost/command-central" class="btn btn-secondary" data-track="site_github_click" data-source="hero">GitHub</a>
       </div>
       <div class="hero-screenshot">
-        <img src="assets/hero-v4.svg" alt="Command Central showing three workspaces with time-grouped file changes" width="520" height="490" loading="eager">
+        <img src="assets/hero-v4.svg" alt="Command Central sidebar showing three workspaces with time-grouped file changes" width="520" height="520" loading="eager">
       </div>
     </div>
   </section>
@@ -112,6 +112,14 @@
             <span class="compat-pill">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
               Cursor
+            </span>
+            <span class="compat-pill">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+              Claude Code
+            </span>
+            <span class="compat-pill">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M12 2v4m0 12v4m-7.07-2.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              Copilot
             </span>
             <span class="compat-pill">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
@@ -150,7 +158,7 @@
       <div class="feature-card" data-track="site_feature_click" data-source="time-ordering">
         <div class="feature-content">
           <h3>Sorted by time, not name</h3>
-          <p>Adjustable time groups. Minutes, hours,&nbsp;days.</p>
+          <p>Recent changes on top. Older changes below. Grouped by configurable time periods.</p>
         </div>
         <div class="feature-visual">
           <img src="assets/hero-v4.svg" alt="Command Central sidebar showing time-grouped file changes" width="100%">
@@ -161,7 +169,7 @@
       <div class="feature-card feature-card--reverse" data-track="site_feature_click" data-source="git-status">
         <div class="feature-content">
           <h3>Staged vs. working</h3>
-          <p>Toggle to separate staged from&nbsp;working.</p>
+          <p>Split your view by commit readiness. Or don't. One toggle.</p>
         </div>
         <div class="feature-visual">
           <img src="assets/git-status-v8.svg" alt="Staged and working changes split into clear groups" width="100%">
@@ -172,19 +180,14 @@
       <div class="feature-card" data-track="site_feature_click" data-source="filter">
         <div class="feature-content">
           <h3>Filter by extension</h3>
-          <p>See only the file types that&nbsp;matter.</p>
+          <p>Check one or more file types. Everything else hides.</p>
         </div>
         <div class="feature-visual">
           <img src="assets/filter-v5.svg" alt="Extension filter showing filtered files with active filter indicator" width="100%">
         </div>
       </div>
 
-      <div class="features-also">
-        <span class="features-also-label">Plus</span>
-        <span class="features-also-item">Multi repo workspaces</span>
-        <span class="features-also-item">Emoji icons per project</span>
-        <span class="features-also-item">Zero config</span>
-      </div>
+      <p class="features-also">Multi repo workspaces. Emoji icons per project. Zero config.</p>
 
     </div>
   </section>
@@ -192,22 +195,19 @@
   <!-- Use Cases -->
   <section class="use-cases">
     <div class="container">
-      <h2>You've been here</h2>
+      <h2>Good for</h2>
       <div class="use-case-grid">
         <div class="use-case">
-          <span class="use-case-emoji">🤖</span>
-          <p class="use-case-title">Three agents running.</p>
-          <p class="use-case-desc">Every file they touch, sorted by the&nbsp;minute.</p>
-        </div>
-        <div class="use-case">
-          <span class="use-case-emoji">🔍</span>
-          <p class="use-case-title">Agent went wide.</p>
-          <p class="use-case-desc">Filter to .ts. Then to .css. Find what&nbsp;matters.</p>
-        </div>
-        <div class="use-case">
           <span class="use-case-emoji">☕</span>
-          <p class="use-case-title">Morning after.</p>
-          <p class="use-case-desc">What changed overnight, grouped by&nbsp;hour.</p>
+          <p><strong>Agent just touched everything.</strong> An agent modified files across two repos. You glance at the panel. They're listed in the order they were touched.</p>
+        </div>
+        <div class="use-case">
+          <span class="use-case-emoji">🤖</span>
+          <p><strong>Morning after an agent run.</strong> You open your editor. Last night's work is already grouped by time. No git log.</p>
+        </div>
+        <div class="use-case">
+          <span class="use-case-emoji">🧹</span>
+          <p><strong>End of day check.</strong> What did you actually change? The time groups are that list.</p>
         </div>
       </div>
     </div>
@@ -217,7 +217,6 @@
   <section class="install-snippet">
     <div class="container">
       <h2>Install</h2>
-      <p class="quiet-note">Free and open source.&nbsp;Always.</p>
       <div class="snippet-block">
         <code>ext install oste.command-central</code>
       </div>
@@ -229,7 +228,7 @@
   <section class="stay-connected">
     <div class="container">
       <h2>Release notes</h2>
-      <p class="quiet-note">One email per release. Nothing&nbsp;else.</p>
+      <p class="quiet-note">One email per release. Nothing else.</p>
       <div class="email-form">
         <form action="https://buttondown.com/api/emails/embed-subscribe/ostehost" method="post" target="popupwindow" class="signup-form">
           <input type="email" name="email" placeholder="you@example.com" required aria-label="Email address">
