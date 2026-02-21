@@ -1,7 +1,7 @@
 {
 	"name": "command-central",
 	"displayName": "Command Central",
-	"description": "Track and sort git changes by time, manage workspaces, and launch terminal commands — your mission control for the dev process.",
+	"description": "Code changes, sorted by time. See what changed, in the order it changed.",
 	"version": "0.1.8",
 	"publisher": "oste",
 	"icon": "resources/icons/icon.png",
@@ -35,9 +35,9 @@
 	"bugs": {
 		"url": "https://github.com/ostehost/command-central/issues"
 	},
-	"homepage": "https://github.com/ostehost/command-central#readme",
+	"homepage": "https://partnerai.dev",
 	"galleryBanner": {
-		"color": "#1e1e2e",
+		"color": "#161b22",
 		"theme": "dark"
 	},
 	"license": "MIT",

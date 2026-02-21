@@ -5,11 +5,11 @@
 [![CI](https://github.com/ostehost/command-central/actions/workflows/ci.yml/badge.svg)](https://github.com/ostehost/command-central/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Know what changed in your codebase while you were away.** — [partnerai.dev](https://partnerai.dev/?utm_source=github&utm_medium=referral&utm_campaign=launch-2026-02&utm_content=readme-hero)
+## Code changes, sorted by time
 
-![Command Central — Multi-workspace sidebar with custom project icons](screenshots/hero.png)
+See what changed, in the order it changed. — [partnerai.dev](https://partnerai.dev/?utm_source=github&utm_medium=referral&utm_campaign=launch-2026-02&utm_content=readme-hero)
 
-Open a project after a day, a week, or a month — instantly see what happened. Git changes sorted by time, not alphabetically. Works for your own coding sessions and for catching up after AI agents make changes.
+![Command Central — Multi-workspace sidebar with time-grouped file changes](screenshots/hero.png)
 
 ## Install
 
@@ -17,24 +17,45 @@ Open a project after a day, a week, or a month — instantly see what happened. 
 ext install oste.command-central
 ```
 
-Or search **"Command Central"** in VS Code Extensions.
+Or search **"Command Central"** in the Extensions panel.
 
-## Features
+Works with **VS Code**, **Cursor**, and **Windsurf**.
 
-- **Time-grouped changes** — Today, Yesterday, Last 7 days, Last 30 days. No more scrolling `git log`.
-- **File type filtering** — Focus on code, config, docs, tests, or custom extensions.
-- **Active file tracking** — Current file auto-highlights in the tree view as you work.
-- **Multi-root workspace support** — Each workspace folder gets its own isolated git tracking view (up to 10).
-- **Two layout modes** — Vertical in the sidebar for deep dives, horizontal in the Panel for cross-project comparison.
-- **Custom project icons** — Set emoji or text icons per workspace via `commandCentral.project.icon` in `.vscode/settings.json`.
-- **Deleted file persistence** — Deleted files tracked with stable ordering across sessions.
+## What it does
 
-537 tests. Passes CI on every commit.
+### Sorted by time, not name
+
+Adjustable time groups. Minutes, hours, days.
+
+### Staged vs. working
+
+Toggle to separate staged from working.
+
+### Filter by extension
+
+See only the file types that matter.
+
+### Plus
+
+- **Multi repo workspaces** — each folder gets its own isolated view (up to 10)
+- **Emoji icons per project** — set an icon per workspace in `.vscode/settings.json`
+- **Zero config** — install and go. 536 tests passing, MIT licensed.
+
+## You've been here
+
+🤖 **Three agents running.**
+Every file they touch, sorted by the minute.
+
+🔍 **Agent went wide.**
+Filter to .ts. Then to .css. Find what matters.
+
+☕ **Morning after.**
+What changed overnight, grouped by hour.
 
 ## Requirements
 
-- VS Code **1.100.0** or higher
-- Git (built-in VS Code extension)
+- VS Code **1.100.0** or higher (or Cursor / Windsurf equivalent)
+- Git (built in)
 
 ## Configuration
 
@@ -42,14 +63,13 @@ See [CONFIG.md](./CONFIG.md) for the full settings reference. Key settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `commandCentral.gitSort.enabled` | `true` | Enable time-sorted git changes |
-| `commandCentral.trackActiveFile` | `true` | Auto-highlight active file in tree |
+| `commandCentral.gitSort.enabled` | `true` | Enable time sorted git changes |
+| `commandCentral.gitStatusGrouping.enabled` | `false` | Group by staged/working with time subgroups |
 | `commandCentral.gitSort.fileTypeFilter` | `all` | Filter by file type |
-
-## Architecture
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for technical details.
+| `commandCentral.trackActiveFile` | `true` | Auto highlight active file in tree |
 
 ## License
 
-[MIT](./LICENSE)
+[MIT](./LICENSE) — Free and open source. Always.
+
+A [Partner AI™](https://partnerai.dev) project.
