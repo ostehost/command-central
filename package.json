@@ -170,18 +170,6 @@
 					"description": "Enable sorting of git changes by modification time",
 					"scope": "window"
 				},
-				"commandCentral.gitSort.logLevel": {
-					"type": "string",
-					"enum": [
-						"debug",
-						"info",
-						"warn",
-						"error"
-					],
-					"default": "info",
-					"description": "Logging level for Git Sort feature",
-					"scope": "window"
-				},
 				"commandCentral.gitSort.fileTypeFilter": {
 					"type": "string",
 					"enum": [
@@ -953,106 +941,6 @@
 			"view/item/context": [
 				{
 					"command": "commandCentral.gitSort.openFile",
-					"when": "view == commandCentral.sortedGitChanges && (viewItem == staged || viewItem == unstaged || viewItem == staged-deleted || viewItem == unstaged-deleted || viewItem == staged-and-unstaged)",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.openToSide",
-					"when": "view == commandCentral.sortedGitChanges && (viewItem == staged || viewItem == unstaged || viewItem == staged-and-unstaged)",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.openDiff",
-					"when": "view == commandCentral.sortedGitChanges && (viewItem == staged || viewItem == unstaged || viewItem == staged-deleted || viewItem == unstaged-deleted || viewItem == staged-and-unstaged)",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.openFile",
-					"when": "view == commandCentral.sortedGitChangesPanel && (viewItem == staged || viewItem == unstaged || viewItem == staged-deleted || viewItem == unstaged-deleted || viewItem == staged-and-unstaged)",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.openToSide",
-					"when": "view == commandCentral.sortedGitChangesPanel && (viewItem == staged || viewItem == unstaged || viewItem == staged-and-unstaged)",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.openDiff",
-					"when": "view == commandCentral.sortedGitChangesPanel && (viewItem == staged || viewItem == unstaged || viewItem == staged-deleted || viewItem == unstaged-deleted || viewItem == staged-and-unstaged)",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.revealInExplorer",
-					"when": "view == commandCentral.sortedGitChanges && (viewItem == staged || viewItem == unstaged || viewItem == staged-and-unstaged)",
-					"group": "navigation@4"
-				},
-				{
-					"command": "commandCentral.gitSort.revealInFinder",
-					"when": "view == commandCentral.sortedGitChanges",
-					"group": "navigation@5"
-				},
-				{
-					"command": "commandCentral.gitSort.openInIntegratedTerminal",
-					"when": "view == commandCentral.sortedGitChanges",
-					"group": "navigation@6"
-				},
-				{
-					"command": "commandCentral.gitSort.openWith",
-					"when": "view == commandCentral.sortedGitChanges",
-					"group": "navigation@7"
-				},
-				{
-					"command": "commandCentral.gitSort.openPreview",
-					"when": "view == commandCentral.sortedGitChanges",
-					"group": "navigation@8"
-				},
-				{
-					"command": "commandCentral.gitSort.selectForCompare",
-					"when": "view == commandCentral.sortedGitChanges",
-					"group": "3_compare@1"
-				},
-				{
-					"command": "commandCentral.gitSort.compareWithSelected",
-					"when": "view == commandCentral.sortedGitChanges",
-					"group": "3_compare@2"
-				},
-				{
-					"command": "commandCentral.gitSort.revealInExplorer",
-					"when": "view == commandCentral.sortedGitChangesPanel && (viewItem == staged || viewItem == unstaged || viewItem == staged-and-unstaged)",
-					"group": "navigation@4"
-				},
-				{
-					"command": "commandCentral.gitSort.revealInFinder",
-					"when": "view == commandCentral.sortedGitChangesPanel",
-					"group": "navigation@5"
-				},
-				{
-					"command": "commandCentral.gitSort.openInIntegratedTerminal",
-					"when": "view == commandCentral.sortedGitChangesPanel",
-					"group": "navigation@6"
-				},
-				{
-					"command": "commandCentral.gitSort.openWith",
-					"when": "view == commandCentral.sortedGitChangesPanel",
-					"group": "navigation@7"
-				},
-				{
-					"command": "commandCentral.gitSort.openPreview",
-					"when": "view == commandCentral.sortedGitChangesPanel",
-					"group": "navigation@8"
-				},
-				{
-					"command": "commandCentral.gitSort.selectForCompare",
-					"when": "view == commandCentral.sortedGitChangesPanel",
-					"group": "3_compare@1"
-				},
-				{
-					"command": "commandCentral.gitSort.compareWithSelected",
-					"when": "view == commandCentral.sortedGitChangesPanel",
-					"group": "3_compare@2"
-				},
-				{
-					"command": "commandCentral.gitSort.openFile",
 					"when": "view =~ /^commandCentral\\.project\\./ && (viewItem == staged || viewItem == unstaged || viewItem == staged-deleted || viewItem == unstaged-deleted || viewItem == staged-and-unstaged)",
 					"group": "navigation@1"
 				},
@@ -1103,28 +991,8 @@
 				},
 				{
 					"command": "commandCentral.gitSort.copyPath",
-					"when": "view == commandCentral.sortedGitChanges",
-					"group": "5_cutcopypaste@1"
-				},
-				{
-					"command": "commandCentral.gitSort.copyPath",
-					"when": "view == commandCentral.sortedGitChangesPanel",
-					"group": "5_cutcopypaste@1"
-				},
-				{
-					"command": "commandCentral.gitSort.copyPath",
 					"when": "view =~ /^commandCentral\\.project\\./",
 					"group": "5_cutcopypaste@1"
-				},
-				{
-					"command": "commandCentral.gitSort.copyRelativePath",
-					"when": "view == commandCentral.sortedGitChanges",
-					"group": "5_cutcopypaste@2"
-				},
-				{
-					"command": "commandCentral.gitSort.copyRelativePath",
-					"when": "view == commandCentral.sortedGitChangesPanel",
-					"group": "5_cutcopypaste@2"
 				},
 				{
 					"command": "commandCentral.gitSort.copyRelativePath",
