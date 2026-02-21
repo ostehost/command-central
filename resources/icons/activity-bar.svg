@@ -1,30 +1,14 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <!-- Command Central Icon: Radar/Mission Control Theme - MAXIMIZED -->
-  <!-- Designed for VS Code Activity Bar (24x24, single color, theme-aware) -->
-  <!-- 100% canvas usage - elements extend to all edges -->
-
-  <!-- Outer radar ring - MAXIMIZED -->
-  <circle cx="12" cy="12" r="11.25" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.6"/>
-
-  <!-- Middle radar ring - scaled proportionally -->
-  <circle cx="12" cy="12" r="7.875" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.7"/>
-
-  <!-- Inner radar ring - scaled proportionally -->
-  <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.8"/>
-
-  <!-- Central command point - slightly larger for impact -->
-  <circle cx="12" cy="12" r="2.25" fill="currentColor"/>
-
-  <!-- Radar sweep lines - MAXIMIZED to canvas edges -->
-  <line x1="12" y1="12" x2="12" y2="0" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
-  <line x1="12" y1="12" x2="24" y2="12" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
-  <line x1="12" y1="12" x2="12" y2="24" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
-  <line x1="12" y1="12" x2="0" y2="12" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
-
-  <!-- Corner accent dots - MAXIMIZED toward corners -->
-  <circle cx="3" cy="3" r="1.5" fill="currentColor" opacity="0.7"/>
-  <circle cx="21" cy="3" r="1.5" fill="currentColor" opacity="0.7"/>
-  <circle cx="3" cy="21" r="1.5" fill="currentColor" opacity="0.7"/>
-  <circle cx="21" cy="21" r="1.5" fill="currentColor" opacity="0.7"/>
+<!-- Command Central activity bar/panel icon — monochrome glyph v26 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- Brackets -->
+  <path d="M 5.5,2 L 1,12 L 5.5,22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M 18.5,2 L 23,12 L 18.5,22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Sweep line -->
+  <line x1="12" y1="12" x2="20" y2="6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.7"/>
+  <!-- Blips -->
+  <circle cx="18" cy="7" r="1.5" fill="currentColor" opacity="0.8"/>
+  <circle cx="8" cy="10" r="1.2" fill="currentColor" opacity="0.5"/>
+  <circle cx="15.5" cy="16" r="1" fill="currentColor" opacity="0.4"/>
+  <!-- Center dot -->
+  <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
 </svg>

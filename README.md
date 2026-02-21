@@ -1,3 +1,9 @@
+<p align="center">
+  <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central">
+    <img src="https://partnerai.dev/images/logo-128.png" alt="Command Central" width="128" height="128">
+  </a>
+</p>
+
 # Command Central
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/oste.command-central)](https://marketplace.visualstudio.com/items?itemName=oste.command-central)

@@ -1,0 +1,17 @@
+<!-- Command Central favicon — simplified v26 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <clipPath id="fc">
+      <polygon points="28,12 4,64 28,116 100,116 124,64 100,12"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#fc)">
+    <path d="M 64,64 L 88,-4 A 70,70 0 0,1 120,18 Z" fill="#3FB950" fill-opacity="0.10"/>
+    <path d="M 64,64 L 120,18 A 70,70 0 0,1 134,52 Z" fill="#3FB950" fill-opacity="0.25"/>
+    <line x1="64" y1="64" x2="118" y2="38" stroke="#3FB950" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <path d="M 28,12 L 4,64 L 28,116" stroke="#79C0FF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M 100,12 L 124,64 L 100,116" stroke="#79C0FF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="96" cy="36" r="7" fill="#3FB950"/>
+  <circle cx="64" cy="64" r="4" fill="#F0F6FC"/>
+</svg>
