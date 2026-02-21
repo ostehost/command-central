@@ -31,16 +31,16 @@
       // Click tracking via data-track attributes
       // Event taxonomy: site_{object}_{action} — see posthog-playbook
       document.querySelectorAll('[data-track]').forEach(function(el){
-        if(el.dataset.track==='site_email_submit') return;
+        if(el.dataset.track==='email_submitted') return;
         el.addEventListener('click',function(){
-          posthog.capture(el.dataset.track,{product:'cc',source:el.dataset.source||'landing',label:el.textContent.trim().substring(0,80)})
+          posthog.capture(el.dataset.track,{product:'command-central',source:el.dataset.source||'landing',label:el.textContent.trim().substring(0,80)})
         })
       });
 
       // Email form submit
       var form=document.querySelector('.signup-form');
       if(form){form.addEventListener('submit',function(){
-        posthog.capture('site_email_submit',{product:'cc',source:'footer'})
+        posthog.capture('email_submitted',{product:'command-central',source:'footer'})
       })}
 
       // Scroll depth via IntersectionObserver
@@ -62,7 +62,7 @@
         entries.forEach(function(e){
           if(e.isIntersecting){
             var d=parseInt(e.target.dataset.depth);
-            if(!fired[d]){fired[d]=true;posthog.capture('site_scroll_depth',{product:'cc',depth:d})}
+            if(!fired[d]){fired[d]=true;posthog.capture('scroll_depth_reached',{product:'command-central',depth:d})}
           }
         })
       },{threshold:0});
@@ -94,8 +94,8 @@
       <h1>Code changes, sorted by time</h1>
       <p class="subtitle">See what changed, in the order it changed.</p>
       <div class="cta-group">
-        <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-primary" data-track="site_install_click" data-source="hero">Install for VS Code</a>
-        <a href="https://github.com/ostehost/command-central" class="btn btn-secondary" data-track="site_github_click" data-source="hero">GitHub</a>
+        <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-primary" data-track="install_clicked" data-source="hero">Install for VS Code</a>
+        <a href="https://github.com/ostehost/command-central" class="btn btn-secondary" data-track="github_clicked" data-source="hero">GitHub</a>
       </div>
       <div class="hero-screenshot">
         <img src="assets/hero-v4.svg" alt="Command Central showing three workspaces with time-grouped file changes" width="520" height="490" loading="eager">
@@ -152,7 +152,7 @@
       <h2 class="features-heading">What it does</h2>
 
       <!-- Card 1: Text LEFT, SVG RIGHT — Time ordering -->
-      <div class="feature-card" data-track="site_feature_click" data-source="time-ordering">
+      <div class="feature-card" data-track="feature_clicked" data-source="time-ordering">
         <div class="feature-content">
           <h3>Sorted by time, not name</h3>
           <p>Adjustable time groups. Minutes, hours,&nbsp;days.</p>
@@ -163,7 +163,7 @@
       </div>
 
       <!-- Card 2: SVG LEFT, Text RIGHT (reversed) — Git status -->
-      <div class="feature-card feature-card--reverse" data-track="site_feature_click" data-source="git-status">
+      <div class="feature-card feature-card--reverse" data-track="feature_clicked" data-source="git-status">
         <div class="feature-content">
           <h3>Staged vs. working</h3>
           <p>Toggle to separate staged from&nbsp;working.</p>
@@ -174,7 +174,7 @@
       </div>
 
       <!-- Card 3: Text LEFT, SVG RIGHT — Filter -->
-      <div class="feature-card" data-track="site_feature_click" data-source="filter">
+      <div class="feature-card" data-track="feature_clicked" data-source="filter">
         <div class="feature-content">
           <h3>Filter by extension</h3>
           <p>See only the file types that&nbsp;matter.</p>
@@ -229,7 +229,7 @@
       <div class="snippet-block">
         <code>ext install oste.command-central</code>
       </div>
-      <p class="snippet-note">Or <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" data-track="site_install_click" data-source="install-section">install from the Marketplace</a></p>
+      <p class="snippet-note">Or <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" data-track="install_clicked" data-source="install-section">install from the Marketplace</a></p>
     </div>
   </section>
 
@@ -241,9 +241,9 @@
       <div class="email-form">
         <form action="https://buttondown.com/api/emails/embed-subscribe/ostehost" method="post" target="popupwindow" class="signup-form">
           <input type="email" name="email" placeholder="you@example.com" required aria-label="Email address">
-          <button type="submit" class="btn btn-primary" data-track="site_email_submit" data-source="footer">Notify me</button>
+          <button type="submit" class="btn btn-primary" data-track="email_submitted" data-source="footer">Notify me</button>
         </form>
-        <p class="form-note">Or <a href="https://github.com/ostehost/command-central" data-track="site_github_click" data-source="email-section">star the repo</a> for release notifications.</p>
+        <p class="form-note">Or <a href="https://github.com/ostehost/command-central" data-track="github_clicked" data-source="email-section">star the repo</a> for release notifications.</p>
       </div>
     </div>
   </section>
@@ -256,7 +256,7 @@
         <span class="footer-dot">·</span>
         <a href="https://github.com/ostehost/command-central">GitHub</a>
         <span class="footer-dot">·</span>
-        <a href="https://x.com/mikeoste" class="footer-x" data-track="site_x_click" data-source="footer">
+        <a href="https://x.com/mikeoste" class="footer-x" data-track="x_clicked" data-source="footer">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-label="X"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
           <span>@mikeoste</span>
         </a>
