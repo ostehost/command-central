@@ -42,7 +42,7 @@ See only the file types that matter.
 - **Two layout modes.** Sidebar for deep dives, Panel for cross-project comparison.
 - **Deleted file persistence.** Deleted files stay visible with stable ordering across sessions.
 - **Emoji icons per project.** Set an icon per workspace in `.vscode/settings.json`.
-- **Zero config.** Install and go. 536 tests passing, MIT licensed.
+- **Zero config.** Install and go. 455 tests passing, MIT licensed.
 
 ## You've been here
 
