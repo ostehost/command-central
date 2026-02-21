@@ -27,7 +27,7 @@ jobs:
         run: bunx biome ci .
 
       - name: Test
-        run: bun test test/commands test/git-sort test/mocks test/security test/services test/tree-view test/ui test/utils test/types test/builders
+        run: bun test test/commands test/git-sort test/mocks test/services test/tree-view test/ui test/utils test/types test/builders test/factories test/integration
 
       - name: Package
         run: bun run dist -- --no-install

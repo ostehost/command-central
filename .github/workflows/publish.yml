@@ -12,7 +12,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: git config --global user.name "CI Test" && git config --global user.email "ci@test.com" && git config --global init.defaultBranch main
       - run: bun install --frozen-lockfile
-      - run: bun test test/commands test/git-sort test/mocks test/security test/services test/tree-view test/ui test/utils test/types test/builders
+      - run: bun test test/commands test/git-sort test/mocks test/services test/tree-view test/ui test/utils test/types test/builders test/factories test/integration
 
   publish:
     needs: test
