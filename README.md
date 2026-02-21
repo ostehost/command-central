@@ -38,6 +38,9 @@ See only the file types that matter.
 ### Plus
 
 - **Multi repo workspaces.** Each folder gets its own isolated view (up to 10).
+- **Active file tracking.** Current file auto-highlights in the tree as you work.
+- **Two layout modes.** Sidebar for deep dives, Panel for cross-project comparison.
+- **Deleted file persistence.** Deleted files stay visible with stable ordering across sessions.
 - **Emoji icons per project.** Set an icon per workspace in `.vscode/settings.json`.
 - **Zero config.** Install and go. 536 tests passing, MIT licensed.
 
