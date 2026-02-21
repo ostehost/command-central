@@ -40,14 +40,6 @@
 		"theme": "dark"
 	},
 	"license": "MIT",
-	"files": [
-		"dist/**",
-		"resources/icons/**",
-		"resources/bin/**",
-		"README.md",
-		"CHANGELOG.md",
-		"LICENSE"
-	],
 	"author": {
 		"name": "Mike",
 		"url": "https://github.com/ostehost"
