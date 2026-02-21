@@ -9,7 +9,7 @@
 
 See what changed, in the order it changed. — [partnerai.dev](https://partnerai.dev/?utm_source=github&utm_medium=referral&utm_campaign=launch-2026-02&utm_content=readme-hero)
 
-![Command Central — Multi-workspace sidebar with time-grouped file changes](screenshots/hero.png)
+![Command Central — Multi-workspace sidebar with time-grouped file changes](https://partnerai.dev/assets/hero-v4.png)
 
 ## Install
 
