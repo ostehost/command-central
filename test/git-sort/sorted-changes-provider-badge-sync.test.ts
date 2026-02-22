@@ -61,9 +61,7 @@ function setupGitExtensionMock(
 				isActive: true,
 				packageJSON: {},
 				extensionKind: vscode.ExtensionKind.Workspace,
-				activate: mock(() =>
-					Promise.resolve({ getAPI: () => mockGitApi }),
-				),
+				activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
 				exports: { getAPI: () => mockGitApi },
 			}) as any,
 	);

@@ -450,6 +450,25 @@ export class SortedGitChangesProvider
 	}
 
 	/**
+	 * Sets the empty state message on both TreeViews.
+	 *
+	 * When hasRepo is true (repo exists but no changes), displays
+	 * "No changes to display." which takes PRIORITY over viewsWelcome.
+	 *
+	 * When hasRepo is false (no repo), sets message to undefined so the
+	 * viewsWelcome content ("Open a Git repository...") shows instead.
+	 */
+	private setEmptyStateMessage(hasRepo: boolean): void {
+		const message = hasRepo ? "No changes to display." : undefined;
+		if (this.activityBarTreeView) {
+			this.activityBarTreeView.message = message;
+		}
+		if (this.panelTreeView) {
+			this.panelTreeView.message = message;
+		}
+	}
+
+	/**
 	 * Updates TreeView.message based on filter state and results.
 	 *
 	 * - Filter active + zero matches → informational message
@@ -1752,6 +1771,7 @@ export class SortedGitChangesProvider
 
 		// Root level - return time groups
 		if (!this.gitApi || !this.gitApi.repositories.length) {
+			this.setEmptyStateMessage(false);
 			this.resetCountAndTitles();
 			return [];
 		}
@@ -1766,6 +1786,7 @@ export class SortedGitChangesProvider
 				: this.gitApi.repositories[0];
 
 			if (!repo) {
+				this.setEmptyStateMessage(false);
 				this.resetCountAndTitles();
 				return [];
 			}
@@ -1858,6 +1879,11 @@ export class SortedGitChangesProvider
 					enrichedStaged.length + enrichedWorking.length;
 				this.updateTreeViewMessage(totalUnfilteredCount, totalFilteredCount);
 
+				// Set empty state message when repo exists but has no changes
+				if (totalUnfilteredCount === 0) {
+					this.setEmptyStateMessage(true);
+				}
+
 				// Update cached count (sum of both groups)
 				const totalCount = stagedGroup.totalCount + unstagedGroup.totalCount;
 				const previousCount = this.lastKnownFileCount;
@@ -1901,6 +1927,7 @@ export class SortedGitChangesProvider
 
 				// Return early if enrichment failed or no changes remain
 				if (allChanges.length === 0) {
+					this.setEmptyStateMessage(true);
 					this.resetCountAndTitles();
 					return [];
 				}
@@ -1961,6 +1988,7 @@ export class SortedGitChangesProvider
 			// If tree is empty (error case), both should be empty
 			this.parentMap.clear();
 			this.cachedTreeStructure = [];
+			this.setEmptyStateMessage(false);
 			this.resetCountAndTitles();
 			return [];
 		}
