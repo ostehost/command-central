@@ -19,7 +19,7 @@
   
   <defs>
     <clipPath id="fc">
-      <polygon points="28,12 4,64 28,116 100,116 124,64 100,12"/>
+      <polygon points="30,16 10,64 30,112 98,112 118,64 98,16"/>
     </clipPath>
     <!-- Blip glow — visible at 48px+, harmless at 16px -->
     <radialGradient id="blipGlow" cx="0.5" cy="0.5" r="0.5" gradientUnits="objectBoundingBox">
@@ -39,9 +39,10 @@
     <line x1="64" y1="64" x2="116" y2="40" stroke="#3FB950" stroke-width="5" stroke-linecap="round"/>
   </g>
   
-  <!-- Brackets — primary identifier -->
-  <path d="M 28,12 L 4,64 L 28,116" stroke="#79C0FF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <path d="M 100,12 L 124,64 L 100,116" stroke="#79C0FF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Brackets — primary identifier, pulled inward for breathing room
+       Tips at x=10/118 → stroke extends to x=5/123, safe within rx=20 corners -->
+  <path d="M 30,16 L 10,64 L 30,112" stroke="#79C0FF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M 98,16 L 118,64 L 98,112" stroke="#79C0FF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
   
   <!-- Blip glow — adds life at larger sizes -->
   <circle cx="88" cy="28" r="18" fill="url(#blipGlow)"/>
