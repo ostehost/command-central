@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2026-02-21: 297 tests across 30 files.
 
+## [0.2.2] - 2026-02-22
+### Changed
+- Redesigned logo and activity bar icon — crosshair gaps, enhanced blip treatment, optimized monochrome rendering
+- Added local extension preview workflow documentation
+
 ## [0.2.0] - 2026-02-21
 
 ### Fixed

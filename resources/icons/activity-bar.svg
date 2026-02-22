@@ -1,43 +1,42 @@
-<!-- Command Central activity bar icon — monochrome v26 radar (VS Code requires currentColor) -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
-  <defs>
-    <clipPath id="bClip">
-      <polygon points="28,12 4,64 28,116 100,116 124,64 100,12"/>
-    </clipPath>
-  </defs>
+<!--
+  VS Code Activity Bar Icon — v31-final (Command Central)
+  
+  VS Code Rendering Pipeline (from source analysis, Feb 2026):
+  - Custom viewContainer icons are rendered as CSS masks (not inline SVG)
+  - mask-size: 24px, centered (50% 50%) in 48×48 action item container
+  - ICON_SIZE = 24 CSS px (48×48 physical px on Retina/HiDPI)
+  - VS Code provides 12px padding on each side — DO NOT add internal padding
+  - SVG opacity maps to mask transparency (low opacity = faint/invisible)
+  - Format must match codicons: width="24" height="24" viewBox="0 0 24 24"
+  
+  Changes from v30-3:
+  - Added explicit width="24" height="24" (was missing — critical for mask rendering)
+  - Brackets pushed wider: tips x=1→23 (was 1.25→22.75), span y=2→22 (was 2.5→21.5)
+  - Crosshair opacity increased for mask visibility: 0.35/0.3 → 0.5/0.45
+  - Sweep arm opacity: 0.7 → 0.8
+  - Blip opacity: 0.85 → 0.9
+  - All elements verified non-clipping (stroke overshoot within viewBox)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <!-- Brackets: pushed to near-edge for maximum viewBox utilization
+       Tips at x=1/23 → visual edges at x=0.25/23.75 (stroke-width/2 overshoot)
+       Vertical span y=2 to y=22 → visual y≈1.25 to y≈22.75 (linecap overshoot) -->
+  <path d="M 5.5,2 L 1,12 L 5.5,22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M 18.5,2 L 23,12 L 18.5,22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 
-  <!-- Bracket glow -->
-  <path d="M 28,12 L 4,64 L 28,116" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.08" fill="none"/>
-  <path d="M 100,12 L 124,64 L 100,116" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.08" fill="none"/>
+  <!-- Crosshairs: opacity raised for mask visibility (0.35/0.3 was near-invisible as mask) -->
+  <line x1="4.5" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+  <line x1="15" y1="12" x2="19.5" y2="12" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+  <line x1="12" y1="4.5" x2="12" y2="9" stroke="currentColor" stroke-width="1" opacity="0.45"/>
+  <line x1="12" y1="15" x2="12" y2="19.5" stroke="currentColor" stroke-width="1" opacity="0.45"/>
 
-  <!-- Clipped radar interior -->
-  <g clip-path="url(#bClip)">
-    <!-- Crosshairs -->
-    <line x1="4" y1="64" x2="124" y2="64" stroke="currentColor" stroke-width="1.5" opacity="0.18"/>
-    <line x1="64" y1="4" x2="64" y2="124" stroke="currentColor" stroke-width="1.5" opacity="0.16"/>
+  <!-- Sweep arm: ~24° angle, full length to x=20 (bracket arm at x=18.5, safe margin)
+       Does NOT pass through blip: line-to-blip distance = 3.89 > blip radius 1.6 -->
+  <line x1="12" y1="12" x2="20" y2="8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
 
-    <!-- Inner rings -->
-    <circle cx="64" cy="64" r="17" stroke="currentColor" opacity="0.30" stroke-width="1.5" fill="none"/>
-    <circle cx="64" cy="64" r="34" stroke="currentColor" opacity="0.14" stroke-width="1.2" fill="none"/>
-
-    <!-- Sweep cone -->
-    <path d="M 64,64 L 88,-4 A 70,70 0 0,1 120,18 Z" fill="currentColor" opacity="0.06"/>
-    <path d="M 64,64 L 120,18 A 70,70 0 0,1 134,52 Z" fill="currentColor" opacity="0.18"/>
-
-    <!-- Sweep line -->
-    <line x1="64" y1="64" x2="118" y2="38" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.7"/>
-  </g>
-
-  <!-- Brackets -->
-  <path d="M 28,12 L 4,64 L 28,116" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <path d="M 100,12 L 124,64 L 100,116" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-
-  <!-- Blips -->
-  <circle cx="96" cy="36" r="6" fill="currentColor" opacity="0.85"/>
-  <circle cx="42" cy="52" r="4.5" fill="currentColor" opacity="0.5"/>
-  <circle cx="82" cy="85" r="4" fill="currentColor" opacity="0.4"/>
+  <!-- Blip: well-separated from sweep (2.65px gap) and crosshairs (2.9px+ gap) -->
+  <circle cx="16" cy="6" r="1.6" fill="currentColor" opacity="0.9"/>
 
   <!-- Center dot -->
-  <circle cx="64" cy="64" r="5" fill="currentColor" opacity="0.12"/>
-  <circle cx="64" cy="64" r="3" fill="currentColor"/>
+  <circle cx="12" cy="12" r="1.1" fill="currentColor"/>
 </svg>

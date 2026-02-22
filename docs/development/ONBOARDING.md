@@ -351,6 +351,10 @@ just dist --dry-run
 
 **Output**: `releases/command-central-X.X.X.vsix`
 
+### Local Preview (Icons, Assets, UI Changes)
+
+See [LOCAL_PREVIEW.md](LOCAL_PREVIEW.md) for the full workflow: package → install → reload → get feedback. Oste automates this end-to-end including VS Code reload via AppleScript.
+
 ---
 
 ## Common Tasks

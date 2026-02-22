@@ -21,6 +21,17 @@
       <stop offset="0.85" stop-color="#79C0FF" stop-opacity="0.16"/>
       <stop offset="1" stop-color="#79C0FF" stop-opacity="0"/>
     </linearGradient>
+    <!-- Subtle blip glow gradients -->
+    <radialGradient id="greenGlow" cx="0.5" cy="0.5" r="0.9" gradientUnits="objectBoundingBox">
+      <stop offset="0" stop-color="#3FB950" stop-opacity="0.6"/>
+      <stop offset="0.4" stop-color="#3FB950" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#3FB950" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blueGlow" cx="0.5" cy="0.5" r="0.9" gradientUnits="objectBoundingBox">
+      <stop offset="0" stop-color="#79C0FF" stop-opacity="0.4"/>
+      <stop offset="0.4" stop-color="#79C0FF" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#79C0FF" stop-opacity="0"/>
+    </radialGradient>
   </defs>
 
   <!-- Bracket glow -->
@@ -32,9 +43,15 @@
     <!-- Subtle radial glow from center -->
     <circle cx="64" cy="64" r="50" fill="url(#sweepGlow)"/>
 
-    <!-- Crosshairs with gradient fade — dissolve before hitting brackets -->
-    <line x1="0" y1="64" x2="128" y2="64" stroke="url(#hFade)" stroke-width="1.5"/>
-    <line x1="64" y1="0" x2="64" y2="128" stroke="url(#vFade)" stroke-width="1.5"/>
+    <!-- Crosshairs with gap around center dot -->
+    <!-- Horizontal crosshair - left segment -->
+    <line x1="0" y1="64" x2="56" y2="64" stroke="url(#hFade)" stroke-width="1.5"/>
+    <!-- Horizontal crosshair - right segment -->
+    <line x1="72" y1="64" x2="128" y2="64" stroke="url(#hFade)" stroke-width="1.5"/>
+    <!-- Vertical crosshair - top segment -->
+    <line x1="64" y1="0" x2="64" y2="56" stroke="url(#vFade)" stroke-width="1.5"/>
+    <!-- Vertical crosshair - bottom segment -->
+    <line x1="64" y1="72" x2="64" y2="128" stroke="url(#vFade)" stroke-width="1.5"/>
 
     <!-- Inner rings only — outer ring removed, brackets are the boundary -->
     <circle cx="64" cy="64" r="17" stroke="#79C0FF" stroke-opacity="0.30" stroke-width="1.5" fill="none"/>
@@ -54,10 +71,19 @@
   <path d="M 28,12 L 4,64 L 28,116" stroke="#79C0FF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
   <path d="M 100,12 L 124,64 L 100,116" stroke="#79C0FF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 
-  <!-- Blips -->
-  <circle cx="96" cy="36" r="6" fill="#3FB950" fill-opacity="0.9"/>
-  <circle cx="42" cy="52" r="4.5" fill="#79C0FF" fill-opacity="0.55"/>
-  <circle cx="82" cy="85" r="4" fill="#79C0FF" fill-opacity="0.45"/>
+  <!-- Blips with combined effects -->
+  <!-- Active target - green blip with subtle ping and glow -->
+  <circle cx="96" cy="36" r="10" fill="url(#greenGlow)"/>
+  <circle cx="96" cy="36" r="9" stroke="#3FB950" stroke-width="0.8" stroke-opacity="0.20" fill="none"/>
+  <circle cx="96" cy="36" r="6.5" fill="#3FB950" fill-opacity="0.95"/>
+  
+  <!-- Medium priority blip - blue with glow and medium size -->
+  <circle cx="42" cy="52" r="8" fill="url(#blueGlow)"/>
+  <circle cx="42" cy="52" r="4.5" fill="#79C0FF" fill-opacity="0.70"/>
+  
+  <!-- Distant blip - smaller and more subtle -->
+  <circle cx="82" cy="85" r="6" fill="url(#blueGlow)"/>
+  <circle cx="82" cy="85" r="3.5" fill="#79C0FF" fill-opacity="0.45"/>
 
   <!-- Center dot with glow -->
   <circle cx="64" cy="64" r="5" fill="#F0F6FC" fill-opacity="0.12"/>
