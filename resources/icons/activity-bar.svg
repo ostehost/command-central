@@ -1,14 +1,43 @@
-<!-- Command Central activity bar/panel icon — monochrome glyph v26 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+<!-- Command Central activity bar icon — monochrome v26 radar (VS Code requires currentColor) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <clipPath id="bClip">
+      <polygon points="28,12 4,64 28,116 100,116 124,64 100,12"/>
+    </clipPath>
+  </defs>
+
+  <!-- Bracket glow -->
+  <path d="M 28,12 L 4,64 L 28,116" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.08" fill="none"/>
+  <path d="M 100,12 L 124,64 L 100,116" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.08" fill="none"/>
+
+  <!-- Clipped radar interior -->
+  <g clip-path="url(#bClip)">
+    <!-- Crosshairs -->
+    <line x1="4" y1="64" x2="124" y2="64" stroke="currentColor" stroke-width="1.5" opacity="0.18"/>
+    <line x1="64" y1="4" x2="64" y2="124" stroke="currentColor" stroke-width="1.5" opacity="0.16"/>
+
+    <!-- Inner rings -->
+    <circle cx="64" cy="64" r="17" stroke="currentColor" opacity="0.30" stroke-width="1.5" fill="none"/>
+    <circle cx="64" cy="64" r="34" stroke="currentColor" opacity="0.14" stroke-width="1.2" fill="none"/>
+
+    <!-- Sweep cone -->
+    <path d="M 64,64 L 88,-4 A 70,70 0 0,1 120,18 Z" fill="currentColor" opacity="0.06"/>
+    <path d="M 64,64 L 120,18 A 70,70 0 0,1 134,52 Z" fill="currentColor" opacity="0.18"/>
+
+    <!-- Sweep line -->
+    <line x1="64" y1="64" x2="118" y2="38" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.7"/>
+  </g>
+
   <!-- Brackets -->
-  <path d="M 5.5,2 L 1,12 L 5.5,22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <path d="M 18.5,2 L 23,12 L 18.5,22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <!-- Sweep line -->
-  <line x1="12" y1="12" x2="20" y2="6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.7"/>
+  <path d="M 28,12 L 4,64 L 28,116" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M 100,12 L 124,64 L 100,116" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
   <!-- Blips -->
-  <circle cx="18" cy="7" r="1.5" fill="currentColor" opacity="0.8"/>
-  <circle cx="8" cy="10" r="1.2" fill="currentColor" opacity="0.5"/>
-  <circle cx="15.5" cy="16" r="1" fill="currentColor" opacity="0.4"/>
+  <circle cx="96" cy="36" r="6" fill="currentColor" opacity="0.85"/>
+  <circle cx="42" cy="52" r="4.5" fill="currentColor" opacity="0.5"/>
+  <circle cx="82" cy="85" r="4" fill="currentColor" opacity="0.4"/>
+
   <!-- Center dot -->
-  <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+  <circle cx="64" cy="64" r="5" fill="currentColor" opacity="0.12"/>
+  <circle cx="64" cy="64" r="3" fill="currentColor"/>
 </svg>
