@@ -143,9 +143,16 @@ export async function commitFile(
 
 	if (timestamp) {
 		const dateStr = new Date(timestamp).toISOString();
-		git(repo.path, "commit", `--date=${dateStr}`, "-m", commitMessage);
+		git(
+			repo.path,
+			"commit",
+			"--no-verify",
+			`--date=${dateStr}`,
+			"-m",
+			commitMessage,
+		);
 	} else {
-		git(repo.path, "commit", "-m", commitMessage);
+		git(repo.path, "commit", "--no-verify", "-m", commitMessage);
 	}
 
 	return absolutePath;
@@ -175,7 +182,7 @@ export async function deleteAndCommitFile(
 
 	// Commit
 	const commitMessage = message || `Delete ${path.basename(relativePath)}`;
-	git(repo.path, "commit", "-m", commitMessage);
+	git(repo.path, "commit", "--no-verify", "-m", commitMessage);
 }
 
 /**
@@ -246,7 +253,7 @@ export async function modifyAndCommitFile(
 	git(repo.path, "add", relativePath);
 
 	const commitMessage = message || `Update ${path.basename(relativePath)}`;
-	git(repo.path, "commit", "-m", commitMessage);
+	git(repo.path, "commit", "--no-verify", "-m", commitMessage);
 }
 
 /**

@@ -1,5 +1,5 @@
 /* Command Central Landing Page v4 — Spacing & Responsiveness Overhaul */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -32,6 +32,9 @@
   /* ─── Section spacing ─── */
   --section-pad: var(--space-8);
   --section-pad-sm: var(--space-6);
+
+  /* ─── Typography ─── */
+  --font-brand: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   /* ─── Container ─── */
   --container-max: 960px;
@@ -102,8 +105,9 @@ a:hover {
 }
 
 .nav-brand {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-family: var(--font-brand);
+  font-size: 1.125rem;
+  font-weight: 500;
   color: var(--text-muted);
   text-decoration: none;
   letter-spacing: -0.01em;
@@ -135,6 +139,9 @@ a:hover {
 }
 
 .nav-link--active {
+  font-family: var(--font-brand);
+  font-weight: 500;
+  letter-spacing: -0.01em;
   color: var(--text-bright);
 }
 
@@ -178,19 +185,24 @@ a:hover {
 }
 
 .hero h1 {
-  font-size: clamp(1.8rem, 4.5vw, 2.8rem);
+  font-family: var(--font-brand);
+  font-size: clamp(2rem, 5vw, 3.25rem);
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
   color: var(--text-bright);
   margin-bottom: var(--space-4);
 }
 
 .hero .subtitle {
-  font-size: clamp(0.95rem, 2vw, 1.1rem);
+  font-family: var(--font-brand);
+  font-size: clamp(1.05rem, 2.2vw, 1.3rem);
+  font-weight: 400;
+  letter-spacing: 0;
   color: var(--text-muted);
   max-width: 580px;
   margin: 0 auto var(--space-6);
-  line-height: 1.7;
+  line-height: 1.6;
 }
 
 .cta-group {
@@ -354,10 +366,11 @@ a:hover {
 }
 
 .trust-number {
-  font-size: 1.15rem;
+  font-family: var(--font-brand);
+  font-size: 1.3rem;
   font-weight: 700;
   color: var(--text-bright);
-  letter-spacing: -0.3px;
+  letter-spacing: -0.02em;
 }
 
 .trust-label {
@@ -380,13 +393,14 @@ a:hover {
 
 .features-heading {
   text-align: center;
-  font-size: 1.5rem;
+  font-family: var(--font-brand);
+  font-size: 1.75rem;
   font-weight: 600;
   color: var(--text-bright);
   margin-bottom: 0;
   position: relative;
   padding-bottom: var(--space-4);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .features-heading::after {
@@ -436,11 +450,13 @@ a:hover {
 }
 
 .feature-content h3 {
-  font-size: clamp(1.25rem, 2.5vw, 1.6rem);
-  font-weight: 600;
+  font-family: var(--font-brand);
+  font-size: clamp(1.125rem, 2.2vw, 1.4rem);
+  font-weight: 500;
   color: var(--text-bright);
   margin-bottom: var(--space-3);
-  line-height: 1.3;
+  letter-spacing: 0;
+  line-height: 1.35;
 }
 
 .feature-content p {
@@ -489,13 +505,14 @@ a:hover {
 
 .use-cases h2 {
   text-align: center;
-  font-size: 1.5rem;
+  font-family: var(--font-brand);
+  font-size: 1.75rem;
   font-weight: 600;
   color: var(--text-bright);
   margin-bottom: var(--space-6);
   position: relative;
   padding-bottom: var(--space-4);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .use-cases h2::after {
@@ -545,11 +562,13 @@ a:hover {
 }
 
 .use-case-title {
-  font-size: 1rem;
-  font-weight: 600;
+  font-family: var(--font-brand);
+  font-size: 1.05rem;
+  font-weight: 500;
   color: var(--text-bright);
   margin-bottom: var(--space-2);
-  line-height: 1.4;
+  letter-spacing: 0;
+  line-height: 1.35;
 }
 
 .use-case-desc {
@@ -577,10 +596,12 @@ a:hover {
 }
 
 .install-snippet h2 {
-  font-size: 1.4rem;
+  font-family: var(--font-brand);
+  font-size: 1.75rem;
   font-weight: 600;
   color: var(--text-bright);
   margin-bottom: var(--space-3);
+  letter-spacing: -0.01em;
 }
 
 .install-snippet .quiet-note {
@@ -628,10 +649,12 @@ a:hover {
 }
 
 .stay-connected h2 {
-  font-size: 1.4rem;
+  font-family: var(--font-brand);
+  font-size: 1.75rem;
   font-weight: 600;
   color: var(--text-bright);
   margin-bottom: var(--space-3);
+  letter-spacing: -0.01em;
 }
 
 .quiet-note {
@@ -743,6 +766,8 @@ a:hover {
 }
 
 .footer-tagline {
+  font-family: var(--font-brand);
+  font-weight: 400;
   color: var(--text-muted);
   font-size: 0.8rem;
   opacity: 0.7;
