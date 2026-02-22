@@ -1,47 +1,55 @@
-<!-- Command Central favicon — v27 with crosshair gaps + blip improvements, dark bg for clarity -->
+<!-- Favicon v32-5: OPTIMAL — best take for 16-48px range
+     Philosophy: At 16px, you see brackets + green dot + white dot.
+     At 32px, the sweep line becomes clear. At 48px, subtle details emerge.
+     
+     Design choices:
+     - Brackets sw=10: clear at 16px (1.25px), crisp at 32px (2.5px)
+     - Sweep sw=5 + subtle cone: line visible at 32px, cone adds depth at 48px
+     - Blip r=10 with faint glow ring: solid dot at 16px, ring visible at 48px
+     - Center dot r=4.5 with subtle glow: dot at 16px, glow at 48px
+     - No crosshairs or rings: they don't survive 16px, add noise at 32px
+     
+     Geometry verification:
+     - Sweep: (64,64)→(116,40), blip at (88,28) r=10
+     - Sweep-to-blip clearance: 10.13 units visual = 1.27px@16px
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
-  <!-- Dark background with rounded corners -->
+  <!-- Dark background -->
   <rect width="128" height="128" rx="20" fill="#0D1117"/>
   
   <defs>
     <clipPath id="fc">
       <polygon points="28,12 4,64 28,116 100,116 124,64 100,12"/>
     </clipPath>
-    <!-- Subtle blip glow gradients for small sizes -->
-    <radialGradient id="greenGlow" cx="0.5" cy="0.5" r="0.9" gradientUnits="objectBoundingBox">
-      <stop offset="0" stop-color="#3FB950" stop-opacity="0.6"/>
-      <stop offset="0.4" stop-color="#3FB950" stop-opacity="0.2"/>
+    <!-- Blip glow — visible at 48px+, harmless at 16px -->
+    <radialGradient id="blipGlow" cx="0.5" cy="0.5" r="0.5" gradientUnits="objectBoundingBox">
+      <stop offset="0" stop-color="#3FB950" stop-opacity="0.5"/>
+      <stop offset="0.6" stop-color="#3FB950" stop-opacity="0.15"/>
       <stop offset="1" stop-color="#3FB950" stop-opacity="0"/>
     </radialGradient>
   </defs>
   
   <!-- Clipped radar interior -->
   <g clip-path="url(#fc)">
-    <!-- Crosshairs with gap around center dot (v27 improvement) -->
-    <!-- Horizontal crosshair - left segment -->
-    <line x1="0" y1="64" x2="54" y2="64" stroke="#79C0FF" stroke-width="2" stroke-opacity="0.25"/>
-    <!-- Horizontal crosshair - right segment -->
-    <line x1="74" y1="64" x2="128" y2="64" stroke="#79C0FF" stroke-width="2" stroke-opacity="0.25"/>
-    <!-- Vertical crosshair - top segment -->
-    <line x1="64" y1="0" x2="64" y2="54" stroke="#79C0FF" stroke-width="2" stroke-opacity="0.20"/>
-    <!-- Vertical crosshair - bottom segment -->
-    <line x1="64" y1="74" x2="64" y2="128" stroke="#79C0FF" stroke-width="2" stroke-opacity="0.20"/>
+    <!-- Subtle sweep cone — only visible at 48px+, adds radar character -->
+    <path d="M 64,64 L 92,-2 A 70,70 0 0,1 124,14 Z" fill="#3FB950" fill-opacity="0.06"/>
+    <path d="M 64,64 L 124,14 A 70,70 0 0,1 138,46 Z" fill="#3FB950" fill-opacity="0.15"/>
     
-    <!-- Sweep cone -->
-    <path d="M 64,64 L 88,-4 A 70,70 0 0,1 120,18 Z" fill="#3FB950" fill-opacity="0.12"/>
-    <path d="M 64,64 L 120,18 A 70,70 0 0,1 134,52 Z" fill="#3FB950" fill-opacity="0.28"/>
-    <line x1="64" y1="64" x2="118" y2="38" stroke="#3FB950" stroke-width="3.5" stroke-linecap="round"/>
+    <!-- Sweep line -->
+    <line x1="64" y1="64" x2="116" y2="40" stroke="#3FB950" stroke-width="5" stroke-linecap="round"/>
   </g>
   
-  <!-- Brackets — thicker for small sizes -->
-  <path d="M 28,12 L 4,64 L 28,116" stroke="#79C0FF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <path d="M 100,12 L 124,64 L 100,116" stroke="#79C0FF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Brackets — primary identifier -->
+  <path d="M 28,12 L 4,64 L 28,116" stroke="#79C0FF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M 100,12 L 124,64 L 100,116" stroke="#79C0FF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
   
-  <!-- Enhanced blip with glow (v27 improvement) — larger for clarity at small sizes -->
-  <circle cx="96" cy="36" r="10" fill="url(#greenGlow)"/>
-  <circle cx="96" cy="36" r="9" fill="#3FB950"/>
+  <!-- Blip glow — adds life at larger sizes -->
+  <circle cx="88" cy="28" r="18" fill="url(#blipGlow)"/>
+  <!-- Blip — solid active target -->
+  <circle cx="88" cy="28" r="10" fill="#3FB950"/>
   
-  <!-- Center dot with enhanced glow -->
-  <circle cx="64" cy="64" r="6" fill="#F0F6FC" fill-opacity="0.15"/>
-  <circle cx="64" cy="64" r="4" fill="#F0F6FC"/>
+  <!-- Center dot glow -->
+  <circle cx="64" cy="64" r="8" fill="#F0F6FC" fill-opacity="0.08"/>
+  <!-- Center dot -->
+  <circle cx="64" cy="64" r="4.5" fill="#F0F6FC"/>
 </svg>
