@@ -52,6 +52,10 @@ resources/icons/git-status-staged-light.svg
 resources/icons/git-status-working-dark.svg
 resources/icons/git-status-working-light.svg
 
+# Website & screenshots (GitHub Pages, not part of extension)
+site/**
+screenshots/**
+
 # Test & dev artifacts
 coverage/**
 *.test.ts

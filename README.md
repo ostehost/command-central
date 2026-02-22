@@ -17,7 +17,7 @@ See what changed, in the order it changed.
 
 [partnerai.dev](https://partnerai.dev/?utm_source=github&utm_medium=referral&utm_campaign=launch-2026-02&utm_content=readme-hero)
 
-![Command Central showing three workspaces with time-grouped file changes](https://partnerai.dev/assets/hero-v4.png)
+![Command Central showing three workspaces with time-grouped file changes](https://partnerai.dev/assets/hero.png)
 
 ## Install
 
@@ -35,19 +35,19 @@ Works with **VS Code**, **Cursor**, and **Windsurf**.
 
 Adjustable time groups. Minutes, hours, days.
 
-![Time-grouped file changes](https://partnerai.dev/assets/hero-v4.png)
+![Time-grouped file changes](https://partnerai.dev/assets/hero.png)
 
 ### Staged vs. working
 
 Toggle to separate staged from working.
 
-![Staged and working changes split into clear groups](https://partnerai.dev/assets/git-status-v8.png)
+![Staged and working changes split into clear groups](https://partnerai.dev/assets/git-status.png)
 
 ### Filter by extension
 
 See only the file types that matter.
 
-![Extension filter showing filtered files](https://partnerai.dev/assets/filter-v5.png)
+![Extension filter showing filtered files](https://partnerai.dev/assets/filter.png)
 
 ### Plus
 
