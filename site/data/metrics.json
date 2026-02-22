@@ -1,13 +1,13 @@
 {
   "latest": {
-    "timestamp": "2026-02-21T23:30:48Z",
+    "timestamp": "2026-02-22T00:14:18Z",
     "posthog": {
       "visitors": 58,
-      "pageviews": 283,
+      "pageviews": 289,
       "install_clicks": 5,
       "github_clicks": 3,
-      "email_submits": 1,
-      "scroll_depth_75": 195,
+      "email_submits": 4,
+      "scroll_depth_75": 202,
       "utm_sources": []
     },
     "marketplace": {
@@ -188,7 +188,34 @@
       "email": {
         "subscribers": null
       }
+    },
+    {
+      "timestamp": "2026-02-22T00:14:18Z",
+      "posthog": {
+        "visitors": 58,
+        "pageviews": 289,
+        "install_clicks": 5,
+        "github_clicks": 3,
+        "email_submits": 4,
+        "scroll_depth_75": 202,
+        "utm_sources": []
+      },
+      "marketplace": {
+        "installs": 3.0,
+        "updates": 2.0,
+        "avg_rating": 0,
+        "rating_count": 0
+      },
+      "github": {
+        "stars": 0,
+        "forks": 0,
+        "watchers": 0,
+        "open_issues": 0
+      },
+      "email": {
+        "subscribers": null
+      }
     }
   ],
-  "generated_at": "2026-02-21T23:30:51Z"
+  "generated_at": "2026-02-22T00:14:23Z"
 }
