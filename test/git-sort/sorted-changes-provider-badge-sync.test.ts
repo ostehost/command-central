@@ -19,53 +19,80 @@ import {
 } from "../helpers/typed-mocks.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
+/**
+ * Helper: create a mock TreeView that tracks title changes
+ */
+function createTitleTrackingTreeView() {
+	const titles: string[] = [];
+	return {
+		view: {
+			get title() {
+				return titles[titles.length - 1] ?? "";
+			},
+			set title(value: string) {
+				titles.push(value);
+			},
+			description: "",
+			message: undefined as string | undefined,
+			badge: undefined as { value: number; tooltip: string } | undefined,
+			visible: true,
+			onDidChangeVisibility: mock(() => ({ dispose: mock() })),
+			onDidChangeSelection: mock(() => ({ dispose: mock() })),
+			reveal: mock(() => Promise.resolve()),
+			dispose: mock(),
+		},
+		titles,
+	};
+}
+
+/**
+ * Helper: set up git extension mock with given repos
+ */
+function setupGitExtensionMock(
+	vscode: typeof import("vscode"),
+	mockGitApi: unknown,
+) {
+	vscode.extensions.getExtension = mock(
+		() =>
+			({
+				id: "vscode.git",
+				extensionUri: vscode.Uri.file("/mock/extension"),
+				extensionPath: "/mock/extension",
+				isActive: true,
+				packageJSON: {},
+				extensionKind: vscode.ExtensionKind.Workspace,
+				activate: mock(() =>
+					Promise.resolve({ getAPI: () => mockGitApi }),
+				),
+				exports: { getAPI: () => mockGitApi },
+			}) as any,
+	);
+}
+
 describe("Badge/Title Count Synchronization", () => {
 	let mockLogger: LoggerService;
 
 	beforeEach(() => {
 		mock.restore();
 		setupVSCodeMock();
+
+		// Mock filesystem to return timestamps for mock files
+		mock.module("node:fs/promises", () => ({
+			stat: mock(async () => ({
+				mtime: new Date(),
+				isDirectory: () => false,
+			})),
+			readFile: mock(async () => Buffer.from("{}")),
+			writeFile: mock(async () => {}),
+			mkdir: mock(async () => {}),
+			access: mock(async () => {}),
+			realpath: mock(async (p: string) => p),
+		}));
+
 		mockLogger = createMockLogger();
 	});
 
-	test("title count resets to 0 when getChildren returns empty (no git API)", async () => {
-		const vscode = await import("vscode");
-		const { SortedGitChangesProvider } = await import(
-			"../../src/git-sort/sorted-changes-provider.js"
-		);
-
-		// Mock no Git extension
-		vscode.extensions.getExtension = mock(() => undefined);
-
-		const mockContext = createMockExtensionContext();
-		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
-
-		// Simulate a previously non-zero count by setting a tree view and triggering title
-		const mockTreeView = {
-			title: "",
-			description: "",
-			message: undefined as string | undefined,
-			visible: true,
-			onDidChangeVisibility: mock(() => ({ dispose: mock() })),
-			onDidChangeSelection: mock(() => ({ dispose: mock() })),
-			reveal: mock(() => Promise.resolve()),
-			dispose: mock(),
-		};
-		provider.setActivityBarTreeView(mockTreeView as any);
-
-		// First, force a non-zero count in the title by calling getViewTitle indirectly
-		// The provider starts with lastKnownFileCount = 0, so let's verify it stays 0
-		await provider.initialize();
-		const children = await provider.getChildren();
-
-		expect(children).toEqual([]);
-
-		// Title should NOT contain a count (count is 0 = hidden)
-		const title = provider.getViewTitle();
-		expect(title).not.toMatch(/\(\d+\)/);
-	});
-
-	test("title count resets when tree transitions from N items to 0 items", async () => {
+	test("title count resets when tree transitions from items to empty", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -74,33 +101,18 @@ describe("Badge/Title Count Synchronization", () => {
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
-		// Set up a mock tree view to observe title changes
-		const titleHistory: string[] = [];
-		const mockTreeView = {
-			get title() {
-				return titleHistory[titleHistory.length - 1] ?? "";
-			},
-			set title(value: string) {
-				titleHistory.push(value);
-			},
-			description: "",
-			message: undefined as string | undefined,
-			visible: true,
-			onDidChangeVisibility: mock(() => ({ dispose: mock() })),
-			onDidChangeSelection: mock(() => ({ dispose: mock() })),
-			reveal: mock(() => Promise.resolve()),
-			dispose: mock(),
-		};
-		provider.setActivityBarTreeView(mockTreeView as any);
+		// Set up title-tracking tree view
+		const { view, titles } = createTitleTrackingTreeView();
+		provider.setActivityBarTreeView(view as any);
 
-		// Mock a repository with some changes first
+		// Mock repo with 3 modified files
 		const mockRepo = {
 			rootUri: vscode.Uri.file("/workspace"),
 			state: {
 				workingTreeChanges: [
 					{
 						uri: vscode.Uri.file("/workspace/file1.ts"),
-						status: 5, // MODIFIED
+						status: 5,
 						originalUri: vscode.Uri.file("/workspace/file1.ts"),
 						renameUri: undefined,
 					},
@@ -108,6 +120,12 @@ describe("Badge/Title Count Synchronization", () => {
 						uri: vscode.Uri.file("/workspace/file2.ts"),
 						status: 5,
 						originalUri: vscode.Uri.file("/workspace/file2.ts"),
+						renameUri: undefined,
+					},
+					{
+						uri: vscode.Uri.file("/workspace/file3.ts"),
+						status: 5,
+						originalUri: vscode.Uri.file("/workspace/file3.ts"),
 						renameUri: undefined,
 					},
 				],
@@ -123,29 +141,18 @@ describe("Badge/Title Count Synchronization", () => {
 			onDidCloseRepository: mock(() => ({ dispose: () => {} })),
 		};
 
-		vscode.extensions.getExtension = mock(
-			() =>
-				({
-					id: "vscode.git",
-					extensionUri: vscode.Uri.file("/mock/extension"),
-					extensionPath: "/mock/extension",
-					isActive: true,
-					packageJSON: {},
-					extensionKind: vscode.ExtensionKind.Workspace,
-					activate: mock(() =>
-						Promise.resolve({ getAPI: () => mockGitApi }),
-					),
-					exports: { getAPI: () => mockGitApi },
-				}) as any,
-		);
-
+		setupGitExtensionMock(vscode, mockGitApi);
 		await provider.initialize();
 
-		// First call: should have 2 files (they'll get timestamps from mocked fs)
-		// Note: timestamps may fail for mock files, but the count tracking is what matters
+		// First call: should have 3 files
 		const children1 = await provider.getChildren();
+		expect(children1.length).toBeGreaterThan(0);
 
-		// Now simulate all changes being removed (renames/deletions committed)
+		// Verify title contains "(3)"
+		const titleAfterFirstCall = provider.getViewTitle();
+		expect(titleAfterFirstCall).toContain("(3)");
+
+		// Now remove all changes (simulate renames/deletions being committed)
 		mockRepo.state.workingTreeChanges = [];
 		mockRepo.state.indexChanges = [];
 
@@ -153,68 +160,35 @@ describe("Badge/Title Count Synchronization", () => {
 		const children2 = await provider.getChildren();
 		expect(children2).toEqual([]);
 
-		// CRITICAL: Title should NOT show a stale count
-		const finalTitle = provider.getViewTitle();
-		expect(finalTitle).not.toMatch(/\(2\)/);
-		expect(finalTitle).not.toMatch(/\(\d+\)/);
+		// CRITICAL: Title should NOT contain "(3)" anymore
+		const titleAfterSecondCall = provider.getViewTitle();
+		expect(titleAfterSecondCall).not.toMatch(/\(\d+\)/);
 	});
 
-	test("title count resets when getChildren returns empty (no repo found)", async () => {
+	test("title count resets when getChildren returns empty (no git API)", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
 
+		// No git extension
+		vscode.extensions.getExtension = mock(() => undefined);
+
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
-		// Set up tree view
-		const mockTreeView = {
-			title: "",
-			description: "",
-			message: undefined as string | undefined,
-			visible: true,
-			onDidChangeVisibility: mock(() => ({ dispose: mock() })),
-			onDidChangeSelection: mock(() => ({ dispose: mock() })),
-			reveal: mock(() => Promise.resolve()),
-			dispose: mock(),
-		};
-		provider.setActivityBarTreeView(mockTreeView as any);
-
-		// Git API with empty repositories
-		const mockGitApi = {
-			repositories: [],
-			onDidOpenRepository: mock(() => ({ dispose: () => {} })),
-			onDidCloseRepository: mock(() => ({ dispose: () => {} })),
-		};
-
-		vscode.extensions.getExtension = mock(
-			() =>
-				({
-					id: "vscode.git",
-					extensionUri: vscode.Uri.file("/mock/extension"),
-					extensionPath: "/mock/extension",
-					isActive: true,
-					packageJSON: {},
-					extensionKind: vscode.ExtensionKind.Workspace,
-					activate: mock(() =>
-						Promise.resolve({ getAPI: () => mockGitApi }),
-					),
-					exports: { getAPI: () => mockGitApi },
-				}) as any,
-		);
+		const { view } = createTitleTrackingTreeView();
+		provider.setActivityBarTreeView(view as any);
 
 		await provider.initialize();
 		const children = await provider.getChildren();
 
 		expect(children).toEqual([]);
-
-		// Title should not show any count
-		const title = provider.getViewTitle();
-		expect(title).not.toMatch(/\(\d+\)/);
+		// Title should have no count
+		expect(provider.getViewTitle()).not.toMatch(/\(\d+\)/);
 	});
 
-	test("title count resets when getChildren throws an error", async () => {
+	test("title count resets when getChildren returns empty (no repositories)", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -223,21 +197,36 @@ describe("Badge/Title Count Synchronization", () => {
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
-		// Set up tree view
-		const mockTreeView = {
-			title: "",
-			description: "",
-			message: undefined as string | undefined,
-			visible: true,
-			onDidChangeVisibility: mock(() => ({ dispose: mock() })),
-			onDidChangeSelection: mock(() => ({ dispose: mock() })),
-			reveal: mock(() => Promise.resolve()),
-			dispose: mock(),
-		};
-		provider.setActivityBarTreeView(mockTreeView as any);
+		const { view } = createTitleTrackingTreeView();
+		provider.setActivityBarTreeView(view as any);
 
-		// Mock a repository that throws on access
-		const mockGitApi = {
+		setupGitExtensionMock(vscode, {
+			repositories: [],
+			onDidOpenRepository: mock(() => ({ dispose: () => {} })),
+			onDidCloseRepository: mock(() => ({ dispose: () => {} })),
+		});
+
+		await provider.initialize();
+		const children = await provider.getChildren();
+
+		expect(children).toEqual([]);
+		expect(provider.getViewTitle()).not.toMatch(/\(\d+\)/);
+	});
+
+	test("title count resets when getChildren catches an error", async () => {
+		const vscode = await import("vscode");
+		const { SortedGitChangesProvider } = await import(
+			"../../src/git-sort/sorted-changes-provider.js"
+		);
+
+		const mockContext = createMockExtensionContext();
+		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
+
+		const { view } = createTitleTrackingTreeView();
+		provider.setActivityBarTreeView(view as any);
+
+		// Repo that throws during access
+		setupGitExtensionMock(vscode, {
 			repositories: [
 				{
 					rootUri: vscode.Uri.file("/workspace"),
@@ -252,50 +241,16 @@ describe("Badge/Title Count Synchronization", () => {
 			],
 			onDidOpenRepository: mock(() => ({ dispose: () => {} })),
 			onDidCloseRepository: mock(() => ({ dispose: () => {} })),
-		};
-
-		vscode.extensions.getExtension = mock(
-			() =>
-				({
-					id: "vscode.git",
-					extensionUri: vscode.Uri.file("/mock/extension"),
-					extensionPath: "/mock/extension",
-					isActive: true,
-					packageJSON: {},
-					extensionKind: vscode.ExtensionKind.Workspace,
-					activate: mock(() =>
-						Promise.resolve({ getAPI: () => mockGitApi }),
-					),
-					exports: { getAPI: () => mockGitApi },
-				}) as any,
-		);
+		});
 
 		await provider.initialize();
 		const children = await provider.getChildren();
 
 		expect(children).toEqual([]);
-
-		// Title should not show stale count after error
-		const title = provider.getViewTitle();
-		expect(title).not.toMatch(/\(\d+\)/);
+		expect(provider.getViewTitle()).not.toMatch(/\(\d+\)/);
 	});
 
-	test("getViewTitle shows no count when lastKnownFileCount is 0", async () => {
-		const { SortedGitChangesProvider } = await import(
-			"../../src/git-sort/sorted-changes-provider.js"
-		);
-
-		const mockContext = createMockExtensionContext();
-		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
-
-		// getViewTitle with default state (count = 0) should have no count suffix
-		const title = provider.getViewTitle();
-		expect(title).not.toMatch(/\(\d+\)/);
-		// Should contain sort indicator
-		expect(title).toMatch(/[▼▲]/);
-	});
-
-	test("title updates on BOTH activity bar and panel when count changes to 0", async () => {
+	test("both activity bar and panel titles update when count goes to 0", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -304,81 +259,56 @@ describe("Badge/Title Count Synchronization", () => {
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
-		// Track title assignments on both views
-		const activityBarTitles: string[] = [];
-		const panelTitles: string[] = [];
+		const activityBar = createTitleTrackingTreeView();
+		const panel = createTitleTrackingTreeView();
+		provider.setActivityBarTreeView(activityBar.view as any);
+		provider.setPanelTreeView(panel.view as any);
 
-		const mockActivityBarView = {
-			get title() {
-				return activityBarTitles[activityBarTitles.length - 1] ?? "";
+		// Mock repo with files
+		const mockRepo = {
+			rootUri: vscode.Uri.file("/workspace"),
+			state: {
+				workingTreeChanges: [
+					{
+						uri: vscode.Uri.file("/workspace/a.ts"),
+						status: 5,
+						originalUri: vscode.Uri.file("/workspace/a.ts"),
+						renameUri: undefined,
+					},
+				],
+				indexChanges: [],
+				onDidChange: mock(() => ({ dispose: () => {} })),
 			},
-			set title(value: string) {
-				activityBarTitles.push(value);
-			},
-			description: "",
-			message: undefined as string | undefined,
-			visible: true,
-			onDidChangeVisibility: mock(() => ({ dispose: mock() })),
-			onDidChangeSelection: mock(() => ({ dispose: mock() })),
-			reveal: mock(() => Promise.resolve()),
-			dispose: mock(),
+			diffWithHEAD: mock(() => Promise.resolve([])),
 		};
 
-		const mockPanelView = {
-			get title() {
-				return panelTitles[panelTitles.length - 1] ?? "";
-			},
-			set title(value: string) {
-				panelTitles.push(value);
-			},
-			description: "",
-			message: undefined as string | undefined,
-			visible: true,
-			onDidChangeVisibility: mock(() => ({ dispose: mock() })),
-			onDidChangeSelection: mock(() => ({ dispose: mock() })),
-			reveal: mock(() => Promise.resolve()),
-			dispose: mock(),
-		};
-
-		provider.setActivityBarTreeView(mockActivityBarView as any);
-		provider.setPanelTreeView(mockPanelView as any);
-
-		// Git API with no repos (simulates empty state)
-		const mockGitApi = {
-			repositories: [],
+		setupGitExtensionMock(vscode, {
+			repositories: [mockRepo],
 			onDidOpenRepository: mock(() => ({ dispose: () => {} })),
 			onDidCloseRepository: mock(() => ({ dispose: () => {} })),
-		};
-
-		vscode.extensions.getExtension = mock(
-			() =>
-				({
-					id: "vscode.git",
-					extensionUri: vscode.Uri.file("/mock/extension"),
-					extensionPath: "/mock/extension",
-					isActive: true,
-					packageJSON: {},
-					extensionKind: vscode.ExtensionKind.Workspace,
-					activate: mock(() =>
-						Promise.resolve({ getAPI: () => mockGitApi }),
-					),
-					exports: { getAPI: () => mockGitApi },
-				}) as any,
-		);
+		});
 
 		await provider.initialize();
+
+		// First call populates with 1 file
+		await provider.getChildren();
+		expect(provider.getViewTitle()).toContain("(1)");
+
+		// Remove all changes
+		mockRepo.state.workingTreeChanges = [];
+
+		// Second call should clear the count
 		await provider.getChildren();
 
-		// Both views should have been updated with count-free titles
-		const lastActivityBarTitle =
-			activityBarTitles[activityBarTitles.length - 1];
-		const lastPanelTitle = panelTitles[panelTitles.length - 1];
+		const finalTitle = provider.getViewTitle();
+		expect(finalTitle).not.toMatch(/\(\d+\)/);
 
-		if (lastActivityBarTitle) {
-			expect(lastActivityBarTitle).not.toMatch(/\(\d+\)/);
-		}
-		if (lastPanelTitle) {
-			expect(lastPanelTitle).not.toMatch(/\(\d+\)/);
-		}
+		// Both views should have the updated title
+		const lastActivityBarTitle =
+			activityBar.titles[activityBar.titles.length - 1];
+		const lastPanelTitle = panel.titles[panel.titles.length - 1];
+
+		expect(lastActivityBarTitle).not.toMatch(/\(\d+\)/);
+		expect(lastPanelTitle).not.toMatch(/\(\d+\)/);
 	});
 });

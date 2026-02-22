@@ -430,6 +430,26 @@ export class SortedGitChangesProvider
 	}
 
 	/**
+	 * Resets file count to 0 and updates all TreeView titles.
+	 *
+	 * CRITICAL: Must be called on every early-return path in getChildren()
+	 * that returns an empty array. Without this, the title shows a stale
+	 * count (e.g., "(20)") while the tree is empty.
+	 *
+	 * This fixes the badge/title desync bug where file renames or deletions
+	 * cause the tree to be empty but the count remains from the previous state.
+	 */
+	private resetCountAndTitles(): void {
+		if (this.lastKnownFileCount !== 0) {
+			this.logger.info(
+				`[${this.workspaceId}] Resetting stale file count: ${this.lastKnownFileCount} → 0`,
+			);
+			this.lastKnownFileCount = 0;
+			this.updateAllTreeViewTitles();
+		}
+	}
+
+	/**
 	 * Updates TreeView.message based on filter state and results.
 	 *
 	 * - Filter active + zero matches → informational message
@@ -1732,6 +1752,7 @@ export class SortedGitChangesProvider
 
 		// Root level - return time groups
 		if (!this.gitApi || !this.gitApi.repositories.length) {
+			this.resetCountAndTitles();
 			return [];
 		}
 
@@ -1745,6 +1766,7 @@ export class SortedGitChangesProvider
 				: this.gitApi.repositories[0];
 
 			if (!repo) {
+				this.resetCountAndTitles();
 				return [];
 			}
 			const workspaceRoot = repo.rootUri.fsPath;
@@ -1877,8 +1899,9 @@ export class SortedGitChangesProvider
 				// Enrich all changes with timestamps
 				allChanges = await this.enrichWithTimestamps(allChanges, workspaceRoot);
 
-				// Return early if enrichment failed
+				// Return early if enrichment failed or no changes remain
 				if (allChanges.length === 0) {
+					this.resetCountAndTitles();
 					return [];
 				}
 
@@ -1938,6 +1961,7 @@ export class SortedGitChangesProvider
 			// If tree is empty (error case), both should be empty
 			this.parentMap.clear();
 			this.cachedTreeStructure = [];
+			this.resetCountAndTitles();
 			return [];
 		}
 	}
