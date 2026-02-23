@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 490" width="100%" height="auto">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 490" font-family="system-ui, -apple-system, sans-serif">
   <defs>
     <style>
       .bg { fill: #161b22; }
@@ -17,16 +17,16 @@
   </defs>
 
   <!-- Background -->
-  <rect width="520" height="520" class="bg" rx="8"/>
+  <rect width="480" height="490" class="bg" rx="8"/>
 
   <!-- Header bar -->
-  <rect x="0" y="0" width="520" height="32" class="header-bar" rx="8"/>
-  <rect x="0" y="16" width="520" height="16" class="header-bar"/>
+  <rect x="0" y="0" width="480" height="32" class="header-bar" rx="8"/>
+  <rect x="0" y="16" width="480" height="16" class="header-bar"/>
   <text x="16" y="21" class="muted" font-size="12" font-weight="700" letter-spacing="1.5">COMMAND CENTRAL</text>
-  <text x="504" y="21" class="muted" font-size="13" text-anchor="end">⋯</text>
+  <text x="464" y="21" class="muted" font-size="13" text-anchor="end">⋯</text>
 
   <!-- ═══════ Workspace 1: 🚀 MY-APP ═══════ -->
-  <rect x="0" y="36" width="520" height="30" class="section-bg"/>
+  <rect x="0" y="36" width="480" height="30" class="section-bg"/>
   <text x="12" y="56" font-size="16">🚀</text>
   <text x="34" y="56" class="bright" font-size="14" font-weight="700">MY-APP</text>
   <text x="108" y="56" class="muted" font-size="11">▼</text>
@@ -36,38 +36,38 @@
   <text x="90" y="82" class="muted" font-size="12">(2 files)</text>
 
   <!-- Row: App.ts -->
-  <rect x="0" y="90" width="520" height="30" fill="transparent"/>
+  <rect x="0" y="90" width="480" height="30" fill="transparent"/>
   <line x1="34" y1="90" x2="34" y2="120" class="indent"/>
   <rect x="44" y="95" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="54" y="106" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="72" y="109" class="bright mono" font-size="13" font-weight="700">App.ts</text>
-  <text x="280" y="109" class="muted" font-size="12">2 hours ago</text>
-  <text x="504" y="109" class="yellow" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">M</text>
+  <text x="260" y="109" class="muted" font-size="12">2 hours ago</text>
+  <text x="464" y="109" class="yellow" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">M</text>
 
   <!-- Row: index.ts -->
-  <rect x="0" y="120" width="520" height="30" class="row-alt"/>
+  <rect x="0" y="120" width="480" height="30" class="row-alt"/>
   <line x1="34" y1="120" x2="34" y2="150" class="indent"/>
   <rect x="44" y="125" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="54" y="136" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="72" y="139" fill="#f85149" font-size="13" font-weight="700" font-family="'Cascadia Code', monospace">index.ts</text>
-  <text x="280" y="139" class="muted" font-size="12">3 hours ago</text>
-  <text x="504" y="139" class="red" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">4, M</text>
+  <text x="260" y="139" class="muted" font-size="12">3 hours ago</text>
+  <text x="464" y="139" class="red" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">4, M</text>
 
   <!-- Yesterday -->
   <text x="28" y="168" class="accent" font-size="13" font-weight="600">▾ Yesterday</text>
   <text x="112" y="168" class="muted" font-size="12">(1 file)</text>
 
   <!-- Row: utils.ts -->
-  <rect x="0" y="176" width="520" height="30" fill="transparent"/>
+  <rect x="0" y="176" width="480" height="30" fill="transparent"/>
   <line x1="34" y1="176" x2="34" y2="206" class="indent"/>
   <rect x="44" y="181" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="54" y="192" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="72" y="195" class="bright mono" font-size="13">utils.ts</text>
-  <text x="280" y="195" class="muted" font-size="12">13 hours ago</text>
-  <text x="504" y="195" class="green" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">U</text>
+  <text x="260" y="195" class="muted" font-size="12">13 hours ago</text>
+  <text x="464" y="195" class="green" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- ═══════ Workspace 2: ⚡ API-SERVER ═══════ -->
-  <rect x="0" y="216" width="520" height="30" class="section-bg"/>
+  <rect x="0" y="216" width="480" height="30" class="section-bg"/>
   <text x="12" y="236" font-size="16">⚡</text>
   <text x="34" y="236" class="bright" font-size="14" font-weight="700">API-SERVER</text>
   <text x="130" y="236" class="muted" font-size="11">▼</text>
@@ -77,34 +77,34 @@
   <text x="112" y="262" class="muted" font-size="12">(3 files)</text>
 
   <!-- Row: server.ts -->
-  <rect x="0" y="270" width="520" height="30" fill="transparent"/>
+  <rect x="0" y="270" width="480" height="30" fill="transparent"/>
   <line x1="34" y1="270" x2="34" y2="300" class="indent"/>
   <rect x="44" y="275" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="54" y="286" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="72" y="289" class="bright mono" font-size="13" font-weight="700">server.ts</text>
-  <text x="280" y="289" class="muted" font-size="12">12 hours ago</text>
-  <text x="504" y="289" class="yellow" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">M</text>
+  <text x="260" y="289" class="muted" font-size="12">12 hours ago</text>
+  <text x="464" y="289" class="yellow" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">M</text>
 
   <!-- Row: auth.ts -->
-  <rect x="0" y="300" width="520" height="30" class="row-alt"/>
+  <rect x="0" y="300" width="480" height="30" class="row-alt"/>
   <line x1="34" y1="300" x2="34" y2="330" class="indent"/>
   <rect x="44" y="305" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="54" y="316" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="72" y="319" class="bright mono" font-size="13">auth.ts</text>
-  <text x="280" y="319" class="muted" font-size="12">12 hours ago</text>
-  <text x="504" y="319" class="yellow" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">M</text>
+  <text x="260" y="319" class="muted" font-size="12">12 hours ago</text>
+  <text x="464" y="319" class="yellow" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">M</text>
 
   <!-- Row: config.ts -->
-  <rect x="0" y="330" width="520" height="30" fill="transparent"/>
+  <rect x="0" y="330" width="480" height="30" fill="transparent"/>
   <line x1="34" y1="330" x2="34" y2="360" class="indent"/>
   <rect x="44" y="335" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="54" y="346" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="72" y="349" class="bright mono" font-size="13">config.ts</text>
-  <text x="280" y="349" class="muted" font-size="12">12 hours ago</text>
-  <text x="504" y="349" class="green" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">U</text>
+  <text x="260" y="349" class="muted" font-size="12">12 hours ago</text>
+  <text x="464" y="349" class="green" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 
   <!-- ═══════ Workspace 3: 📦 SHARED-LIB ═══════ -->
-  <rect x="0" y="370" width="520" height="30" class="section-bg"/>
+  <rect x="0" y="370" width="480" height="30" class="section-bg"/>
   <text x="12" y="390" font-size="16">📦</text>
   <text x="34" y="390" class="bright" font-size="14" font-weight="700">SHARED-LIB</text>
   <text x="132" y="390" class="muted" font-size="11">▼</text>
@@ -114,20 +114,20 @@
   <text x="122" y="416" class="muted" font-size="12">(2 files)</text>
 
   <!-- Row: utils.ts -->
-  <rect x="0" y="424" width="520" height="30" fill="transparent"/>
+  <rect x="0" y="424" width="480" height="30" fill="transparent"/>
   <line x1="34" y1="424" x2="34" y2="454" class="indent"/>
   <rect x="44" y="429" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="54" y="440" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="72" y="443" class="bright mono" font-size="13">utils.ts</text>
-  <text x="280" y="443" class="muted" font-size="12">5 days ago</text>
-  <text x="504" y="443" class="yellow" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">M</text>
+  <text x="260" y="443" class="muted" font-size="12">5 days ago</text>
+  <text x="464" y="443" class="yellow" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">M</text>
 
   <!-- Row: types.ts -->
-  <rect x="0" y="454" width="520" height="30" class="row-alt"/>
+  <rect x="0" y="454" width="480" height="30" class="row-alt"/>
   <line x1="34" y1="454" x2="34" y2="484" class="indent"/>
   <rect x="44" y="459" width="20" height="15" rx="3" fill="#519aba" opacity="0.2"/>
   <text x="54" y="470" fill="#519aba" font-size="9" font-weight="700" font-family="system-ui" text-anchor="middle">TS</text>
   <text x="72" y="473" class="bright mono" font-size="13">types.ts</text>
-  <text x="280" y="473" class="muted" font-size="12">6 days ago</text>
-  <text x="504" y="473" class="green" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">U</text>
+  <text x="260" y="473" class="muted" font-size="12">6 days ago</text>
+  <text x="464" y="473" class="green" font-size="13" font-weight="700" text-anchor="end" font-family="monospace">U</text>
 </svg>

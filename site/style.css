@@ -246,7 +246,7 @@ a:hover {
 .hero-screenshot {
   margin-top: var(--space-7);
   margin-bottom: var(--space-4);
-  max-width: 520px;
+  max-width: 480px;
   margin-left: auto;
   margin-right: auto;
   position: relative;
