@@ -142,6 +142,18 @@ export class ProjectViewManager {
 				// Find file in all registered tree views
 				for (const [_viewId, treeView] of this.registeredViews) {
 					viewsChecked++;
+
+					// CRITICAL: Only reveal in views that are currently visible.
+					// Without this check, reveal() forces hidden panels to open,
+					// causing the cross-panel force-open bug (e.g., clicking a file
+					// in the bottom panel forces the sidebar to open, and vice versa).
+					if (!treeView.visible) {
+						this.logger.debug(
+							`⏭️  View ${viewsChecked} (${_viewId}): Skipping — not visible`,
+						);
+						continue;
+					}
+
 					const provider = this.treeViewProviders.get(treeView);
 					if (!provider) {
 						this.logger.debug(`⚠️  View ${viewsChecked}: No provider`);
