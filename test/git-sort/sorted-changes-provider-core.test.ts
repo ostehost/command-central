@@ -257,7 +257,8 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		mockLogger = createMockLogger();
 	});
 
-	test("staged group uses green 'check' icon", async () => {
+	test("staged group uses 'check' ThemeIcon", async () => {
+		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
@@ -268,7 +269,6 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
-		// Create a staged GitStatusGroup
 		const stagedGroup = new GitStatusGroupBuilder()
 			.staged()
 			.withTotalCount(3)
@@ -276,22 +276,13 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 
 		const treeItem = provider.getTreeItem(stagedGroup);
 
-		// Assert: Should use custom SVG icons for groups
 		expect(treeItem.iconPath).toBeDefined();
-		expect(typeof treeItem.iconPath).toBe("object");
-		expect(treeItem.iconPath).toHaveProperty("light");
-		expect(treeItem.iconPath).toHaveProperty("dark");
-
-		// Verify the icon paths contain the correct SVG file
-		const iconPath = treeItem.iconPath as {
-			light: { path: string };
-			dark: { path: string };
-		};
-		expect(iconPath.light.path).toContain("staged.svg");
-		expect(iconPath.dark.path).toContain("staged.svg");
+		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
+		expect((treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id).toBe("check");
 	});
 
-	test("unstaged group uses yellow 'circle-outline' icon", async () => {
+	test("unstaged group uses 'edit' ThemeIcon", async () => {
+		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
@@ -302,7 +293,6 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
-		// Create an unstaged GitStatusGroup
 		const unstagedGroup = new GitStatusGroupBuilder()
 			.unstaged()
 			.withTotalCount(5)
@@ -310,19 +300,9 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 
 		const treeItem = provider.getTreeItem(unstagedGroup);
 
-		// Assert: Should use custom SVG icons for groups
 		expect(treeItem.iconPath).toBeDefined();
-		expect(typeof treeItem.iconPath).toBe("object");
-		expect(treeItem.iconPath).toHaveProperty("light");
-		expect(treeItem.iconPath).toHaveProperty("dark");
-
-		// Verify the icon paths contain the correct SVG file
-		const iconPath = treeItem.iconPath as {
-			light: { path: string };
-			dark: { path: string };
-		};
-		expect(iconPath.light.path).toContain("working.svg");
-		expect(iconPath.dark.path).toContain("working.svg");
+		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
+		expect((treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id).toBe("edit");
 	});
 
 	test("staged group has rich tooltip", async () => {

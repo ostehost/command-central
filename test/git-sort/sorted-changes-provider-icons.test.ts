@@ -4,12 +4,6 @@ import type { GitChangeItem } from "../../src/types/tree-element.js";
 import { createMockLogger } from "../helpers/typed-mocks.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
-// Type helper for icon path testing
-interface IconPath {
-	light: { path: string; scheme: string; toString: () => string };
-	dark: { path: string; scheme: string; toString: () => string };
-}
-
 describe("Git Status Icon Integration", () => {
 	let mockLogger: LoggerService;
 
@@ -75,7 +69,7 @@ describe("Git Status Icon Integration", () => {
 		expect(treeItem.resourceUri?.fsPath).toBe("/mock/file.ts");
 	});
 
-	test("should assign staged icon path for staged status group", async () => {
+	test("should assign ThemeIcon for staged status group", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -96,13 +90,12 @@ describe("Git Status Icon Integration", () => {
 			.build();
 
 		const treeItem = provider.getTreeItem(stagedGroup);
-		const iconPath = treeItem.iconPath as unknown as IconPath;
 
-		expect(iconPath.light.path).toContain("staged.svg");
-		expect(iconPath.dark.path).toContain("staged.svg");
+		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
+		expect((treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id).toBe("check");
 	});
 
-	test("should assign working icon path for working status group", async () => {
+	test("should assign ThemeIcon for working status group", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -123,13 +116,12 @@ describe("Git Status Icon Integration", () => {
 			.build();
 
 		const treeItem = provider.getTreeItem(workingGroup);
-		const iconPath = treeItem.iconPath as unknown as IconPath;
 
-		expect(iconPath.light.path).toContain("working.svg");
-		expect(iconPath.dark.path).toContain("working.svg");
+		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
+		expect((treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id).toBe("edit");
 	});
 
-	test("should maintain iconPath structure with light and dark URIs for groups", async () => {
+	test("should use ThemeIcon (not file paths) for group icons", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -150,15 +142,14 @@ describe("Git Status Icon Integration", () => {
 			.build();
 
 		const treeItem = provider.getTreeItem(group);
-		const iconPath = treeItem.iconPath as unknown as IconPath;
 
-		expect(iconPath.light).toBeDefined();
-		expect(iconPath.dark).toBeDefined();
-		expect(iconPath.light.scheme).toBeDefined();
-		expect(iconPath.dark.scheme).toBeDefined();
+		// ThemeIcon is a single object, not { light, dark } file paths
+		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
+		expect(treeItem.iconPath).not.toHaveProperty("light");
+		expect(treeItem.iconPath).not.toHaveProperty("dark");
 	});
 
-	test("should use extension context for path resolution in groups", async () => {
+	test("group icons are ThemeIcons independent of extension path", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -179,10 +170,10 @@ describe("Git Status Icon Integration", () => {
 			.build();
 
 		const treeItem = provider.getTreeItem(group);
-		const iconPath = treeItem.iconPath as unknown as IconPath;
 
-		// Paths should be resolved from extension URI
-		expect(iconPath.light.toString()).toContain("mock/extension/path");
-		expect(iconPath.dark.toString()).toContain("mock/extension/path");
+		// ThemeIcons don't depend on extension path — they're built into VS Code
+		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
+		const icon = treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>;
+		expect(icon.id).toBe("edit");
 	});
 });
