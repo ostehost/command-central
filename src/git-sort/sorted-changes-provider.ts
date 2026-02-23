@@ -112,7 +112,6 @@ export class SortedGitChangesProvider
 
 	constructor(
 		private logger: LoggerService,
-		// biome-ignore lint/correctness/noUnusedPrivateClassMembers: Required by factory API; may be used for future custom icons
 		private context: vscode.ExtensionContext,
 		storage?: StorageAdapter,
 		public workspaceRootUri?: vscode.Uri,

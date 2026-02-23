@@ -18,13 +18,21 @@ import type { ProjectViewConfig } from "../../src/config/project-views.js";
 import type { ProviderFactory } from "../../src/factories/provider-factory.js";
 import type { SortedGitChangesProvider } from "../../src/git-sort/sorted-changes-provider.js";
 import type { LoggerService } from "../../src/services/logger-service.js";
-import { createMockExtensionContext, createMockUri } from "../helpers/typed-mocks.js";
+import {
+	createMockExtensionContext,
+	createMockUri,
+} from "../helpers/typed-mocks.js";
 
 // Capture the onDidChangeActiveTextEditor callback so we can trigger it manually
-let activeEditorCallback: ((editor: vscode.TextEditor | undefined) => void) | null = null;
+let activeEditorCallback:
+	| ((editor: vscode.TextEditor | undefined) => void)
+	| null = null;
 
 // Track reveal calls per view
-const revealCalls = new Map<string, Array<{ item: unknown; options: unknown }>>();
+const revealCalls = new Map<
+	string,
+	Array<{ item: unknown; options: unknown }>
+>();
 
 // Track tree view visibility per view
 const viewVisibility = new Map<string, boolean>();
@@ -42,7 +50,10 @@ function createMockLogger(): LoggerService {
 function setupTestVSCodeMock() {
 	const vscodeMock = {
 		RelativePattern: class {
-			constructor(public base: unknown, public pattern: string) {}
+			constructor(
+				public base: unknown,
+				public pattern: string,
+			) {}
 		},
 		workspace: {
 			createFileSystemWatcher: mock(() => ({
@@ -66,12 +77,18 @@ function setupTestVSCodeMock() {
 			public resourceUri?: unknown;
 			public command?: unknown;
 			public iconPath?: unknown;
-			constructor(public label: string, public collapsibleState?: number) {}
+			constructor(
+				public label: string,
+				public collapsibleState?: number,
+			) {}
 		},
 		TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
 		ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
 		ThemeIcon: class {
-			constructor(public id: string, public color?: unknown) {}
+			constructor(
+				public id: string,
+				public color?: unknown,
+			) {}
 			static File = { id: "file" };
 		},
 		ThemeColor: class {
@@ -127,10 +144,12 @@ function setupTestVSCodeMock() {
 				};
 				return treeView;
 			}),
-			onDidChangeActiveTextEditor: mock((callback: (editor: vscode.TextEditor | undefined) => void) => {
-				activeEditorCallback = callback;
-				return { dispose: mock() };
-			}),
+			onDidChangeActiveTextEditor: mock(
+				(callback: (editor: vscode.TextEditor | undefined) => void) => {
+					activeEditorCallback = callback;
+					return { dispose: mock() };
+				},
+			),
 			onDidChangeVisibleTextEditors: mock(() => ({ dispose: mock() })),
 			showQuickPick: mock(() => Promise.resolve(undefined)),
 		},
@@ -162,7 +181,10 @@ function setupTestVSCodeMock() {
 
 // Mock provider that returns an item for a specific URI
 function createTrackingProvider(matchUri?: string): SortedGitChangesProvider {
-	const mockItem = { uri: matchUri ? createMockUri(matchUri) : undefined, label: "test-file.ts" };
+	const mockItem = {
+		uri: matchUri ? createMockUri(matchUri) : undefined,
+		label: "test-file.ts",
+	};
 	return {
 		initialize: mock(async () => {}),
 		dispose: mock(async () => {}),
@@ -186,14 +208,14 @@ function createTrackingProvider(matchUri?: string): SortedGitChangesProvider {
 describe("Active File Tracking - Panel Force-Open Bug", () => {
 	let mockLogger: LoggerService;
 	let mockContext: vscode.ExtensionContext;
-	let vscodeMock: ReturnType<typeof setupTestVSCodeMock>;
+	let _vscodeMock: ReturnType<typeof setupTestVSCodeMock>;
 
 	beforeEach(() => {
 		mock.restore();
 		activeEditorCallback = null;
 		revealCalls.clear();
 		viewVisibility.clear();
-		vscodeMock = setupTestVSCodeMock();
+		_vscodeMock = setupTestVSCodeMock();
 		mockLogger = createMockLogger();
 		mockContext = createMockExtensionContext();
 	});
@@ -214,15 +236,17 @@ describe("Active File Tracking - Panel Force-Open Bug", () => {
 		const provider = createTrackingProvider(filePath);
 
 		const mockConfigSource: ProjectConfigSource = {
-			loadProjects: mock(async (): Promise<ProjectViewConfig[]> => [
-				{
-					id: "slot1",
-					displayName: "Frontend",
-					iconPath: "resources/icons/icon1.svg",
-					gitPath: "/workspace/frontend",
-					sortOrder: 1,
-				},
-			]),
+			loadProjects: mock(
+				async (): Promise<ProjectViewConfig[]> => [
+					{
+						id: "slot1",
+						displayName: "Frontend",
+						iconPath: "resources/icons/icon1.svg",
+						gitPath: "/workspace/frontend",
+						sortOrder: 1,
+					},
+				],
+			),
 		};
 
 		const mockProviderFactory: ProviderFactory = {
@@ -245,16 +269,18 @@ describe("Active File Tracking - Panel Force-Open Bug", () => {
 
 		// Simulate opening a file (triggers onDidChangeActiveTextEditor)
 		expect(activeEditorCallback).not.toBeNull();
-		await activeEditorCallback!({
+		await activeEditorCallback?.({
 			document: { uri: createMockUri(filePath) },
 		} as unknown as vscode.TextEditor);
 
 		// Panel view should have reveal called (it's visible)
-		const panelReveals = revealCalls.get("commandCentral.project.slot1Panel") || [];
+		const panelReveals =
+			revealCalls.get("commandCentral.project.slot1Panel") || [];
 		expect(panelReveals.length).toBe(1);
 
 		// Sidebar view should NOT have reveal called (it's hidden)
-		const sidebarReveals = revealCalls.get("commandCentral.project.slot1") || [];
+		const sidebarReveals =
+			revealCalls.get("commandCentral.project.slot1") || [];
 		expect(sidebarReveals.length).toBe(0);
 	});
 
@@ -270,15 +296,17 @@ describe("Active File Tracking - Panel Force-Open Bug", () => {
 		const provider = createTrackingProvider(filePath);
 
 		const mockConfigSource: ProjectConfigSource = {
-			loadProjects: mock(async (): Promise<ProjectViewConfig[]> => [
-				{
-					id: "slot1",
-					displayName: "Frontend",
-					iconPath: "resources/icons/icon1.svg",
-					gitPath: "/workspace/frontend",
-					sortOrder: 1,
-				},
-			]),
+			loadProjects: mock(
+				async (): Promise<ProjectViewConfig[]> => [
+					{
+						id: "slot1",
+						displayName: "Frontend",
+						iconPath: "resources/icons/icon1.svg",
+						gitPath: "/workspace/frontend",
+						sortOrder: 1,
+					},
+				],
+			),
 		};
 
 		const mockProviderFactory: ProviderFactory = {
@@ -299,16 +327,18 @@ describe("Active File Tracking - Panel Force-Open Bug", () => {
 		viewVisibility.set("commandCentral.project.slot1", true);
 		viewVisibility.set("commandCentral.project.slot1Panel", false);
 
-		await activeEditorCallback!({
+		await activeEditorCallback?.({
 			document: { uri: createMockUri(filePath) },
 		} as unknown as vscode.TextEditor);
 
 		// Sidebar should have reveal called (it's visible)
-		const sidebarReveals = revealCalls.get("commandCentral.project.slot1") || [];
+		const sidebarReveals =
+			revealCalls.get("commandCentral.project.slot1") || [];
 		expect(sidebarReveals.length).toBe(1);
 
 		// Panel should NOT have reveal called (it's hidden)
-		const panelReveals = revealCalls.get("commandCentral.project.slot1Panel") || [];
+		const panelReveals =
+			revealCalls.get("commandCentral.project.slot1Panel") || [];
 		expect(panelReveals.length).toBe(0);
 	});
 
@@ -324,15 +354,17 @@ describe("Active File Tracking - Panel Force-Open Bug", () => {
 		const provider = createTrackingProvider(filePath);
 
 		const mockConfigSource: ProjectConfigSource = {
-			loadProjects: mock(async (): Promise<ProjectViewConfig[]> => [
-				{
-					id: "slot1",
-					displayName: "Frontend",
-					iconPath: "resources/icons/icon1.svg",
-					gitPath: "/workspace/frontend",
-					sortOrder: 1,
-				},
-			]),
+			loadProjects: mock(
+				async (): Promise<ProjectViewConfig[]> => [
+					{
+						id: "slot1",
+						displayName: "Frontend",
+						iconPath: "resources/icons/icon1.svg",
+						gitPath: "/workspace/frontend",
+						sortOrder: 1,
+					},
+				],
+			),
 		};
 
 		const mockProviderFactory: ProviderFactory = {
@@ -353,12 +385,14 @@ describe("Active File Tracking - Panel Force-Open Bug", () => {
 		viewVisibility.set("commandCentral.project.slot1", true);
 		viewVisibility.set("commandCentral.project.slot1Panel", true);
 
-		await activeEditorCallback!({
+		await activeEditorCallback?.({
 			document: { uri: createMockUri(filePath) },
 		} as unknown as vscode.TextEditor);
 
-		const sidebarReveals = revealCalls.get("commandCentral.project.slot1") || [];
-		const panelReveals = revealCalls.get("commandCentral.project.slot1Panel") || [];
+		const sidebarReveals =
+			revealCalls.get("commandCentral.project.slot1") || [];
+		const panelReveals =
+			revealCalls.get("commandCentral.project.slot1Panel") || [];
 		expect(sidebarReveals.length).toBe(1);
 		expect(panelReveals.length).toBe(1);
 	});
@@ -375,15 +409,17 @@ describe("Active File Tracking - Panel Force-Open Bug", () => {
 		const provider = createTrackingProvider(filePath);
 
 		const mockConfigSource: ProjectConfigSource = {
-			loadProjects: mock(async (): Promise<ProjectViewConfig[]> => [
-				{
-					id: "slot1",
-					displayName: "Frontend",
-					iconPath: "resources/icons/icon1.svg",
-					gitPath: "/workspace/frontend",
-					sortOrder: 1,
-				},
-			]),
+			loadProjects: mock(
+				async (): Promise<ProjectViewConfig[]> => [
+					{
+						id: "slot1",
+						displayName: "Frontend",
+						iconPath: "resources/icons/icon1.svg",
+						gitPath: "/workspace/frontend",
+						sortOrder: 1,
+					},
+				],
+			),
 		};
 
 		const mockProviderFactory: ProviderFactory = {
@@ -404,12 +440,14 @@ describe("Active File Tracking - Panel Force-Open Bug", () => {
 		viewVisibility.set("commandCentral.project.slot1", false);
 		viewVisibility.set("commandCentral.project.slot1Panel", false);
 
-		await activeEditorCallback!({
+		await activeEditorCallback?.({
 			document: { uri: createMockUri(filePath) },
 		} as unknown as vscode.TextEditor);
 
-		const sidebarReveals = revealCalls.get("commandCentral.project.slot1") || [];
-		const panelReveals = revealCalls.get("commandCentral.project.slot1Panel") || [];
+		const sidebarReveals =
+			revealCalls.get("commandCentral.project.slot1") || [];
+		const panelReveals =
+			revealCalls.get("commandCentral.project.slot1Panel") || [];
 		expect(sidebarReveals.length).toBe(0);
 		expect(panelReveals.length).toBe(0);
 	});

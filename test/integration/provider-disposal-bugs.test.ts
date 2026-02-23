@@ -38,7 +38,7 @@ describe("Provider Disposal Bug Regressions", () => {
 		let usedFallback = false;
 		try {
 			mockRequire("better-sqlite3");
-		} catch (error) {
+		} catch (_error) {
 			// Should fall back to WorkspaceState storage
 			fallbackStorageCreated();
 			usedFallback = true;
@@ -52,7 +52,7 @@ describe("Provider Disposal Bug Regressions", () => {
 		// Simulate VS Code command registration
 		const registeredCommands = new Set<string>();
 		const mockRegisterCommand = mock(
-			(commandId: string, _handler: Function) => {
+			(commandId: string, _handler: (...args: unknown[]) => unknown) => {
 				if (registeredCommands.has(commandId)) {
 					throw new Error(`command '${commandId}' already exists`);
 				}
@@ -145,7 +145,7 @@ describe("Provider Disposal Bug Regressions", () => {
 	test("Bug #5: Empty group handling in tree provider", async () => {
 		// Mock tree provider behavior
 		const mockTreeProvider = {
-			getChildren: mock((element?: any) => {
+			getChildren: mock((element?: unknown) => {
 				if (!element) {
 					// Root level - check if we have any groups with actual content
 					const groups = [
@@ -169,7 +169,9 @@ describe("Provider Disposal Bug Regressions", () => {
 
 		// Specifically check we didn't return empty groups
 		const hasEmptyGroups = children.some(
-			(child: any) => child.type && child.totalCount === 0,
+			(child: unknown) =>
+				(child as { type?: string; totalCount?: number }).type &&
+				(child as { type?: string; totalCount?: number }).totalCount === 0,
 		);
 		expect(hasEmptyGroups).toBe(false);
 	});

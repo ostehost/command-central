@@ -171,3 +171,34 @@ describe("Tree view message behavior", () => {
 		expect(mockTreeView.message).toBeUndefined();
 	});
 });
+
+describe("validateAndCleanFilter", () => {
+	let ExtensionFilterState: typeof import("../../src/services/extension-filter-state.js").ExtensionFilterState;
+
+	beforeEach(async () => {
+		mock.restore();
+		const mod = await import("../../src/services/extension-filter-state.js");
+		ExtensionFilterState = mod.ExtensionFilterState;
+	});
+
+	test("extensionless files (empty string) are not removed as stale", () => {
+		const state = new ExtensionFilterState();
+		state.setExtensionEnabled("workspace", "", true);
+
+		const actualFiles = ["src/index.ts", "Makefile", "README"];
+		state.validateAndCleanFilter("workspace", actualFiles);
+
+		const extensions = state.getEnabledExtensions("workspace");
+		expect(extensions.has("")).toBe(true);
+	});
+
+	test("truly stale extensions are still removed", () => {
+		const state = new ExtensionFilterState();
+		state.setExtensionEnabled("workspace", ".py", true);
+
+		const actualFiles = ["src/index.ts", "README.md"];
+		state.validateAndCleanFilter("workspace", actualFiles);
+
+		expect(state.isFiltered("workspace")).toBe(false);
+	});
+});

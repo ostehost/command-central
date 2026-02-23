@@ -454,7 +454,7 @@ describe("Nested Repository Detection", () => {
 			vscode.Uri.file("/Users/test/.openclaw"),
 		);
 		expect(repo).toBeDefined();
-		expect(repo!.rootUri.fsPath).toBe("/Users/test/.openclaw/workspace");
+		expect(repo?.rootUri.fsPath).toBe("/Users/test/.openclaw/workspace");
 	});
 
 	test("getChildren returns empty when workspace has no nested repos", async () => {

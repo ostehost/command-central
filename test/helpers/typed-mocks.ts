@@ -25,7 +25,6 @@ import type {
 } from "../../src/git-sort/storage/storage-adapter.js";
 import type { LoggerService } from "../../src/services/logger-service.js";
 import type { IGroupingStateManager } from "../../src/types/service-interfaces.js";
-import type { VSCodeMock } from "../types/mock.types.js";
 
 /**
  * Create a complete typed LoggerService mock

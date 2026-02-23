@@ -63,7 +63,7 @@ function setupGitExtensionMock(
 				extensionKind: vscode.ExtensionKind.Workspace,
 				activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
 				exports: { getAPI: () => mockGitApi },
-			}) as any,
+			}) as unknown,
 	);
 }
 
@@ -100,8 +100,8 @@ describe("Badge/Title Count Synchronization", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		// Set up title-tracking tree view
-		const { view, titles } = createTitleTrackingTreeView();
-		provider.setActivityBarTreeView(view as any);
+		const { view } = createTitleTrackingTreeView();
+		provider.setActivityBarTreeView(view as unknown);
 
 		// Mock repo with 3 modified files
 		const mockRepo = {
@@ -176,7 +176,7 @@ describe("Badge/Title Count Synchronization", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const { view } = createTitleTrackingTreeView();
-		provider.setActivityBarTreeView(view as any);
+		provider.setActivityBarTreeView(view as unknown);
 
 		await provider.initialize();
 		const children = await provider.getChildren();
@@ -196,7 +196,7 @@ describe("Badge/Title Count Synchronization", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const { view } = createTitleTrackingTreeView();
-		provider.setActivityBarTreeView(view as any);
+		provider.setActivityBarTreeView(view as unknown);
 
 		setupGitExtensionMock(vscode, {
 			repositories: [],
@@ -221,7 +221,7 @@ describe("Badge/Title Count Synchronization", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const { view } = createTitleTrackingTreeView();
-		provider.setActivityBarTreeView(view as any);
+		provider.setActivityBarTreeView(view as unknown);
 
 		// Repo that throws during access
 		setupGitExtensionMock(vscode, {
@@ -259,8 +259,8 @@ describe("Badge/Title Count Synchronization", () => {
 
 		const activityBar = createTitleTrackingTreeView();
 		const panel = createTitleTrackingTreeView();
-		provider.setActivityBarTreeView(activityBar.view as any);
-		provider.setPanelTreeView(panel.view as any);
+		provider.setActivityBarTreeView(activityBar.view as unknown);
+		provider.setPanelTreeView(panel.view as unknown);
 
 		// Mock repo with files
 		const mockRepo = {

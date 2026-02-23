@@ -9,7 +9,6 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type * as vscode from "vscode";
 import type { ProjectConfigSource } from "../../src/config/project-config-source.js";
 import type { ProjectViewConfig } from "../../src/config/project-views.js";
 import type { ProviderFactory } from "../../src/factories/provider-factory.js";

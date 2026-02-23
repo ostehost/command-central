@@ -278,7 +278,9 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 
 		expect(treeItem.iconPath).toBeDefined();
 		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		expect((treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id).toBe("check");
+		expect(
+			(treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id,
+		).toBe("check");
 	});
 
 	test("unstaged group uses 'edit' ThemeIcon", async () => {
@@ -302,7 +304,9 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 
 		expect(treeItem.iconPath).toBeDefined();
 		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		expect((treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id).toBe("edit");
+		expect(
+			(treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id,
+		).toBe("edit");
 	});
 
 	test("staged group has rich tooltip", async () => {
@@ -395,7 +399,7 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		);
 
 		// Mock Git extension with existing repositories (common scenario)
-		vscode.extensions.getExtension = mock<any>(() => ({
+		vscode.extensions.getExtension = mock<unknown>(() => ({
 			exports: {
 				getAPI: mock(() => ({
 					repositories: [
@@ -423,7 +427,7 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
 
-		vscode.extensions.getExtension = mock<any>(() => ({
+		vscode.extensions.getExtension = mock<unknown>(() => ({
 			exports: {
 				getAPI: mock(() => ({
 					repositories: [],
@@ -468,7 +472,7 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 			rootUri: vscode.Uri.file("/workspace/test"),
 		};
 
-		vscode.extensions.getExtension = mock<any>(() => ({
+		vscode.extensions.getExtension = mock<unknown>(() => ({
 			exports: {
 				getAPI: mock(() => ({
 					repositories: [mockRepository],
@@ -491,7 +495,10 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 
 		// Specifically check it's not returning empty groups with totalCount: 0
 		const hasEmptyGroups = children.some(
-			(child: any) => child.type === "GitStatusGroup" && child.totalCount === 0,
+			(child: unknown) =>
+				(child as { type?: string; totalCount?: number }).type ===
+					"GitStatusGroup" &&
+				(child as { type?: string; totalCount?: number }).totalCount === 0,
 		);
 		expect(hasEmptyGroups).toBe(false);
 	});

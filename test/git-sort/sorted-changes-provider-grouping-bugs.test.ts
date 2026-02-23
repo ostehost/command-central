@@ -41,9 +41,7 @@ function setupGitExtensionMock(
 				isActive: true,
 				packageJSON: {},
 				extensionKind: vscode.ExtensionKind.Workspace,
-				activate: mock(() =>
-					Promise.resolve({ getAPI: () => mockGitApi }),
-				),
+				activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
 				exports: { getAPI: () => mockGitApi },
 				// biome-ignore lint/suspicious/noExplicitAny: GitExtension mock
 			}) as import("vscode").Extension<any>,
@@ -111,26 +109,31 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 			undefined,
 			undefined,
 			undefined,
-			createMockGroupingStateManager(true) as any,
+			createMockGroupingStateManager(true) as unknown,
 		);
 
 		await provider.initialize();
 		await provider.getChildren();
 
 		// The bug: enrichWithTimestamps([]) logged this error
-		const errorCalls = (mockLogger.error as any).mock.calls;
+		const errorCalls = (
+			mockLogger.error as unknown as { mock: { calls: unknown[][] } }
+		).mock.calls;
 		const timestampErrors = errorCalls.filter(
-			(call: any[]) =>
+			(call: unknown[]) =>
 				typeof call[0] === "string" &&
 				call[0].includes("No files with valid timestamps"),
 		);
 		expect(timestampErrors.length).toBe(0);
 
 		// The bug also showed a user-facing error toast
-		const showErrorCalls = (vscode.window.showErrorMessage as any).mock
-			.calls;
+		const showErrorCalls = (
+			vscode.window.showErrorMessage as unknown as {
+				mock: { calls: unknown[][] };
+			}
+		).mock.calls;
 		const toastErrors = showErrorCalls.filter(
-			(call: any[]) =>
+			(call: unknown[]) =>
 				typeof call[0] === "string" &&
 				call[0].includes("Failed to get timestamps"),
 		);
@@ -175,15 +178,17 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 			undefined,
 			undefined,
 			undefined,
-			createMockGroupingStateManager(true) as any,
+			createMockGroupingStateManager(true) as unknown,
 		);
 
 		await provider.initialize();
 		await provider.getChildren();
 
-		const errorCalls = (mockLogger.error as any).mock.calls;
+		const errorCalls = (
+			mockLogger.error as unknown as { mock: { calls: unknown[][] } }
+		).mock.calls;
 		const timestampErrors = errorCalls.filter(
-			(call: any[]) =>
+			(call: unknown[]) =>
 				typeof call[0] === "string" &&
 				call[0].includes("No files with valid timestamps"),
 		);
@@ -235,7 +240,7 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 			undefined,
 			undefined,
 			undefined,
-			createMockGroupingStateManager(true) as any,
+			createMockGroupingStateManager(true) as unknown,
 		);
 
 		await provider.initialize();
@@ -244,8 +249,8 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 		// Must be 2 separate groups, not 1 merged group
 		expect(children.length).toBe(2);
 
-		const staged = children[0] as any;
-		const working = children[1] as any;
+		const staged = children[0] as { statusType: string; totalCount: number };
+		const working = children[1] as { statusType: string; totalCount: number };
 
 		expect(staged.statusType).toBe("staged");
 		expect(staged.totalCount).toBe(1);

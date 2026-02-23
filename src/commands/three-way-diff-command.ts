@@ -12,7 +12,6 @@
  */
 
 import * as path from "node:path";
-import type * as vscode from "vscode";
 import type { GitAPI } from "../types/git-extension.types.js";
 import type { GitChangeItem } from "../types/tree-element.js";
 import { findRepositoryForFile } from "../utils/git-repo-utils.js";

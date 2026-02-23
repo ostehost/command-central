@@ -133,8 +133,8 @@ describe("WorkspaceStateStorageAdapter", () => {
 			const results = await adapter.queryByTimeRange(twoHoursAgo, now);
 			expect(results).toHaveLength(2); // oneHourAgo + now
 			// Sorted newest first
-			expect(results[0]!.timestamp ?? 0).toBeGreaterThanOrEqual(
-				results[1]!.timestamp ?? 0,
+			expect(results[0]?.timestamp ?? 0).toBeGreaterThanOrEqual(
+				results[1]?.timestamp ?? 0,
 			);
 		});
 
@@ -148,7 +148,7 @@ describe("WorkspaceStateStorageAdapter", () => {
 		test("queryRecent respects limit", async () => {
 			const results = await adapter.queryRecent(1);
 			expect(results).toHaveLength(1);
-			expect(results[0]!.timestamp).toBe(now); // Most recent
+			expect(results[0]?.timestamp).toBe(now); // Most recent
 		});
 	});
 

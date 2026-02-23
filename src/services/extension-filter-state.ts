@@ -211,9 +211,7 @@ export class ExtensionFilterState {
 
 		// Extract extensions from actual files
 		const actualExtensions = new Set(
-			actualFiles
-				.map((f) => path.extname(f).toLowerCase())
-				.filter((ext) => ext !== ""),
+			actualFiles.map((f) => path.extname(f).toLowerCase()),
 		);
 
 		this.logger?.debug(

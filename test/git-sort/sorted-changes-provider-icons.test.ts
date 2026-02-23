@@ -92,7 +92,9 @@ describe("Git Status Icon Integration", () => {
 		const treeItem = provider.getTreeItem(stagedGroup);
 
 		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		expect((treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id).toBe("check");
+		expect(
+			(treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id,
+		).toBe("check");
 	});
 
 	test("should assign ThemeIcon for working status group", async () => {
@@ -118,7 +120,9 @@ describe("Git Status Icon Integration", () => {
 		const treeItem = provider.getTreeItem(workingGroup);
 
 		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		expect((treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id).toBe("edit");
+		expect(
+			(treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id,
+		).toBe("edit");
 	});
 
 	test("should use ThemeIcon (not file paths) for group icons", async () => {
