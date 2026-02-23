@@ -743,9 +743,6 @@ export class SortedGitChangesProvider
 
 		if (isUntracked || isAdded) {
 			await vscode.commands.executeCommand("vscode.open", item.uri);
-			vscode.window.showInformationMessage(
-				"This file has no previous version to compare",
-			);
 			return;
 		}
 

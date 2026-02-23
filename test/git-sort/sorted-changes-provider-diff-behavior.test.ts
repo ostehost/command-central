@@ -310,7 +310,7 @@ describe("SortedGitChangesProvider State-Aware Diff Behavior", () => {
 		expect(title).toBe("file.ts (Unstaged Changes)");
 	});
 
-	test("untracked file shows info message and opens file directly", async () => {
+	test("untracked file opens directly without diff or info dialog", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -380,11 +380,9 @@ describe("SortedGitChangesProvider State-Aware Diff Behavior", () => {
 		// Act: Open the change
 		await provider.openChange(untrackedItem);
 
-		// Assert: Opens file directly (not diff) and shows info message
+		// Assert: Opens file directly (not diff) — no info dialog shown
 		expect(mockExecuteCommand).toHaveBeenCalledWith("vscode.open", fileUri);
-		expect(mockShowInformationMessage).toHaveBeenCalledWith(
-			expect.stringContaining("no previous version"),
-		);
+		expect(mockShowInformationMessage).not.toHaveBeenCalled();
 	});
 
 	test("deleted staged file shows HEAD ↔ Index diff", async () => {
