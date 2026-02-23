@@ -262,21 +262,37 @@ export class SortedGitChangesProvider
 	}
 
 	/**
-	 * Get ThemeIcon for git status group indicators
+	 * Get themed icon path for git status group indicators
 	 *
-	 * Uses VS Code built-in ThemeIcons for reliable, theme-aware rendering.
-	 * No external SVG files required.
-	 *
-	 * - Staged: "check" (✓) — files ready to commit
-	 * - Working: "edit" (✎) — files being modified
+	 * Returns light/dark SVG variants for automatic VS Code theme switching.
+	 * Staged: crosshair/brackets (green) — files locked and ready to commit
+	 * Working: radar sweep (amber) — files being actively modified
 	 *
 	 * @param iconName - Status type ('staged' | 'working')
-	 * @returns VS Code ThemeIcon instance
+	 * @returns Theme-aware icon path with light and dark variants
 	 */
-	private getGitStatusIcon(iconName: "staged" | "working"): vscode.ThemeIcon {
-		return iconName === "staged"
-			? new vscode.ThemeIcon("check")
-			: new vscode.ThemeIcon("edit");
+	private getGitStatusIcon(iconName: "staged" | "working"): {
+		light: vscode.Uri;
+		dark: vscode.Uri;
+	} {
+		return {
+			light: vscode.Uri.joinPath(
+				this.context.extensionUri,
+				"resources",
+				"icons",
+				"git-status",
+				"light",
+				`${iconName}.svg`,
+			),
+			dark: vscode.Uri.joinPath(
+				this.context.extensionUri,
+				"resources",
+				"icons",
+				"git-status",
+				"dark",
+				`${iconName}.svg`,
+			),
+		};
 	}
 
 	private setupRepositoryListener(repo: Repository): void {
