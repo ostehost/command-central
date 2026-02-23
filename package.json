@@ -2,7 +2,7 @@
 	"name": "command-central",
 	"displayName": "Command Central",
 	"description": "Code changes, sorted by time. See what changed, in the order it changed.",
-	"version": "0.2.4",
+	"version": "0.2.5",
 	"publisher": "oste",
 	"icon": "resources/icons/icon.png",
 	"type": "module",
@@ -175,7 +175,7 @@
 				},
 				"commandCentral.statusBar.priority": {
 					"type": "number",
-					"default": 1e4,
+					"default": 10000,
 					"description": "Priority for status bar positioning (higher = further left)",
 					"scope": "window"
 				},
