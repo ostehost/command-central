@@ -175,7 +175,7 @@
 				},
 				"commandCentral.statusBar.priority": {
 					"type": "number",
-					"default": 10000,
+					"default": 1e4,
 					"description": "Priority for status bar positioning (higher = further left)",
 					"scope": "window"
 				},
@@ -1204,6 +1204,7 @@
 		"@types/vscode": "^1.100.0",
 		"@vscode/vsce": "^3.6.2",
 		"knip": "^5.66.3",
+		"playwright": "^1.58.2",
 		"typescript": "^5.9.3"
 	},
 	"distConfig": {
