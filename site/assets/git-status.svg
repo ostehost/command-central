@@ -17,10 +17,10 @@
   </defs>
 
   <!-- Background -->
-  <rect width="480" height="400" class="bg" rx="8"/>
+  <rect width="480" height="400" class="bg"/>
 
   <!-- Header bar -->
-  <rect x="0" y="0" width="480" height="32" class="header-bar" rx="8"/>
+  <rect x="0" y="0" width="480" height="32" class="header-bar"/>
   <rect x="0" y="16" width="480" height="16" class="header-bar"/>
   <text x="16" y="21" class="muted" font-size="12" font-weight="700" letter-spacing="1.5">COMMAND CENTRAL</text>
   <text x="464" y="21" class="muted" font-size="13" text-anchor="end">⋯</text>
