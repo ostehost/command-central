@@ -38,7 +38,7 @@
   <!-- Staged header row with green tint -->
   <rect x="0" y="72" width="480" height="24" fill="#3fb950" opacity="0.06"/>
 
-  <!-- Staged header: icon center=8, text center=8 -->
+  <!-- Staged header: icon center=8, text visual center=8 (y=12.5, cap-center ≈ y-4.5) -->
   <g transform="translate(34, 72)">
     <!-- Crosshair/brackets icon (matches extension staged.svg) -->
     <g stroke="#3fb950" stroke-width="0.8" stroke-linecap="round" fill="none">
@@ -50,8 +50,8 @@
     <line x1="7" y1="5" x2="7" y2="11" stroke="#3fb950" stroke-width="0.8" stroke-linecap="round"/>
     <line x1="4" y1="8" x2="10" y2="8" stroke="#3fb950" stroke-width="0.8" stroke-linecap="round"/>
     <circle cx="7" cy="8" r="1" fill="#3fb950"/>
-    <text x="20" y="13" font-size="13" class="bright" font-weight="700">Staged</text>
-    <text x="72" y="13" class="muted" font-size="12">· 2 ready to commit</text>
+    <text x="20" y="12.5" font-size="13" class="bright" font-weight="700">Staged</text>
+    <text x="72" y="12.5" class="muted" font-size="12">· 2 ready to commit</text>
   </g>
 
   <line x1="42" y1="96" x2="42" y2="168" class="indent"/>
@@ -95,15 +95,15 @@
   <!-- Working header row with yellow tint -->
   <rect x="0" y="194" width="480" height="24" fill="#d29922" opacity="0.06"/>
 
-  <!-- Working header: icon center=8, text center=8 -->
+  <!-- Working header: icon center=8, text visual center=8 (y=12.5, cap-center ≈ y-4.5) -->
   <g transform="translate(34, 194)">
     <!-- Radar sweep icon (matches extension working.svg) -->
     <circle cx="7" cy="8" r="6.5" stroke="#d29922" stroke-width="0.5" fill="none" opacity="0.25"/>
     <path d="M 7 1.5 A 6.5 6.5 0 0 1 13.5 8" stroke="#d29922" stroke-width="1" fill="none" stroke-linecap="round"/>
     <circle cx="7" cy="8" r="1.8" fill="#d29922" opacity="0.6"/>
     <circle cx="7" cy="8" r="0.9" fill="#d29922"/>
-    <text x="20" y="13" font-size="13" class="bright" font-weight="700">Working</text>
-    <text x="80" y="13" class="muted" font-size="12">· 4 files changed</text>
+    <text x="20" y="12.5" font-size="13" class="bright" font-weight="700">Working</text>
+    <text x="80" y="12.5" class="muted" font-size="12">· 4 files changed</text>
   </g>
 
   <line x1="42" y1="218" x2="42" y2="376" class="indent"/>
