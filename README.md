@@ -15,7 +15,7 @@
 
 See what changed, in the order it changed.
 
-[partnerai.dev](https://partnerai.dev/?utm_source=github&utm_medium=referral&utm_campaign=launch-2026-02&utm_content=readme-hero)
+Built by [Partner AI](https://partnerai.dev/?utm_source=github&utm_medium=referral&utm_campaign=launch-2026-02&utm_content=readme-hero)
 
 ![Command Central showing three workspaces with time-grouped file changes](https://partnerai.dev/assets/hero.png?v=2)
 
