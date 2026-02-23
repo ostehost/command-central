@@ -13,7 +13,7 @@
  *   deleted in commit 7ab54ce (v0.2.0 cleanup). VS Code silently failed
  *   to load them, rendering group headers without icons.
  *   Root cause: getGitStatusIcon() built file URIs to non-existent SVGs.
- *   Fix: switched to VS Code built-in ThemeIcons.
+ *   Fix: restored branded SVG icons in resources/icons/git-status/.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -268,11 +268,10 @@ describe("Regression: group header icons reference deleted SVGs", () => {
 		mockLogger = createMockLogger();
 	});
 
-	test("staged group header uses ThemeIcon, not file path to deleted SVG", async () => {
-		// Reproduces: getGitStatusIcon("staged") returned URI to
+	test("staged group header uses branded SVG icons", async () => {
+		// Previously: getGitStatusIcon("staged") returned URI to
 		// resources/icons/git-status/light/staged.svg — deleted in 7ab54ce.
-		// VS Code silently failed to load it → no icon rendered.
-		const vscode = await import("vscode");
+		// Now: SVGs are restored as branded icons with { light, dark } paths.
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
@@ -292,16 +291,17 @@ describe("Regression: group header icons reference deleted SVGs", () => {
 
 		const treeItem = provider.getTreeItem(stagedGroup);
 
-		// Must be a ThemeIcon (built-in, no external file dependency)
-		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		expect(
-			(treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id,
-		).toBe("check");
+		const icon = treeItem.iconPath as {
+			light: { path: string };
+			dark: { path: string };
+		};
+		expect(icon.light).toBeDefined();
+		expect(icon.dark).toBeDefined();
+		expect(icon.light.path).toContain("staged.svg");
+		expect(icon.dark.path).toContain("staged.svg");
 	});
 
-	test("working group header uses ThemeIcon, not file path to deleted SVG", async () => {
-		// Same bug for the "Working" group header.
-		const vscode = await import("vscode");
+	test("working group header uses branded SVG icons", async () => {
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
@@ -321,9 +321,13 @@ describe("Regression: group header icons reference deleted SVGs", () => {
 
 		const treeItem = provider.getTreeItem(workingGroup);
 
-		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		expect(
-			(treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id,
-		).toBe("edit");
+		const icon = treeItem.iconPath as {
+			light: { path: string };
+			dark: { path: string };
+		};
+		expect(icon.light).toBeDefined();
+		expect(icon.dark).toBeDefined();
+		expect(icon.light.path).toContain("working.svg");
+		expect(icon.dark.path).toContain("working.svg");
 	});
 });

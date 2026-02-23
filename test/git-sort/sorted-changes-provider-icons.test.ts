@@ -69,7 +69,7 @@ describe("Git Status Icon Integration", () => {
 		expect(treeItem.resourceUri?.fsPath).toBe("/mock/file.ts");
 	});
 
-	test("should assign ThemeIcon for staged status group", async () => {
+	test("should assign branded SVG icon for staged status group", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -91,13 +91,17 @@ describe("Git Status Icon Integration", () => {
 
 		const treeItem = provider.getTreeItem(stagedGroup);
 
-		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		expect(
-			(treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id,
-		).toBe("check");
+		const icon = treeItem.iconPath as {
+			light: { path: string };
+			dark: { path: string };
+		};
+		expect(icon.light).toBeDefined();
+		expect(icon.dark).toBeDefined();
+		expect(icon.light.path).toContain("staged.svg");
+		expect(icon.dark.path).toContain("staged.svg");
 	});
 
-	test("should assign ThemeIcon for working status group", async () => {
+	test("should assign branded SVG icon for working status group", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -119,13 +123,17 @@ describe("Git Status Icon Integration", () => {
 
 		const treeItem = provider.getTreeItem(workingGroup);
 
-		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		expect(
-			(treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id,
-		).toBe("edit");
+		const icon = treeItem.iconPath as {
+			light: { path: string };
+			dark: { path: string };
+		};
+		expect(icon.light).toBeDefined();
+		expect(icon.dark).toBeDefined();
+		expect(icon.light.path).toContain("working.svg");
+		expect(icon.dark.path).toContain("working.svg");
 	});
 
-	test("should use ThemeIcon (not file paths) for group icons", async () => {
+	test("should use branded SVG { light, dark } paths for group icons", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -147,13 +155,18 @@ describe("Git Status Icon Integration", () => {
 
 		const treeItem = provider.getTreeItem(group);
 
-		// ThemeIcon is a single object, not { light, dark } file paths
-		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		expect(treeItem.iconPath).not.toHaveProperty("light");
-		expect(treeItem.iconPath).not.toHaveProperty("dark");
+		// Branded SVG icons use { light, dark } file paths
+		const icon = treeItem.iconPath as {
+			light: { path: string };
+			dark: { path: string };
+		};
+		expect(icon.light).toBeDefined();
+		expect(icon.dark).toBeDefined();
+		expect(icon.light.path).toContain("git-status/light/staged.svg");
+		expect(icon.dark.path).toContain("git-status/dark/staged.svg");
 	});
 
-	test("group icons are ThemeIcons independent of extension path", async () => {
+	test("group icons use extension path for branded SVGs", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -175,9 +188,12 @@ describe("Git Status Icon Integration", () => {
 
 		const treeItem = provider.getTreeItem(group);
 
-		// ThemeIcons don't depend on extension path — they're built into VS Code
-		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		const icon = treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>;
-		expect(icon.id).toBe("edit");
+		// Branded SVGs are relative to extension path
+		const icon = treeItem.iconPath as {
+			light: { path: string };
+			dark: { path: string };
+		};
+		expect(icon.light.path).toContain("/mock/extension/path");
+		expect(icon.dark.path).toContain("/mock/extension/path");
 	});
 });

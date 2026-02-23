@@ -57,6 +57,7 @@ These are **non-negotiable** for this project:
 3. **ALWAYS package as VSIX** — `bunx @vscode/vsce package`
 4. **NEVER bundle the `vscode` module** — it must stay in `external: ['vscode']`
 5. **NEVER skip type checking** — `tsc --noEmit` runs before every build
+6. **NEVER use `--no-verify`** on git commit or push — hooks are quality gates, not suggestions. If hooks fail, fix the issue.
 
 ## Commands Reference
 

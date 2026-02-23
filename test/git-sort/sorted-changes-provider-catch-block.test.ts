@@ -86,37 +86,34 @@ describe("Regression: catch block shows 'No changes' instead of 'Open a Git repo
 	});
 
 	test("internal error in getChildren shows 'No changes to display.' not viewsWelcome", async () => {
-		// Set up fs mock that throws to trigger the catch block
-		mock.module("node:fs/promises", () => ({
-			stat: mock(async () => {
-				throw new Error("Simulated filesystem error");
-			}),
-			readFile: mock(async () => Buffer.from("{}")),
-			writeFile: mock(async () => {}),
-			mkdir: mock(async () => {}),
-			access: mock(async () => {}),
-			realpath: mock(async (p: string) => p),
-		}));
-
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
 
-		// Create a repo with changes — so the tree SHOULD have files
+		// Create a repo whose state throws when accessed — triggers catch block
+		// without needing mock.module on git-timestamps (which poisons other tests)
+		let callCount = 0;
 		const mockRepo = {
 			rootUri: vscode.Uri.file("/workspace"),
-			state: {
-				workingTreeChanges: [
-					{
-						uri: vscode.Uri.file("/workspace/file1.ts"),
-						originalUri: vscode.Uri.file("/workspace/file1.ts"),
-						renameUri: undefined,
-						status: 5, // MODIFIED
-					},
-				],
-				indexChanges: [],
-				onDidChange: mock(() => ({ dispose: () => {} })),
+			get state() {
+				callCount++;
+				// Let initialize() succeed (first few calls), then throw during getChildren
+				if (callCount > 2) {
+					throw new Error("Simulated internal error");
+				}
+				return {
+					workingTreeChanges: [
+						{
+							uri: vscode.Uri.file("/workspace/file1.ts"),
+							originalUri: vscode.Uri.file("/workspace/file1.ts"),
+							renameUri: undefined,
+							status: 5, // MODIFIED
+						},
+					],
+					indexChanges: [],
+					onDidChange: mock(() => ({ dispose: () => {} })),
+				};
 			},
 			diffWithHEAD: mock(() => Promise.resolve([])),
 		};
@@ -147,69 +144,8 @@ describe("Regression: catch block shows 'No changes' instead of 'Open a Git repo
 		// If message is undefined, viewsWelcome shows "Open a Git repository..."
 		// which is WRONG because a repo exists; the issue is internal.
 		expect(activityBar.view.message).toBe("No changes to display.");
-	});
 
-	test("internal error logs the error for debugging", async () => {
-		// Force enrichWithTimestamps to throw by making getGitAwareTimestamps throw
-		mock.module("../../src/git-sort/git-timestamps.js", () => ({
-			getGitAwareTimestamps: mock(async () => {
-				throw new Error("Simulated timestamp error");
-			}),
-		}));
-
-		mock.module("node:fs/promises", () => ({
-			stat: mock(async () => ({
-				mtime: new Date(),
-				isDirectory: () => false,
-			})),
-			readFile: mock(async () => Buffer.from("{}")),
-			writeFile: mock(async () => {}),
-			mkdir: mock(async () => {}),
-			access: mock(async () => {}),
-			realpath: mock(async (p: string) => p),
-		}));
-
-		const vscode = await import("vscode");
-		const { SortedGitChangesProvider } = await import(
-			"../../src/git-sort/sorted-changes-provider.js"
-		);
-
-		const mockRepo = {
-			rootUri: vscode.Uri.file("/workspace"),
-			state: {
-				workingTreeChanges: [
-					{
-						uri: vscode.Uri.file("/workspace/file1.ts"),
-						originalUri: vscode.Uri.file("/workspace/file1.ts"),
-						renameUri: undefined,
-						status: 5, // MODIFIED
-					},
-				],
-				indexChanges: [],
-				onDidChange: mock(() => ({ dispose: () => {} })),
-			},
-			diffWithHEAD: mock(() => Promise.resolve([])),
-		};
-
-		setupGitExtensionMock(vscode, {
-			repositories: [mockRepo],
-			onDidOpenRepository: mock(() => ({ dispose: () => {} })),
-			onDidCloseRepository: mock(() => ({ dispose: () => {} })),
-		});
-
-		const provider = new SortedGitChangesProvider(
-			mockLogger,
-			createMockExtensionContext(),
-		);
-
-		const activityBar = createMessageTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(activityBar.view as any);
-
-		await provider.initialize();
-		await provider.getChildren();
-
-		// Should log the error for debugging
+		// Should also log the error for debugging
 		// biome-ignore lint/suspicious/noExplicitAny: mock type access
 		const errorCalls = (mockLogger.error as any).mock.calls;
 		const sortedChangesErrors = errorCalls.filter(
@@ -219,8 +155,5 @@ describe("Regression: catch block shows 'No changes' instead of 'Open a Git repo
 				call[0].includes("Failed to get sorted changes"),
 		);
 		expect(sortedChangesErrors.length).toBe(1);
-
-		// Must show "No changes to display." not leave undefined for viewsWelcome
-		expect(activityBar.view.message).toBe("No changes to display.");
 	});
 });

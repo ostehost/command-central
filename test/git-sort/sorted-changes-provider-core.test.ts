@@ -257,8 +257,7 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		mockLogger = createMockLogger();
 	});
 
-	test("staged group uses 'check' ThemeIcon", async () => {
-		const vscode = await import("vscode");
+	test("staged group uses branded SVG icon", async () => {
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
@@ -277,14 +276,17 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		const treeItem = provider.getTreeItem(stagedGroup);
 
 		expect(treeItem.iconPath).toBeDefined();
-		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		expect(
-			(treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id,
-		).toBe("check");
+		const icon = treeItem.iconPath as {
+			light: { path: string };
+			dark: { path: string };
+		};
+		expect(icon.light).toBeDefined();
+		expect(icon.dark).toBeDefined();
+		expect(icon.light.path).toContain("staged.svg");
+		expect(icon.dark.path).toContain("staged.svg");
 	});
 
-	test("unstaged group uses 'edit' ThemeIcon", async () => {
-		const vscode = await import("vscode");
+	test("unstaged group uses branded SVG icon", async () => {
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
@@ -303,10 +305,14 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		const treeItem = provider.getTreeItem(unstagedGroup);
 
 		expect(treeItem.iconPath).toBeDefined();
-		expect(treeItem.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-		expect(
-			(treeItem.iconPath as InstanceType<typeof vscode.ThemeIcon>).id,
-		).toBe("edit");
+		const icon = treeItem.iconPath as {
+			light: { path: string };
+			dark: { path: string };
+		};
+		expect(icon.light).toBeDefined();
+		expect(icon.dark).toBeDefined();
+		expect(icon.light.path).toContain("working.svg");
+		expect(icon.dark.path).toContain("working.svg");
 	});
 
 	test("staged group has rich tooltip", async () => {
