@@ -35,8 +35,6 @@ Works with **VS Code**, **Cursor**, and **Windsurf**.
 
 Adjustable time groups. Minutes, hours, days.
 
-![Time-grouped file changes](https://partnerai.dev/assets/hero.png)
-
 ### Staged vs. working
 
 Toggle to separate staged from working.
@@ -56,7 +54,7 @@ See only the file types that matter.
 - **Two layout modes.** Sidebar for deep dives, Panel for cross project comparison.
 - **Deleted file persistence.** Deleted files stay visible with stable ordering across sessions.
 - **Emoji icons per project.** Set an icon per workspace in `.vscode/settings.json`.
-- **Zero config.** Install and go. 297 tests passing, MIT licensed.
+- **Zero config.** Install and go. 316 tests passing, MIT licensed.
 
 ## You've been here
 
