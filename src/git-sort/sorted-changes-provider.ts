@@ -112,6 +112,7 @@ export class SortedGitChangesProvider
 
 	constructor(
 		private logger: LoggerService,
+		// biome-ignore lint/correctness/noUnusedPrivateClassMembers: Required by factory API; may be used for future custom icons
 		private context: vscode.ExtensionContext,
 		storage?: StorageAdapter,
 		public workspaceRootUri?: vscode.Uri,
@@ -1979,7 +1980,10 @@ export class SortedGitChangesProvider
 			// If tree is empty (error case), both should be empty
 			this.parentMap.clear();
 			this.cachedTreeStructure = [];
-			this.setEmptyStateMessage(false);
+			// BUG FIX: We already confirmed a repo exists (passed the repo check above),
+			// so use hasRepo=true to show "No changes to display." instead of letting
+			// viewsWelcome show "Open a Git repository..." which is misleading.
+			this.setEmptyStateMessage(true);
 			this.resetCountAndTitles();
 			return [];
 		}
