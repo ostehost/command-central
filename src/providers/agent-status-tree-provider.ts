@@ -12,6 +12,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
+/** Validate tmux session name to prevent shell injection */
+export function isValidTmuxSession(name: string): boolean {
+	return /^[a-zA-Z0-9._-]+$/.test(name);
+}
+
 // ── Task registry types ──────────────────────────────────────────────
 
 export interface TaskRegistry {
@@ -87,9 +92,10 @@ export class AgentStatusTreeProvider
 	readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
 	private registry: TaskRegistry = { version: 1, tasks: {} };
-	private watcher: fs.FSWatcher | null = null;
-	private filePath: string | null = null;
+	private fileWatcher: vscode.FileSystemWatcher | null = null;
+	private _filePath: string | null = null;
 	private disposables: vscode.Disposable[] = [];
+	private debounceTimer: NodeJS.Timeout | null = null;
 
 	constructor() {
 		// Watch config changes for the tasks file path
@@ -105,6 +111,11 @@ export class AgentStatusTreeProvider
 		this.reload();
 	}
 
+	/** Public accessor for the configured file path */
+	get filePath(): string | null {
+		return this._filePath;
+	}
+
 	private getConfiguredPath(): string | null {
 		const config = vscode.workspace.getConfiguration("commandCentral");
 		const p = config.get<string>("agentTasksFile");
@@ -118,21 +129,31 @@ export class AgentStatusTreeProvider
 	}
 
 	private setupFileWatch(): void {
-		if (this.watcher) {
-			this.watcher.close();
-			this.watcher = null;
+		if (this.fileWatcher) {
+			this.fileWatcher.dispose();
+			this.fileWatcher = null;
 		}
 		const filePath = this.getConfiguredPath();
-		this.filePath = filePath;
+		this._filePath = filePath;
 		if (!filePath) return;
 
-		try {
-			this.watcher = fs.watch(filePath, () => {
+		// Use vscode.workspace.createFileSystemWatcher — handles create/change/delete natively
+		const pattern = new vscode.RelativePattern(
+			vscode.Uri.file(path.dirname(filePath)),
+			path.basename(filePath),
+		);
+		this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+		const debouncedReload = () => {
+			if (this.debounceTimer) clearTimeout(this.debounceTimer);
+			this.debounceTimer = setTimeout(() => {
 				this.reload();
-			});
-		} catch {
-			// File may not exist yet — that's fine
-		}
+			}, 150);
+		};
+
+		this.fileWatcher.onDidChange(debouncedReload);
+		this.fileWatcher.onDidCreate(debouncedReload);
+		this.fileWatcher.onDidDelete(debouncedReload);
 	}
 
 	reload(): void {
@@ -142,9 +163,9 @@ export class AgentStatusTreeProvider
 
 	/** Exposed for testing — override to inject mock data */
 	readRegistry(): TaskRegistry {
-		if (!this.filePath) return { version: 1, tasks: {} };
+		if (!this._filePath) return { version: 1, tasks: {} };
 		try {
-			const content = fs.readFileSync(this.filePath, "utf-8");
+			const content = fs.readFileSync(this._filePath, "utf-8");
 			const parsed = JSON.parse(content) as TaskRegistry;
 			if (parsed.version === 1 && parsed.tasks) return parsed;
 			return { version: 1, tasks: {} };
@@ -264,7 +285,8 @@ export class AgentStatusTreeProvider
 
 	dispose(): void {
 		this._onDidChangeTreeData.dispose();
-		if (this.watcher) this.watcher.close();
+		if (this.fileWatcher) this.fileWatcher.dispose();
+		if (this.debounceTimer) clearTimeout(this.debounceTimer);
 		for (const d of this.disposables) d.dispose();
 	}
 }

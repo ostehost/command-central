@@ -679,7 +679,8 @@
 				{
 					"id": "commandCentral.agentStatus",
 					"name": "Agent Status",
-					"type": "tree"
+					"type": "tree",
+					"when": "config.commandCentral.agentTasksFile"
 				}
 			],
 			"commandCentralPanel": [

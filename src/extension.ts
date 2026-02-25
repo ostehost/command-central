@@ -20,7 +20,10 @@ import {
 } from "./commands/tree-view-utils.js";
 import { GitSorter } from "./git-sort/scm-sorter.js";
 import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provider.js";
-import { AgentStatusTreeProvider } from "./providers/agent-status-tree-provider.js";
+import {
+	AgentStatusTreeProvider,
+	isValidTmuxSession,
+} from "./providers/agent-status-tree-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
 import { GroupingStateManager } from "./services/grouping-state-manager.js";
 import { LoggerService, LogLevel } from "./services/logger-service.js";
@@ -604,16 +607,24 @@ export async function activate(
 						);
 						return;
 					}
+					if (!isValidTmuxSession(tmuxSession)) {
+						vscode.window.showErrorMessage("Invalid tmux session name.");
+						return;
+					}
+					const tasksFilePath = agentStatusProvider?.filePath;
+					if (!tasksFilePath) {
+						vscode.window.showErrorMessage(
+							"Agent tasks file not configured. Set commandCentral.agentTasksFile in settings.",
+						);
+						return;
+					}
 					try {
-						const { execSync } = await import("node:child_process");
+						const { execFileSync } = await import("node:child_process");
 						const scriptPath = path.join(
-							path.dirname(
-								agentStatusProvider?.["filePath"] ??
-									"~/projects/ghostty-launcher/scripts/tasks.json",
-							),
+							path.dirname(tasksFilePath),
 							"oste-capture.sh",
 						);
-						const output = execSync(`bash "${scriptPath}" "${tmuxSession}"`, {
+						const output = execFileSync("bash", [scriptPath, tmuxSession], {
 							encoding: "utf-8",
 							timeout: 10000,
 						});
@@ -641,6 +652,17 @@ export async function activate(
 						);
 						return;
 					}
+					if (!isValidTmuxSession(task.tmux_session)) {
+						vscode.window.showErrorMessage("Invalid tmux session name.");
+						return;
+					}
+					const tasksFilePath = agentStatusProvider?.filePath;
+					if (!tasksFilePath) {
+						vscode.window.showErrorMessage(
+							"Agent tasks file not configured. Set commandCentral.agentTasksFile in settings.",
+						);
+						return;
+					}
 					const confirm = await vscode.window.showWarningMessage(
 						`Kill agent "${task.id}"?`,
 						{ modal: true },
@@ -648,15 +670,12 @@ export async function activate(
 					);
 					if (confirm !== "Kill") return;
 					try {
-						const { execSync } = await import("node:child_process");
+						const { execFileSync } = await import("node:child_process");
 						const scriptPath = path.join(
-							path.dirname(
-								agentStatusProvider?.["filePath"] ??
-									"~/projects/ghostty-launcher/scripts/tasks.json",
-							),
+							path.dirname(tasksFilePath),
 							"oste-kill.sh",
 						);
-						execSync(`bash "${scriptPath}" "${task.tmux_session}"`, {
+						execFileSync("bash", [scriptPath, task.tmux_session], {
 							encoding: "utf-8",
 							timeout: 10000,
 						});
@@ -713,10 +732,7 @@ export async function deactivate(): Promise<void> {
 		groupingViewManager.dispose();
 	}
 
-	// Clean up Agent Status Provider
-	if (agentStatusProvider) {
-		agentStatusProvider.dispose();
-	}
+	// Note: agentStatusProvider disposal handled by context.subscriptions
 
 	// Clean up Grouping State Manager
 	if (groupingStateManager) {
