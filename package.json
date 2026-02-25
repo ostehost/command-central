@@ -184,6 +184,12 @@
 					"default": false,
 					"description": "Enable grouping of Git status changes by status type (staged/unstaged) with time-based subgroups",
 					"scope": "application"
+				},
+				"commandCentral.agentTasksFile": {
+					"type": "string",
+					"default": "~/projects/ghostty-launcher/scripts/tasks.json",
+					"markdownDescription": "Path to the agent task registry JSON file (tasks.json). Supports `~` expansion.",
+					"scope": "machine"
 				}
 			}
 		},
@@ -586,6 +592,24 @@
 				"command": "commandCentral.gitSort.changeFileFilter.slot10Panel",
 				"title": "Command Central: Filter Files",
 				"icon": "$(filter)"
+			},
+			{
+				"command": "commandCentral.refreshAgentStatus",
+				"title": "Refresh Agent Status",
+				"category": "Command Central",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "commandCentral.captureAgentOutput",
+				"title": "Capture Agent Output",
+				"category": "Command Central",
+				"icon": "$(output)"
+			},
+			{
+				"command": "commandCentral.killAgent",
+				"title": "Kill Agent",
+				"category": "Command Central",
+				"icon": "$(close)"
 			}
 		],
 		"views": {
@@ -651,6 +675,11 @@
 					"id": "commandCentral.project.slot10",
 					"name": "Project",
 					"when": "commandCentral.slot10.active"
+				},
+				{
+					"id": "commandCentral.agentStatus",
+					"name": "Agent Status",
+					"type": "tree"
 				}
 			],
 			"commandCentralPanel": [
@@ -859,6 +888,16 @@
 					"command": "commandCentral.gitSort.copyRelativePath",
 					"when": "view =~ /^commandCentral\\.project\\./",
 					"group": "5_cutcopypaste@2"
+				},
+				{
+					"command": "commandCentral.captureAgentOutput",
+					"when": "viewItem =~ /^agentTask\\./",
+					"group": "inline"
+				},
+				{
+					"command": "commandCentral.killAgent",
+					"when": "viewItem == agentTask.running",
+					"group": "inline"
 				}
 			],
 			"view/title": [
@@ -1161,6 +1200,11 @@
 					"command": "commandCentral.gitSort.changeFileFilter.slot10Panel",
 					"when": "view == commandCentral.project.slot10Panel",
 					"group": "navigation@3"
+				},
+				{
+					"command": "commandCentral.refreshAgentStatus",
+					"when": "view == commandCentral.agentStatus",
+					"group": "navigation"
 				}
 			]
 		},

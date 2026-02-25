@@ -2,6 +2,7 @@
  * Command Central Extension — Code changes, sorted by time
  */
 
+import * as path from "node:path";
 import * as vscode from "vscode";
 import * as disableSortCommand from "./commands/disable-sort.js";
 import * as enableSortCommand from "./commands/enable-sort.js";
@@ -19,6 +20,7 @@ import {
 } from "./commands/tree-view-utils.js";
 import { GitSorter } from "./git-sort/scm-sorter.js";
 import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provider.js";
+import { AgentStatusTreeProvider } from "./providers/agent-status-tree-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
 import { GroupingStateManager } from "./services/grouping-state-manager.js";
 import { LoggerService, LogLevel } from "./services/logger-service.js";
@@ -33,6 +35,7 @@ let projectIconService: ProjectIconService | undefined;
 let extensionFilterViewManager: ExtensionFilterViewManager | undefined;
 let groupingStateManager: GroupingStateManager | undefined;
 let groupingViewManager: GroupingViewManager | undefined;
+let agentStatusProvider: AgentStatusTreeProvider | undefined;
 let mainLogger: LoggerService;
 let gitSortLogger: LoggerService;
 
@@ -569,6 +572,106 @@ export async function activate(
 			}),
 		);
 
+		// ============================================================================
+		// Agent Status Panel
+		// ============================================================================
+		agentStatusProvider = new AgentStatusTreeProvider();
+		const agentStatusView = vscode.window.createTreeView(
+			"commandCentral.agentStatus",
+			{ treeDataProvider: agentStatusProvider, showCollapseAll: true },
+		);
+		context.subscriptions.push(agentStatusView);
+		context.subscriptions.push(agentStatusProvider);
+
+		const agentOutputChannel =
+			vscode.window.createOutputChannel("Agent Output");
+		context.subscriptions.push(agentOutputChannel);
+
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.refreshAgentStatus",
+				() => {
+					agentStatusProvider?.reload();
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.captureAgentOutput",
+				async (node?: { type: string; task?: { tmux_session: string } }) => {
+					const tmuxSession = node?.task?.tmux_session;
+					if (!tmuxSession) {
+						vscode.window.showWarningMessage(
+							"No agent selected. Right-click an agent in the tree.",
+						);
+						return;
+					}
+					try {
+						const { execSync } = await import("node:child_process");
+						const scriptPath = path.join(
+							path.dirname(
+								agentStatusProvider?.["filePath"] ??
+									"~/projects/ghostty-launcher/scripts/tasks.json",
+							),
+							"oste-capture.sh",
+						);
+						const output = execSync(`bash "${scriptPath}" "${tmuxSession}"`, {
+							encoding: "utf-8",
+							timeout: 10000,
+						});
+						agentOutputChannel.clear();
+						agentOutputChannel.appendLine(`=== Output: ${tmuxSession} ===`);
+						agentOutputChannel.appendLine(output);
+						agentOutputChannel.show(true);
+					} catch (err) {
+						vscode.window.showErrorMessage(
+							`Failed to capture output: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					}
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.killAgent",
+				async (node?: {
+					type: string;
+					task?: { id: string; tmux_session: string };
+				}) => {
+					const task = node?.task;
+					if (!task) {
+						vscode.window.showWarningMessage(
+							"No agent selected. Right-click an agent in the tree.",
+						);
+						return;
+					}
+					const confirm = await vscode.window.showWarningMessage(
+						`Kill agent "${task.id}"?`,
+						{ modal: true },
+						"Kill",
+					);
+					if (confirm !== "Kill") return;
+					try {
+						const { execSync } = await import("node:child_process");
+						const scriptPath = path.join(
+							path.dirname(
+								agentStatusProvider?.["filePath"] ??
+									"~/projects/ghostty-launcher/scripts/tasks.json",
+							),
+							"oste-kill.sh",
+						);
+						execSync(`bash "${scriptPath}" "${task.tmux_session}"`, {
+							encoding: "utf-8",
+							timeout: 10000,
+						});
+						agentStatusProvider?.reload();
+						vscode.window.showInformationMessage(`Agent "${task.id}" killed.`);
+					} catch (err) {
+						vscode.window.showErrorMessage(
+							`Failed to kill agent: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					}
+				},
+			),
+		);
+		mainLogger.info("Agent Status panel initialized");
+
 		const activationTime = performance.now() - start;
 		mainLogger.info(`✅ Extension activated in ${activationTime.toFixed(0)}ms`);
 		mainLogger.info(`📦 Command Central v${version} ready`);
@@ -608,6 +711,11 @@ export async function deactivate(): Promise<void> {
 	// Clean up Grouping View Manager
 	if (groupingViewManager) {
 		groupingViewManager.dispose();
+	}
+
+	// Clean up Agent Status Provider
+	if (agentStatusProvider) {
+		agentStatusProvider.dispose();
 	}
 
 	// Clean up Grouping State Manager
