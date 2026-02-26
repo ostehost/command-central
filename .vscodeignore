@@ -23,12 +23,19 @@ node_modules/**
 .github/**
 .gitignore
 
-# Development docs
-AGENTS.md
-TODO.md
+# Development docs & markdown (keep only README.md and CHANGELOG.md)
+*.md
+!README.md
+!CHANGELOG.md
 memory/**
 docs/**
 .cursor/**
+
+# Development config files
+.githooks/**
+bunfig.toml
+knip.config.ts
+.pre-commit-config.yaml
 
 # Unused icon explorations (not referenced in code)
 resources/icons/v3-minimal/**

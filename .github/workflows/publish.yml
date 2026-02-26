@@ -2,7 +2,10 @@ name: Publish Extension
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: write
 
 jobs:
   test:
@@ -25,6 +28,66 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run dist -- --no-install
-      - run: npx @vscode/vsce publish --no-dependencies
+
+      # Validate build output exists
+      - name: Validate build
+        run: |
+          if [ ! -f "dist/extension.js" ] || [ ! -s "dist/extension.js" ]; then
+            echo "::error::Build produced empty or missing dist/extension.js"
+            exit 1
+          fi
+
+      # Parse tag, validate format, check package.json match, determine channel
+      # Microsoft recommended convention: https://code.visualstudio.com/api/working-with-extensions/publishing-extension#prerelease-extensions
+      - name: Determine release channel
+        id: channel
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+
+          # Strict format validation (injection protection)
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid tag format: $TAG (expected vMAJOR.MINOR.PATCH)"
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+
+          # Verify tag matches package.json
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($VERSION) does not match package.json ($PKG_VERSION)"
+            exit 1
+          fi
+
+          # Odd minor = pre-release, even minor = stable
+          if [ $((MINOR % 2)) -eq 1 ]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "🚀 Pre-release channel (v$VERSION — minor $MINOR is odd)"
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "✅ Stable channel (v$VERSION — minor $MINOR is even)"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Publish stable
+        if: steps.channel.outputs.prerelease == 'false'
+        run: npx @vscode/vsce publish --no-dependencies
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish pre-release
+        if: steps.channel.outputs.prerelease == 'true'
+        run: npx @vscode/vsce publish --pre-release --no-dependencies
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "${{ steps.channel.outputs.prerelease == 'true' && '🚀 Pre-release' || '✅ Release' }} ${{ steps.channel.outputs.version }}"
+          body: |
+            ${{ steps.channel.outputs.prerelease == 'true' && '⚠️ **Pre-release** — may contain experimental features.' || '**Stable release.**' }}
+          prerelease: ${{ steps.channel.outputs.prerelease == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
