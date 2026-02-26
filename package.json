@@ -2,7 +2,7 @@
 	"name": "command-central",
 	"displayName": "Command Central",
 	"description": "Code changes, sorted by time. See what changed, in the order it changed.",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"publisher": "oste",
 	"icon": "resources/icons/icon.png",
 	"type": "module",
