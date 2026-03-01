@@ -93,7 +93,7 @@ describe("AgentStatusTreeProvider", () => {
 
 		const children = provider.getChildren();
 		expect(children).toHaveLength(1);
-		expect(children[0]!.type).toBe("task");
+		expect(children[0]?.type).toBe("task");
 	});
 
 	test("sorts tasks by started_at descending (newest first)", () => {
@@ -224,7 +224,7 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	test("handles invalid registry gracefully", () => {
-		provider.readRegistry = () => ({ version: 2, tasks: {} }) as any;
+		provider.readRegistry = () => ({ version: 2, tasks: {} }) as TaskRegistry;
 		provider.reload();
 		// Should still work (falls through since tasks is present)
 		const children = provider.getChildren();
