@@ -1,1276 +1,1276 @@
 {
-	"name": "command-central",
-	"displayName": "Command Central",
-	"description": "Code changes, sorted by time. See what changed, in the order it changed.",
-	"version": "0.3.1",
-	"publisher": "oste",
-	"icon": "resources/icons/icon.png",
-	"type": "module",
-	"main": "./dist/extension.js",
-	"engines": {
-		"vscode": "^1.100.0",
-		"node": ">=18.0.0"
-	},
-	"categories": [
-		"SCM Providers",
-		"Other"
-	],
-	"keywords": [
-		"ai",
-		"command",
-		"git",
-		"sort",
-		"scm",
-		"productivity",
-		"git sort",
-		"sorted changes",
-		"time sort",
-		"workspace"
-	],
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/ostehost/command-central"
-	},
-	"bugs": {
-		"url": "https://github.com/ostehost/command-central/issues"
-	},
-	"homepage": "https://partnerai.dev",
-	"galleryBanner": {
-		"color": "#161b22",
-		"theme": "dark"
-	},
-	"license": "MIT",
-	"author": {
-		"name": "Mike",
-		"url": "https://github.com/ostehost"
-	},
-	"capabilities": {
-		"untrustedWorkspaces": {
-			"supported": true,
-			"description": "Command Central works in all workspaces",
-			"restrictedConfigurations": [
-				"commandCentral.terminal.launcherPath",
-				"commandCentral.terminal.app"
-			]
-		}
-	},
-	"activationEvents": [
-		"onStartupFinished"
-	],
-	"contributes": {
-		"viewsContainers": {
-			"activitybar": [
-				{
-					"id": "commandCentral",
-					"title": "Command Central",
-					"icon": "resources/icons/activity-bar.svg"
-				}
-			],
-			"panel": [
-				{
-					"id": "commandCentralPanel",
-					"title": "Command Central",
-					"icon": "resources/icons/activity-bar.svg"
-				}
-			]
-		},
-		"configuration": {
-			"title": "Command Central",
-			"properties": {
-				"commandCentral.project.icon": {
-					"type": "string",
-					"markdownDescription": "Icon/emoji to display in status bar for this workspace (e.g., `🚀`, `📦`, `🎨`)",
-					"examples": [
-						"🚀",
-						"📦",
-						"🎨",
-						"🔧",
-						"📚",
-						"🧪",
-						"🎮",
-						"🌟"
-					],
-					"scope": "resource"
-				},
-				"commandCentral.project.name": {
-					"type": "string",
-					"description": "Display name for this workspace project",
-					"scope": "resource"
-				},
-				"commandCentral.gitSort.enabled": {
-					"type": "boolean",
-					"default": true,
-					"description": "Enable sorting of git changes by modification time",
-					"scope": "window"
-				},
-				"commandCentral.gitSort.fileTypeFilter": {
-					"type": "string",
-					"enum": [
-						"all",
-						"code",
-						"config",
-						"docs",
-						"images",
-						"tests",
-						"custom"
-					],
-					"default": "all",
-					"description": "Filter files by type in sorted changes view",
-					"enumDescriptions": [
-						"Show all file types",
-						"Show code files (.ts, .js, .py, .java, etc.)",
-						"Show config files (.json, .yaml, .toml, etc.)",
-						"Show documentation files (.md, .txt, etc.)",
-						"Show image files (.png, .jpg, .svg, etc.)",
-						"Show test files (.test.ts, .spec.js, etc.)",
-						"Show custom file types defined in customFileTypes setting"
-					],
-					"scope": "window"
-				},
-				"commandCentral.gitSort.customFileTypes": {
-					"type": "array",
-					"items": {
-						"type": "string",
-						"pattern": "^\\.[a-zA-Z0-9]+$"
-					},
-					"default": [],
-					"description": "Custom file extensions to filter when fileTypeFilter is set to 'custom' (e.g., ['.vue', '.svelte'])",
-					"scope": "window"
-				},
-				"commandCentral.trackActiveFile": {
-					"type": "boolean",
-					"default": true,
-					"markdownDescription": "Automatically reveal and highlight the active file in the git changes tree view (matches VS Code Explorer's behavior)",
-					"scope": "window"
-				},
-				"commandCentral.fileFilter.persistence": {
-					"type": "string",
-					"enum": [
-						"workspace",
-						"global",
-						"none"
-					],
-					"default": "workspace",
-					"description": "Where to save extension filter preferences",
-					"enumDescriptions": [
-						"Save filters per workspace (recommended - filters are workspace-specific)",
-						"Save filters globally (same filters across all workspaces)",
-						"Don't save filters (reset on extension reload)"
-					],
-					"scope": "window"
-				},
-				"commandCentral.fileFilter.maxExtensions": {
-					"type": "number",
-					"default": 50,
-					"minimum": 10,
-					"maximum": 200,
-					"description": "Maximum number of extensions to show in picker (performance limit)",
-					"scope": "window"
-				},
-				"commandCentral.statusBar.showProjectIcon": {
-					"type": "boolean",
-					"default": true,
-					"description": "Show project icon in status bar",
-					"scope": "window"
-				},
-				"commandCentral.statusBar.priority": {
-					"type": "number",
-					"default": 10000,
-					"description": "Priority for status bar positioning (higher = further left)",
-					"scope": "window"
-				},
-				"commandCentral.gitStatusGrouping.enabled": {
-					"type": "boolean",
-					"default": false,
-					"description": "Enable grouping of Git status changes by status type (staged/unstaged) with time-based subgroups",
-					"scope": "application"
-				},
-				"commandCentral.agentTasksFile": {
-					"type": "string",
-					"default": "~/projects/ghostty-launcher/scripts/tasks.json",
-					"markdownDescription": "Path to the agent task registry JSON file (tasks.json). Supports `~` expansion.",
-					"scope": "machine"
-				},
-				"commandCentral.ghostty.launcherPath": {
-					"type": "string",
-					"default": "",
-					"markdownDescription": "Path to the `launcher` binary (ghostty-launcher). Leave empty to use `launcher` from PATH, or the default fallback at `~/projects/ghostty-launcher/launcher`.",
-					"scope": "machine"
-				}
-			}
-		},
-		"commands": [
-			{
-				"command": "commandCentral.gitSort.enable",
-				"title": "Command Central: Enable Git Sort",
-				"icon": "$(check)"
-			},
-			{
-				"command": "commandCentral.gitSort.disable",
-				"title": "Command Central: Disable Git Sort",
-				"icon": "$(x)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView",
-				"title": "Command Central: Refresh Sorted Changes",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter",
-				"title": "Command Central: Filter by Extension",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.grouping.toggle",
-				"title": "Command Central: Toggle Grouping Panel",
-				"icon": "$(list-tree)"
-			},
-			{
-				"command": "commandCentral.grouping.selectOption",
-				"title": "Command Central: Select Grouping Mode"
-			},
-			{
-				"command": "commandCentral.gitSort.openChange",
-				"title": "Command Central: Open Change",
-				"icon": "$(go-to-file)"
-			},
-			{
-				"command": "commandCentral.gitSort.openFile",
-				"title": "Command Central: Open File",
-				"icon": "$(file)"
-			},
-			{
-				"command": "commandCentral.gitSort.openDiff",
-				"title": "Command Central: Open Diff",
-				"icon": "$(git-compare)"
-			},
-			{
-				"command": "commandCentral.gitSort.revealInExplorer",
-				"title": "Command Central: Reveal in Explorer",
-				"icon": "$(folder-opened)"
-			},
-			{
-				"command": "commandCentral.gitSort.copyPath",
-				"title": "Command Central: Copy Path",
-				"icon": "$(copy)"
-			},
-			{
-				"command": "commandCentral.gitSort.copyRelativePath",
-				"title": "Command Central: Copy Relative Path",
-				"icon": "$(copy)"
-			},
-			{
-				"command": "commandCentral.gitSort.openToSide",
-				"title": "Command Central: Open to the Side",
-				"icon": "$(split-horizontal)"
-			},
-			{
-				"command": "commandCentral.gitSort.selectForCompare",
-				"title": "Command Central: Select for Compare",
-				"icon": "$(compare-changes)"
-			},
-			{
-				"command": "commandCentral.gitSort.compareWithSelected",
-				"title": "Command Central: Compare with Selected",
-				"icon": "$(git-compare)"
-			},
-			{
-				"command": "commandCentral.gitSort.revealInFinder",
-				"title": "Command Central: Reveal in File Explorer",
-				"icon": "$(folder-opened)"
-			},
-			{
-				"command": "commandCentral.gitSort.openInIntegratedTerminal",
-				"title": "Command Central: Open in Integrated Terminal",
-				"icon": "$(terminal)"
-			},
-			{
-				"command": "commandCentral.gitSort.openWith",
-				"title": "Command Central: Open With...",
-				"icon": "$(edit)"
-			},
-			{
-				"command": "commandCentral.gitSort.openPreview",
-				"title": "Command Central: Open Preview",
-				"icon": "$(open-preview)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot1",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot1",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot1",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot1Panel",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot1Panel",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot1Panel",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot2",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot2",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot2",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot2Panel",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot2Panel",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot2Panel",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot3",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot3",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot3",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot3Panel",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot3Panel",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot3Panel",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot4",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot4",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot4",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot4Panel",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot4Panel",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot4Panel",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot5",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot5",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot5",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot5Panel",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot5Panel",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot5Panel",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot6",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot6",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot6",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot6Panel",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot6Panel",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot6Panel",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot7",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot7",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot7",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot7Panel",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot7Panel",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot7Panel",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot8",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot8",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot8",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot8Panel",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot8Panel",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot8Panel",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot9",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot9",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot9",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot9Panel",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot9Panel",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot9Panel",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot10",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot10",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot10",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.gitSort.refreshView.slot10Panel",
-				"title": "Command Central: Refresh",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeSortOrder.slot10Panel",
-				"title": "Command Central: Toggle Sort Order",
-				"icon": "$(fold)"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter.slot10Panel",
-				"title": "Command Central: Filter Files",
-				"icon": "$(filter)"
-			},
-			{
-				"command": "commandCentral.refreshAgentStatus",
-				"title": "Refresh Agent Status",
-				"category": "Command Central",
-				"icon": "$(refresh)"
-			},
-			{
-				"command": "commandCentral.captureAgentOutput",
-				"title": "Capture Agent Output",
-				"category": "Command Central",
-				"icon": "$(output)"
-			},
-			{
-				"command": "commandCentral.killAgent",
-				"title": "Kill Agent",
-				"category": "Command Central",
-				"icon": "$(close)"
-			},
-			{
-				"command": "commandCentral.ghostty.createTerminal",
-				"title": "Create Project Terminal",
-				"category": "Command Central: Ghostty",
-				"icon": "$(terminal)"
-			},
-			{
-				"command": "commandCentral.ghostty.checkBinary",
-				"title": "Check / Install Ghostty Binary",
-				"category": "Command Central: Ghostty",
-				"icon": "$(cloud-download)"
-			}
-		],
-		"views": {
-			"commandCentral": [
-				{
-					"id": "commandCentral.grouping",
-					"name": "Grouping Options",
-					"type": "tree",
-					"when": "commandCentral.grouping.visible"
-				},
-				{
-					"id": "commandCentral.extensionFilter",
-					"name": "Extension Filter",
-					"type": "tree",
-					"when": "commandCentral.extensionFilter.visible"
-				},
-				{
-					"id": "commandCentral.project.slot1",
-					"name": "Project",
-					"when": "commandCentral.slot1.active"
-				},
-				{
-					"id": "commandCentral.project.slot2",
-					"name": "Project",
-					"when": "commandCentral.slot2.active"
-				},
-				{
-					"id": "commandCentral.project.slot3",
-					"name": "Project",
-					"when": "commandCentral.slot3.active"
-				},
-				{
-					"id": "commandCentral.project.slot4",
-					"name": "Project",
-					"when": "commandCentral.slot4.active"
-				},
-				{
-					"id": "commandCentral.project.slot5",
-					"name": "Project",
-					"when": "commandCentral.slot5.active"
-				},
-				{
-					"id": "commandCentral.project.slot6",
-					"name": "Project",
-					"when": "commandCentral.slot6.active"
-				},
-				{
-					"id": "commandCentral.project.slot7",
-					"name": "Project",
-					"when": "commandCentral.slot7.active"
-				},
-				{
-					"id": "commandCentral.project.slot8",
-					"name": "Project",
-					"when": "commandCentral.slot8.active"
-				},
-				{
-					"id": "commandCentral.project.slot9",
-					"name": "Project",
-					"when": "commandCentral.slot9.active"
-				},
-				{
-					"id": "commandCentral.project.slot10",
-					"name": "Project",
-					"when": "commandCentral.slot10.active"
-				},
-				{
-					"id": "commandCentral.agentStatus",
-					"name": "Agent Status",
-					"type": "tree",
-					"when": "config.commandCentral.agentTasksFile"
-				}
-			],
-			"commandCentralPanel": [
-				{
-					"id": "commandCentral.project.slot1Panel",
-					"name": "Project",
-					"when": "commandCentral.slot1.active"
-				},
-				{
-					"id": "commandCentral.project.slot2Panel",
-					"name": "Project",
-					"when": "commandCentral.slot2.active"
-				},
-				{
-					"id": "commandCentral.project.slot3Panel",
-					"name": "Project",
-					"when": "commandCentral.slot3.active"
-				},
-				{
-					"id": "commandCentral.project.slot4Panel",
-					"name": "Project",
-					"when": "commandCentral.slot4.active"
-				},
-				{
-					"id": "commandCentral.project.slot5Panel",
-					"name": "Project",
-					"when": "commandCentral.slot5.active"
-				},
-				{
-					"id": "commandCentral.project.slot6Panel",
-					"name": "Project",
-					"when": "commandCentral.slot6.active"
-				},
-				{
-					"id": "commandCentral.project.slot7Panel",
-					"name": "Project",
-					"when": "commandCentral.slot7.active"
-				},
-				{
-					"id": "commandCentral.project.slot8Panel",
-					"name": "Project",
-					"when": "commandCentral.slot8.active"
-				},
-				{
-					"id": "commandCentral.project.slot9Panel",
-					"name": "Project",
-					"when": "commandCentral.slot9.active"
-				},
-				{
-					"id": "commandCentral.project.slot10Panel",
-					"name": "Project",
-					"when": "commandCentral.slot10.active"
-				}
-			]
-		},
-		"viewsWelcome": [
-			{
-				"view": "commandCentral.project.slot1",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot1Panel",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot2",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot2Panel",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot3",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot3Panel",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot4",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot4Panel",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot5",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot5Panel",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot6",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot6Panel",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot7",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot7Panel",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot8",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot8Panel",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot9",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot9Panel",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot10",
-				"contents": "Open a Git repository to see time-sorted changes."
-			},
-			{
-				"view": "commandCentral.project.slot10Panel",
-				"contents": "Open a Git repository to see time-sorted changes."
-			}
-		],
-		"menus": {
-			"commandPalette": [
-				{
-					"command": "commandCentral.gitSort.enable",
-					"when": "true"
-				},
-				{
-					"command": "commandCentral.gitSort.disable",
-					"when": "true"
-				}
-			],
-			"view/item/context": [
-				{
-					"command": "commandCentral.gitSort.openFile",
-					"when": "view =~ /^commandCentral\\.project\\./ && (viewItem == staged || viewItem == unstaged || viewItem == staged-deleted || viewItem == unstaged-deleted || viewItem == staged-and-unstaged)",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.openToSide",
-					"when": "view =~ /^commandCentral\\.project\\./ && (viewItem == staged || viewItem == unstaged || viewItem == staged-and-unstaged)",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.openDiff",
-					"when": "view =~ /^commandCentral\\.project\\./ && (viewItem == staged || viewItem == unstaged || viewItem == staged-deleted || viewItem == unstaged-deleted || viewItem == staged-and-unstaged)",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.revealInExplorer",
-					"when": "view =~ /^commandCentral\\.project\\./ && (viewItem == staged || viewItem == unstaged || viewItem == staged-and-unstaged)",
-					"group": "navigation@4"
-				},
-				{
-					"command": "commandCentral.gitSort.revealInFinder",
-					"when": "view =~ /^commandCentral\\.project\\./",
-					"group": "navigation@5"
-				},
-				{
-					"command": "commandCentral.gitSort.openInIntegratedTerminal",
-					"when": "view =~ /^commandCentral\\.project\\./",
-					"group": "navigation@6"
-				},
-				{
-					"command": "commandCentral.gitSort.openWith",
-					"when": "view =~ /^commandCentral\\.project\\./",
-					"group": "navigation@7"
-				},
-				{
-					"command": "commandCentral.gitSort.openPreview",
-					"when": "view =~ /^commandCentral\\.project\\./",
-					"group": "navigation@8"
-				},
-				{
-					"command": "commandCentral.gitSort.selectForCompare",
-					"when": "view =~ /^commandCentral\\.project\\./",
-					"group": "3_compare@1"
-				},
-				{
-					"command": "commandCentral.gitSort.compareWithSelected",
-					"when": "view =~ /^commandCentral\\.project\\./",
-					"group": "3_compare@2"
-				},
-				{
-					"command": "commandCentral.gitSort.copyPath",
-					"when": "view =~ /^commandCentral\\.project\\./",
-					"group": "5_cutcopypaste@1"
-				},
-				{
-					"command": "commandCentral.gitSort.copyRelativePath",
-					"when": "view =~ /^commandCentral\\.project\\./",
-					"group": "5_cutcopypaste@2"
-				},
-				{
-					"command": "commandCentral.captureAgentOutput",
-					"when": "viewItem =~ /^agentTask\\./",
-					"group": "inline"
-				},
-				{
-					"command": "commandCentral.killAgent",
-					"when": "viewItem == agentTask.running",
-					"group": "inline"
-				}
-			],
-			"view/title": [
-				{
-					"command": "commandCentral.gitSort.refreshView.slot1",
-					"when": "view == commandCentral.project.slot1",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot1",
-					"when": "view == commandCentral.project.slot1",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot1",
-					"when": "view == commandCentral.project.slot1",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot1Panel",
-					"when": "view == commandCentral.project.slot1Panel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot1Panel",
-					"when": "view == commandCentral.project.slot1Panel",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot1Panel",
-					"when": "view == commandCentral.project.slot1Panel",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot2",
-					"when": "view == commandCentral.project.slot2",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot2",
-					"when": "view == commandCentral.project.slot2",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot2",
-					"when": "view == commandCentral.project.slot2",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot2Panel",
-					"when": "view == commandCentral.project.slot2Panel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot2Panel",
-					"when": "view == commandCentral.project.slot2Panel",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot2Panel",
-					"when": "view == commandCentral.project.slot2Panel",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot3",
-					"when": "view == commandCentral.project.slot3",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot3",
-					"when": "view == commandCentral.project.slot3",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot3",
-					"when": "view == commandCentral.project.slot3",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot3Panel",
-					"when": "view == commandCentral.project.slot3Panel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot3Panel",
-					"when": "view == commandCentral.project.slot3Panel",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot3Panel",
-					"when": "view == commandCentral.project.slot3Panel",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot4",
-					"when": "view == commandCentral.project.slot4",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot4",
-					"when": "view == commandCentral.project.slot4",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot4",
-					"when": "view == commandCentral.project.slot4",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot4Panel",
-					"when": "view == commandCentral.project.slot4Panel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot4Panel",
-					"when": "view == commandCentral.project.slot4Panel",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot4Panel",
-					"when": "view == commandCentral.project.slot4Panel",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot5",
-					"when": "view == commandCentral.project.slot5",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot5",
-					"when": "view == commandCentral.project.slot5",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot5",
-					"when": "view == commandCentral.project.slot5",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot5Panel",
-					"when": "view == commandCentral.project.slot5Panel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot5Panel",
-					"when": "view == commandCentral.project.slot5Panel",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot5Panel",
-					"when": "view == commandCentral.project.slot5Panel",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot6",
-					"when": "view == commandCentral.project.slot6",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot6",
-					"when": "view == commandCentral.project.slot6",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot6",
-					"when": "view == commandCentral.project.slot6",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot6Panel",
-					"when": "view == commandCentral.project.slot6Panel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot6Panel",
-					"when": "view == commandCentral.project.slot6Panel",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot6Panel",
-					"when": "view == commandCentral.project.slot6Panel",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot7",
-					"when": "view == commandCentral.project.slot7",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot7",
-					"when": "view == commandCentral.project.slot7",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot7",
-					"when": "view == commandCentral.project.slot7",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot7Panel",
-					"when": "view == commandCentral.project.slot7Panel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot7Panel",
-					"when": "view == commandCentral.project.slot7Panel",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot7Panel",
-					"when": "view == commandCentral.project.slot7Panel",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot8",
-					"when": "view == commandCentral.project.slot8",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot8",
-					"when": "view == commandCentral.project.slot8",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot8",
-					"when": "view == commandCentral.project.slot8",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot8Panel",
-					"when": "view == commandCentral.project.slot8Panel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot8Panel",
-					"when": "view == commandCentral.project.slot8Panel",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot8Panel",
-					"when": "view == commandCentral.project.slot8Panel",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot9",
-					"when": "view == commandCentral.project.slot9",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot9",
-					"when": "view == commandCentral.project.slot9",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot9",
-					"when": "view == commandCentral.project.slot9",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot9Panel",
-					"when": "view == commandCentral.project.slot9Panel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot9Panel",
-					"when": "view == commandCentral.project.slot9Panel",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot9Panel",
-					"when": "view == commandCentral.project.slot9Panel",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot10",
-					"when": "view == commandCentral.project.slot10",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot10",
-					"when": "view == commandCentral.project.slot10",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot10",
-					"when": "view == commandCentral.project.slot10",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.gitSort.refreshView.slot10Panel",
-					"when": "view == commandCentral.project.slot10Panel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "commandCentral.gitSort.changeSortOrder.slot10Panel",
-					"when": "view == commandCentral.project.slot10Panel",
-					"group": "navigation@2"
-				},
-				{
-					"command": "commandCentral.gitSort.changeFileFilter.slot10Panel",
-					"when": "view == commandCentral.project.slot10Panel",
-					"group": "navigation@3"
-				},
-				{
-					"command": "commandCentral.refreshAgentStatus",
-					"when": "view == commandCentral.agentStatus",
-					"group": "navigation"
-				}
-			]
-		},
-		"keybindings": [
-			{
-				"command": "workbench.view.extension.commandCentral",
-				"key": "cmd+shift+c",
-				"mac": "cmd+shift+c",
-				"win": "ctrl+shift+c",
-				"linux": "ctrl+shift+c"
-			},
-			{
-				"command": "commandCentral.gitSort.changeFileFilter",
-				"key": "f",
-				"when": "focusedView =~ /^commandCentral\\./"
-			},
-			{
-				"command": "commandCentral.grouping.toggle",
-				"key": "g",
-				"when": "focusedView =~ /^commandCentral\\./"
-			}
-		]
-	},
-	"scripts": {
-		"dev": "bun run scripts-v2/dev.ts",
-		"test": "bun test",
-		"dist": "bun run scripts-v2/dist-simple.ts",
-		"_test:git2": "bun test test/git-sort/sorted-changes-provider.test.ts",
-		"_test:git4": "bun test test/git-sort/circuit-breaker.test.ts test/git-sort/scm-sorter.test.ts",
-		"_test:git5": "bun test test/git-sort/deleted-file-tracker.test.ts test/git-sort/storage-adapter.test.ts",
-		"_test:core": "bun test test/utils test/services test/security",
-		"_test:integration": "bun test test/integration/",
-		"_test:mocks": "bun test test/mocks/",
-		"_test:tree-view-patterns": "bun test test/tree-view/",
-		"build": "bun run scripts-v2/dist-simple.ts"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^2.3.1",
-		"@types/bun": "^1.3.1",
-		"@types/node": "20.19.20",
-		"@types/vscode": "^1.100.0",
-		"@vscode/vsce": "^3.6.2",
-		"knip": "^5.66.3",
-		"playwright": "^1.58.2",
-		"typescript": "^5.9.3"
-	},
-	"distConfig": {
-		"maxReleases": 3
-	}
+  "name": "command-central",
+  "displayName": "Command Central",
+  "description": "Code changes, sorted by time. See what changed, in the order it changed.",
+  "version": "0.3.2",
+  "publisher": "oste",
+  "icon": "resources/icons/icon.png",
+  "type": "module",
+  "main": "./dist/extension.js",
+  "engines": {
+    "vscode": "^1.100.0",
+    "node": ">=18.0.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "command",
+    "git",
+    "sort",
+    "scm",
+    "productivity",
+    "git sort",
+    "sorted changes",
+    "time sort",
+    "workspace"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ostehost/command-central"
+  },
+  "bugs": {
+    "url": "https://github.com/ostehost/command-central/issues"
+  },
+  "homepage": "https://partnerai.dev",
+  "galleryBanner": {
+    "color": "#161b22",
+    "theme": "dark"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Mike",
+    "url": "https://github.com/ostehost"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "Command Central works in all workspaces",
+      "restrictedConfigurations": [
+        "commandCentral.terminal.launcherPath",
+        "commandCentral.terminal.app"
+      ]
+    }
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "commandCentral",
+          "title": "Command Central",
+          "icon": "resources/icons/activity-bar.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "commandCentralPanel",
+          "title": "Command Central",
+          "icon": "resources/icons/activity-bar.svg"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Command Central",
+      "properties": {
+        "commandCentral.project.icon": {
+          "type": "string",
+          "markdownDescription": "Icon/emoji to display in status bar for this workspace (e.g., `🚀`, `📦`, `🎨`)",
+          "examples": [
+            "🚀",
+            "📦",
+            "🎨",
+            "🔧",
+            "📚",
+            "🧪",
+            "🎮",
+            "🌟"
+          ],
+          "scope": "resource"
+        },
+        "commandCentral.project.name": {
+          "type": "string",
+          "description": "Display name for this workspace project",
+          "scope": "resource"
+        },
+        "commandCentral.gitSort.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable sorting of git changes by modification time",
+          "scope": "window"
+        },
+        "commandCentral.gitSort.fileTypeFilter": {
+          "type": "string",
+          "enum": [
+            "all",
+            "code",
+            "config",
+            "docs",
+            "images",
+            "tests",
+            "custom"
+          ],
+          "default": "all",
+          "description": "Filter files by type in sorted changes view",
+          "enumDescriptions": [
+            "Show all file types",
+            "Show code files (.ts, .js, .py, .java, etc.)",
+            "Show config files (.json, .yaml, .toml, etc.)",
+            "Show documentation files (.md, .txt, etc.)",
+            "Show image files (.png, .jpg, .svg, etc.)",
+            "Show test files (.test.ts, .spec.js, etc.)",
+            "Show custom file types defined in customFileTypes setting"
+          ],
+          "scope": "window"
+        },
+        "commandCentral.gitSort.customFileTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\.[a-zA-Z0-9]+$"
+          },
+          "default": [],
+          "description": "Custom file extensions to filter when fileTypeFilter is set to 'custom' (e.g., ['.vue', '.svelte'])",
+          "scope": "window"
+        },
+        "commandCentral.trackActiveFile": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Automatically reveal and highlight the active file in the git changes tree view (matches VS Code Explorer's behavior)",
+          "scope": "window"
+        },
+        "commandCentral.fileFilter.persistence": {
+          "type": "string",
+          "enum": [
+            "workspace",
+            "global",
+            "none"
+          ],
+          "default": "workspace",
+          "description": "Where to save extension filter preferences",
+          "enumDescriptions": [
+            "Save filters per workspace (recommended - filters are workspace-specific)",
+            "Save filters globally (same filters across all workspaces)",
+            "Don't save filters (reset on extension reload)"
+          ],
+          "scope": "window"
+        },
+        "commandCentral.fileFilter.maxExtensions": {
+          "type": "number",
+          "default": 50,
+          "minimum": 10,
+          "maximum": 200,
+          "description": "Maximum number of extensions to show in picker (performance limit)",
+          "scope": "window"
+        },
+        "commandCentral.statusBar.showProjectIcon": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show project icon in status bar",
+          "scope": "window"
+        },
+        "commandCentral.statusBar.priority": {
+          "type": "number",
+          "default": 10000,
+          "description": "Priority for status bar positioning (higher = further left)",
+          "scope": "window"
+        },
+        "commandCentral.gitStatusGrouping.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable grouping of Git status changes by status type (staged/unstaged) with time-based subgroups",
+          "scope": "application"
+        },
+        "commandCentral.agentTasksFile": {
+          "type": "string",
+          "default": "~/projects/ghostty-launcher/scripts/tasks.json",
+          "markdownDescription": "Path to the agent task registry JSON file (tasks.json). Supports `~` expansion.",
+          "scope": "machine"
+        },
+        "commandCentral.ghostty.launcherPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `launcher` binary (ghostty-launcher). Leave empty to use `launcher` from PATH, or the default fallback at `~/projects/ghostty-launcher/launcher`.",
+          "scope": "machine"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "commandCentral.gitSort.enable",
+        "title": "Command Central: Enable Git Sort",
+        "icon": "$(check)"
+      },
+      {
+        "command": "commandCentral.gitSort.disable",
+        "title": "Command Central: Disable Git Sort",
+        "icon": "$(x)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView",
+        "title": "Command Central: Refresh Sorted Changes",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter",
+        "title": "Command Central: Filter by Extension",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.grouping.toggle",
+        "title": "Command Central: Toggle Grouping Panel",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "commandCentral.grouping.selectOption",
+        "title": "Command Central: Select Grouping Mode"
+      },
+      {
+        "command": "commandCentral.gitSort.openChange",
+        "title": "Command Central: Open Change",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "commandCentral.gitSort.openFile",
+        "title": "Command Central: Open File",
+        "icon": "$(file)"
+      },
+      {
+        "command": "commandCentral.gitSort.openDiff",
+        "title": "Command Central: Open Diff",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "commandCentral.gitSort.revealInExplorer",
+        "title": "Command Central: Reveal in Explorer",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "commandCentral.gitSort.copyPath",
+        "title": "Command Central: Copy Path",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "commandCentral.gitSort.copyRelativePath",
+        "title": "Command Central: Copy Relative Path",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "commandCentral.gitSort.openToSide",
+        "title": "Command Central: Open to the Side",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "commandCentral.gitSort.selectForCompare",
+        "title": "Command Central: Select for Compare",
+        "icon": "$(compare-changes)"
+      },
+      {
+        "command": "commandCentral.gitSort.compareWithSelected",
+        "title": "Command Central: Compare with Selected",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "commandCentral.gitSort.revealInFinder",
+        "title": "Command Central: Reveal in File Explorer",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "commandCentral.gitSort.openInIntegratedTerminal",
+        "title": "Command Central: Open in Integrated Terminal",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "commandCentral.gitSort.openWith",
+        "title": "Command Central: Open With...",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "commandCentral.gitSort.openPreview",
+        "title": "Command Central: Open Preview",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot1",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot1",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot1",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot1Panel",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot1Panel",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot1Panel",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot2",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot2",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot2",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot2Panel",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot2Panel",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot2Panel",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot3",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot3",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot3",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot3Panel",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot3Panel",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot3Panel",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot4",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot4",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot4",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot4Panel",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot4Panel",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot4Panel",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot5",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot5",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot5",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot5Panel",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot5Panel",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot5Panel",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot6",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot6",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot6",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot6Panel",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot6Panel",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot6Panel",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot7",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot7",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot7",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot7Panel",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot7Panel",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot7Panel",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot8",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot8",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot8",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot8Panel",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot8Panel",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot8Panel",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot9",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot9",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot9",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot9Panel",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot9Panel",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot9Panel",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot10",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot10",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot10",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.gitSort.refreshView.slot10Panel",
+        "title": "Command Central: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeSortOrder.slot10Panel",
+        "title": "Command Central: Toggle Sort Order",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter.slot10Panel",
+        "title": "Command Central: Filter Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.refreshAgentStatus",
+        "title": "Refresh Agent Status",
+        "category": "Command Central",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.captureAgentOutput",
+        "title": "Capture Agent Output",
+        "category": "Command Central",
+        "icon": "$(output)"
+      },
+      {
+        "command": "commandCentral.killAgent",
+        "title": "Kill Agent",
+        "category": "Command Central",
+        "icon": "$(close)"
+      },
+      {
+        "command": "commandCentral.ghostty.createTerminal",
+        "title": "Create Project Terminal",
+        "category": "Command Central: Ghostty",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "commandCentral.ghostty.checkBinary",
+        "title": "Check / Install Ghostty Binary",
+        "category": "Command Central: Ghostty",
+        "icon": "$(cloud-download)"
+      }
+    ],
+    "views": {
+      "commandCentral": [
+        {
+          "id": "commandCentral.grouping",
+          "name": "Grouping Options",
+          "type": "tree",
+          "when": "commandCentral.grouping.visible"
+        },
+        {
+          "id": "commandCentral.extensionFilter",
+          "name": "Extension Filter",
+          "type": "tree",
+          "when": "commandCentral.extensionFilter.visible"
+        },
+        {
+          "id": "commandCentral.project.slot1",
+          "name": "Project",
+          "when": "commandCentral.slot1.active"
+        },
+        {
+          "id": "commandCentral.project.slot2",
+          "name": "Project",
+          "when": "commandCentral.slot2.active"
+        },
+        {
+          "id": "commandCentral.project.slot3",
+          "name": "Project",
+          "when": "commandCentral.slot3.active"
+        },
+        {
+          "id": "commandCentral.project.slot4",
+          "name": "Project",
+          "when": "commandCentral.slot4.active"
+        },
+        {
+          "id": "commandCentral.project.slot5",
+          "name": "Project",
+          "when": "commandCentral.slot5.active"
+        },
+        {
+          "id": "commandCentral.project.slot6",
+          "name": "Project",
+          "when": "commandCentral.slot6.active"
+        },
+        {
+          "id": "commandCentral.project.slot7",
+          "name": "Project",
+          "when": "commandCentral.slot7.active"
+        },
+        {
+          "id": "commandCentral.project.slot8",
+          "name": "Project",
+          "when": "commandCentral.slot8.active"
+        },
+        {
+          "id": "commandCentral.project.slot9",
+          "name": "Project",
+          "when": "commandCentral.slot9.active"
+        },
+        {
+          "id": "commandCentral.project.slot10",
+          "name": "Project",
+          "when": "commandCentral.slot10.active"
+        },
+        {
+          "id": "commandCentral.agentStatus",
+          "name": "Agent Status",
+          "type": "tree",
+          "when": "config.commandCentral.agentTasksFile"
+        }
+      ],
+      "commandCentralPanel": [
+        {
+          "id": "commandCentral.project.slot1Panel",
+          "name": "Project",
+          "when": "commandCentral.slot1.active"
+        },
+        {
+          "id": "commandCentral.project.slot2Panel",
+          "name": "Project",
+          "when": "commandCentral.slot2.active"
+        },
+        {
+          "id": "commandCentral.project.slot3Panel",
+          "name": "Project",
+          "when": "commandCentral.slot3.active"
+        },
+        {
+          "id": "commandCentral.project.slot4Panel",
+          "name": "Project",
+          "when": "commandCentral.slot4.active"
+        },
+        {
+          "id": "commandCentral.project.slot5Panel",
+          "name": "Project",
+          "when": "commandCentral.slot5.active"
+        },
+        {
+          "id": "commandCentral.project.slot6Panel",
+          "name": "Project",
+          "when": "commandCentral.slot6.active"
+        },
+        {
+          "id": "commandCentral.project.slot7Panel",
+          "name": "Project",
+          "when": "commandCentral.slot7.active"
+        },
+        {
+          "id": "commandCentral.project.slot8Panel",
+          "name": "Project",
+          "when": "commandCentral.slot8.active"
+        },
+        {
+          "id": "commandCentral.project.slot9Panel",
+          "name": "Project",
+          "when": "commandCentral.slot9.active"
+        },
+        {
+          "id": "commandCentral.project.slot10Panel",
+          "name": "Project",
+          "when": "commandCentral.slot10.active"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "commandCentral.project.slot1",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot1Panel",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot2",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot2Panel",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot3",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot3Panel",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot4",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot4Panel",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot5",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot5Panel",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot6",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot6Panel",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot7",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot7Panel",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot8",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot8Panel",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot9",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot9Panel",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot10",
+        "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.project.slot10Panel",
+        "contents": "Open a Git repository to see time-sorted changes."
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "commandCentral.gitSort.enable",
+          "when": "true"
+        },
+        {
+          "command": "commandCentral.gitSort.disable",
+          "when": "true"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "commandCentral.gitSort.openFile",
+          "when": "view =~ /^commandCentral\\.project\\./ && (viewItem == staged || viewItem == unstaged || viewItem == staged-deleted || viewItem == unstaged-deleted || viewItem == staged-and-unstaged)",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.openToSide",
+          "when": "view =~ /^commandCentral\\.project\\./ && (viewItem == staged || viewItem == unstaged || viewItem == staged-and-unstaged)",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.openDiff",
+          "when": "view =~ /^commandCentral\\.project\\./ && (viewItem == staged || viewItem == unstaged || viewItem == staged-deleted || viewItem == unstaged-deleted || viewItem == staged-and-unstaged)",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.revealInExplorer",
+          "when": "view =~ /^commandCentral\\.project\\./ && (viewItem == staged || viewItem == unstaged || viewItem == staged-and-unstaged)",
+          "group": "navigation@4"
+        },
+        {
+          "command": "commandCentral.gitSort.revealInFinder",
+          "when": "view =~ /^commandCentral\\.project\\./",
+          "group": "navigation@5"
+        },
+        {
+          "command": "commandCentral.gitSort.openInIntegratedTerminal",
+          "when": "view =~ /^commandCentral\\.project\\./",
+          "group": "navigation@6"
+        },
+        {
+          "command": "commandCentral.gitSort.openWith",
+          "when": "view =~ /^commandCentral\\.project\\./",
+          "group": "navigation@7"
+        },
+        {
+          "command": "commandCentral.gitSort.openPreview",
+          "when": "view =~ /^commandCentral\\.project\\./",
+          "group": "navigation@8"
+        },
+        {
+          "command": "commandCentral.gitSort.selectForCompare",
+          "when": "view =~ /^commandCentral\\.project\\./",
+          "group": "3_compare@1"
+        },
+        {
+          "command": "commandCentral.gitSort.compareWithSelected",
+          "when": "view =~ /^commandCentral\\.project\\./",
+          "group": "3_compare@2"
+        },
+        {
+          "command": "commandCentral.gitSort.copyPath",
+          "when": "view =~ /^commandCentral\\.project\\./",
+          "group": "5_cutcopypaste@1"
+        },
+        {
+          "command": "commandCentral.gitSort.copyRelativePath",
+          "when": "view =~ /^commandCentral\\.project\\./",
+          "group": "5_cutcopypaste@2"
+        },
+        {
+          "command": "commandCentral.captureAgentOutput",
+          "when": "viewItem =~ /^agentTask\\./",
+          "group": "inline"
+        },
+        {
+          "command": "commandCentral.killAgent",
+          "when": "viewItem == agentTask.running",
+          "group": "inline"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "commandCentral.gitSort.refreshView.slot1",
+          "when": "view == commandCentral.project.slot1",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot1",
+          "when": "view == commandCentral.project.slot1",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot1",
+          "when": "view == commandCentral.project.slot1",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot1Panel",
+          "when": "view == commandCentral.project.slot1Panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot1Panel",
+          "when": "view == commandCentral.project.slot1Panel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot1Panel",
+          "when": "view == commandCentral.project.slot1Panel",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot2",
+          "when": "view == commandCentral.project.slot2",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot2",
+          "when": "view == commandCentral.project.slot2",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot2",
+          "when": "view == commandCentral.project.slot2",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot2Panel",
+          "when": "view == commandCentral.project.slot2Panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot2Panel",
+          "when": "view == commandCentral.project.slot2Panel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot2Panel",
+          "when": "view == commandCentral.project.slot2Panel",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot3",
+          "when": "view == commandCentral.project.slot3",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot3",
+          "when": "view == commandCentral.project.slot3",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot3",
+          "when": "view == commandCentral.project.slot3",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot3Panel",
+          "when": "view == commandCentral.project.slot3Panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot3Panel",
+          "when": "view == commandCentral.project.slot3Panel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot3Panel",
+          "when": "view == commandCentral.project.slot3Panel",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot4",
+          "when": "view == commandCentral.project.slot4",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot4",
+          "when": "view == commandCentral.project.slot4",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot4",
+          "when": "view == commandCentral.project.slot4",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot4Panel",
+          "when": "view == commandCentral.project.slot4Panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot4Panel",
+          "when": "view == commandCentral.project.slot4Panel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot4Panel",
+          "when": "view == commandCentral.project.slot4Panel",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot5",
+          "when": "view == commandCentral.project.slot5",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot5",
+          "when": "view == commandCentral.project.slot5",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot5",
+          "when": "view == commandCentral.project.slot5",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot5Panel",
+          "when": "view == commandCentral.project.slot5Panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot5Panel",
+          "when": "view == commandCentral.project.slot5Panel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot5Panel",
+          "when": "view == commandCentral.project.slot5Panel",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot6",
+          "when": "view == commandCentral.project.slot6",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot6",
+          "when": "view == commandCentral.project.slot6",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot6",
+          "when": "view == commandCentral.project.slot6",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot6Panel",
+          "when": "view == commandCentral.project.slot6Panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot6Panel",
+          "when": "view == commandCentral.project.slot6Panel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot6Panel",
+          "when": "view == commandCentral.project.slot6Panel",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot7",
+          "when": "view == commandCentral.project.slot7",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot7",
+          "when": "view == commandCentral.project.slot7",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot7",
+          "when": "view == commandCentral.project.slot7",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot7Panel",
+          "when": "view == commandCentral.project.slot7Panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot7Panel",
+          "when": "view == commandCentral.project.slot7Panel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot7Panel",
+          "when": "view == commandCentral.project.slot7Panel",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot8",
+          "when": "view == commandCentral.project.slot8",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot8",
+          "when": "view == commandCentral.project.slot8",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot8",
+          "when": "view == commandCentral.project.slot8",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot8Panel",
+          "when": "view == commandCentral.project.slot8Panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot8Panel",
+          "when": "view == commandCentral.project.slot8Panel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot8Panel",
+          "when": "view == commandCentral.project.slot8Panel",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot9",
+          "when": "view == commandCentral.project.slot9",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot9",
+          "when": "view == commandCentral.project.slot9",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot9",
+          "when": "view == commandCentral.project.slot9",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot9Panel",
+          "when": "view == commandCentral.project.slot9Panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot9Panel",
+          "when": "view == commandCentral.project.slot9Panel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot9Panel",
+          "when": "view == commandCentral.project.slot9Panel",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot10",
+          "when": "view == commandCentral.project.slot10",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot10",
+          "when": "view == commandCentral.project.slot10",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot10",
+          "when": "view == commandCentral.project.slot10",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.gitSort.refreshView.slot10Panel",
+          "when": "view == commandCentral.project.slot10Panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commandCentral.gitSort.changeSortOrder.slot10Panel",
+          "when": "view == commandCentral.project.slot10Panel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.gitSort.changeFileFilter.slot10Panel",
+          "when": "view == commandCentral.project.slot10Panel",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.refreshAgentStatus",
+          "when": "view == commandCentral.agentStatus",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "workbench.view.extension.commandCentral",
+        "key": "cmd+shift+c",
+        "mac": "cmd+shift+c",
+        "win": "ctrl+shift+c",
+        "linux": "ctrl+shift+c"
+      },
+      {
+        "command": "commandCentral.gitSort.changeFileFilter",
+        "key": "f",
+        "when": "focusedView =~ /^commandCentral\\./"
+      },
+      {
+        "command": "commandCentral.grouping.toggle",
+        "key": "g",
+        "when": "focusedView =~ /^commandCentral\\./"
+      }
+    ]
+  },
+  "scripts": {
+    "dev": "bun run scripts-v2/dev.ts",
+    "test": "bun test",
+    "dist": "bun run scripts-v2/dist-simple.ts",
+    "_test:git2": "bun test test/git-sort/sorted-changes-provider.test.ts",
+    "_test:git4": "bun test test/git-sort/circuit-breaker.test.ts test/git-sort/scm-sorter.test.ts",
+    "_test:git5": "bun test test/git-sort/deleted-file-tracker.test.ts test/git-sort/storage-adapter.test.ts",
+    "_test:core": "bun test test/utils test/services test/security",
+    "_test:integration": "bun test test/integration/",
+    "_test:mocks": "bun test test/mocks/",
+    "_test:tree-view-patterns": "bun test test/tree-view/",
+    "build": "bun run scripts-v2/dist-simple.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.1",
+    "@types/bun": "^1.3.1",
+    "@types/node": "20.19.20",
+    "@types/vscode": "^1.100.0",
+    "@vscode/vsce": "^3.6.2",
+    "knip": "^5.66.3",
+    "playwright": "^1.58.2",
+    "typescript": "^5.9.3"
+  },
+  "distConfig": {
+    "maxReleases": 3
+  }
 }
