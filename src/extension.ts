@@ -18,6 +18,8 @@ import {
 	revealInFinder,
 	selectForCompare,
 } from "./commands/tree-view-utils.js";
+import { BinaryManager } from "./ghostty/BinaryManager.js";
+import { TerminalManager } from "./ghostty/TerminalManager.js";
 import { GitSorter } from "./git-sort/scm-sorter.js";
 import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provider.js";
 import {
@@ -39,6 +41,8 @@ let extensionFilterViewManager: ExtensionFilterViewManager | undefined;
 let groupingStateManager: GroupingStateManager | undefined;
 let groupingViewManager: GroupingViewManager | undefined;
 let agentStatusProvider: AgentStatusTreeProvider | undefined;
+let terminalManager: TerminalManager | undefined;
+let binaryManager: BinaryManager | undefined;
 let mainLogger: LoggerService;
 let gitSortLogger: LoggerService;
 
@@ -691,6 +695,129 @@ export async function activate(
 		);
 		mainLogger.info("Agent Status panel initialized");
 
+		// ============================================================================
+		// Ghostty Integration — TerminalManager + BinaryManager
+		// ============================================================================
+		terminalManager = new TerminalManager(mainLogger);
+		binaryManager = new BinaryManager(mainLogger);
+
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.ghostty.createTerminal",
+				async () => {
+					const folder = vscode.workspace.workspaceFolders?.[0];
+					if (!folder) {
+						vscode.window.showErrorMessage(
+							"Command Central: No workspace folder open.",
+						);
+						return;
+					}
+
+					const installed = await terminalManager?.isLauncherInstalled();
+					if (!installed) {
+						vscode.window.showErrorMessage(
+							"Command Central: ghostty-launcher not found. " +
+								"Set commandCentral.ghostty.launcherPath or install launcher to PATH.",
+						);
+						return;
+					}
+
+					try {
+						await terminalManager?.createProjectTerminal(folder.uri.fsPath);
+						vscode.window.showInformationMessage(
+							`Command Central: Project terminal created for ${folder.name}.`,
+						);
+					} catch (err) {
+						const msg = err instanceof Error ? err.message : String(err);
+						mainLogger.error("Failed to create project terminal", err as Error);
+						vscode.window.showErrorMessage(
+							`Command Central: Failed to create terminal — ${msg}`,
+						);
+					}
+				},
+			),
+
+			vscode.commands.registerCommand(
+				"commandCentral.ghostty.checkBinary",
+				async () => {
+					try {
+						const isInstalled = await binaryManager?.isInstalled();
+
+						if (isInstalled) {
+							const versionInfo = await binaryManager?.getVersion();
+							const versionStr = versionInfo.bundleVersion ?? "unknown";
+							const hashStr = versionInfo.commitHash
+								? ` (${versionInfo.commitHash.slice(0, 8)})`
+								: "";
+
+							const choice = await vscode.window.showInformationMessage(
+								`Command Central: Ghostty CC ${versionStr}${hashStr} is installed.`,
+								"Check for Updates",
+								"OK",
+							);
+
+							if (choice !== "Check for Updates") return;
+						}
+
+						await vscode.window.withProgress(
+							{
+								location: vscode.ProgressLocation.Notification,
+								title: "Command Central: Checking for Ghostty updates…",
+								cancellable: false,
+							},
+							async () => {
+								const release = await binaryManager?.getLatestRelease();
+
+								const versionInfo = isInstalled
+									? await binaryManager?.getVersion()
+									: { bundleVersion: null, commitHash: null };
+
+								const alreadyLatest =
+									versionInfo.bundleVersion === release.tag_name;
+
+								if (alreadyLatest) {
+									vscode.window.showInformationMessage(
+										`Command Central: Ghostty is already up to date (${release.tag_name}).`,
+									);
+									return;
+								}
+
+								const action = await vscode.window.showInformationMessage(
+									`Command Central: Ghostty ${release.tag_name} is available.${versionInfo.bundleVersion ? ` (current: ${versionInfo.bundleVersion})` : ""}`,
+									"Install",
+									"Cancel",
+								);
+
+								if (action !== "Install") return;
+
+								await vscode.window.withProgress(
+									{
+										location: vscode.ProgressLocation.Notification,
+										title: `Command Central: Installing Ghostty ${release.tag_name}…`,
+										cancellable: false,
+									},
+									async () => {
+										await binaryManager?.downloadRelease(release.tag_name);
+									},
+								);
+
+								vscode.window.showInformationMessage(
+									`Command Central: Ghostty ${release.tag_name} installed successfully.`,
+								);
+							},
+						);
+					} catch (err) {
+						const msg = err instanceof Error ? err.message : String(err);
+						mainLogger.error("Ghostty binary check failed", err as Error);
+						vscode.window.showErrorMessage(
+							`Command Central: Ghostty check failed — ${msg}`,
+						);
+					}
+				},
+			),
+		);
+		mainLogger.info("Ghostty integration initialized");
+
 		const activationTime = performance.now() - start;
 		mainLogger.info(`✅ Extension activated in ${activationTime.toFixed(0)}ms`);
 		mainLogger.info(`📦 Command Central v${version} ready`);
@@ -733,6 +860,7 @@ export async function deactivate(): Promise<void> {
 	}
 
 	// Note: agentStatusProvider disposal handled by context.subscriptions
+	// Note: terminalManager and binaryManager have no disposable resources
 
 	// Clean up Grouping State Manager
 	if (groupingStateManager) {
