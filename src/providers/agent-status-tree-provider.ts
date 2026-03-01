@@ -133,6 +133,13 @@ export class AgentStatusTreeProvider
 			this.fileWatcher.dispose();
 			this.fileWatcher = null;
 		}
+
+		// Clear existing debounce timer before setting up new watcher
+		if (this.debounceTimer) {
+			clearTimeout(this.debounceTimer);
+			this.debounceTimer = null;
+		}
+
 		const filePath = this.getConfiguredPath();
 		this._filePath = filePath;
 		if (!filePath) return;
@@ -151,9 +158,11 @@ export class AgentStatusTreeProvider
 			}, 150);
 		};
 
-		this.fileWatcher.onDidChange(debouncedReload);
-		this.fileWatcher.onDidCreate(debouncedReload);
-		this.fileWatcher.onDidDelete(debouncedReload);
+		this.disposables.push(
+			this.fileWatcher.onDidChange(debouncedReload),
+			this.fileWatcher.onDidCreate(debouncedReload),
+			this.fileWatcher.onDidDelete(debouncedReload),
+		);
 	}
 
 	reload(): void {

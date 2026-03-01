@@ -14,7 +14,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import type { LoggerService } from "../services/logger-service.js";
 
-const GITHUB_REPO = "ostehost/ghostty-fork";
+const DEFAULT_GITHUB_REPO = "ostehost/ghostty-fork";
 const GITHUB_API_BASE = "https://api.github.com";
 const INSTALL_DIR = path.join(os.homedir(), ".command-central", "ghostty");
 const APP_NAME = "Ghostty.app";
@@ -61,13 +61,19 @@ export interface UpdateCheckResult {
 export class BinaryManager {
 	private readonly logger: LoggerService;
 	private readonly globalState: vscode.Memento | undefined;
+	private readonly githubRepo: string;
 
 	/** Visible for testing — can be overridden */
 	installPath: string = APP_PATH;
 
-	constructor(logger: LoggerService, globalState?: vscode.Memento) {
+	constructor(
+		logger: LoggerService,
+		globalState?: vscode.Memento,
+		githubRepo: string = DEFAULT_GITHUB_REPO,
+	) {
 		this.logger = logger;
 		this.globalState = globalState;
+		this.githubRepo = githubRepo;
 	}
 
 	/**
@@ -188,7 +194,7 @@ export class BinaryManager {
 	 * Uses https://api.github.com/repos/<owner>/<repo>/releases/latest
 	 */
 	async getLatestRelease(): Promise<GhosttyRelease> {
-		const url = `${GITHUB_API_BASE}/repos/${GITHUB_REPO}/releases/latest`;
+		const url = `${GITHUB_API_BASE}/repos/${this.githubRepo}/releases/latest`;
 		this.logger.info(`Checking latest release at: ${url}`, "BinaryManager");
 
 		const response = await this.fetchJSON(url);
@@ -310,7 +316,7 @@ export class BinaryManager {
 	 * Fetches a specific release by tag name.
 	 */
 	async getReleaseByTag(tag: string): Promise<GhosttyRelease> {
-		const url = `${GITHUB_API_BASE}/repos/${GITHUB_REPO}/releases/tags/${tag}`;
+		const url = `${GITHUB_API_BASE}/repos/${this.githubRepo}/releases/tags/${tag}`;
 		const response = await this.fetchJSON(url);
 		const data = (await response.json()) as GhosttyRelease;
 
