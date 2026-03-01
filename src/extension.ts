@@ -705,12 +705,40 @@ export async function activate(
 			vscode.commands.registerCommand(
 				"commandCentral.ghostty.createTerminal",
 				async () => {
-					const folder = vscode.workspace.workspaceFolders?.[0];
-					if (!folder) {
+					const folders = vscode.workspace.workspaceFolders;
+					if (!folders || folders.length === 0) {
 						vscode.window.showErrorMessage(
 							"Command Central: No workspace folder open.",
 						);
 						return;
+					}
+
+					// Multi-root workspace: show picker to choose which folder
+					let selectedFolder: vscode.WorkspaceFolder;
+					if (folders.length > 1) {
+						const folderItems = folders.map((folder) => ({
+							label: folder.name,
+							description: folder.uri.fsPath,
+							folder: folder,
+						}));
+
+						const selectedItem = await vscode.window.showQuickPick(
+							folderItems,
+							{
+								placeHolder: "Select workspace folder for terminal",
+								canPickMany: false,
+							},
+						);
+
+						if (!selectedItem) {
+							// User cancelled the picker
+							return;
+						}
+
+						selectedFolder = selectedItem.folder;
+					} else {
+						// Single workspace folder: use it directly
+						selectedFolder = folders[0];
 					}
 
 					const installed = await terminalManager?.isLauncherInstalled();
@@ -723,9 +751,11 @@ export async function activate(
 					}
 
 					try {
-						await terminalManager?.createProjectTerminal(folder.uri.fsPath);
+						await terminalManager?.createProjectTerminal(
+							selectedFolder.uri.fsPath,
+						);
 						vscode.window.showInformationMessage(
-							`Command Central: Project terminal created for ${folder.name}.`,
+							`Command Central: Project terminal created for ${selectedFolder.name}.`,
 						);
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err);
