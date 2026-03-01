@@ -7,9 +7,11 @@
  * Install location: ~/.command-central/ghostty/Ghostty.app
  */
 
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as vscode from "vscode";
 import type { LoggerService } from "../services/logger-service.js";
 
 const GITHUB_REPO = "ostehost/ghostty-fork";
@@ -18,7 +20,15 @@ const INSTALL_DIR = path.join(os.homedir(), ".command-central", "ghostty");
 const APP_NAME = "Ghostty.app";
 const APP_PATH = path.join(INSTALL_DIR, APP_NAME);
 const _APP_BAK_PATH = path.join(INSTALL_DIR, `${APP_NAME}.bak`);
-const GHOSTTY_BUNDLE_ID_PREFIX = "com.mitchellh.ghostty";
+
+/** Valid bundle ID prefixes — supports both upstream and CC fork IDs */
+const VALID_BUNDLE_ID_PREFIXES = [
+	"com.mitchellh.ghostty",
+	"dev.partnerai.ghostty",
+];
+
+/** Key used to store the installed release tag in VS Code globalState */
+const INSTALLED_TAG_KEY = "ghostty.installedTag";
 
 /** Timeout for GitHub API calls (ms) */
 const FETCH_TIMEOUT_MS = 15_000;
@@ -39,21 +49,69 @@ export interface GhosttyAsset {
 export interface GhosttyVersionInfo {
 	bundleVersion: string | null;
 	commitHash: string | null;
+	buildDate: string | null;
+}
+
+export interface UpdateCheckResult {
+	updateAvailable: boolean;
+	latestTag: string;
+	installedTag: string | null;
 }
 
 export class BinaryManager {
 	private readonly logger: LoggerService;
+	private readonly globalState: vscode.Memento | undefined;
 
 	/** Visible for testing — can be overridden */
 	installPath: string = APP_PATH;
 
-	constructor(logger: LoggerService) {
+	constructor(logger: LoggerService, globalState?: vscode.Memento) {
 		this.logger = logger;
+		this.globalState = globalState;
+	}
+
+	/**
+	 * Retrieves a GitHub token via VS Code's built-in authentication API.
+	 * When `createIfNone` is true, triggers the OAuth flow if no session exists.
+	 * Protected for testability — override in tests to inject tokens.
+	 */
+	protected async getGitHubToken(
+		createIfNone = false,
+	): Promise<string | undefined> {
+		try {
+			const session = await vscode.authentication.getSession(
+				"github",
+				["repo"],
+				{ createIfNone },
+			);
+			return session?.accessToken;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * Builds GitHub API request headers with optional authentication.
+	 */
+	private async buildHeaders(
+		accept = "application/vnd.github+json",
+		createIfNone = false,
+	): Promise<Record<string, string>> {
+		const token = await this.getGitHubToken(createIfNone);
+		const headers: Record<string, string> = {
+			Accept: accept,
+			"User-Agent": "command-central-vscode-extension",
+			"X-GitHub-Api-Version": "2022-11-28",
+		};
+		if (token) {
+			headers["Authorization"] = `Bearer ${token}`;
+		}
+		return headers;
 	}
 
 	/**
 	 * Checks if the Ghostty binary is installed and valid.
-	 * Valid means: Ghostty.app/Contents/Info.plist exists with the Ghostty bundle ID.
+	 * Valid means: Ghostty.app/Contents/Info.plist exists with a recognised bundle ID.
 	 */
 	async isInstalled(): Promise<boolean> {
 		const plistPath = path.join(this.installPath, "Contents", "Info.plist");
@@ -64,10 +122,12 @@ export class BinaryManager {
 
 		try {
 			const plistContent = fs.readFileSync(plistPath, "utf-8");
-			const isValid = plistContent.includes(GHOSTTY_BUNDLE_ID_PREFIX);
+			const isValid = VALID_BUNDLE_ID_PREFIXES.some((prefix) =>
+				plistContent.includes(prefix),
+			);
 			if (!isValid) {
 				this.logger.warn(
-					`Info.plist at ${plistPath} does not contain Ghostty bundle ID`,
+					`Info.plist at ${plistPath} does not contain a recognised Ghostty bundle ID`,
 					"BinaryManager",
 				);
 			}
@@ -84,7 +144,7 @@ export class BinaryManager {
 
 	/**
 	 * Reads version information from the installed Ghostty binary.
-	 * Returns CFBundleVersion and CC commit hash (if present in plist).
+	 * Returns CFBundleVersion, CC fork commit hash, and build date (if present).
 	 */
 	async getVersion(): Promise<GhosttyVersionInfo> {
 		const plistPath = path.join(this.installPath, "Contents", "Info.plist");
@@ -93,18 +153,34 @@ export class BinaryManager {
 			const plistContent = fs.readFileSync(plistPath, "utf-8");
 
 			const bundleVersion = extractPlistValue(plistContent, "CFBundleVersion");
-			// CC builds may embed a commit hash under a custom key
-			const commitHash = extractPlistValue(plistContent, "CCCommitHash");
+			const commitHash = extractPlistValue(plistContent, "CCForkCommit");
+			const buildDate = extractPlistValue(plistContent, "CCForkBuildDate");
 
-			return { bundleVersion, commitHash };
+			return { bundleVersion, commitHash, buildDate };
 		} catch (err) {
 			this.logger.error(
 				"Failed to read version from Info.plist",
 				err instanceof Error ? err : undefined,
 				"BinaryManager",
 			);
-			return { bundleVersion: null, commitHash: null };
+			return { bundleVersion: null, commitHash: null, buildDate: null };
 		}
+	}
+
+	/**
+	 * Checks whether a newer release is available.
+	 * Compares the stored installed tag against the latest GitHub release tag.
+	 */
+	async checkForUpdates(): Promise<UpdateCheckResult> {
+		const release = await this.getLatestRelease();
+		const installedTag =
+			this.globalState?.get<string>(INSTALLED_TAG_KEY) ?? null;
+
+		return {
+			updateAvailable: installedTag !== release.tag_name,
+			latestTag: release.tag_name,
+			installedTag,
+		};
 	}
 
 	/**
@@ -132,6 +208,7 @@ export class BinaryManager {
 
 	/**
 	 * Downloads and installs the release with the given tag.
+	 * Verifies SHA256 checksum when a .sha256 asset is present.
 	 * Backs up existing install to Ghostty.app.bak before overwriting.
 	 *
 	 * Expects a zip asset in the release whose name contains "Ghostty" and ends with ".zip".
@@ -161,6 +238,17 @@ export class BinaryManager {
 		await this.downloadFile(asset.browser_download_url, zipPath);
 
 		this.logger.info(`Downloaded to: ${zipPath}`, "BinaryManager");
+
+		// SHA256 verification
+		const sha256Asset = findSha256Asset(release.assets, asset.name);
+		if (sha256Asset) {
+			await this.verifySha256(zipPath, sha256Asset.browser_download_url);
+		} else {
+			this.logger.warn(
+				`No .sha256 asset found for ${asset.name}, skipping checksum verification`,
+				"BinaryManager",
+			);
+		}
 
 		// Back up existing install
 		const bakPath = path.join(
@@ -200,6 +288,11 @@ export class BinaryManager {
 			);
 		}
 
+		// Store the installed tag for future update checks
+		if (this.globalState) {
+			await this.globalState.update(INSTALLED_TAG_KEY, tag);
+		}
+
 		// Clean up temp file
 		try {
 			fs.rmSync(zipPath, { force: true });
@@ -229,25 +322,32 @@ export class BinaryManager {
 	}
 
 	/**
-	 * Fetches a JSON endpoint from GitHub API with proper headers.
-	 * Throws on non-ok response. Exposed for testing — override to inject mock behavior.
+	 * Fetches a JSON endpoint from GitHub API with authentication.
+	 * On 401/403/404 without a prior token, prompts for GitHub OAuth and retries once.
+	 * Exposed for testing — override to inject mock behavior.
 	 */
 	async fetchJSON(url: string): Promise<Response> {
-		const controller = new AbortController();
-		const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+		const headers = await this.buildHeaders();
+		let response = await this.timedFetch(url, headers, FETCH_TIMEOUT_MS);
 
-		let response: Response;
-		try {
-			response = await fetch(url, {
-				signal: controller.signal,
-				headers: {
-					Accept: "application/vnd.github+json",
-					"User-Agent": "command-central-vscode-extension",
-					"X-GitHub-Api-Version": "2022-11-28",
-				},
-			});
-		} finally {
-			clearTimeout(timer);
+		// If unauthenticated and the request was rejected, prompt for OAuth + retry
+		if (
+			(response.status === 401 ||
+				response.status === 403 ||
+				response.status === 404) &&
+			!headers["Authorization"]
+		) {
+			this.logger.info(
+				`GitHub API returned ${response.status}, requesting authentication…`,
+				"BinaryManager",
+			);
+			const retryHeaders = await this.buildHeaders(
+				"application/vnd.github+json",
+				true,
+			);
+			if (retryHeaders["Authorization"]) {
+				response = await this.timedFetch(url, retryHeaders, FETCH_TIMEOUT_MS);
+			}
 		}
 
 		if (!response.ok) {
@@ -260,18 +360,30 @@ export class BinaryManager {
 	}
 
 	/**
-	 * Downloads a URL to a local file path.
+	 * Performs a fetch with a timeout and specified headers.
 	 */
-	protected async downloadFile(url: string, destPath: string): Promise<void> {
+	private async timedFetch(
+		url: string,
+		headers: Record<string, string>,
+		timeoutMs: number,
+	): Promise<Response> {
 		const controller = new AbortController();
-		const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+		const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-		let response: Response;
 		try {
-			response = await fetch(url, { signal: controller.signal });
+			return await fetch(url, { signal: controller.signal, headers });
 		} finally {
 			clearTimeout(timer);
 		}
+	}
+
+	/**
+	 * Downloads a URL to a local file path with authentication.
+	 * Uses `application/octet-stream` Accept header for GitHub release asset downloads.
+	 */
+	protected async downloadFile(url: string, destPath: string): Promise<void> {
+		const headers = await this.buildHeaders("application/octet-stream");
+		const response = await this.timedFetch(url, headers, DOWNLOAD_TIMEOUT_MS);
 
 		if (!response.ok) {
 			throw new Error(
@@ -281,6 +393,60 @@ export class BinaryManager {
 
 		const buffer = await response.arrayBuffer();
 		fs.writeFileSync(destPath, Buffer.from(buffer));
+	}
+
+	/**
+	 * Downloads the SHA256 checksum file and verifies the downloaded zip.
+	 * Checksum file format: `<hash>  <filename>` or just `<hash>`.
+	 */
+	private async verifySha256(
+		zipPath: string,
+		sha256Url: string,
+	): Promise<void> {
+		this.logger.info("Verifying SHA256 checksum…", "BinaryManager");
+
+		const headers = await this.buildHeaders("application/octet-stream");
+		const response = await this.timedFetch(
+			sha256Url,
+			headers,
+			FETCH_TIMEOUT_MS,
+		);
+
+		if (!response.ok) {
+			throw new Error(
+				`Failed to download SHA256 checksum: ${response.status} ${response.statusText}`,
+			);
+		}
+
+		const checksumText = (await response.text()).trim();
+		// Parse either "<hash>  <filename>" or plain "<hash>"
+		const expectedHash = checksumText.split(/\s+/)[0]?.toLowerCase();
+
+		if (!expectedHash || !/^[a-f0-9]{64}$/.test(expectedHash)) {
+			throw new Error(
+				`Invalid SHA256 checksum format: ${checksumText.slice(0, 100)}`,
+			);
+		}
+
+		const fileBuffer = fs.readFileSync(zipPath);
+		const actualHash = crypto
+			.createHash("sha256")
+			.update(fileBuffer)
+			.digest("hex");
+
+		if (actualHash !== expectedHash) {
+			// Remove the corrupted download
+			try {
+				fs.rmSync(zipPath, { force: true });
+			} catch {
+				// Best effort cleanup
+			}
+			throw new Error(
+				`SHA256 mismatch: expected ${expectedHash}, got ${actualHash}`,
+			);
+		}
+
+		this.logger.info("SHA256 checksum verified ✓", "BinaryManager");
 	}
 
 	/**
@@ -339,4 +505,19 @@ function findZipAsset(assets: GhosttyAsset[]): GhosttyAsset | null {
 
 	// Fall back to any zip
 	return assets.find((a) => a.name.endsWith(".zip")) ?? null;
+}
+
+/**
+ * Finds the SHA256 checksum asset corresponding to a given zip asset name.
+ */
+function findSha256Asset(
+	assets: GhosttyAsset[],
+	zipName: string,
+): GhosttyAsset | null {
+	return (
+		assets.find(
+			(a) =>
+				a.name === `${zipName}.sha256` || a.name === `${zipName}.sha256sum`,
+		) ?? null
+	);
 }
