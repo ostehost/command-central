@@ -21,6 +21,12 @@ if [ "$(printf '%s\n' "$ENGINE_VS" "$TYPES_VS" | sort -V | head -1)" != "$ENGINE
 fi
 echo "   ✓ @types/vscode ($TYPES_VS) ≤ engines.vscode ($ENGINE_VS)"
 
+# --- Site validation (when site files are in push) ---
+if git diff --name-only HEAD~1..HEAD 2>/dev/null | grep -q '^site/'; then
+  echo "🌐 Validating site changes..."
+  bash scripts/site-check.sh
+fi
+
 # --- Dist build verification (always — repo-specific) ---
 echo "📦 Verifying dist build..."
 bun run dist -- --no-install --dry-run

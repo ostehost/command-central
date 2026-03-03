@@ -37,6 +37,11 @@ default:
     @echo "Dead Code Detection:"
     @echo "  just knip        Find unused files, exports, dependencies"
     @echo ""
+    @echo "Site Workflow (Landing Page):"
+    @echo "  just site            Start local dev server with live reload"
+    @echo "  just site-check      Validate HTML, links, and metadata"
+    @echo "  just site-screenshot Capture screenshot for comparison"
+    @echo ""
     @echo "Debugging:"
     @echo "  just debug-filter  Debug extension filter with verbose logging"
     @echo ""
@@ -567,3 +572,53 @@ knip-exports:
     @echo "📤 Finding unused exports..."
     @echo ""
     bunx knip --include exports
+
+# ──────────────────────────────────────────────────────────
+# SITE WORKFLOW (LANDING PAGE)
+# ──────────────────────────────────────────────────────────
+
+# Start local dev server with live reload for the landing page
+site:
+    @echo "🌐 Starting site development server..."
+    @echo "   • Live reload enabled"
+    @echo "   • Open: http://localhost:3000"
+    @echo "   • Press Ctrl+C to stop"
+    @echo ""
+    @if command -v bun >/dev/null 2>&1; then \
+        cd site && bun --bun x live-server --port=3000 --open=/; \
+    elif command -v python3 >/dev/null 2>&1; then \
+        echo "💡 Using Python fallback (no live reload)"; \
+        cd site && python3 -m http.server 3000; \
+    else \
+        echo "❌ No server available. Install bun or use python3"; \
+        exit 1; \
+    fi
+
+# Validate site content (HTML, links, metadata)
+site-check:
+    @echo "🔍 Validating site..."
+    @echo "   • Test count synchronization"
+    @echo "   • Link validation"
+    @echo "   • Asset verification"
+    @echo "   • Metadata checks"
+    @echo ""
+    @bash scripts/site-check.sh
+
+# Capture screenshot for visual comparison
+site-screenshot:
+    @echo "📸 Capturing site screenshot..."
+    @echo "   • Starting headless server"
+    @echo "   • Taking screenshot"
+    @echo "   • Saving to screenshots/site-preview.png"
+    @echo ""
+    @mkdir -p screenshots
+    @if command -v bun >/dev/null 2>&1; then \
+        (cd site && timeout 10 bun --bun x live-server --port=3001 --no-browser > /dev/null 2>&1 &); \
+        sleep 2; \
+        bun x playwright screenshot --wait-for-selector="body" http://localhost:3001 screenshots/site-preview.png; \
+        pkill -f "live-server.*3001" || true; \
+    else \
+        echo "❌ Requires bun for Playwright integration"; \
+        exit 1; \
+    fi
+    @echo "✅ Screenshot saved: screenshots/site-preview.png"
