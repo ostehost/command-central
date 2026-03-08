@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 480 250" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .notification-bg { fill: #21262d; stroke: #8b949e; stroke-width: 1; }
+      .notification-shadow { fill: rgba(0, 0, 0, 0.3); }
+      .app-icon-bg { fill: #1c2128; stroke: #8b949e; stroke-width: 1; }
+      .emoji-text { font-family: system-ui, -apple-system, sans-serif; font-size: 18px; text-anchor: middle; }
+      .notification-title { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: 600; fill: #e6edf3; }
+      .notification-body { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; fill: #8b949e; }
+      .notification-time { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #8b949e; }
+      .success-text { fill: #3fb950; }
+    </style>
+    
+    <!-- Drop shadow filter -->
+    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="rgba(0,0,0,0.2)"/>
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="480" height="250" fill="#161b22"/>
+  
+  <!-- Notification 1: my-app completed (most recent) -->
+  <g transform="translate(100, 40)">
+    <!-- Shadow -->
+    <rect x="2" y="2" width="320" height="60" rx="12" class="notification-shadow"/>
+    
+    <!-- Notification background -->
+    <rect x="0" y="0" width="320" height="60" rx="12" class="notification-bg" filter="url(#dropShadow)"/>
+    
+    <!-- App icon -->
+    <rect x="12" y="12" width="36" height="36" rx="8" class="app-icon-bg"/>
+    <text x="30" y="34" class="emoji-text">🚀</text>
+    
+    <!-- Content -->
+    <text x="60" y="24" class="notification-title">my-app</text>
+    <text x="60" y="40" class="notification-body">Agent completed (exit 0)</text>
+    
+    <!-- Timestamp -->
+    <text x="270" y="18" class="notification-time">2 min ago</text>
+    
+    <!-- Success indicator -->
+    <circle cx="290" cy="30" r="4" class="success-text"/>
+  </g>
+  
+  <!-- Notification 2: api-server completed (slightly older) -->
+  <g transform="translate(100, 120)">
+    <!-- Shadow -->
+    <rect x="2" y="2" width="320" height="60" rx="12" class="notification-shadow"/>
+    
+    <!-- Notification background -->
+    <rect x="0" y="0" width="320" height="60" rx="12" class="notification-bg" filter="url(#dropShadow)"/>
+    
+    <!-- App icon -->
+    <rect x="12" y="12" width="36" height="36" rx="8" class="app-icon-bg"/>
+    <text x="30" y="34" class="emoji-text">⚡</text>
+    
+    <!-- Content -->
+    <text x="60" y="24" class="notification-title">api-server</text>
+    <text x="60" y="40" class="notification-body">Agent completed (exit 0)</text>
+    
+    <!-- Timestamp -->
+    <text x="280" y="18" class="notification-time">just now</text>
+    
+    <!-- Success indicator -->
+    <circle cx="290" cy="30" r="4" class="success-text"/>
+  </g>
+  
+  <!-- Notification 3: shared-lib completed (older, partially visible) -->
+  <g transform="translate(100, 190)" opacity="0.7">
+    <!-- Shadow -->
+    <rect x="2" y="2" width="320" height="40" rx="12" class="notification-shadow"/>
+    
+    <!-- Notification background (partially cut off) -->
+    <rect x="0" y="0" width="320" height="40" rx="12" class="notification-bg"/>
+    
+    <!-- App icon -->
+    <rect x="12" y="4" width="32" height="32" rx="6" class="app-icon-bg"/>
+    <text x="28" y="24" class="emoji-text" style="font-size: 16px;">🔧</text>
+    
+    <!-- Content (partially visible) -->
+    <text x="56" y="18" class="notification-title">shared-lib</text>
+    <text x="56" y="32" class="notification-body">Agent completed (exit 0)</text>
+    
+    <!-- Timestamp -->
+    <text x="270" y="14" class="notification-time">5 min ago</text>
+  </g>
+  
+  <!-- macOS notification center hint -->
+  <text x="240" y="25" text-anchor="middle" class="notification-time">📱 Notification Center</text>
+</svg>

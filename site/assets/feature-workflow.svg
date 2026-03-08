@@ -1,0 +1,48 @@
+<svg width="360" height="160" viewBox="0 0 360 160" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="360" height="160" fill="#161b22"/>
+  
+  <!-- Vertical timeline line -->
+  <line x1="60" y1="20" x2="60" y2="140" stroke="#30363d" stroke-width="2"/>
+  
+  <!-- Timeline entries -->
+  
+  <!-- Entry 1: Now -->
+  <g>
+    <!-- Timeline dot -->
+    <circle cx="60" cy="30" r="4" fill="#3fb950"/>
+    
+    <!-- Time label -->
+    <text x="45" y="35" font-family="system-ui" font-size="12" fill="#8b949e" text-anchor="end">Now</text>
+    
+    <!-- File info -->
+    <text x="75" y="35" font-family="monospace" font-size="14" fill="#e6edf3">auth.ts</text>
+    <text x="145" y="35" font-family="system-ui" font-size="12" fill="#8b949e">modified</text>
+  </g>
+  
+  <!-- Entry 2: 2h ago -->
+  <g>
+    <!-- Timeline dot -->
+    <circle cx="60" cy="66" r="4" fill="#3fb950"/>
+    
+    <!-- Time label -->
+    <text x="45" y="71" font-family="system-ui" font-size="12" fill="#8b949e" text-anchor="end">2h ago</text>
+    
+    <!-- File info -->
+    <text x="75" y="71" font-family="monospace" font-size="14" fill="#e6edf3">tests</text>
+    <text x="120" y="71" font-family="system-ui" font-size="12" fill="#8b949e">added</text>
+  </g>
+  
+  <!-- Entry 3: 6h ago -->
+  <g>
+    <!-- Timeline dot -->
+    <circle cx="60" cy="102" r="4" fill="#3fb950"/>
+    
+    <!-- Time label -->
+    <text x="45" y="107" font-family="system-ui" font-size="12" fill="#8b949e" text-anchor="end">6h ago</text>
+    
+    <!-- File info -->
+    <text x="75" y="107" font-family="monospace" font-size="14" fill="#e6edf3">config</text>
+    <text x="130" y="107" font-family="system-ui" font-size="12" fill="#8b949e">updated</text>
+  </g>
+</svg>

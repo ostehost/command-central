@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 480 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .dock-bg { fill: #1c2128; stroke: #21262d; stroke-width: 1; }
+      .app-icon { fill: #21262d; stroke: #8b949e; stroke-width: 1; }
+      .emoji-text { font-family: system-ui, -apple-system, sans-serif; font-size: 24px; text-anchor: middle; }
+      .indicator-dot { fill: #3fb950; }
+      .indicator-check { fill: #3fb950; stroke: #3fb950; stroke-width: 2; }
+      .switcher-bg { fill: rgba(33, 38, 45, 0.95); stroke: #8b949e; stroke-width: 1; rx: 12; }
+      .switcher-text { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #e6edf3; text-anchor: middle; }
+      .ghostty-icon { fill: #58a6ff; }
+    </style>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="480" height="200" fill="#161b22"/>
+  
+  <!-- Dock bar -->
+  <rect x="40" y="140" width="400" height="50" class="dock-bg" rx="25"/>
+  
+  <!-- App icons in dock -->
+  <!-- 🚀 my-app (running) -->
+  <rect x="80" y="150" width="30" height="30" class="app-icon" rx="6"/>
+  <text x="95" y="170" class="emoji-text">🚀</text>
+  <circle cx="105" cy="155" r="3" class="indicator-dot"/>
+  
+  <!-- ⚡ api-server (completed) -->
+  <rect x="130" y="150" width="30" height="30" class="app-icon" rx="6"/>
+  <text x="145" y="170" class="emoji-text">⚡</text>
+  <path d="M155,152 L158,157 L152,157 Z" class="indicator-check" fill="none"/>
+  <path d="M152,157 L154,159" class="indicator-check" fill="none"/>
+  
+  <!-- 🔧 shared-lib (neutral) -->
+  <rect x="180" y="150" width="30" height="30" class="app-icon" rx="6"/>
+  <text x="195" y="170" class="emoji-text">🔧</text>
+  
+  <!-- Regular Ghostty icon -->
+  <rect x="230" y="150" width="30" height="30" class="app-icon" rx="6"/>
+  <rect x="235" y="155" width="20" height="15" class="ghostty-icon" rx="2"/>
+  <rect x="237" y="157" width="16" height="2" fill="#161b22"/>
+  <rect x="237" y="160" width="16" height="2" fill="#161b22"/>
+  <rect x="237" y="163" width="16" height="2" fill="#161b22"/>
+  
+  <!-- Finder icon -->
+  <rect x="280" y="150" width="30" height="30" class="app-icon" rx="6"/>
+  <rect x="285" y="155" width="20" height="15" fill="#58a6ff" rx="2"/>
+  <path d="M290,160 Q295,157 300,160" stroke="#e6edf3" stroke-width="1" fill="none"/>
+  
+  <!-- Cmd+Tab switcher overlay -->
+  <rect x="120" y="40" width="240" height="80" class="switcher-bg"/>
+  <text x="240" y="55" class="switcher-text">⌘ Command Central Projects</text>
+  
+  <!-- Switcher app previews -->
+  <rect x="140" y="65" width="40" height="30" fill="#1c2128" stroke="#58a6ff" stroke-width="2" rx="4"/>
+  <text x="160" y="83" class="emoji-text" style="font-size: 18px;">🚀</text>
+  <text x="160" y="105" class="switcher-text">my-app</text>
+  
+  <rect x="190" y="65" width="40" height="30" fill="#1c2128" stroke="#3fb950" stroke-width="2" rx="4"/>
+  <text x="210" y="83" class="emoji-text" style="font-size: 18px;">⚡</text>
+  <text x="210" y="105" class="switcher-text">api-server</text>
+  
+  <rect x="240" y="65" width="40" height="30" fill="#1c2128" stroke="#8b949e" stroke-width="1" rx="4"/>
+  <text x="260" y="83" class="emoji-text" style="font-size: 18px;">🔧</text>
+  <text x="260" y="105" class="switcher-text">shared-lib</text>
+  
+  <rect x="290" y="65" width="40" height="30" fill="#1c2128" stroke="#8b949e" stroke-width="1" rx="4"/>
+  <rect x="300" y="72" width="20" height="15" class="ghostty-icon" rx="2" style="font-size: 12px;"/>
+  <text x="310" y="105" class="switcher-text">Ghostty</text>
+</svg>

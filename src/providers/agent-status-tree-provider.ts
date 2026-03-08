@@ -24,6 +24,8 @@ export interface TaskRegistry {
 	tasks: Record<string, AgentTask>;
 }
 
+export type AgentRole = "developer" | "planner" | "reviewer" | "test";
+
 export interface AgentTask {
 	id: string;
 	status: "running" | "stopped" | "killed" | "completed" | "failed";
@@ -37,6 +39,11 @@ export interface AgentTask {
 	max_attempts: number;
 	pr_number?: number | null;
 	review_status?: "pending" | "approved" | "changes_requested" | null;
+	role?: AgentRole | null;
+	terminal_backend?: "tmux" | "applescript";
+	ghostty_bundle_id?: string | null;
+	exit_code?: number | null;
+	completed_at?: string | null;
 }
 
 // ── Tree node types ──────────────────────────────────────────────────
@@ -63,6 +70,13 @@ const STATUS_ICONS: Record<AgentTask["status"], string> = {
 	failed: "❌",
 	stopped: "⏹️",
 	killed: "💀",
+};
+
+const ROLE_ICONS: Record<AgentRole, string> = {
+	planner: "🔬",
+	developer: "🔨",
+	reviewer: "🔍",
+	test: "🧪",
 };
 
 // ── Elapsed time formatting ──────────────────────────────────────────
@@ -229,6 +243,14 @@ export class AgentStatusTreeProvider
 					taskId: t.id,
 				},
 			];
+			if (t.exit_code != null) {
+				details.push({
+					type: "detail",
+					label: "Exit Code",
+					value: `${t.exit_code}`,
+					taskId: t.id,
+				});
+			}
 			if (t.pr_number) {
 				details.push({
 					type: "detail",
@@ -258,8 +280,10 @@ export class AgentStatusTreeProvider
 
 	private createTaskItem(task: AgentTask): vscode.TreeItem {
 		const icon = STATUS_ICONS[task.status] || "❓";
+		const roleIcon = task.role ? ROLE_ICONS[task.role] : null;
 		const elapsed = formatElapsed(task.started_at);
-		const label = `${icon} ${task.id}`;
+		const prefix = roleIcon ? `${icon} ${roleIcon}` : icon;
+		const label = `${prefix} ${task.id}`;
 		const description = `${task.project_name} · ${task.status} · ${elapsed}`;
 
 		const item = new vscode.TreeItem(
@@ -270,10 +294,13 @@ export class AgentStatusTreeProvider
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${task.id}** — ${task.status}`,
+				task.role ? `Role: ${task.role}` : null,
 				`Project: ${task.project_name}`,
 				`Dir: \`${task.project_dir}\``,
 				`Started: ${task.started_at}`,
 				`Attempts: ${task.attempts}/${task.max_attempts}`,
+				task.terminal_backend ? `Terminal: ${task.terminal_backend}` : null,
+				task.exit_code != null ? `Exit code: ${task.exit_code}` : null,
 				task.pr_number ? `PR: #${task.pr_number}` : null,
 			]
 				.filter(Boolean)

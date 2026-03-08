@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
 	type AgentNode,
+	type AgentRole,
 	AgentStatusTreeProvider,
 	type AgentTask,
 	formatElapsed,
@@ -221,6 +222,70 @@ describe("AgentStatusTreeProvider", () => {
 		provider.readRegistry = () => createMockRegistry({ t1, t2 });
 		provider.reload();
 		expect(provider.getTasks()).toHaveLength(2);
+	});
+
+	test("shows role emoji before task name", () => {
+		const roles: [AgentRole, string][] = [
+			["planner", "🔬"],
+			["developer", "🔨"],
+			["reviewer", "🔍"],
+			["test", "🧪"],
+		];
+		for (const [role, emoji] of roles) {
+			const task = createMockTask({ role });
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.label).toContain(emoji);
+		}
+	});
+
+	test("omits role emoji when role is null", () => {
+		const task = createMockTask({ role: null });
+		const item = provider.getTreeItem({ type: "task", task });
+		// Should have status icon but no role icon
+		expect(item.label).toBe("🔄 test-task-1");
+	});
+
+	test("includes terminal_backend in tooltip", () => {
+		const task = createMockTask({ terminal_backend: "tmux" });
+		const item = provider.getTreeItem({ type: "task", task });
+		expect((item.tooltip as { value: string }).value).toContain(
+			"Terminal: tmux",
+		);
+	});
+
+	test("includes exit_code in tooltip for failed tasks", () => {
+		const task = createMockTask({ status: "failed", exit_code: 1 });
+		const item = provider.getTreeItem({ type: "task", task });
+		expect((item.tooltip as { value: string }).value).toContain("Exit code: 1");
+	});
+
+	test("shows exit_code detail node when set", () => {
+		const task = createMockTask({ status: "failed", exit_code: 127 });
+		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.reload();
+
+		const root = provider.getChildren();
+		const details = provider.getChildren(root[0]);
+		const exitDetail = details.find(
+			(d) => d.type === "detail" && d.label === "Exit Code",
+		);
+		expect(exitDetail).toBeDefined();
+		if (exitDetail?.type === "detail") {
+			expect(exitDetail.value).toBe("127");
+		}
+	});
+
+	test("omits exit_code detail when not set", () => {
+		const task = createMockTask();
+		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.reload();
+
+		const root = provider.getChildren();
+		const details = provider.getChildren(root[0]);
+		const exitDetail = details.find(
+			(d) => d.type === "detail" && d.label === "Exit Code",
+		);
+		expect(exitDetail).toBeUndefined();
 	});
 
 	test("handles invalid registry gracefully", () => {
