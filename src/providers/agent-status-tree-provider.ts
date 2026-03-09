@@ -12,10 +12,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
-/** Validate tmux session name to prevent shell injection */
-export function isValidTmuxSession(name: string): boolean {
+/** Validate session ID to prevent shell injection */
+export function isValidSessionId(name: string): boolean {
 	return /^[a-zA-Z0-9._-]+$/.test(name);
 }
+
+/** @deprecated Use isValidSessionId */
+export const isValidTmuxSession = isValidSessionId;
 
 // ── Task registry types ──────────────────────────────────────────────
 
@@ -31,7 +34,8 @@ export interface AgentTask {
 	status: "running" | "stopped" | "killed" | "completed" | "failed";
 	project_dir: string;
 	project_name: string;
-	tmux_session: string;
+	session_id: string;
+	tmux_session?: string;
 	bundle_path: string;
 	prompt_file: string;
 	started_at: string;
@@ -95,6 +99,19 @@ export function formatElapsed(startedAt: string, now?: Date): string {
 	return `${minutes}m`;
 }
 
+// ── Task normalization (v1 → v2) ─────────────────────────────────────
+
+function normalizeTask(raw: Record<string, unknown>): AgentTask | null {
+	const sessionId = (raw["session_id"] ?? raw["tmux_session"]) as
+		| string
+		| undefined;
+	if (!sessionId) return null;
+	return {
+		...raw,
+		session_id: sessionId,
+	} as AgentTask;
+}
+
 // ── Provider ─────────────────────────────────────────────────────────
 
 export class AgentStatusTreeProvider
@@ -105,7 +122,7 @@ export class AgentStatusTreeProvider
 	>();
 	readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-	private registry: TaskRegistry = { version: 1, tasks: {} };
+	private registry: TaskRegistry = { version: 2, tasks: {} };
 	private fileWatcher: vscode.FileSystemWatcher | null = null;
 	private _filePath: string | null = null;
 	private disposables: vscode.Disposable[] = [];
@@ -186,14 +203,21 @@ export class AgentStatusTreeProvider
 
 	/** Exposed for testing — override to inject mock data */
 	readRegistry(): TaskRegistry {
-		if (!this._filePath) return { version: 1, tasks: {} };
+		if (!this._filePath) return { version: 2, tasks: {} };
 		try {
 			const content = fs.readFileSync(this._filePath, "utf-8");
 			const parsed = JSON.parse(content) as TaskRegistry;
-			if (parsed.version === 1 && parsed.tasks) return parsed;
-			return { version: 1, tasks: {} };
+			if ((parsed.version === 1 || parsed.version === 2) && parsed.tasks) {
+				const normalized: Record<string, AgentTask> = {};
+				for (const [key, raw] of Object.entries(parsed.tasks)) {
+					const task = normalizeTask(raw as unknown as Record<string, unknown>);
+					if (task) normalized[key] = task;
+				}
+				return { version: 2, tasks: normalized };
+			}
+			return { version: 2, tasks: {} };
 		} catch {
-			return { version: 1, tasks: {} };
+			return { version: 2, tasks: {} };
 		}
 	}
 
@@ -238,8 +262,8 @@ export class AgentStatusTreeProvider
 				},
 				{
 					type: "detail",
-					label: "tmux",
-					value: t.tmux_session,
+					label: "Session",
+					value: t.session_id,
 					taskId: t.id,
 				},
 			];

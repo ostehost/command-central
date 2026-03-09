@@ -24,7 +24,7 @@ import { GitSorter } from "./git-sort/scm-sorter.js";
 import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provider.js";
 import {
 	AgentStatusTreeProvider,
-	isValidTmuxSession,
+	isValidSessionId,
 } from "./providers/agent-status-tree-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
 import { GroupingStateManager } from "./services/grouping-state-manager.js";
@@ -603,16 +603,16 @@ export async function activate(
 			),
 			vscode.commands.registerCommand(
 				"commandCentral.captureAgentOutput",
-				async (node?: { type: string; task?: { tmux_session: string } }) => {
-					const tmuxSession = node?.task?.tmux_session;
-					if (!tmuxSession) {
+				async (node?: { type: string; task?: { session_id: string } }) => {
+					const sessionId = node?.task?.session_id;
+					if (!sessionId) {
 						vscode.window.showWarningMessage(
 							"No agent selected. Right-click an agent in the tree.",
 						);
 						return;
 					}
-					if (!isValidTmuxSession(tmuxSession)) {
-						vscode.window.showErrorMessage("Invalid tmux session name.");
+					if (!isValidSessionId(sessionId)) {
+						vscode.window.showErrorMessage("Invalid session ID.");
 						return;
 					}
 					const tasksFilePath = agentStatusProvider?.filePath;
@@ -628,12 +628,12 @@ export async function activate(
 							path.dirname(tasksFilePath),
 							"oste-capture.sh",
 						);
-						const output = execFileSync("bash", [scriptPath, tmuxSession], {
+						const output = execFileSync("bash", [scriptPath, sessionId], {
 							encoding: "utf-8",
 							timeout: 10000,
 						});
 						agentOutputChannel.clear();
-						agentOutputChannel.appendLine(`=== Output: ${tmuxSession} ===`);
+						agentOutputChannel.appendLine(`=== Output: ${sessionId} ===`);
 						agentOutputChannel.appendLine(output);
 						agentOutputChannel.show(true);
 					} catch (err) {
@@ -647,7 +647,7 @@ export async function activate(
 				"commandCentral.killAgent",
 				async (node?: {
 					type: string;
-					task?: { id: string; tmux_session: string };
+					task?: { id: string; session_id: string };
 				}) => {
 					const task = node?.task;
 					if (!task) {
@@ -656,8 +656,8 @@ export async function activate(
 						);
 						return;
 					}
-					if (!isValidTmuxSession(task.tmux_session)) {
-						vscode.window.showErrorMessage("Invalid tmux session name.");
+					if (!isValidSessionId(task.session_id)) {
+						vscode.window.showErrorMessage("Invalid session ID.");
 						return;
 					}
 					const tasksFilePath = agentStatusProvider?.filePath;
@@ -679,7 +679,7 @@ export async function activate(
 							path.dirname(tasksFilePath),
 							"oste-kill.sh",
 						);
-						execFileSync("bash", [scriptPath, task.tmux_session], {
+						execFileSync("bash", [scriptPath, task.session_id], {
 							encoding: "utf-8",
 							timeout: 10000,
 						});

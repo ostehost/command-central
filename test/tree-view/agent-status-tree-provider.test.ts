@@ -13,6 +13,7 @@ import {
 	AgentStatusTreeProvider,
 	type AgentTask,
 	formatElapsed,
+	isValidSessionId,
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
@@ -25,6 +26,7 @@ function createMockTask(overrides: Partial<AgentTask> = {}): AgentTask {
 		status: "running",
 		project_dir: "/Users/test/projects/my-app",
 		project_name: "My App",
+		session_id: "agent-my-app",
 		tmux_session: "agent-my-app",
 		bundle_path: "/Applications/Projects/My App.app",
 		prompt_file: "/tmp/task.md",
@@ -40,7 +42,7 @@ function createMockTask(overrides: Partial<AgentTask> = {}): AgentTask {
 function createMockRegistry(
 	tasks: Record<string, AgentTask> = {},
 ): TaskRegistry {
-	return { version: 1, tasks };
+	return { version: 2, tasks };
 }
 
 // ── formatElapsed tests ──────────────────────────────────────────────
@@ -127,7 +129,7 @@ describe("AgentStatusTreeProvider", () => {
 
 		const root = provider.getChildren();
 		const details = provider.getChildren(root[0]);
-		// Should have: Prompt, Worktree, Attempts, tmux (no PR since null)
+		// Should have: Prompt, Worktree, Attempts, Session (no PR since null)
 		expect(details).toHaveLength(4);
 		expect(details.every((d) => d.type === "detail")).toBe(true);
 	});
@@ -288,12 +290,71 @@ describe("AgentStatusTreeProvider", () => {
 		expect(exitDetail).toBeUndefined();
 	});
 
-	test("handles invalid registry gracefully", () => {
-		provider.readRegistry = () => ({ version: 2, tasks: {} }) as TaskRegistry;
+	test("accepts version 2 registry", () => {
+		const task = createMockTask();
+		provider.readRegistry = () => ({
+			version: 2,
+			tasks: { "test-task-1": task },
+		});
 		provider.reload();
-		// Should still work (falls through since tasks is present)
 		const children = provider.getChildren();
-		expect(children).toEqual([]);
+		expect(children).toHaveLength(1);
+	});
+
+	test("normalizes v1 tmux_session to session_id", () => {
+		// Simulate normalized output: readRegistry converts tmux_session → session_id
+		provider.readRegistry = () => ({
+			version: 2,
+			tasks: {
+				t1: {
+					...createMockTask(),
+					session_id: "legacy-session",
+					tmux_session: "legacy-session",
+				} as AgentTask,
+			},
+		});
+		provider.reload();
+		const tasks = provider.getTasks();
+		expect(tasks[0]?.session_id).toBe("legacy-session");
+	});
+
+	test("session_id takes precedence over tmux_session", () => {
+		provider.readRegistry = () => ({
+			version: 2,
+			tasks: {
+				t1: {
+					...createMockTask(),
+					session_id: "new-id",
+					tmux_session: "old-id",
+				} as AgentTask,
+			},
+		});
+		provider.reload();
+		const tasks = provider.getTasks();
+		expect(tasks[0]?.session_id).toBe("new-id");
+	});
+
+	test("detail node shows Session label instead of tmux", () => {
+		const task = createMockTask();
+		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.reload();
+		const root = provider.getChildren();
+		const details = provider.getChildren(root[0]);
+		const sessionDetail = details.find(
+			(d) => d.type === "detail" && d.label === "Session",
+		);
+		expect(sessionDetail).toBeDefined();
+		if (sessionDetail?.type === "detail") {
+			expect(sessionDetail.value).toBe("agent-my-app");
+		}
+	});
+
+	test("isValidSessionId validates session names", () => {
+		expect(isValidSessionId("agent-my-app")).toBe(true);
+		expect(isValidSessionId("session.123_test")).toBe(true);
+		expect(isValidSessionId("")).toBe(false);
+		expect(isValidSessionId("bad;injection")).toBe(false);
+		expect(isValidSessionId("has spaces")).toBe(false);
 	});
 
 	test("dispose cleans up", () => {
