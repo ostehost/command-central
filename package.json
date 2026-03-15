@@ -628,6 +628,11 @@
         "title": "Check / Install Ghostty Binary",
         "category": "Command Central: Ghostty",
         "icon": "$(cloud-download)"
+      },
+      {
+        "command": "command-central.showTestCount",
+        "title": "Command Central: Show Test Count",
+        "icon": "$(beaker)"
       }
     ],
     "views": {

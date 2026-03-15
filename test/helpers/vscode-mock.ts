@@ -164,11 +164,25 @@ export function createVSCodeMock() {
 				}),
 			),
 		},
+		StatusBarAlignment: {
+			Left: 1,
+			Right: 2,
+		},
 		window: {
 			showInformationMessage: mock(),
 			showWarningMessage: mock(),
 			showErrorMessage: mock(),
 			setStatusBarMessage: mock(() => ({ dispose: mock() })),
+			createStatusBarItem: mock(
+				(_alignment?: number, _priority?: number) => ({
+					text: "",
+					tooltip: "",
+					command: "",
+					show: mock(),
+					hide: mock(),
+					dispose: mock(),
+				}),
+			),
 			createOutputChannel: mock((_name: string) => ({
 				append: mock(),
 				appendLine: mock(),

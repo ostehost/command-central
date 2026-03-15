@@ -43,6 +43,9 @@ let groupingViewManager: GroupingViewManager | undefined;
 let agentStatusProvider: AgentStatusTreeProvider | undefined;
 let terminalManager: TerminalManager | undefined;
 let binaryManager: BinaryManager | undefined;
+let testCountStatusBar:
+	| import("./services/test-count-status-bar.js").TestCountStatusBar
+	| undefined;
 let mainLogger: LoggerService;
 let gitSortLogger: LoggerService;
 
@@ -848,6 +851,39 @@ export async function activate(
 		);
 		mainLogger.info("Ghostty integration initialized");
 
+		// ============================================================================
+		// Test Count Status Bar
+		// ============================================================================
+		const { TestCountStatusBar } = await import(
+			"./services/test-count-status-bar.js"
+		);
+		testCountStatusBar = new TestCountStatusBar();
+		context.subscriptions.push(testCountStatusBar);
+
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"command-central.showTestCount",
+				async () => {
+					try {
+						const count = await testCountStatusBar?.refreshCount();
+						if (count !== undefined) {
+							vscode.window.setStatusBarMessage(
+								`CC: ${count} tests passed`,
+								3000,
+							);
+						}
+					} catch (err) {
+						const msg = err instanceof Error ? err.message : String(err);
+						mainLogger.error("Failed to refresh test count", err as Error);
+						vscode.window.showErrorMessage(
+							`Command Central: Failed to run tests — ${msg}`,
+						);
+					}
+				},
+			),
+		);
+		mainLogger.info("Test count status bar initialized");
+
 		const activationTime = performance.now() - start;
 		mainLogger.info(`✅ Extension activated in ${activationTime.toFixed(0)}ms`);
 		mainLogger.info(`📦 Command Central v${version} ready`);
@@ -891,6 +927,7 @@ export async function deactivate(): Promise<void> {
 
 	// Note: agentStatusProvider disposal handled by context.subscriptions
 	// Note: terminalManager and binaryManager have no disposable resources
+	// Note: testCountStatusBar disposal handled by context.subscriptions
 
 	// Clean up Grouping State Manager
 	if (groupingStateManager) {
