@@ -96,6 +96,11 @@ describe("Badge/Title Count Synchronization", () => {
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
 
+		// Align workspace folder with mock repo so findRepositoryForFile matches
+		vscode.workspace.workspaceFolders = [
+			{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
+		] as unknown as typeof vscode.workspace.workspaceFolders;
+
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
@@ -253,6 +258,11 @@ describe("Badge/Title Count Synchronization", () => {
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
+
+		// Align workspace folder with mock repo so findRepositoryForFile matches
+		vscode.workspace.workspaceFolders = [
+			{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
+		] as unknown as typeof vscode.workspace.workspaceFolders;
 
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);

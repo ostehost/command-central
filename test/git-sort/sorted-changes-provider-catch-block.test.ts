@@ -91,6 +91,11 @@ describe("Regression: catch block shows 'No changes' instead of 'Open a Git repo
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
 
+		// Align workspace folder with mock repo so findRepositoryForFile matches
+		vscode.workspace.workspaceFolders = [
+			{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
+		] as unknown as typeof vscode.workspace.workspaceFolders;
+
 		// Create a repo whose state throws when accessed — triggers catch block
 		// without needing mock.module on git-timestamps (which poisons other tests)
 		let callCount = 0;

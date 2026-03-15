@@ -203,6 +203,11 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
 
+		// Align workspace folder with mock repo so findRepositoryForFile matches
+		vscode.workspace.workspaceFolders = [
+			{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
+		] as unknown as typeof vscode.workspace.workspaceFolders;
+
 		const mockRepo = {
 			rootUri: vscode.Uri.file("/workspace"),
 			state: {
