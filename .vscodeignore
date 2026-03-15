@@ -67,3 +67,5 @@ screenshots/**
 coverage/**
 *.test.ts
 bun.lock
+logo-concepts/
+logo-concepts/**
