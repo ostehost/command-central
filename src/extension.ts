@@ -699,6 +699,23 @@ export async function activate(
 		mainLogger.info("Agent Status panel initialized");
 
 		// ============================================================================
+		// Agent Activity Timeline
+		// ============================================================================
+		const { ActivityCollector } = await import(
+			"./services/activity-collector.js"
+		);
+		const { createActivityTimelineView } = await import(
+			"./providers/activity-timeline-view-manager.js"
+		);
+		const activityCollector = new ActivityCollector();
+		const activityTimelineDisposable = createActivityTimelineView(
+			context,
+			activityCollector,
+		);
+		context.subscriptions.push(activityTimelineDisposable);
+		mainLogger.info("Activity Timeline initialized");
+
+		// ============================================================================
 		// Ghostty Integration — TerminalManager + BinaryManager
 		// ============================================================================
 		terminalManager = new TerminalManager(mainLogger);
