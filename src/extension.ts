@@ -860,6 +860,11 @@ export async function activate(
 		testCountStatusBar = new TestCountStatusBar();
 		context.subscriptions.push(testCountStatusBar);
 
+		// Auto-refresh test count on activation (fire-and-forget)
+		testCountStatusBar.refreshCount().catch(() => {
+			// Silently ignore — status bar already shows error state
+		});
+
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
 				"command-central.showTestCount",

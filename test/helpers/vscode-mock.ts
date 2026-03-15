@@ -68,6 +68,10 @@ export function createVSCodeMock() {
 			) {}
 		},
 		workspace: {
+			isTrusted: true,
+			workspaceFolders: [
+				{ uri: { fsPath: "/mock/workspace" }, name: "workspace", index: 0 },
+			] as Array<{ uri: { fsPath: string }; name: string; index: number }>,
 			createFileSystemWatcher: mock(() => ({
 				onDidChange: mock(() => ({ dispose: mock() })),
 				onDidCreate: mock(() => ({ dispose: mock() })),
@@ -173,16 +177,14 @@ export function createVSCodeMock() {
 			showWarningMessage: mock(),
 			showErrorMessage: mock(),
 			setStatusBarMessage: mock(() => ({ dispose: mock() })),
-			createStatusBarItem: mock(
-				(_alignment?: number, _priority?: number) => ({
-					text: "",
-					tooltip: "",
-					command: "",
-					show: mock(),
-					hide: mock(),
-					dispose: mock(),
-				}),
-			),
+			createStatusBarItem: mock((_alignment?: number, _priority?: number) => ({
+				text: "",
+				tooltip: "",
+				command: "",
+				show: mock(),
+				hide: mock(),
+				dispose: mock(),
+			})),
 			createOutputChannel: mock((_name: string) => ({
 				append: mock(),
 				appendLine: mock(),

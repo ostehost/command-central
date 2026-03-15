@@ -631,7 +631,7 @@
       },
       {
         "command": "command-central.showTestCount",
-        "title": "Command Central: Show Test Count",
+        "title": "Command Central: Run Tests & Update Count",
         "icon": "$(beaker)"
       }
     ],

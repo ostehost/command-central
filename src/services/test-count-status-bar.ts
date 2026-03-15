@@ -27,17 +27,36 @@ export class TestCountStatusBar implements vscode.Disposable {
 	}
 
 	/**
-	 * Run `bun test` and parse the test count from output
+	 * Run `bun test` and parse the test count from output.
+	 * Guards against untrusted workspaces and missing workspace folders.
 	 */
 	async refreshCount(): Promise<number> {
+		// BLOCKER: Workspace Trust check — bun test executes arbitrary code
+		if (!vscode.workspace.isTrusted) {
+			this.statusBarItem.text = "CC: tests (untrusted)";
+			vscode.window.showWarningMessage(
+				"Command Central: Cannot run tests in an untrusted workspace.",
+			);
+			return 0;
+		}
+
+		// WARNING: Guard against missing workspace folder
+		const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		if (!cwd) {
+			this.statusBarItem.text = "CC: no workspace";
+			return 0;
+		}
+
+		// Show loading indicator while tests run
+		this.statusBarItem.text = "$(loading~spin) CC: running tests...";
+
 		const { execFile } = await import("node:child_process");
 		const { promisify } = await import("node:util");
 		const execFileAsync = promisify(execFile);
 
 		try {
 			const { stderr } = await execFileAsync("bun", ["test"], {
-				cwd:
-					vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? undefined,
+				cwd,
 				timeout: 30000,
 			});
 
