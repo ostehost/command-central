@@ -10,7 +10,12 @@ import { basename } from "node:path";
 import { promisify } from "node:util";
 import type { ActivityEvent } from "./activity-event-types.js";
 
-const execAsync = promisify(exec);
+type ExecAsyncFn = (
+	cmd: string,
+	opts: { cwd: string; maxBuffer: number },
+) => Promise<{ stdout: string }>;
+
+const defaultExecAsync: ExecAsyncFn = promisify(exec);
 
 /** Email patterns that identify agent-authored commits */
 const AGENT_EMAIL_PATTERNS = [
@@ -31,6 +36,12 @@ interface CoAuthor {
 }
 
 export class ActivityCollector {
+	private execAsync: ExecAsyncFn;
+
+	constructor(execFn?: ExecAsyncFn) {
+		this.execAsync = execFn ?? defaultExecAsync;
+	}
+
 	/**
 	 * Collect agent activity events from all workspace folders
 	 */
@@ -61,7 +72,7 @@ export class ActivityCollector {
 
 		let stdout: string;
 		try {
-			const result = await execAsync(cmd, {
+			const result = await this.execAsync(cmd, {
 				cwd: dir,
 				maxBuffer: 10 * 1024 * 1024,
 			});
@@ -78,9 +89,10 @@ export class ActivityCollector {
 	}
 
 	/**
-	 * Parse raw git log output into activity events
+	 * Parse raw git log output into activity events.
+	 * Public for testability — called internally by parseGitLog.
 	 */
-	private parseGitOutput(stdout: string, dir: string): ActivityEvent[] {
+	parseGitOutput(stdout: string, dir: string): ActivityEvent[] {
 		const events: ActivityEvent[] = [];
 		const projectName = basename(dir);
 

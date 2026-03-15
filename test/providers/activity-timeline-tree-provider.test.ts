@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ActivityCollector } from "../../src/services/activity-collector.js";
 import type { ActivityEvent } from "../../src/services/activity-event-types.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
@@ -14,6 +15,9 @@ import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 function createMockCollector(events: ActivityEvent[] = []) {
 	return {
 		collectEvents: mock(async () => events),
+		parseGitOutput: mock(() => []),
+	} as unknown as ActivityCollector & {
+		collectEvents: ReturnType<typeof mock>;
 	};
 }
 
@@ -111,7 +115,7 @@ describe("ActivityTimelineTreeProvider", () => {
 		test("returns TimelineGroups at root when events exist", async () => {
 			const events = [createCommitEvent()];
 			const collector = createMockCollector(events);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
@@ -124,7 +128,7 @@ describe("ActivityTimelineTreeProvider", () => {
 
 		test("returns empty array when no events", async () => {
 			const collector = createMockCollector([]);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
@@ -146,7 +150,7 @@ describe("ActivityTimelineTreeProvider", () => {
 			});
 
 			const collector = createMockCollector([recentEvent, olderEvent]);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
@@ -172,7 +176,7 @@ describe("ActivityTimelineTreeProvider", () => {
 			});
 
 			const collector = createMockCollector([twoDaysAgo, hourAgo]);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
@@ -181,14 +185,9 @@ describe("ActivityTimelineTreeProvider", () => {
 
 			expect(children.length).toBe(2);
 			// First group should be the more recent period
-			if (
-				children[0]?.type === "timelineGroup" &&
-				children[1]?.type === "timelineGroup"
-			) {
-				const firstLabel = children[0].group.label;
-				const _secondLabel = children[1].group.label;
-				// First should be "Last Hour" or "Today", second should be "Yesterday" or later
-				expect(["Last Hour", "Today"]).toContain(firstLabel);
+			const first = children[0];
+			if (first?.type === "timelineGroup") {
+				expect(["Last Hour", "Today"]).toContain(first.group.label);
 			}
 		});
 	});
@@ -199,7 +198,7 @@ describe("ActivityTimelineTreeProvider", () => {
 		test("returns events under a TimelineGroup", async () => {
 			const events = [createCommitEvent(), createTaskCompletedEvent()];
 			const collector = createMockCollector(events);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
@@ -221,14 +220,20 @@ describe("ActivityTimelineTreeProvider", () => {
 		test("returns empty for an event node (leaf)", async () => {
 			const events = [createCommitEvent()];
 			const collector = createMockCollector(events);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			await provider.refresh();
 			const groups = provider.getChildren();
-			const groupChildren = provider.getChildren(groups[0]!);
-			const leafChildren = provider.getChildren(groupChildren[0]!);
+			const firstGroup = groups[0];
+			expect(firstGroup).toBeDefined();
+			if (!firstGroup) return;
+			const groupChildren = provider.getChildren(firstGroup);
+			const firstChild = groupChildren[0];
+			expect(firstChild).toBeDefined();
+			if (!firstChild) return;
+			const leafChildren = provider.getChildren(firstChild);
 
 			expect(leafChildren).toEqual([]);
 		});
@@ -240,14 +245,20 @@ describe("ActivityTimelineTreeProvider", () => {
 		test("renders commit event with correct icon and label", async () => {
 			const events = [createCommitEvent()];
 			const collector = createMockCollector(events);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			await provider.refresh();
 			const groups = provider.getChildren();
-			const eventNodes = provider.getChildren(groups[0]!);
-			const item = provider.getTreeItem(eventNodes[0]!);
+			const firstGroup = groups[0];
+			expect(firstGroup).toBeDefined();
+			if (!firstGroup) return;
+			const eventNodes = provider.getChildren(firstGroup);
+			const firstNode = eventNodes[0];
+			expect(firstNode).toBeDefined();
+			if (!firstNode) return;
+			const item = provider.getTreeItem(firstNode);
 
 			expect(item.label).toBe("feat: add timeline");
 			expect((item.iconPath as { id: string }).id).toBe("git-commit");
@@ -259,14 +270,20 @@ describe("ActivityTimelineTreeProvider", () => {
 		test("renders task-completed event correctly", async () => {
 			const events = [createTaskCompletedEvent()];
 			const collector = createMockCollector(events);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			await provider.refresh();
 			const groups = provider.getChildren();
-			const eventNodes = provider.getChildren(groups[0]!);
-			const item = provider.getTreeItem(eventNodes[0]!);
+			const firstGroup = groups[0];
+			expect(firstGroup).toBeDefined();
+			if (!firstGroup) return;
+			const eventNodes = provider.getChildren(firstGroup);
+			const firstNode = eventNodes[0];
+			expect(firstNode).toBeDefined();
+			if (!firstNode) return;
+			const item = provider.getTreeItem(firstNode);
 
 			expect(item.label).toBe("task-42 completed");
 			expect((item.iconPath as { id: string }).id).toBe("check");
@@ -278,14 +295,20 @@ describe("ActivityTimelineTreeProvider", () => {
 		test("renders task-failed event correctly", async () => {
 			const events = [createTaskFailedEvent()];
 			const collector = createMockCollector(events);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			await provider.refresh();
 			const groups = provider.getChildren();
-			const eventNodes = provider.getChildren(groups[0]!);
-			const item = provider.getTreeItem(eventNodes[0]!);
+			const firstGroup = groups[0];
+			expect(firstGroup).toBeDefined();
+			if (!firstGroup) return;
+			const eventNodes = provider.getChildren(firstGroup);
+			const firstNode = eventNodes[0];
+			expect(firstNode).toBeDefined();
+			if (!firstNode) return;
+			const item = provider.getTreeItem(firstNode);
 
 			expect(item.label).toBe("task-7 failed");
 			expect((item.iconPath as { id: string }).id).toBe("error");
@@ -297,14 +320,20 @@ describe("ActivityTimelineTreeProvider", () => {
 		test("renders task-started event correctly", async () => {
 			const events = [createTaskStartedEvent()];
 			const collector = createMockCollector(events);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			await provider.refresh();
 			const groups = provider.getChildren();
-			const eventNodes = provider.getChildren(groups[0]!);
-			const item = provider.getTreeItem(eventNodes[0]!);
+			const firstGroup = groups[0];
+			expect(firstGroup).toBeDefined();
+			if (!firstGroup) return;
+			const eventNodes = provider.getChildren(firstGroup);
+			const firstNode = eventNodes[0];
+			expect(firstNode).toBeDefined();
+			if (!firstNode) return;
+			const item = provider.getTreeItem(firstNode);
 
 			expect(item.label).toBe("task-15 started");
 			expect((item.iconPath as { id: string }).id).toBe("play");
@@ -318,13 +347,16 @@ describe("ActivityTimelineTreeProvider", () => {
 				createTaskCompletedEvent({ id: "2" }),
 			];
 			const collector = createMockCollector(events);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			await provider.refresh();
 			const groups = provider.getChildren();
-			const groupItem = provider.getTreeItem(groups[0]!);
+			const firstGroup = groups[0];
+			expect(firstGroup).toBeDefined();
+			if (!firstGroup) return;
+			const groupItem = provider.getTreeItem(firstGroup);
 
 			expect(groupItem.label).toContain("2 events");
 			expect((groupItem.iconPath as { id: string }).id).toBe("calendar");
@@ -334,13 +366,16 @@ describe("ActivityTimelineTreeProvider", () => {
 		test("renders singular 'event' for single event group", async () => {
 			const events = [createCommitEvent()];
 			const collector = createMockCollector(events);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			await provider.refresh();
 			const groups = provider.getChildren();
-			const groupItem = provider.getTreeItem(groups[0]!);
+			const firstGroup = groups[0];
+			expect(firstGroup).toBeDefined();
+			if (!firstGroup) return;
+			const groupItem = provider.getTreeItem(firstGroup);
 
 			expect(groupItem.label).toContain("1 event)");
 			expect(groupItem.label).not.toContain("1 events");
@@ -358,14 +393,20 @@ describe("ActivityTimelineTreeProvider", () => {
 				},
 			});
 			const collector = createMockCollector([singleFileEvent]);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			await provider.refresh();
 			const groups = provider.getChildren();
-			const eventNodes = provider.getChildren(groups[0]!);
-			const item = provider.getTreeItem(eventNodes[0]!);
+			const firstGroup = groups[0];
+			expect(firstGroup).toBeDefined();
+			if (!firstGroup) return;
+			const eventNodes = provider.getChildren(firstGroup);
+			const firstNode = eventNodes[0];
+			expect(firstNode).toBeDefined();
+			if (!firstNode) return;
+			const item = provider.getTreeItem(firstNode);
 
 			expect(item.description).toContain("1 file");
 			expect(item.description).not.toContain("1 files");
@@ -376,14 +417,20 @@ describe("ActivityTimelineTreeProvider", () => {
 				agent: { name: "Claude" }, // no role
 			});
 			const collector = createMockCollector([noRoleEvent]);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			await provider.refresh();
 			const groups = provider.getChildren();
-			const eventNodes = provider.getChildren(groups[0]!);
-			const item = provider.getTreeItem(eventNodes[0]!);
+			const firstGroup = groups[0];
+			expect(firstGroup).toBeDefined();
+			if (!firstGroup) return;
+			const eventNodes = provider.getChildren(firstGroup);
+			const firstNode = eventNodes[0];
+			expect(firstNode).toBeDefined();
+			if (!firstNode) return;
+			const item = provider.getTreeItem(firstNode);
 
 			expect(item.description).toContain("agent");
 		});
@@ -395,29 +442,38 @@ describe("ActivityTimelineTreeProvider", () => {
 		test("returns group for an event node", async () => {
 			const events = [createCommitEvent()];
 			const collector = createMockCollector(events);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			await provider.refresh();
 			const groups = provider.getChildren();
-			const eventNodes = provider.getChildren(groups[0]!);
+			const firstGroup = groups[0];
+			expect(firstGroup).toBeDefined();
+			if (!firstGroup) return;
+			const eventNodes = provider.getChildren(firstGroup);
+			const firstNode = eventNodes[0];
+			expect(firstNode).toBeDefined();
+			if (!firstNode) return;
 
-			const parent = provider.getParent(eventNodes[0]!);
+			const parent = provider.getParent(firstNode);
 			expect(parent?.type).toBe("timelineGroup");
 		});
 
 		test("returns undefined for group nodes", async () => {
 			const events = [createCommitEvent()];
 			const collector = createMockCollector(events);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			await provider.refresh();
 			const groups = provider.getChildren();
+			const firstGroup = groups[0];
+			expect(firstGroup).toBeDefined();
+			if (!firstGroup) return;
 
-			const parent = provider.getParent(groups[0]!);
+			const parent = provider.getParent(firstGroup);
 			expect(parent).toBeUndefined();
 		});
 	});
@@ -427,7 +483,7 @@ describe("ActivityTimelineTreeProvider", () => {
 	describe("empty state", () => {
 		test("returns empty array before refresh is called", () => {
 			const collector = createMockCollector([]);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
@@ -437,7 +493,7 @@ describe("ActivityTimelineTreeProvider", () => {
 
 		test("returns empty array after refresh with no events", async () => {
 			const collector = createMockCollector([]);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
@@ -453,7 +509,7 @@ describe("ActivityTimelineTreeProvider", () => {
 		test("calls collector.collectEvents with correct args", async () => {
 			const collector = createMockCollector([]);
 			const provider = new ActivityTimelineTreeProvider(
-				collector as any,
+				collector,
 				["/ws/a", "/ws/b"],
 				14,
 			);
@@ -468,15 +524,18 @@ describe("ActivityTimelineTreeProvider", () => {
 
 		test("updates tree data after refresh", async () => {
 			const collector = createMockCollector([]);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 
 			// Initially empty
 			expect(provider.getChildren()).toEqual([]);
 
-			// Update mock to return events
-			collector.collectEvents = mock(async () => [createCommitEvent()]);
+			// Update mock to return events — need to cast to reassign
+			const mutableCollector = collector as unknown as {
+				collectEvents: (...args: unknown[]) => Promise<ActivityEvent[]>;
+			};
+			mutableCollector.collectEvents = mock(async () => [createCommitEvent()]);
 			await provider.refresh();
 
 			expect(provider.getChildren().length).toBe(1);
@@ -488,7 +547,7 @@ describe("ActivityTimelineTreeProvider", () => {
 	describe("updateWorkspaceFolders", () => {
 		test("updates workspace folders for subsequent refreshes", async () => {
 			const collector = createMockCollector([]);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/old/workspace",
 			]);
 
@@ -507,7 +566,7 @@ describe("ActivityTimelineTreeProvider", () => {
 	describe("dispose", () => {
 		test("does not throw", () => {
 			const collector = createMockCollector([]);
-			const provider = new ActivityTimelineTreeProvider(collector as any, [
+			const provider = new ActivityTimelineTreeProvider(collector, [
 				"/mock/workspace",
 			]);
 

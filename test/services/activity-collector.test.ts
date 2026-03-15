@@ -5,7 +5,7 @@
  * event merging/sorting, empty repo, and malformed output handling.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 // ── Mock data ────────────────────────────────────────────────────────
@@ -73,28 +73,22 @@ const AGENT_DIRECT_COMMIT = commitBlock(
 	["1\t1\ttest/fix.ts"],
 );
 
-// ── Top-level exec mock ──────────────────────────────────────────────
+// ── Mock exec helpers ───────────────────────────────────────────────
 
-type ExecCallback = (
-	err: Error | null,
-	result: { stdout: string; stderr: string } | null,
-) => void;
+type ExecFn = (
+	cmd: string,
+	opts: { cwd: string; maxBuffer: number },
+) => Promise<{ stdout: string }>;
 
-let execHandler: (cmd: string, opts: unknown, cb: ExecCallback) => void = (
-	_cmd,
-	_opts,
-	cb,
-) => {
-	cb(null, { stdout: "", stderr: "" });
-};
-
-const execMock = mock((cmd: string, opts: unknown, cb: ExecCallback) => {
-	execHandler(cmd, opts, cb);
-});
-
-mock.module("node:child_process", () => ({
-	exec: execMock,
-}));
+function createExecFn(
+	handler: (
+		cmd: string,
+		opts: { cwd: string; maxBuffer: number },
+	) => { stdout: string },
+): ExecFn {
+	return (cmd: string, opts: { cwd: string; maxBuffer: number }) =>
+		Promise.resolve(handler(cmd, opts));
+}
 
 // ── Setup ────────────────────────────────────────────────────────────
 
@@ -103,13 +97,6 @@ setupVSCodeMock();
 import { ActivityCollector } from "../../src/services/activity-collector.js";
 
 describe("ActivityCollector", () => {
-	beforeEach(() => {
-		execMock.mockClear();
-		execHandler = (_cmd, _opts, cb) => {
-			cb(null, { stdout: "", stderr: "" });
-		};
-	});
-
 	// ── Git log parsing ──────────────────────────────────────────────
 
 	describe("git log parsing", () => {
@@ -249,16 +236,13 @@ describe("ActivityCollector", () => {
 
 			const responses = [olderCommit, newerCommit];
 			let callIdx = 0;
-			const customExec = async (
-				_cmd: string,
-				_opts?: Record<string, unknown>,
-			) => {
+			const execFn = createExecFn(() => {
 				const stdout = responses[callIdx] ?? "";
 				callIdx++;
-				return { stdout, stderr: "" };
-			};
+				return { stdout };
+			});
 
-			const collector = new ActivityCollector(customExec);
+			const collector = new ActivityCollector(execFn);
 			const events = await collector.collectEvents(
 				["/workspace/a", "/workspace/b"],
 				7,
@@ -290,11 +274,8 @@ describe("ActivityCollector", () => {
 
 	describe("empty repo handling", () => {
 		test("returns empty array when git log returns empty output", async () => {
-			execHandler = (_cmd, _opts, cb) => {
-				cb(null, { stdout: "", stderr: "" });
-			};
-
-			const collector = new ActivityCollector();
+			const execFn = createExecFn(() => ({ stdout: "" }));
+			const collector = new ActivityCollector(execFn);
 			const events = await collector.collectEvents(["/empty/repo"], 7);
 
 			expect(events).toEqual([]);
@@ -312,18 +293,15 @@ describe("ActivityCollector", () => {
 
 	describe("malformed git output handling", () => {
 		test("returns empty array when git command fails", async () => {
-			execHandler = (_cmd, _opts, cb) => {
-				cb(new Error("not a git repository"), null);
-			};
-
-			const collector = new ActivityCollector();
+			const execFn: ExecFn = () =>
+				Promise.reject(new Error("not a git repository"));
+			const collector = new ActivityCollector(execFn);
 			const events = await collector.collectEvents(["/not/a/git/repo"], 7);
 
 			expect(events).toEqual([]);
 		});
 
 		test("skips commit blocks with insufficient fields", () => {
-			// Only 3 fields instead of 6
 			const malformed = `${"f".repeat(40)}${SEP}2026-03-15T10:00:00+00:00${SEP}partial`;
 
 			const collector = new ActivityCollector();
