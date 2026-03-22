@@ -130,6 +130,13 @@ export function createVSCodeMock() {
 			Workspace: 2,
 			WorkspaceFolder: 3,
 		},
+		ViewColumn: {
+			One: 1,
+			Two: 2,
+			Three: 3,
+			Active: -1,
+			Beside: -2,
+		},
 		QuickPickItemKind: {
 			Separator: -1,
 			Default: 0,
@@ -147,6 +154,13 @@ export function createVSCodeMock() {
 		},
 		ThemeColor: class {
 			constructor(public id: string) {}
+		},
+		FileDecoration: class {
+			constructor(
+				public badge?: string,
+				public tooltip?: string,
+				public color?: { id: string },
+			) {}
 		},
 		MarkdownString: class {
 			constructor(public value: string) {}
@@ -208,6 +222,15 @@ export function createVSCodeMock() {
 				dispose: mock(),
 			})),
 			showQuickPick: mock(() => Promise.resolve(undefined)),
+			createTerminal: mock((_options?: unknown) => ({
+				show: mock(),
+				hide: mock(),
+				dispose: mock(),
+				sendText: mock(),
+			})),
+			registerFileDecorationProvider: mock((_provider: unknown) => ({
+				dispose: mock(),
+			})),
 		},
 		EventEmitter: class<T = unknown> {
 			private listeners: Array<(e: T) => void> = [];
