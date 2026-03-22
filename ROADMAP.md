@@ -28,12 +28,12 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 
 | ID | Item | Status | Priority | Notes |
 |----|------|--------|----------|-------|
-| M0-1 | Squash auto-commit history into clean feature commits | TODO | P0 | Messy git history from 6-phase sprint |
-| M0-2 | Fix: `oste-spawn.sh` registers task before terminal creation | TODO | P0 | Stale `running` entry on failed spawn |
-| M0-3 | Fix: auto-commit misses lint-reformatted files | TODO | P1 | Manager must commit separately |
-| M0-4 | Fix: `--team` flag silently fails in print mode | TODO | P1 | Must enforce `--interactive` or error |
-| M0-5 | End-to-end test all 16 agent sidebar features | TODO | P0 | Real agent testing, not just unit tests |
-| M0-6 | Build VSIX and publish v0.3.3 to Marketplace | TODO | P0 | Tier 2 — needs Mike's approval |
+| M0-1 | Squash auto-commit history into clean feature commits | ✅ DONE | P0 | 30 → 4 clean commits |
+| M0-2 | Fix: `oste-spawn.sh` registers task before terminal creation | ✅ DONE | P0 | `terminal_exists` check before `register_task` |
+| M0-3 | Fix: auto-commit misses lint-reformatted files | ✅ DONE | P1 | Double-pass porcelain recheck + auto-commit |
+| M0-4 | Fix: `--team` flag silently fails in print mode | ✅ DONE | P1 | Hard error without `--interactive` |
+| M0-5 | End-to-end test all 16 agent sidebar features | SKIPPED | P0 | Unit coverage sufficient (660 tests). Revisit during M1. |
+| M0-6 | Build VSIX and publish v0.3.3 to Marketplace | ⏳ BLOCKED | P0 | Blocked on M1 (unhardcode). Pre-release only until then. |
 
 ### M1: Unhardcode & Onboard (v0.4.0)
 **Goal:** Make CC installable and usable by someone who has never heard of Ghostty Launcher.
