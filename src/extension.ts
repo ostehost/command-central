@@ -22,11 +22,16 @@ import { BinaryManager } from "./ghostty/BinaryManager.js";
 import { TerminalManager } from "./ghostty/TerminalManager.js";
 import { GitSorter } from "./git-sort/scm-sorter.js";
 import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provider.js";
+import { AgentDashboardPanel } from "./providers/agent-dashboard-panel.js";
+import { AgentDecorationProvider } from "./providers/agent-decoration-provider.js";
 import {
 	AgentStatusTreeProvider,
+	type AgentTask,
 	isValidSessionId,
 } from "./providers/agent-status-tree-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
+import { AgentOutputChannels } from "./services/agent-output-channels.js";
+import { AgentStatusBar } from "./services/agent-status-bar.js";
 import { GroupingStateManager } from "./services/grouping-state-manager.js";
 import { LoggerService, LogLevel } from "./services/logger-service.js";
 import { ProjectIconService } from "./services/project-icon-service.js";
@@ -593,11 +598,135 @@ export async function activate(
 		context.subscriptions.push(agentStatusView);
 		context.subscriptions.push(agentStatusProvider);
 
+		// Agent Status Bar — shows running/total count
+		const agentStatusBar = new AgentStatusBar();
+		context.subscriptions.push(agentStatusBar);
+
+		// Update status bar on tree data changes
+		agentStatusProvider.onDidChangeTreeData(() => {
+			agentStatusBar.update(agentStatusProvider?.getTasks() ?? []);
+		});
+		// Initial update
+		agentStatusBar.update(agentStatusProvider.getTasks());
+
+		// Agent Dashboard Panel — rich webview dashboard
+		const agentDashboardPanel = new AgentDashboardPanel();
+		agentDashboardPanel.setGitInfoProvider(agentStatusProvider);
+		context.subscriptions.push(agentDashboardPanel);
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.openAgentDashboard",
+				() => {
+					agentDashboardPanel.show(
+						agentStatusProvider?.getRegistry().tasks ?? {},
+					);
+				},
+			),
+		);
+		agentStatusProvider.onDidChangeTreeData(() => {
+			agentDashboardPanel.update(
+				agentStatusProvider?.getRegistry().tasks ?? {},
+			);
+		});
+
+		// Agent Decoration Provider — highlights recently changed tasks
+		const agentDecorationProvider = new AgentDecorationProvider();
+		context.subscriptions.push(agentDecorationProvider);
+		context.subscriptions.push(
+			vscode.window.registerFileDecorationProvider(agentDecorationProvider),
+		);
+
+		// Track status transitions for decoration badges
+		const previousStatusesForDecoration = new Map<string, string>();
+		agentStatusProvider.onDidChangeTreeData(() => {
+			for (const task of agentStatusProvider?.getTasks() ?? []) {
+				const prev = previousStatusesForDecoration.get(task.id);
+				if (prev && prev !== task.status) {
+					agentDecorationProvider.markChanged(task.id);
+				}
+				previousStatusesForDecoration.set(task.id, task.status);
+			}
+		});
+
+		// Agent Output Channel Streaming
+		const agentOutputChannels = new AgentOutputChannels();
+		context.subscriptions.push(agentOutputChannels);
+
 		const agentOutputChannel =
 			vscode.window.createOutputChannel("Agent Output");
 		context.subscriptions.push(agentOutputChannel);
 
 		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.focusAgentTerminal",
+				async (node?: { type: string; task?: AgentTask }) => {
+					const task = node?.task;
+					if (!task) {
+						vscode.window.showInformationMessage(
+							"No terminal available for this agent.",
+						);
+						return;
+					}
+					const { execFile } = await import("node:child_process");
+					const { promisify } = await import("node:util");
+					const execFileAsync = promisify(execFile);
+
+					// Strategy 1: tmux backend with ghostty bundle
+					if (task.terminal_backend === "tmux" && task.ghostty_bundle_id) {
+						try {
+							await execFileAsync("open", ["-a", task.ghostty_bundle_id]);
+							return;
+						} catch {
+							// Fall through to next strategy
+						}
+					}
+
+					// Strategy 2: Direct bundle path
+					if (
+						task.bundle_path &&
+						task.bundle_path !== "(test-mode)" &&
+						task.bundle_path !== "(tmux-mode)"
+					) {
+						try {
+							const fsModule = await import("node:fs");
+							if (fsModule.existsSync(task.bundle_path)) {
+								await execFileAsync("open", ["-a", task.bundle_path]);
+								return;
+							}
+						} catch {
+							// Fall through to next strategy
+						}
+					}
+
+					// Strategy 3: tmux attach in integrated terminal
+					if (
+						task.terminal_backend === "tmux" &&
+						task.session_id &&
+						isValidSessionId(task.session_id)
+					) {
+						const terminal = vscode.window.createTerminal({
+							name: `Agent: ${task.id}`,
+							shellPath: "/bin/bash",
+							shellArgs: ["-c", `tmux attach -t ${task.session_id}`],
+						});
+						terminal.show();
+						return;
+					}
+
+					vscode.window.showInformationMessage(
+						"No terminal available for this agent.",
+					);
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.agentStatus.focus",
+				() => {
+					// Focus the agent status tree view by focusing its container
+					vscode.commands.executeCommand(
+						"workbench.view.extension.commandCentral",
+					);
+				},
+			),
 			vscode.commands.registerCommand(
 				"commandCentral.refreshAgentStatus",
 				() => {
@@ -696,6 +825,240 @@ export async function activate(
 				},
 			),
 		);
+		// Jump to Next Running Agent
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.focusNextRunningAgent",
+				async () => {
+					const tasks = agentStatusProvider?.getTasks() ?? [];
+					const running = tasks.find((t) => t.status === "running");
+					if (running) {
+						await vscode.commands.executeCommand(
+							"commandCentral.focusAgentTerminal",
+							{ type: "task" as const, task: running },
+						);
+					} else {
+						vscode.window.showInformationMessage("No running agents");
+					}
+				},
+			),
+		);
+
+		// Show Agent Output (streaming OutputChannel)
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.showAgentOutput",
+				(node?: { type: string; task?: AgentTask }) => {
+					const task = node?.task;
+					if (!task) {
+						vscode.window.showWarningMessage(
+							"No agent selected. Right-click an agent in the tree.",
+						);
+						return;
+					}
+					agentOutputChannels.show(task.id, task.session_id);
+				},
+			),
+		);
+
+		// View Agent Diff — opens git diff since agent started
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.viewAgentDiff",
+				async (node?: { type: string; task?: AgentTask }) => {
+					const task = node?.task;
+					if (!task?.project_dir) {
+						vscode.window.showWarningMessage(
+							"No agent selected. Right-click an agent in the tree.",
+						);
+						return;
+					}
+
+					// Find commit closest to started_at for a precise diff
+					let sinceRef = "HEAD~5";
+					if (task.started_at) {
+						try {
+							const { execFileSync } = await import("node:child_process");
+							const commitHash = execFileSync(
+								"git",
+								[
+									"-C",
+									task.project_dir,
+									"log",
+									`--before=${task.started_at}`,
+									"-1",
+									"--format=%H",
+								],
+								{ encoding: "utf-8", timeout: 3000 },
+							).trim();
+							if (commitHash) sinceRef = commitHash;
+						} catch {
+							/* fallback to HEAD~5 */
+						}
+					}
+
+					const terminal = vscode.window.createTerminal({
+						name: `Diff: ${task.id}`,
+						cwd: task.project_dir,
+					});
+					terminal.sendText(
+						`git diff ${sinceRef}..HEAD --stat && echo "---" && git diff ${sinceRef}..HEAD`,
+					);
+					terminal.show();
+				},
+			),
+		);
+
+		// Open Agent Directory — reveals project dir in OS file manager
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.openAgentDirectory",
+				async (node?: { type: string; task?: AgentTask }) => {
+					const task = node?.task;
+					if (!task?.project_dir) {
+						vscode.window.showWarningMessage(
+							"No agent selected. Right-click an agent in the tree.",
+						);
+						return;
+					}
+					const uri = vscode.Uri.file(task.project_dir);
+					await vscode.commands.executeCommand("revealFileInOS", uri);
+				},
+			),
+		);
+
+		// Restart Agent — kill and re-spawn with same task config
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.restartAgent",
+				async (node?: { type: string; task?: AgentTask }) => {
+					const task = node?.task;
+					if (!task) {
+						vscode.window.showWarningMessage(
+							"No agent selected. Right-click an agent in the tree.",
+						);
+						return;
+					}
+
+					const confirm = await vscode.window.showWarningMessage(
+						`Restart agent ${task.id}?`,
+						{ modal: false },
+						"Restart",
+					);
+					if (confirm !== "Restart") return;
+
+					// Kill if still running
+					if (
+						task.status === "running" &&
+						task.session_id &&
+						isValidSessionId(task.session_id)
+					) {
+						try {
+							const { execFileSync } = await import("node:child_process");
+							execFileSync("tmux", ["kill-session", "-t", task.session_id], {
+								timeout: 5000,
+							});
+						} catch {
+							/* session may already be dead */
+						}
+					}
+
+					// Re-spawn via launcher if prompt_file exists
+					if (task.prompt_file) {
+						const terminal = vscode.window.createTerminal({
+							name: `Restart: ${task.id}`,
+							cwd: task.project_dir,
+						});
+						terminal.sendText(
+							`oste-spawn.sh "${task.project_dir}" "${task.prompt_file}" --task-id "${task.id}"`,
+						);
+						terminal.show();
+						agentStatusProvider?.reload();
+					} else {
+						vscode.window.showWarningMessage(
+							`Cannot restart ${task.id}: no prompt file recorded`,
+						);
+					}
+				},
+			),
+		);
+
+		// Launch Agent — spawn new Ghostty terminal from sidebar
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.launchAgent",
+				async () => {
+					// Step 1: Pick workspace folder
+					let projectDir: string;
+					const folders = vscode.workspace.workspaceFolders;
+					if (!folders || folders.length === 0) {
+						vscode.window.showWarningMessage("No workspace folder open.");
+						return;
+					}
+					if (folders.length === 1) {
+						projectDir = folders[0].uri.fsPath;
+					} else {
+						const picked = await vscode.window.showWorkspaceFolderPick({
+							placeHolder: "Select project for agent",
+						});
+						if (!picked) return;
+						projectDir = picked.uri.fsPath;
+					}
+
+					// Step 2: Get task description
+					const description = await vscode.window.showInputBox({
+						prompt: "What should the agent do?",
+						placeHolder: "e.g., Add unit tests for the auth module",
+					});
+					if (!description) return;
+
+					// Step 3: Write prompt file
+					const fs = await import("node:fs");
+					const timestamp = Date.now().toString(36);
+					const promptFile = `/tmp/cc-launch-${timestamp}.md`;
+					fs.writeFileSync(promptFile, `# Task\n\n${description}\n`);
+
+					// Step 4: Generate task ID and spawn
+					const path = await import("node:path");
+					const dirName = path.basename(projectDir);
+					const taskId = `cc-${dirName}-${timestamp}`;
+
+					const { execFile } = await import("node:child_process");
+					const { promisify } = await import("node:util");
+					const execFileAsync = promisify(execFile);
+
+					try {
+						await execFileAsync(
+							"oste-spawn.sh",
+							[
+								projectDir,
+								promptFile,
+								"--task-id",
+								taskId,
+								"--role",
+								"developer",
+								"--no-bundle",
+								"--json",
+							],
+							{ timeout: 15000 },
+						);
+
+						vscode.window.showInformationMessage(
+							`Agent launched for ${dirName}`,
+						);
+					} catch (err: unknown) {
+						const msg = err instanceof Error ? err.message : String(err);
+						vscode.window.showErrorMessage(`Failed to launch agent: ${msg}`);
+					}
+
+					// Step 5: Reload tree after delay
+					setTimeout(() => {
+						agentStatusProvider?.reload();
+					}, 2000);
+				},
+			),
+		);
+
 		mainLogger.info("Agent Status panel initialized");
 
 		// ============================================================================
@@ -711,6 +1074,7 @@ export async function activate(
 		const activityTimelineDisposable = createActivityTimelineView(
 			context,
 			activityCollector,
+			agentStatusProvider,
 		);
 		context.subscriptions.push(activityTimelineDisposable);
 		mainLogger.info("Activity Timeline initialized");

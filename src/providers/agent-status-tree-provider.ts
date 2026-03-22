@@ -8,9 +8,14 @@
  * Watches the file for changes and auto-refreshes.
  */
 
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import type { AgentEvent } from "../events/agent-events.js";
+import { detectListeningPorts } from "../utils/port-detector.js";
+
+export type { AgentEvent } from "../events/agent-events.js";
 
 /** Validate session ID to prevent shell injection */
 export function isValidSessionId(name: string): boolean {
@@ -52,7 +57,12 @@ export interface AgentTask {
 
 // ── Tree node types ──────────────────────────────────────────────────
 
-export type AgentNode = TaskNode | DetailNode;
+export type AgentNode = SummaryNode | TaskNode | DetailNode;
+
+export interface SummaryNode {
+	type: "summary";
+	label: string;
+}
 
 export interface TaskNode {
 	type: "task";
@@ -114,6 +124,11 @@ function normalizeTask(raw: Record<string, unknown>): AgentTask | null {
 
 // ── Provider ─────────────────────────────────────────────────────────
 
+export interface GitInfo {
+	branch: string;
+	lastCommit: string;
+}
+
 export class AgentStatusTreeProvider
 	implements vscode.TreeDataProvider<AgentNode>, vscode.Disposable
 {
@@ -122,11 +137,16 @@ export class AgentStatusTreeProvider
 	>();
 	readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+	private _onAgentEvent = new vscode.EventEmitter<AgentEvent>();
+	readonly onAgentEvent = this._onAgentEvent.event;
+
 	private registry: TaskRegistry = { version: 2, tasks: {} };
 	private fileWatcher: vscode.FileSystemWatcher | null = null;
 	private _filePath: string | null = null;
 	private disposables: vscode.Disposable[] = [];
 	private debounceTimer: NodeJS.Timeout | null = null;
+	private autoRefreshTimer: NodeJS.Timeout | null = null;
+	private previousStatuses = new Map<string, string>();
 
 	constructor() {
 		// Watch config changes for the tasks file path
@@ -198,7 +218,106 @@ export class AgentStatusTreeProvider
 
 	reload(): void {
 		this.registry = this.readRegistry();
+		this.checkCompletionNotifications();
+		this.updateAutoRefreshTimer();
+		// Set context key for welcome view
+		vscode.commands.executeCommand(
+			"setContext",
+			"commandCentral.hasAgentTasks",
+			Object.keys(this.registry.tasks).length > 0,
+		);
 		this._onDidChangeTreeData.fire(undefined);
+	}
+
+	/** Check for running→completed/failed transitions and fire notifications */
+	private checkCompletionNotifications(): void {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		const masterEnabled = config.get<boolean>(
+			"agentStatus.notifications",
+			true,
+		);
+		const notifConfig = vscode.workspace.getConfiguration(
+			"commandCentral.notifications",
+		);
+		const onCompletion = notifConfig.get<boolean>("onCompletion", true);
+		const onFailure = notifConfig.get<boolean>("onFailure", true);
+
+		for (const task of Object.values(this.registry.tasks)) {
+			const prev = this.previousStatuses.get(task.id);
+			if (masterEnabled && prev === "running") {
+				if (task.status === "completed" && onCompletion) {
+					const elapsed = formatElapsed(task.started_at);
+					const msg = `Agent ${task.id} completed (${elapsed})`;
+					vscode.window
+						.showInformationMessage(msg, "Focus Terminal")
+						.then((action) => {
+							if (action === "Focus Terminal") {
+								vscode.commands.executeCommand(
+									"commandCentral.focusAgentTerminal",
+									{ type: "task" as const, task },
+								);
+							}
+						});
+					this._onAgentEvent.fire({
+						type: "agent-completed",
+						taskId: task.id,
+						timestamp: new Date(),
+						projectDir: task.project_dir,
+						elapsed,
+					});
+				} else if (task.status === "failed" && onFailure) {
+					const msg = `Agent ${task.id} failed — check output`;
+					vscode.window
+						.showWarningMessage(msg, "Focus Terminal")
+						.then((action) => {
+							if (action === "Focus Terminal") {
+								vscode.commands.executeCommand(
+									"commandCentral.focusAgentTerminal",
+									{ type: "task" as const, task },
+								);
+							}
+						});
+					this._onAgentEvent.fire({
+						type: "agent-failed",
+						taskId: task.id,
+						timestamp: new Date(),
+						projectDir: task.project_dir,
+					});
+				}
+			}
+			// Detect running transitions (new task appearing as running, or transition to running)
+			if (
+				task.status === "running" &&
+				prev !== undefined &&
+				prev !== "running"
+			) {
+				this._onAgentEvent.fire({
+					type: "agent-started",
+					taskId: task.id,
+					timestamp: new Date(),
+					projectDir: task.project_dir,
+				});
+			}
+			this.previousStatuses.set(task.id, task.status);
+		}
+	}
+
+	/** Start or stop auto-refresh timer based on whether any tasks are running */
+	private updateAutoRefreshTimer(): void {
+		const hasRunning = Object.values(this.registry.tasks).some(
+			(t) => t.status === "running",
+		);
+
+		if (hasRunning && !this.autoRefreshTimer) {
+			const config = vscode.workspace.getConfiguration("commandCentral");
+			const intervalMs = config.get<number>("agentStatus.autoRefreshMs", 5000);
+			this.autoRefreshTimer = setInterval(() => {
+				this._onDidChangeTreeData.fire(undefined);
+			}, intervalMs);
+		} else if (!hasRunning && this.autoRefreshTimer) {
+			clearInterval(this.autoRefreshTimer);
+			this.autoRefreshTimer = null;
+		}
 	}
 
 	/** Exposed for testing — override to inject mock data */
@@ -222,6 +341,9 @@ export class AgentStatusTreeProvider
 	}
 
 	getTreeItem(element: AgentNode): vscode.TreeItem {
+		if (element.type === "summary") {
+			return this.createSummaryItem(element);
+		}
 		if (element.type === "task") {
 			return this.createTaskItem(element.task);
 		}
@@ -230,63 +352,194 @@ export class AgentStatusTreeProvider
 
 	getChildren(element?: AgentNode): AgentNode[] {
 		if (!element) {
-			// Root level: all tasks sorted by started_at desc
-			return Object.values(this.registry.tasks)
+			const tasks = Object.values(this.registry.tasks);
+			if (tasks.length === 0) return [];
+
+			const taskNodes: AgentNode[] = tasks
 				.sort(
 					(a, b) =>
 						new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
 				)
 				.map((task) => ({ type: "task" as const, task }));
+
+			// Build summary node
+			const counts = { running: 0, completed: 0, failed: 0 };
+			for (const task of tasks) {
+				if (task.status in counts) counts[task.status as keyof typeof counts]++;
+			}
+			const summaryParts: string[] = [];
+			if (counts.running > 0) summaryParts.push(`${counts.running} running`);
+			if (counts.completed > 0)
+				summaryParts.push(`${counts.completed} completed`);
+			if (counts.failed > 0) summaryParts.push(`${counts.failed} failed`);
+			const summaryLabel =
+				summaryParts.length > 0
+					? summaryParts.join(" · ")
+					: `${tasks.length} agents`;
+
+			return [{ type: "summary" as const, label: summaryLabel }, ...taskNodes];
 		}
 
 		if (element.type === "task") {
-			const t = element.task;
-			const details: DetailNode[] = [
-				{
-					type: "detail",
-					label: "Prompt",
-					value: t.prompt_file,
-					taskId: t.id,
-				},
-				{
-					type: "detail",
-					label: "Worktree",
-					value: t.project_dir,
-					taskId: t.id,
-				},
-				{
-					type: "detail",
-					label: "Attempts",
-					value: `${t.attempts} / ${t.max_attempts}`,
-					taskId: t.id,
-				},
-				{
-					type: "detail",
-					label: "Session",
-					value: t.session_id,
-					taskId: t.id,
-				},
-			];
-			if (t.exit_code != null) {
-				details.push({
-					type: "detail",
-					label: "Exit Code",
-					value: `${t.exit_code}`,
-					taskId: t.id,
-				});
+			const compact = this.isCompactMode();
+			if (compact) {
+				return this.getCompactChildren(element.task);
 			}
-			if (t.pr_number) {
-				details.push({
-					type: "detail",
-					label: "PR",
-					value: `#${t.pr_number}${t.review_status ? ` (${t.review_status})` : ""}`,
-					taskId: t.id,
-				});
-			}
-			return details;
+			return this.getDetailChildren(element.task);
 		}
 
 		return [];
+	}
+
+	private isCompactMode(): boolean {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		return config.get<boolean>("agentStatus.compactMode", false);
+	}
+
+	private getCompactChildren(t: AgentTask): DetailNode[] {
+		const details: DetailNode[] = [];
+		const gitInfo = this.getGitInfo(t.project_dir);
+		if (gitInfo) {
+			details.push({
+				type: "detail",
+				label: "Branch",
+				value: gitInfo.branch,
+				taskId: t.id,
+			});
+		}
+		return details;
+	}
+
+	private getDetailChildren(t: AgentTask): DetailNode[] {
+		const details: DetailNode[] = [
+			{
+				type: "detail",
+				label: "Prompt",
+				value: t.prompt_file,
+				taskId: t.id,
+			},
+			{
+				type: "detail",
+				label: "Worktree",
+				value: t.project_dir,
+				taskId: t.id,
+			},
+			{
+				type: "detail",
+				label: "Attempts",
+				value: `${t.attempts} / ${t.max_attempts}`,
+				taskId: t.id,
+			},
+			{
+				type: "detail",
+				label: "Session",
+				value: t.session_id,
+				taskId: t.id,
+			},
+		];
+		if (t.exit_code != null) {
+			details.push({
+				type: "detail",
+				label: "Exit Code",
+				value: `${t.exit_code}`,
+				taskId: t.id,
+			});
+		}
+		if (t.pr_number) {
+			details.push({
+				type: "detail",
+				label: "PR",
+				value: `#${t.pr_number}${t.review_status ? ` (${t.review_status})` : ""}`,
+				taskId: t.id,
+			});
+		}
+		// Port detection — only for running tasks (expensive operation)
+		if (t.status === "running") {
+			const ports = detectListeningPorts(t.project_dir);
+			if (ports.length > 0) {
+				details.push({
+					type: "detail",
+					label: "Ports",
+					value: ports.map((p) => `${p.port} (${p.process})`).join(", "),
+					taskId: t.id,
+				});
+			}
+		}
+		const gitInfo = this.getGitInfo(t.project_dir);
+		if (gitInfo) {
+			details.push({
+				type: "detail",
+				label: "Branch",
+				value: gitInfo.branch,
+				taskId: t.id,
+			});
+			details.push({
+				type: "detail",
+				label: "Last Commit",
+				value: gitInfo.lastCommit,
+				taskId: t.id,
+			});
+		}
+		return details;
+	}
+
+	resolveTreeItem(
+		item: vscode.TreeItem,
+		element: AgentNode,
+	): Thenable<vscode.TreeItem> {
+		if (element.type === "task" && element.task.status === "running") {
+			return this.getLastOutputLine(element.task).then((line) => {
+				if (line) {
+					item.description = `${item.description} | ${line}`;
+				}
+				return item;
+			});
+		}
+		return Promise.resolve(item);
+	}
+
+	getGitInfo(projectDir: string): GitInfo | null {
+		try {
+			const branch = execFileSync(
+				"git",
+				["-C", projectDir, "rev-parse", "--abbrev-ref", "HEAD"],
+				{ encoding: "utf-8", timeout: 2000 },
+			).trim();
+			const lastCommit = execFileSync(
+				"git",
+				["-C", projectDir, "log", "-1", "--format=%h %s (%cr)"],
+				{ encoding: "utf-8", timeout: 2000 },
+			).trim();
+			return { branch, lastCommit };
+		} catch {
+			return null;
+		}
+	}
+
+	private async getLastOutputLine(
+		task: AgentTask,
+	): Promise<string | undefined> {
+		if (task.status !== "running") return undefined;
+		if (!task.session_id || !isValidSessionId(task.session_id))
+			return undefined;
+		try {
+			const { execFileSync } = await import("node:child_process");
+			const output = execFileSync(
+				"tmux",
+				["capture-pane", "-t", task.session_id, "-p"],
+				{
+					encoding: "utf-8",
+					timeout: 2000,
+				},
+			);
+			const lines = output
+				.trim()
+				.split("\n")
+				.filter((l) => l.trim());
+			return lines[lines.length - 1]?.substring(0, 80);
+		} catch {
+			return undefined;
+		}
 	}
 
 	getParent(element: AgentNode): AgentNode | undefined {
@@ -294,7 +547,13 @@ export class AgentStatusTreeProvider
 			const task = this.registry.tasks[element.taskId];
 			if (task) return { type: "task", task };
 		}
+		// summary nodes are root-level, no parent
 		return undefined;
+	}
+
+	/** Get the full task registry */
+	getRegistry(): TaskRegistry {
+		return this.registry;
 	}
 
 	/** Get tasks (for command handlers) */
@@ -302,13 +561,51 @@ export class AgentStatusTreeProvider
 		return Object.values(this.registry.tasks);
 	}
 
+	private getProjectEmoji(projectDir: string): string | null {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		const projects = config.get<Array<{ name: string; emoji: string }>>(
+			"projects",
+			[],
+		);
+		const dirName = path.basename(projectDir);
+		const match = projects.find((p) => p.name === dirName);
+		return match?.emoji ?? null;
+	}
+
+	private createSummaryItem(node: SummaryNode): vscode.TreeItem {
+		const item = new vscode.TreeItem(
+			node.label,
+			vscode.TreeItemCollapsibleState.None,
+		);
+		item.iconPath = new vscode.ThemeIcon("info");
+		item.contextValue = "agentSummary";
+		return item;
+	}
+
+	private formatElapsedDescription(task: AgentTask): string {
+		const elapsed = formatElapsed(task.started_at);
+		switch (task.status) {
+			case "running":
+				return `Running for ${elapsed}`;
+			case "completed":
+				return `Completed in ${elapsed}`;
+			case "failed":
+				return `Failed after ${elapsed}`;
+			default:
+				return elapsed;
+		}
+	}
+
 	private createTaskItem(task: AgentTask): vscode.TreeItem {
 		const icon = STATUS_ICONS[task.status] || "❓";
 		const roleIcon = task.role ? ROLE_ICONS[task.role] : null;
-		const elapsed = formatElapsed(task.started_at);
+		const elapsedDesc = this.formatElapsedDescription(task);
 		const prefix = roleIcon ? `${icon} ${roleIcon}` : icon;
-		const label = `${prefix} ${task.id}`;
-		const description = `${task.project_name} · ${task.status} · ${elapsed}`;
+		const projectEmoji = this.getProjectEmoji(task.project_dir);
+		const label = projectEmoji
+			? `${prefix} ${projectEmoji} ${task.id}`
+			: `${prefix} ${task.id}`;
+		const description = `${task.project_name} · ${elapsedDesc}`;
 
 		const item = new vscode.TreeItem(
 			label,
@@ -331,6 +628,12 @@ export class AgentStatusTreeProvider
 				.join("\n\n"),
 		);
 		item.contextValue = `agentTask.${task.status}`;
+		item.resourceUri = vscode.Uri.parse(`agent-task:${task.id}`);
+		item.command = {
+			command: "commandCentral.focusAgentTerminal",
+			title: "Focus Terminal",
+			arguments: [{ type: "task" as const, task }],
+		};
 		return item;
 	}
 
@@ -345,8 +648,13 @@ export class AgentStatusTreeProvider
 
 	dispose(): void {
 		this._onDidChangeTreeData.dispose();
+		this._onAgentEvent.dispose();
 		if (this.fileWatcher) this.fileWatcher.dispose();
 		if (this.debounceTimer) clearTimeout(this.debounceTimer);
+		if (this.autoRefreshTimer) {
+			clearInterval(this.autoRefreshTimer);
+			this.autoRefreshTimer = null;
+		}
 		for (const d of this.disposables) d.dispose();
 	}
 }

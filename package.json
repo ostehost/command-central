@@ -2,7 +2,7 @@
   "name": "command-central",
   "displayName": "Command Central",
   "description": "Code changes, sorted by time. See what changed, in the order it changed.",
-  "version": "0.3.2",
+  "version": "0.3.3-pre.6",
   "publisher": "oste",
   "icon": "resources/icons/icon.png",
   "type": "module",
@@ -203,6 +203,57 @@
           "minimum": 1,
           "maximum": 90,
           "description": "How many days of agent activity history to show",
+          "scope": "window"
+        },
+        "commandCentral.agentStatus.autoRefreshMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 30000,
+          "description": "Auto-refresh interval (ms) for running agents in the Agent Status tree",
+          "scope": "window"
+        },
+        "commandCentral.agentStatus.notifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master toggle for agent notifications (overrides individual settings)",
+          "scope": "window"
+        },
+        "commandCentral.notifications.onCompletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notification when an agent completes",
+          "scope": "window"
+        },
+        "commandCentral.notifications.onFailure": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notification when an agent fails",
+          "scope": "window"
+        },
+        "commandCentral.notifications.sound": {
+          "type": "boolean",
+          "default": false,
+          "description": "Play sound with agent notifications (uses VS Code sound setting)",
+          "scope": "window"
+        },
+        "commandCentral.projects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Project directory name"
+              },
+              "emoji": {
+                "type": "string",
+                "description": "Emoji icon for this project"
+              }
+            }
+          },
+          "default": [],
+          "description": "Per-project emoji icons for agent sidebar",
           "scope": "window"
         },
         "commandCentral.ghostty.launcherPath": {
@@ -614,10 +665,28 @@
         "icon": "$(filter)"
       },
       {
+        "command": "commandCentral.focusAgentTerminal",
+        "title": "Focus Terminal",
+        "category": "Command Central",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "commandCentral.agentStatus.focus",
+        "title": "Focus Agent Status",
+        "category": "Command Central",
+        "icon": "$(list-tree)"
+      },
+      {
         "command": "commandCentral.refreshAgentStatus",
         "title": "Refresh Agent Status",
         "category": "Command Central",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.launchAgent",
+        "title": "Launch Agent",
+        "icon": "$(rocket)",
+        "category": "Command Central"
       },
       {
         "command": "commandCentral.refreshActivityTimeline",
@@ -636,6 +705,42 @@
         "title": "Kill Agent",
         "category": "Command Central",
         "icon": "$(close)"
+      },
+      {
+        "command": "commandCentral.focusNextRunningAgent",
+        "title": "Focus Next Running Agent",
+        "category": "Command Central",
+        "icon": "$(debug-continue)"
+      },
+      {
+        "command": "commandCentral.showAgentOutput",
+        "title": "Show Agent Output",
+        "category": "Command Central",
+        "icon": "$(output)"
+      },
+      {
+        "command": "commandCentral.viewAgentDiff",
+        "title": "View Agent Diff",
+        "category": "Command Central",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "commandCentral.openAgentDirectory",
+        "title": "Open Agent Directory",
+        "category": "Command Central",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "commandCentral.restartAgent",
+        "title": "Restart Agent",
+        "category": "Command Central",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "commandCentral.openAgentDashboard",
+        "title": "Open Agent Dashboard",
+        "category": "Command Central",
+        "icon": "$(dashboard)"
       },
       {
         "command": "commandCentral.ghostty.createTerminal",
@@ -865,6 +970,11 @@
       {
         "view": "commandCentral.project.slot10Panel",
         "contents": "Open a Git repository to see time-sorted changes."
+      },
+      {
+        "view": "commandCentral.agentStatus",
+        "contents": "No agent tasks found.\n\nAgent tasks appear here when you spawn agents via the Ghostty Launcher.\n\n[Refresh](command:commandCentral.refreshAgentStatus)",
+        "when": "commandCentral.hasAgentTasks == false"
       }
     ],
     "menus": {
@@ -940,6 +1050,11 @@
           "group": "5_cutcopypaste@2"
         },
         {
+          "command": "commandCentral.focusAgentTerminal",
+          "when": "viewItem =~ /^agentTask\\./",
+          "group": "inline"
+        },
+        {
           "command": "commandCentral.captureAgentOutput",
           "when": "viewItem =~ /^agentTask\\./",
           "group": "inline"
@@ -948,6 +1063,26 @@
           "command": "commandCentral.killAgent",
           "when": "viewItem == agentTask.running",
           "group": "inline"
+        },
+        {
+          "command": "commandCentral.showAgentOutput",
+          "when": "viewItem =~ /^agentTask\\.running/",
+          "group": "inline"
+        },
+        {
+          "command": "commandCentral.viewAgentDiff",
+          "when": "viewItem =~ /^agentTask\\./",
+          "group": "navigation"
+        },
+        {
+          "command": "commandCentral.openAgentDirectory",
+          "when": "viewItem =~ /^agentTask\\./",
+          "group": "navigation"
+        },
+        {
+          "command": "commandCentral.restartAgent",
+          "when": "viewItem =~ /agentTask\\.(completed|failed|stopped)/",
+          "group": "2_actions"
         }
       ],
       "view/title": [
@@ -1252,9 +1387,14 @@
           "group": "navigation@3"
         },
         {
+          "command": "commandCentral.launchAgent",
+          "when": "view == commandCentral.agentStatus",
+          "group": "navigation@1"
+        },
+        {
           "command": "commandCentral.refreshAgentStatus",
           "when": "view == commandCentral.agentStatus",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "commandCentral.refreshActivityTimeline",
@@ -1280,6 +1420,20 @@
         "command": "commandCentral.grouping.toggle",
         "key": "g",
         "when": "focusedView =~ /^commandCentral\\./"
+      },
+      {
+        "command": "commandCentral.focusNextRunningAgent",
+        "key": "cmd+shift+u",
+        "mac": "cmd+shift+u",
+        "win": "ctrl+shift+u",
+        "linux": "ctrl+shift+u"
+      },
+      {
+        "command": "commandCentral.openAgentDashboard",
+        "key": "cmd+shift+d",
+        "mac": "cmd+shift+d",
+        "win": "ctrl+shift+d",
+        "linux": "ctrl+shift+d"
       }
     ]
   },

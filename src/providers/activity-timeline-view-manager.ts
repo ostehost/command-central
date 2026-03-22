@@ -11,9 +11,14 @@
  */
 
 import * as vscode from "vscode";
+import type { AgentEvent } from "../events/agent-events.js";
 import type { ActivityCollector } from "../services/activity-collector.js";
 import type { TimelineNode } from "./activity-timeline-tree-provider.js";
 import { ActivityTimelineTreeProvider } from "./activity-timeline-tree-provider.js";
+
+export interface AgentEventSource {
+	onAgentEvent: vscode.Event<AgentEvent>;
+}
 
 /**
  * Create and wire up the Activity Timeline view.
@@ -23,6 +28,7 @@ import { ActivityTimelineTreeProvider } from "./activity-timeline-tree-provider.
 export function createActivityTimelineView(
 	_context: vscode.ExtensionContext,
 	collector: ActivityCollector,
+	agentEventSource?: AgentEventSource,
 ): vscode.Disposable {
 	const disposables: vscode.Disposable[] = [];
 
@@ -115,6 +121,15 @@ export function createActivityTimelineView(
 			}
 		}),
 	);
+
+	// Subscribe to agent events for real-time timeline updates
+	if (agentEventSource) {
+		disposables.push(
+			agentEventSource.onAgentEvent(() => {
+				scheduleRefresh();
+			}),
+		);
+	}
 
 	// Initial load
 	void provider.refresh();
