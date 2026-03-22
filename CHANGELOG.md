@@ -5,7 +5,32 @@ All notable changes to the Command Central extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2026-02-21: 297 tests across 30 files.
+**Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2026-03-22: 660 tests, 1385 assertions across 53 files.
+
+## [0.3.3] - 2026-03-22
+
+### Added — Agent Sidebar (16 features)
+- **Click-to-focus terminal** — Click any agent in sidebar to focus its Ghostty terminal
+- **Status bar badge** — Shows running agent count with pulse icon in VS Code status bar
+- **Live output preview** — Last output line from tmux capture shown in tree hover
+- **Auto-refresh timer** — Tree auto-refreshes every 5s while agents are running
+- **Git branch + last commit** — Per-agent git context shown as tree detail nodes
+- **Completion notifications** — VS Code notifications on agent completion/failure with Focus Terminal action
+- **Jump-to-running agent** — `Cmd+Shift+U` focuses the first running agent's terminal
+- **Agent Output Channel** — Stream agent output into a VS Code Output Channel
+- **Decoration badges** — Visual indicators on status changes in the tree view
+- **Listening port detection** — Detects ports agents are serving on via `lsof`
+- **Context menu actions** — View Diff and Open Directory quick actions per agent
+- **Per-project emoji icons** — Configurable emoji prefix per project in the sidebar
+- **Granular notification preferences** — Independent toggles for completion/failure notifications
+- **Agent events for Activity Timeline** — Agent lifecycle events (start/complete/fail) in timeline
+- **Enhanced status bar** — Per-status counts with markdown tooltip breakdown
+- **Agent Dashboard webview** — Full dashboard panel via `Cmd+Shift+D`
+
+### Changed
+- **Identity shift** — From "Git time-sorter" to "Agent control tower"
+- **Test suite** — 297 → 660 tests, 553 → 1385 assertions across 53 files
+- **Product roadmap** — Added ROADMAP.md with 5 milestones (M0-M5)
 
 ## [0.2.3] - 2026-02-22
 ### Changed
