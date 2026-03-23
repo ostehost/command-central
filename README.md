@@ -1,92 +1,69 @@
-<p align="center">
-  <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central">
-    <img src="https://partnerai.dev/images/logo-128.png" alt="Command Central" width="128" height="128">
-  </a>
-</p>
-
 # Command Central
+
+> The VS Code agent control tower. See all your AI coding agents from one sidebar.
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/oste.command-central)](https://marketplace.visualstudio.com/items?itemName=oste.command-central)
 [![Installs](https://img.shields.io/visual-studio-marketplace/i/oste.command-central)](https://marketplace.visualstudio.com/items?itemName=oste.command-central)
 [![CI](https://github.com/ostehost/command-central/actions/workflows/ci.yml/badge.svg)](https://github.com/ostehost/command-central/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Code changes, sorted by time
+## What It Does
 
-See what changed, in the order it changed.
+Command Central gives you a unified view of all your AI coding agents running in terminals — even ones VS Code can't see.
 
-Built by [Partner AI](https://partnerai.dev/?utm_source=github&utm_medium=referral&utm_campaign=launch-2026-02&utm_content=readme-hero)
+### Agent Sidebar
+- **Live agent monitoring** — See running, completed, and failed agents at a glance
+- **Click to focus** — Jump to any agent's terminal with one click
+- **Status bar badge** — Running agent count always visible
+- **Completion notifications** — Get notified when agents finish or fail
+- **Agent Dashboard** — Full overview via Cmd+Shift+D
 
-![Command Central showing three workspaces with time-grouped file changes](https://partnerai.dev/assets/hero.png?v=2)
+### Git Sort (Agent Diff Tracker)
+- **Time-sorted file changes** — See what changed most recently at the top
+- **Agent-aware** — Perfect for reviewing multi-agent coding sessions
+- **Staged & unstaged** — Full Git status integration
 
-## Install
+## Quick Start
 
-```
-ext install oste.command-central
-```
+1. Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=oste.command-central)
+2. Open a project with a Git repository
+3. Look for the Command Central icon in the Activity Bar
 
-Or search **"Command Central"** in the Extensions panel.
+### Agent Monitoring Setup
 
-Works with **VS Code**, **Cursor**, and **Windsurf**.
+To monitor AI agents, configure the path to your task registry:
 
-## What it does
+1. Open Settings (Cmd+,)
+2. Search for "Command Central Tasks"
+3. Set the path to your `tasks.json` file
 
-### Sorted by time, not name
+Or let Command Central auto-detect from standard locations:
+- `${workspaceFolder}/.ghostty-launcher/tasks.json`
+- `~/.config/ghostty-launcher/tasks.json`
+- `~/.ghostty-launcher/tasks.json`
 
-Adjustable time groups. Minutes, hours, days.
+### Works With
+- **Claude Code** (Anthropic)
+- **Codex CLI** (OpenAI)
+- **Any agent** that writes to a tasks.json registry
+- **Ghostty Launcher** for full integration (auto-tracking, notifications, dashboard)
 
-### Staged vs. working
+## Commands
 
-Toggle to separate staged from working.
-
-![Staged and working changes split into clear groups](https://partnerai.dev/assets/git-status.png?v=2)
-
-### Filter by extension
-
-See only the file types that matter.
-
-![Extension filter showing filtered files](https://partnerai.dev/assets/filter.png?v=2)
-
-### Plus
-
-- **Multi repo workspaces.** Each folder gets its own isolated view (up to 10).
-- **Active file tracking.** Current file highlights in the tree as you work.
-- **Two layout modes.** Sidebar for deep dives, Panel for cross project comparison.
-- **Deleted file persistence.** Deleted files stay visible with stable ordering across sessions.
-- **Emoji icons per project.** Set an icon per workspace in `.vscode/settings.json`.
-- **Zero config.** Install and go. 316 tests passing, MIT licensed.
-
-## You've been here
-
-🤖 **Three agents running.**
-Every file they touch, sorted by the minute.
-
-🔍 **Agent went wide.**
-Filter to .ts. Then to .css. Find what matters.
-
-☕ **Morning after.**
-What changed overnight, grouped by hour.
+| Command | Shortcut | Description |
+|---------|----------|-------------|
+| Focus Running Agent | Cmd+Shift+U | Jump to first running agent's terminal |
+| Agent Dashboard | Cmd+Shift+D | Open the agent overview panel |
+| Open Command Central | Cmd+Shift+C | Focus the sidebar |
 
 ## Requirements
 
-- VS Code **1.100.0** or higher (or Cursor / Windsurf equivalent)
-- Git (built in)
-
-## Configuration
-
-See [CONFIG.md](./CONFIG.md) for the full settings reference. Key settings:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `commandCentral.gitSort.enabled` | `true` | Enable time sorted git changes |
-| `commandCentral.gitStatusGrouping.enabled` | `false` | Group by staged/working with time subgroups |
-| `commandCentral.gitSort.fileTypeFilter` | `all` | Filter by file type |
-| `commandCentral.trackActiveFile` | `true` | Highlight active file in tree |
+- VS Code 1.100.0+ (or Cursor / Windsurf equivalent)
+- Git (for Git Sort features)
+- Optional: [Ghostty Launcher](https://github.com/ostehost/ghostty-launcher) for full agent integration
 
 ## License
 
 [MIT](./LICENSE)
 
 Free and open source. Always.
-
-A [Partner AI™](https://partnerai.dev) project.

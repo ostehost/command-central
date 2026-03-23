@@ -1,7 +1,7 @@
 {
   "name": "command-central",
   "displayName": "Command Central",
-  "description": "Code changes, sorted by time. See what changed, in the order it changed.",
+  "description": "The VS Code agent control tower. Monitor all your AI coding agents from one sidebar.",
   "version": "0.3.4-1",
   "publisher": "oste",
   "icon": "resources/icons/icon.png",
@@ -12,20 +12,20 @@
     "node": ">=18.0.0"
   },
   "categories": [
-    "SCM Providers",
-    "Other"
+    "Other",
+    "SCM Providers"
   ],
   "keywords": [
+    "agent",
     "ai",
-    "command",
+    "claude",
+    "codex",
+    "terminal",
     "git",
-    "sort",
-    "scm",
-    "productivity",
-    "git sort",
-    "sorted changes",
-    "time sort",
-    "workspace"
+    "diff",
+    "monitoring",
+    "sidebar",
+    "coding-agent"
   ],
   "repository": {
     "type": "git",
@@ -100,7 +100,7 @@
         "commandCentral.gitSort.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable sorting of git changes by modification time",
+          "markdownDescription": "Enable the Git Sort view — tracks file changes sorted by modification time. Ideal for reviewing what AI agents changed in your codebase.",
           "scope": "window"
         },
         "commandCentral.gitSort.fileTypeFilter": {
@@ -893,87 +893,87 @@
     "viewsWelcome": [
       {
         "view": "commandCentral.project.slot1",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot1Panel",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot2",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot2Panel",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot3",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot3Panel",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot4",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot4Panel",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot5",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot5Panel",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot6",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot6Panel",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot7",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot7Panel",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot8",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot8Panel",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot9",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot9Panel",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot10",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.project.slot10Panel",
-        "contents": "Open a Git repository to see time-sorted changes."
+        "contents": "Open a Git repository to track file changes sorted by time.\n\nPerfect for reviewing what your agents changed."
       },
       {
         "view": "commandCentral.agentStatus",
-        "contents": "No agent tasks found.\n\nAgent tasks appear here when you spawn agents via the Ghostty Launcher.\n\n[Refresh](command:commandCentral.refreshAgentStatus)",
+        "contents": "No agents detected.\n\nCommand Central monitors your AI coding agents — Claude Code, Codex, and others running in terminals.\n\n**Getting Started:**\n1. Run a Claude Code agent in any terminal\n2. Configure the tasks file path in settings\n\nOr use [Ghostty Launcher](https://github.com/ostehost/ghostty-launcher) for automatic agent tracking.\n\n[Configure Tasks File](command:workbench.action.openSettings?%5B%22commandCentral.agentTasksFile%22%5D) | [Refresh](command:commandCentral.refreshAgentStatus)",
         "when": "commandCentral.hasAgentTasks == false"
       }
     ],
