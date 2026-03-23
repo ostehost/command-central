@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realFs from "node:fs";
 
 // ── VS Code mock must be set up before importing the module under test ──
 
@@ -49,6 +50,7 @@ mock.module("node:child_process", () => ({
 const fsExistsSyncMock = mock((_p: string) => false);
 
 mock.module("node:fs", () => ({
+	...realFs,
 	existsSync: fsExistsSyncMock,
 }));
 
@@ -81,7 +83,7 @@ describe("TerminalManager.getLauncherPath", () => {
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
 		mock.module("node:child_process", () => ({ execFile: execFileMock }));
-		mock.module("node:fs", () => ({ existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 	});
 
 	test("returns configured path when set", () => {
@@ -125,7 +127,7 @@ describe("TerminalManager.isLauncherInstalled", () => {
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
 		mock.module("node:child_process", () => ({ execFile: execFileMock }));
-		mock.module("node:fs", () => ({ existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		// Default: configured path is "launcher"
 		mockConfigGet.mockImplementation(() => undefined);
 	});
@@ -204,7 +206,7 @@ describe("TerminalManager.createProjectTerminal", () => {
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
 		mock.module("node:child_process", () => ({ execFile: execFileMock }));
-		mock.module("node:fs", () => ({ existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
 	});
@@ -296,7 +298,7 @@ describe("TerminalManager.getTerminalInfo", () => {
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
 		mock.module("node:child_process", () => ({ execFile: execFileMock }));
-		mock.module("node:fs", () => ({ existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
 	});
@@ -374,7 +376,7 @@ describe("TerminalManager.validateLauncherBinary (Fix 2)", () => {
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
 		mock.module("node:child_process", () => ({ execFile: execFileMock }));
-		mock.module("node:fs", () => ({ existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
 	});
@@ -467,7 +469,7 @@ describe("TerminalManager error handling (Fix 3)", () => {
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
 		mock.module("node:child_process", () => ({ execFile: execFileMock }));
-		mock.module("node:fs", () => ({ existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
 	});
@@ -625,7 +627,7 @@ describe("Multi-root workspace command support (Fix 1 - integration)", () => {
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
 		mock.module("node:child_process", () => ({ execFile: execFileMock }));
-		mock.module("node:fs", () => ({ existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
 	});

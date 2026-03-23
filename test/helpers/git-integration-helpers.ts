@@ -29,6 +29,13 @@ export function git(cwd: string, ...args: string[]): string {
 		cwd,
 		encoding: "utf-8",
 		timeout: 10_000,
+		env: {
+			...process.env,
+			GIT_AUTHOR_NAME: "Test User",
+			GIT_AUTHOR_EMAIL: "test@example.com",
+			GIT_COMMITTER_NAME: "Test User",
+			GIT_COMMITTER_EMAIL: "test@example.com",
+		},
 	});
 	if (result.status !== 0) {
 		throw new Error(

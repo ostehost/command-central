@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realFs from "node:fs";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 // Mock child_process execFile for promisify compatibility
@@ -35,6 +36,7 @@ mock.module("node:child_process", () => ({
 // Mock fs.writeFileSync
 const mockWriteFileSync = mock(() => {});
 mock.module("node:fs", () => ({
+	...realFs,
 	writeFileSync: mockWriteFileSync,
 	existsSync: () => true,
 }));

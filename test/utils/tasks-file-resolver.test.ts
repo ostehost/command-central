@@ -4,6 +4,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realFs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -13,9 +14,10 @@ mock.module("vscode", () => ({}));
 // Mock fs.existsSync — control which paths "exist"
 const mockExistsSync = mock((..._args: unknown[]) => false);
 mock.module("node:fs", () => ({
+	...realFs,
 	existsSync: mockExistsSync,
 	// Preserve other fs exports the module may reference
-	default: { existsSync: mockExistsSync },
+	default: { ...realFs, existsSync: mockExistsSync },
 }));
 
 import { resolveTasksFilePath } from "../../src/utils/tasks-file-resolver.js";
