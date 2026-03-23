@@ -40,13 +40,15 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 
 | ID | Item | Status | Priority | Notes |
 |----|------|--------|----------|-------|
-| M1-1 | Remove `~/projects/ghostty-launcher` default from `package.json` | TODO | P0 | Blocking: extension is un-shippable to external users with this default |
-| M1-2 | Auto-detect `tasks.json` location via workspace config | TODO | P0 | Allow users to point at their own task file |
-| M1-3 | Graceful degradation when Ghostty not installed | TODO | P0 | CC should work (read-only agent view) without Ghostty |
+| M1-1 | Remove `~/projects/ghostty-launcher` default from `package.json` | ✅ DONE | P0 | Hardcoded paths removed, empty defaults |
+| M1-2 | Auto-detect `tasks.json` location via workspace config | ✅ DONE | P0 | `tasks-file-resolver.ts` — workspace → XDG → home |
+| M1-3 | Graceful degradation when Ghostty not installed | ✅ DONE | P0 | `hasLauncher` context key, menu items gated |
 | M1-4 | First-run experience: "No agents detected" → helpful onboarding | TODO | P1 | Show "Start your first agent" button, link to docs |
 | M1-5 | Update Marketplace listing: description, screenshots, keywords | TODO | P0 | New copy: agent control tower, not Git time-sorter |
 | M1-6 | Reframe Git Sort as "Agent Diff Tracker" in UI/docs | TODO | P1 | Keep feature, change narrative |
 | M1-7 | README rewrite for external users | TODO | P0 | Current README assumes internal knowledge |
+| M1-8 | Fix: Click-to-focus should select correct Ghostty tab | TODO | P0 | `open -a` opens app but doesn't select the agent's tab. Use tmux `select-window` or AppleScript to target the right tab. |
+| M1-9 | Fix: Don't open terminal for dead/stale sessions | TODO | P0 | Check `tmux has-session` before attempting focus. Show "Session ended" message if stale. |
 
 ### M2: Process Auto-Discovery (v0.5.0) — THE DIFFERENTIATOR
 **Goal:** Auto-detect running Claude Code agents without any configuration. This is the unique capability no competitor has inside VS Code.
