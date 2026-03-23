@@ -1,7 +1,8 @@
-task_id: "focus-research"
+task_id: "fix-focus-flow"
 status: "success"
-summary: "Researched agent terminal focus flow; root cause is stale guard blocking Strategy 1 for completed agents"
+summary: "Moved stale tmux session guard from top-level to Strategy 3 only, so completed agents with Ghostty windows can still be focused"
 files_changed:
-  - "research/FOCUS-FEATURE-RESEARCH.md"
+  - "src/extension.ts"
+  - "test/commands/extension-commands.test.ts"
 tests_passing: true
-next_steps: "Implement the fix: move stale session guard from pre-strategy position (line 699) to wrap only Strategy 3 (line 766). Note: unstaged changes in extension.ts already appear to implement this fix."
+next_steps: "Consider adding an integration test that simulates a dead tmux session with a live Ghostty bundle_id"
