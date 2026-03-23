@@ -15,7 +15,9 @@ interface TelemetryEvent {
 	timestamp: string;
 }
 
-const DEFAULT_API_KEY = "phx_ITBXbhSXphrqDXx7tw2Q88zDT38C7NfS9XFHPbeNJFoB3nu";
+// Default key is injected at build time or set via configuration.
+// Never hardcode real API keys in source — they leak on publish.
+const DEFAULT_API_KEY = "";
 const POSTHOG_BATCH_URL = "https://us.i.posthog.com/batch/";
 const BATCH_SIZE = 30;
 
@@ -57,7 +59,9 @@ export class TelemetryService implements vscode.Disposable {
 			if (!vscode.env.isTelemetryEnabled) {
 				return false;
 			}
-			const config = vscode.workspace.getConfiguration("commandCentral.telemetry");
+			const config = vscode.workspace.getConfiguration(
+				"commandCentral.telemetry",
+			);
 			return config.get<boolean>("enabled", true);
 		} catch {
 			return false;
@@ -66,7 +70,9 @@ export class TelemetryService implements vscode.Disposable {
 
 	private getApiKey(): string {
 		try {
-			const config = vscode.workspace.getConfiguration("commandCentral.telemetry");
+			const config = vscode.workspace.getConfiguration(
+				"commandCentral.telemetry",
+			);
 			const key = config.get<string>("posthogKey", "");
 			return key || DEFAULT_API_KEY;
 		} catch {

@@ -16,8 +16,7 @@ const AUTO_DETECT_CANDIDATES = [
 	(workspaceFolder: string) =>
 		path.join(workspaceFolder, ".ghostty-launcher", "tasks.json"),
 	// 2. XDG config standard
-	() =>
-		path.join(os.homedir(), ".config", "ghostty-launcher", "tasks.json"),
+	() => path.join(os.homedir(), ".config", "ghostty-launcher", "tasks.json"),
 	// 3. Simple home dir
 	() => path.join(os.homedir(), ".ghostty-launcher", "tasks.json"),
 ];
@@ -39,8 +38,7 @@ export function resolveTasksFilePath(
 	}
 
 	// Auto-detect: check each candidate in priority order
-	const workspacePaths =
-		workspaceFolders?.map((f) => f.uri.fsPath) ?? [];
+	const workspacePaths = workspaceFolders?.map((f) => f.uri.fsPath) ?? [];
 
 	for (const candidateFn of AUTO_DETECT_CANDIDATES) {
 		// For workspace-local candidates, check each workspace folder

@@ -152,7 +152,7 @@ describe("focusAgentTerminal command", () => {
 
 		// Simulate select-window throwing — app was still opened, so we return
 		let appOpened = false;
-		let windowSelected = false;
+		const windowSelected = false;
 
 		// open -a succeeded
 		appOpened = true;

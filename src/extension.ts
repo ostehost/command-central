@@ -691,7 +691,7 @@ export async function activate(
 						);
 						return;
 					}
-ttttttelemetry.track("cc_agent_focused");
+					telemetry.track("cc_agent_focused");
 					const { execFile } = await import("node:child_process");
 					const { promisify } = await import("node:util");
 					const execFileAsync = promisify(execFile);
@@ -1108,6 +1108,7 @@ ttttttelemetry.track("cc_agent_focused");
 							{ timeout: 15000 },
 						);
 
+						telemetry.track("cc_agent_launched");
 						vscode.window.showInformationMessage(
 							`Agent launched for ${dirName}`,
 						);
@@ -1345,6 +1346,9 @@ ttttttelemetry.track("cc_agent_focused");
 		mainLogger.info("Test count status bar initialized");
 
 		const activationTime = performance.now() - start;
+		telemetry.track("cc_extension_activated", {
+			activation_time_ms: Math.round(activationTime),
+		});
 		mainLogger.info(`✅ Extension activated in ${activationTime.toFixed(0)}ms`);
 		mainLogger.info(`📦 Command Central v${version} ready`);
 		mainLogger.info("📝 Git Sort + Project Views ready");
@@ -1397,6 +1401,13 @@ export async function deactivate(): Promise<void> {
 	// Clean up loggers
 	mainLogger?.dispose();
 	gitSortLogger?.dispose();
+
+	// Flush telemetry before shutdown
+	try {
+		await TelemetryService.getInstance().flush();
+	} catch {
+		// Silent — telemetry must never block deactivation
+	}
 
 	mainLogger?.info("Extension deactivated");
 }
