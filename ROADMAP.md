@@ -1,7 +1,8 @@
 # Command Central — Product Roadmap
 
-> v1.0 — 2026-03-22. Living document. Updated as priorities shift.
+> v1.1 — 2026-03-22. Living document. Updated as priorities shift.
 > Strategy basis: `research/STRATEGY-SYNTHESIS-2026-03-22.md`, `research/PMF-ANALYSIS-2026-03-22.md`
+> **Critical path:** M0 ✅ → M1 (finish) → M2 (discovery) → M4 (launch) → M3 (post-launch, feedback-driven)
 
 ## Vision
 
@@ -49,6 +50,8 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M1-7 | README rewrite for external users | TODO | P0 | Current README assumes internal knowledge |
 | M1-8 | Fix: Click-to-focus should select correct Ghostty tab | TODO | P0 | `open -a` opens app but doesn't select the agent's tab. Use tmux `select-window` or AppleScript to target the right tab. |
 | M1-9 | Fix: Don't open terminal for dead/stale sessions | TODO | P0 | Check `tmux has-session` before attempting focus. Show "Session ended" message if stale. |
+| M1-10 | Wire PostHog telemetry for install/activation/feature tracking | TODO | P0 | Moved up from M4-5. Can't launch blind. |
+| M1-11 | Fix: native fs.watch fallback for task file outside workspace | ✅ DONE | P1 | v0.3.6 — VS Code watcher unreliable for ~/.config paths |
 
 ### M2: Process Auto-Discovery (v0.5.0) — THE DIFFERENTIATOR
 **Goal:** Auto-detect running Claude Code agents without any configuration. This is the unique capability no competitor has inside VS Code.
@@ -62,20 +65,8 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M2-5 | Terminal-agnostic: work with Ghostty, iTerm2, Terminal.app, tmux | TODO | P0 | Don't require Ghostty for discovery |
 | M2-6 | Performance: poll interval tuning, debounce, lazy refresh | TODO | P1 | Can't hammer `ps` every second |
 
-### M3: Competitive Parity (v0.6.0)
-**Goal:** Match dmux/cmux/FleetCode on table-stakes features.
-
-| ID | Item | Status | Priority | Notes |
-|----|------|--------|----------|-------|
-| M3-1 | Session grouping (by project, by role, by status) | TODO | P0 | cmux's core UX — vertical tabs with grouping |
-| M3-2 | Agent output log viewer (click → see stdout) | TODO | P0 | FleetCode, 1Code have this |
-| M3-3 | Agent lifecycle controls (kill, restart from sidebar) | TODO | P0 | Read-only dashboard isn't enough |
-| M3-4 | Diff summary per agent ("touched 12 files, +340/-87") | TODO | P1 | QA signal for review-before-merge |
-| M3-5 | Multi-workspace agent tracking | TODO | P1 | Power users run agents across repos |
-| M3-6 | Stuck-agent detection (heuristic: same state for N min) | TODO | P1 | Address "runaway agent" fear |
-
-### M4: Launch & Distribute (v0.7.0)
-**Goal:** First 100 installs. Validate distribution.
+### M4: Launch & Distribute (v0.7.0) — BEFORE M3
+**Goal:** First 100 installs. Validate distribution. Ship the differentiator (M2) and launch before building competitive parity. Real feedback > guessing.
 
 | ID | Item | Status | Priority | Notes |
 |----|------|--------|----------|-------|
@@ -83,7 +74,19 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M4-2 | X/Twitter launch thread with screen recording | TODO | P0 | Short demo: "3 agents, 1 dashboard, 0 switching" |
 | M4-3 | DEV Community article: "How I manage 10 agents" | TODO | P1 | SEO play + community credibility |
 | M4-4 | Ghostty community post (Discord/forums) | TODO | P1 | High-quality leads, small volume |
-| M4-5 | Track installs, activations, feature usage (PostHog) | TODO | P0 | Can't improve what you can't measure |
+| M4-5 | Track installs, activations, feature usage (PostHog) | TODO | P0 | Can't improve what you can't measure. Wire during M1. |
+
+### M3: Competitive Parity (v0.8.0) — POST-LAUNCH
+**Goal:** Match dmux/cmux/FleetCode on table-stakes features. Prioritize based on real user feedback from M4 launch.
+
+| ID | Item | Status | Priority | Notes |
+|----|------|--------|----------|-------|
+| M3-1 | Session grouping (by project, by role, by status) | TODO | P0 | cmux's core UX — vertical tabs with grouping |
+| M3-2 | Agent output log viewer (click → see stdout) | TODO | P0 | FleetCode, 1Code have this |
+| M3-3 | Agent lifecycle controls (kill, restart from sidebar) | TODO | P0 | Read-only dashboard isn't enough |
+| M3-4 | Diff summary per agent ("touched 12 files, +340/-87") | TODO | P1 | QA signal for review-before-merge |
+| M3-5 | Multi-workspace agent tracking | PARKED | P2 | Scope creep — evaluate post-launch |
+| M3-6 | Stuck-agent detection (heuristic: same state for N min) | TODO | P1 | Address "runaway agent" fear |
 
 ### M5: Monetization (v1.0)
 **Goal:** Pro tier generating revenue.
