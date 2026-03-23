@@ -205,6 +205,19 @@ See [ROADMAP.md](./ROADMAP.md) for the full plan and [CHANGELOG.md](./CHANGELOG.
 
 ---
 
+## Telemetry
+
+Command Central collects anonymous usage data to improve the extension. We track:
+
+- Extension activation and feature usage counts
+- VS Code version, OS, extension version
+
+We do **NOT** collect: file names, repository names, code content, or any personal data.
+
+Disable via: Settings → Command Central → Telemetry: Enabled (uncheck), or set VS Code's `telemetry.telemetryLevel` to `off`.
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, testing, and PR guidelines.
