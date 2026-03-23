@@ -1,6 +1,6 @@
 # Show HN: Command Central – See all your Claude Code agents in VS Code, even external ones
 
-I've been running 3-5 Claude Code agents in parallel across Ghostty terminals, tmux sessions, and VS Code's built-in terminal. The problem: VS Code's native Agent Sessions View only sees agents *it* spawned. The ones in external terminals? Invisible.
+I run 3-5 Claude Code agents in parallel across Ghostty terminals, tmux sessions, and VS Code's built-in terminal. The problem: VS Code's native Agent Sessions View only sees agents *it* spawned. The ones in external terminals? Invisible.
 
 Command Central is a VS Code extension that puts every agent — regardless of which terminal app they're running in — into a single sidebar. One glance shows what's running, what's done, and what needs attention.
 
