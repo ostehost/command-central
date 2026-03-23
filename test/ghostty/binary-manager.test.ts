@@ -18,7 +18,10 @@ const fsRmSyncMock = mock(() => undefined);
 const fsRenameSyncMock = mock(() => undefined);
 const fsWriteFileSyncMock = mock(() => undefined);
 
+import * as realFs from "node:fs";
+
 mock.module("node:fs", () => ({
+	...realFs,
 	existsSync: fsExistsSyncMock,
 	readFileSync: fsReadFileSyncMock,
 	mkdirSync: fsMkdirSyncMock,
@@ -137,6 +140,7 @@ function makeFsSetup() {
 	return () => {
 		mock.restore();
 		mock.module("node:fs", () => ({
+			...realFs,
 			existsSync: fsExistsSyncMock,
 			readFileSync: fsReadFileSyncMock,
 			mkdirSync: fsMkdirSyncMock,

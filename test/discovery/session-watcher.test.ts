@@ -20,7 +20,10 @@ const mockWatcher = {
 let sessionFiles: Record<string, string> = {};
 let dirContents: string[] = [];
 
+import * as realFs from "node:fs";
+
 mock.module("node:fs", () => ({
+	...realFs,
 	readdirSync: (_dir: string) => dirContents,
 	readFileSync: (filePath: string, _enc: string) => {
 		const filename = path.basename(filePath);

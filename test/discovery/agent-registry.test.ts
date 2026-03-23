@@ -9,6 +9,8 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
+import * as realFs from "node:fs";
+
 // Mock child_process for ProcessScanner
 mock.module("node:child_process", () => ({
 	execFile: (
@@ -30,6 +32,7 @@ let sessionFiles: Record<string, string> = {};
 let dirContents: string[] = [];
 
 mock.module("node:fs", () => ({
+	...realFs,
 	readdirSync: () => dirContents,
 	readFileSync: (filePath: string, _enc: string) => {
 		const parts = filePath.split("/");
