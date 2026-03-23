@@ -12,6 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.9"
       - uses: extractions/setup-just@v2
 
       - name: Configure Git
@@ -27,7 +29,7 @@ jobs:
         run: bunx biome ci .
 
       - name: Test
-        run: bun test test/commands test/git-sort test/mocks test/services test/tree-view test/ui test/utils test/types test/builders test/factories test/integration
+        run: bun test
 
       - name: Package
         run: bun run dist -- --no-install
