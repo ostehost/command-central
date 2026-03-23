@@ -15,7 +15,7 @@ Command Central is a VS Code extension that puts every agent — regardless of w
 
 **The unique thing:** it sees agents in *external* terminals. Everything else (dmux, cmux, FleetCode) either replaces your terminal or only tracks agents it launched. This is an observer — it finds agents you're already running and puts them in one place.
 
-**Tech:** TypeScript, VS Code Extension API, `bun test` (764 tests). No runtime dependencies. MIT licensed.
+**Tech:** TypeScript, VS Code Extension API, `bun test` (750+ tests). No runtime dependencies. MIT licensed.
 
 VS Code Marketplace: https://marketplace.visualstudio.com/items?itemName=oste.command-central
 GitHub: https://github.com/ostehost/command-central

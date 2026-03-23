@@ -31,7 +31,7 @@ It's an *observer*, not a launcher. It finds agents you're already running.
 Other tools either replace your terminal or only track agents they started. CC works with whatever you've got.
 
 ## Tweet 5 (Numbers)
-- 764 tests, 0 failures
+- 750+ tests, 0 failures
 - Auto-discovers via `ps` scanning + `~/.claude/` file watching
 - Merges with task-registry-managed agents
 - Up to 10 project slots for multi-root workspaces
