@@ -34,7 +34,7 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M0-3 | Fix: auto-commit misses lint-reformatted files | ✅ DONE | P1 | Double-pass porcelain recheck + auto-commit |
 | M0-4 | Fix: `--team` flag silently fails in print mode | ✅ DONE | P1 | Hard error without `--interactive` |
 | M0-5 | End-to-end test all 16 agent sidebar features | SKIPPED | P0 | Unit coverage sufficient (660 tests). Revisit during M1. |
-| M0-6 | Build VSIX and publish v0.3.3 to Marketplace | ⏳ BLOCKED | P0 | Blocked on M1 (unhardcode). Pre-release only until then. |
+| M0-6 | Build VSIX and publish to Marketplace | ⏳ READY | P0 | Blocked on M1 (unhardcode). Pre-release only until then. |
 
 ### M1: Unhardcode & Onboard (v0.4.0)
 **Goal:** Make CC installable and usable by someone who has never heard of Ghostty Launcher.
@@ -63,8 +63,8 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M2-2 | Watch `~/.claude/` for active session files | ✅ DONE | P0 | Claude Code writes session state here |
 | M2-3 | Detect git worktrees via `git worktree list` | TODO | P1 | Reliable, no permission issues |
 | M2-4 | Merge discovered agents with Launcher-managed agents | ✅ DONE | P0 | Two sources of truth → unified agent list |
-| M2-5 | Terminal-agnostic: work with Ghostty, iTerm2, Terminal.app, tmux | TODO | P0 | Don't require Ghostty for discovery |
-| M2-6 | Performance: poll interval tuning, debounce, lazy refresh | TODO | P1 | Can't hammer `ps` every second |
+| M2-5 | Terminal-agnostic: work with Ghostty, iTerm2, Terminal.app, tmux | ✅ DONE | P0 | Don't require Ghostty for discovery |
+| M2-6 | Performance: poll interval tuning, debounce, lazy refresh | ✅ DONE | P1 | Can't hammer `ps` every second |
 
 ### M4: Launch & Distribute (v0.7.0) — BEFORE M3
 **Goal:** First 100 installs. Validate distribution. Ship the differentiator (M2) and launch before building competitive parity. Real feedback > guessing.
