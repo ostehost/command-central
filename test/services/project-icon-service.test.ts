@@ -13,7 +13,9 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 let configValues: Record<string, unknown> = {};
-let configChangeListeners: Array<(e: { affectsConfiguration: (s: string) => boolean }) => void> = [];
+let configChangeListeners: Array<
+	(e: { affectsConfiguration: (s: string) => boolean }) => void
+> = [];
 let mockStatusBarItem: {
 	text: string;
 	tooltip: string;
@@ -22,11 +24,13 @@ let mockStatusBarItem: {
 	hide: ReturnType<typeof mock>;
 	dispose: ReturnType<typeof mock>;
 };
-let mockWorkspaceFolders: Array<{
-	uri: { fsPath: string };
-	name: string;
-	index: number;
-}> | undefined;
+let mockWorkspaceFolders:
+	| Array<{
+			uri: { fsPath: string };
+			name: string;
+			index: number;
+	  }>
+	| undefined;
 
 function createMockStatusBarItem() {
 	mockStatusBarItem = {
@@ -52,17 +56,23 @@ mock.module("vscode", () => ({
 				return (val !== undefined ? val : defaultValue) as T | undefined;
 			},
 		}),
-		onDidChangeConfiguration: (listener: (e: { affectsConfiguration: (s: string) => boolean }) => void) => {
+		onDidChangeConfiguration: (
+			listener: (e: { affectsConfiguration: (s: string) => boolean }) => void,
+		) => {
 			configChangeListeners.push(listener);
 			return {
 				dispose: () => {
-					configChangeListeners = configChangeListeners.filter((l) => l !== listener);
+					configChangeListeners = configChangeListeners.filter(
+						(l) => l !== listener,
+					);
 				},
 			};
 		},
 	},
 	window: {
-		createStatusBarItem: mock((_alignment?: number, _priority?: number) => createMockStatusBarItem()),
+		createStatusBarItem: mock((_alignment?: number, _priority?: number) =>
+			createMockStatusBarItem(),
+		),
 		showInformationMessage: mock(() => Promise.resolve()),
 	},
 	StatusBarAlignment: {
@@ -109,7 +119,11 @@ describe("ProjectIconService", () => {
 		configValues = {};
 		configChangeListeners = [];
 		mockWorkspaceFolders = [
-			{ uri: { fsPath: "/home/user/my-project" }, name: "my-project", index: 0 },
+			{
+				uri: { fsPath: "/home/user/my-project" },
+				name: "my-project",
+				index: 0,
+			},
 		];
 		mockContext.subscriptions = [];
 	});
@@ -157,18 +171,22 @@ describe("ProjectIconService", () => {
 		service.dispose();
 	});
 
-	test("hides status bar when no icon configured", () => {
+	test("does not create status bar item when no icon configured", () => {
 		// No icon or name configured
 		configValues = {};
 
+		// Get reference to the createStatusBarItem mock and reset it
+		const vscode = require("vscode");
+		const createSpy = vscode.window.createStatusBarItem as ReturnType<
+			typeof mock
+		>;
+		createSpy.mockClear();
+
 		const service = new ProjectIconService(mockLogger, mockContext);
 
-		// Should not show a status bar item, or hide it
-		// The service may not create one at all, or hide an existing one
-		// Either way, show should NOT have been called on the final state
-		if (mockStatusBarItem) {
-			expect(mockStatusBarItem.hide).toHaveBeenCalled();
-		}
+		// When no icon or name is configured, the service should NOT create
+		// a status bar item at all
+		expect(createSpy).not.toHaveBeenCalled();
 
 		service.dispose();
 	});
