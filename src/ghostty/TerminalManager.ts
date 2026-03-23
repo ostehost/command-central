@@ -6,7 +6,6 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { LoggerService } from "../services/logger-service.js";
@@ -57,9 +56,7 @@ export class LauncherValidationError extends Error {
 }
 
 /** Default fallback paths to check when launcher is not in PATH */
-const LAUNCHER_FALLBACK_PATHS = [
-	path.join(os.homedir(), "projects", "ghostty-launcher", "launcher"),
-];
+const LAUNCHER_FALLBACK_PATHS: string[] = [];
 
 /** Timeout in milliseconds for launcher subprocess calls */
 const LAUNCHER_TIMEOUT_MS = 10_000;

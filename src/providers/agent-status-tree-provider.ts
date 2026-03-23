@@ -14,6 +14,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import type { AgentEvent } from "../events/agent-events.js";
 import { detectListeningPorts } from "../utils/port-detector.js";
+import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
 
@@ -169,14 +170,11 @@ export class AgentStatusTreeProvider
 
 	private getConfiguredPath(): string | null {
 		const config = vscode.workspace.getConfiguration("commandCentral");
-		const p = config.get<string>("agentTasksFile");
-		if (!p) return null;
-		// Expand ~ to home dir
-		if (p.startsWith("~")) {
-			const home = process.env["HOME"] || process.env["USERPROFILE"] || "";
-			return path.join(home, p.slice(1));
-		}
-		return p;
+		const configValue = config.get<string>("agentTasksFile") ?? "";
+		return resolveTasksFilePath(
+			configValue,
+			vscode.workspace.workspaceFolders,
+		);
 	}
 
 	private setupFileWatch(): void {

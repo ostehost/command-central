@@ -1085,6 +1085,15 @@ export async function activate(
 		terminalManager = new TerminalManager(mainLogger);
 		binaryManager = new BinaryManager(mainLogger);
 
+		// Set hasLauncher context for menu visibility
+		terminalManager.isLauncherInstalled().then((installed) => {
+			vscode.commands.executeCommand(
+				"setContext",
+				"commandCentral.hasLauncher",
+				installed,
+			);
+		});
+
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
 				"commandCentral.ghostty.createTerminal",

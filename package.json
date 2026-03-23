@@ -187,8 +187,8 @@
         },
         "commandCentral.agentTasksFile": {
           "type": "string",
-          "default": "~/projects/ghostty-launcher/scripts/tasks.json",
-          "markdownDescription": "Path to the agent task registry JSON file (tasks.json). Supports `~` expansion.",
+          "default": "",
+          "markdownDescription": "Path to the agent task registry JSON file. Leave empty to auto-detect from: `${workspaceFolder}/.ghostty-launcher/tasks.json`, `~/.config/ghostty-launcher/tasks.json`, or `~/.ghostty-launcher/tasks.json`.",
           "scope": "machine"
         },
         "commandCentral.activityTimeline.enabled": {
@@ -259,7 +259,7 @@
         "commandCentral.ghostty.launcherPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to the `launcher` binary (ghostty-launcher). Leave empty to use `launcher` from PATH, or the default fallback at `~/projects/ghostty-launcher/launcher`.",
+          "markdownDescription": "Path to the `launcher` binary. Leave empty to auto-detect from PATH.",
           "scope": "machine"
         }
       }
@@ -828,7 +828,7 @@
           "id": "commandCentral.agentStatus",
           "name": "Agent Status",
           "type": "tree",
-          "when": "config.commandCentral.agentTasksFile"
+          "when": ""
         },
         {
           "id": "commandCentral.activityTimeline",
@@ -1061,7 +1061,7 @@
         },
         {
           "command": "commandCentral.killAgent",
-          "when": "viewItem == agentTask.running",
+          "when": "viewItem == agentTask.running && commandCentral.hasLauncher",
           "group": "inline"
         },
         {
@@ -1081,7 +1081,7 @@
         },
         {
           "command": "commandCentral.restartAgent",
-          "when": "viewItem =~ /agentTask\\.(completed|failed|stopped)/",
+          "when": "viewItem =~ /agentTask\\.(completed|failed|stopped)/ && commandCentral.hasLauncher",
           "group": "2_actions"
         }
       ],
