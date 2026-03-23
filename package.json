@@ -261,6 +261,18 @@
           "default": "",
           "markdownDescription": "Path to the `launcher` binary. Leave empty to auto-detect from PATH.",
           "scope": "machine"
+        },
+        "commandCentral.telemetry.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable anonymous usage telemetry to help improve Command Central. No personal data is collected.",
+          "scope": "window"
+        },
+        "commandCentral.telemetry.posthogKey": {
+          "type": "string",
+          "default": "",
+          "description": "PostHog API key for telemetry (leave empty to use default).",
+          "scope": "window"
         }
       }
     },

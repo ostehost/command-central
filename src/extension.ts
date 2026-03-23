@@ -36,6 +36,7 @@ import { GroupingStateManager } from "./services/grouping-state-manager.js";
 import { LoggerService, LogLevel } from "./services/logger-service.js";
 import { ProjectIconService } from "./services/project-icon-service.js";
 import { ProjectViewManager } from "./services/project-view-manager.js";
+import { TelemetryService } from "./services/telemetry-service.js";
 import type { GitChangeItem } from "./types/tree-element.js";
 import { GroupingViewManager } from "./ui/grouping-view-manager.js";
 
@@ -83,6 +84,19 @@ export async function activate(
 
 		mainLogger.info(`Extension starting... (v${version})`);
 		mainLogger.info(`Command Central v${version}`);
+
+		// Initialize Telemetry (lightweight — no SDK, no deps)
+		const telemetry = TelemetryService.getInstance(version);
+
+		// Track first-ever activation via globalState flag
+		const hasActivatedBefore = context.globalState.get<boolean>(
+			"commandCentral.hasActivatedBefore",
+			false,
+		);
+		if (!hasActivatedBefore) {
+			telemetry.track("cc_extension_first_activation");
+			context.globalState.update("commandCentral.hasActivatedBefore", true);
+		}
 
 		// Initialize Project Icon Service
 		projectIconService = new ProjectIconService(mainLogger, context);
@@ -565,6 +579,7 @@ export async function activate(
 			.get("enabled", false);
 		if (isGitSortEnabled) {
 			await gitSorter.activate();
+			telemetry.track("cc_git_sort_activated");
 			gitSortLogger.info("Git Sort initialized and activated");
 		} else {
 			gitSortLogger.info("Git Sort initialized (disabled in settings)");
@@ -597,6 +612,15 @@ export async function activate(
 		);
 		context.subscriptions.push(agentStatusView);
 		context.subscriptions.push(agentStatusProvider);
+
+		// Track agent panel visibility
+		agentStatusView.onDidChangeVisibility((e) => {
+			if (e.visible) {
+				telemetry.track("cc_agent_panel_opened", {
+					agent_count: agentStatusProvider?.getTasks().length ?? 0,
+				});
+			}
+		});
 
 		// Agent Status Bar — shows running/total count
 		const agentStatusBar = new AgentStatusBar();
@@ -667,6 +691,7 @@ export async function activate(
 						);
 						return;
 					}
+ttttttelemetry.track("cc_agent_focused");
 					const { execFile } = await import("node:child_process");
 					const { promisify } = await import("node:util");
 					const execFileAsync = promisify(execFile);
