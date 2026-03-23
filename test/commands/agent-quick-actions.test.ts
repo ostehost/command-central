@@ -199,7 +199,10 @@ describe("agent quick actions", () => {
 				Promise.resolve(undefined),
 			);
 
-			const node = { type: "task", task: null as { project_dir?: string } | null };
+			const node = {
+				type: "task",
+				task: null as { project_dir?: string } | null,
+			};
 
 			if (!node.task?.project_dir) {
 				vscodeMock.window.showWarningMessage(

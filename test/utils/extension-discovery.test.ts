@@ -166,10 +166,10 @@ describe("buildExtensionMetadata", () => {
 		const result = buildExtensionMetadata(counts);
 
 		expect(result).toHaveLength(1);
-		expect(result[0]!.extension).toBe(".ts");
-		expect(result[0]!.displayName).toBe("TypeScript");
-		expect(result[0]!.totalCount).toBe(5);
-		expect(result[0]!.workspaceCounts.get("ws1")).toBe(5);
+		expect(result[0]?.extension).toBe(".ts");
+		expect(result[0]?.displayName).toBe("TypeScript");
+		expect(result[0]?.totalCount).toBe(5);
+		expect(result[0]?.workspaceCounts.get("ws1")).toBe(5);
 	});
 
 	test("calculates totalCount across multiple workspaces", () => {
@@ -185,7 +185,7 @@ describe("buildExtensionMetadata", () => {
 
 		const result = buildExtensionMetadata(counts);
 
-		expect(result[0]!.totalCount).toBe(12);
+		expect(result[0]?.totalCount).toBe(12);
 	});
 
 	test("sorts results alphabetically by extension", () => {
@@ -208,9 +208,9 @@ describe("buildExtensionMetadata", () => {
 
 		const result = buildExtensionMetadata(counts);
 
-		expect(result[0]!.extension).toBe("");
-		expect(result[0]!.displayName).toBe("No Extension");
-		expect(result[0]!.totalCount).toBe(2);
+		expect(result[0]?.extension).toBe("");
+		expect(result[0]?.displayName).toBe("No Extension");
+		expect(result[0]?.totalCount).toBe(2);
 	});
 
 	test("uses correct display names for known extensions", () => {
@@ -233,7 +233,7 @@ describe("buildExtensionMetadata", () => {
 
 		const result = buildExtensionMetadata(counts);
 
-		expect(result[0]!.displayName).toBe("XYZ");
+		expect(result[0]?.displayName).toBe("XYZ");
 	});
 
 	test("preserves workspace counts map in metadata", () => {
@@ -246,7 +246,7 @@ describe("buildExtensionMetadata", () => {
 
 		const result = buildExtensionMetadata(counts);
 
-		expect(result[0]!.workspaceCounts).toBe(wsCounts);
+		expect(result[0]?.workspaceCounts).toBe(wsCounts);
 	});
 });
 

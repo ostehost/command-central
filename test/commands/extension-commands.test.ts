@@ -320,7 +320,7 @@ describe("focusNextRunningAgent command", () => {
 		const running = tasks.find((t) => t.status === "running");
 
 		expect(running).toBeDefined();
-		expect(running!.id).toBe("t2");
+		expect(running?.id).toBe("t2");
 	});
 
 	test("shows info message when no running agents", () => {

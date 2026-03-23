@@ -25,23 +25,17 @@ describe("detectListeningPorts", () => {
 
 	test("returns ports when lsof finds matches", () => {
 		// First call: lsof -iTCP listing
-		execFileSyncMock.mockImplementation(
-			(...fnArgs: unknown[]) => {
-				const [cmd, args] = fnArgs as [string, string[]];
-				if (
-					cmd === "lsof" &&
-					args[0] === "-iTCP" &&
-					args[1] === "-sTCP:LISTEN"
-				) {
-					return "p1234\ncnode\nn*:3000\n";
-				}
-				// Second call: lsof -p for cwd check
-				if (cmd === "lsof" && args[0] === "-p") {
-					return "p1234\nn/Users/test/projects/my-app\n";
-				}
-				return "";
-			},
-		);
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const [cmd, args] = fnArgs as [string, string[]];
+			if (cmd === "lsof" && args[0] === "-iTCP" && args[1] === "-sTCP:LISTEN") {
+				return "p1234\ncnode\nn*:3000\n";
+			}
+			// Second call: lsof -p for cwd check
+			if (cmd === "lsof" && args[0] === "-p") {
+				return "p1234\nn/Users/test/projects/my-app\n";
+			}
+			return "";
+		});
 
 		const ports = detectListeningPorts("/Users/test/projects/my-app");
 		expect(ports).toHaveLength(1);
@@ -60,23 +54,17 @@ describe("detectListeningPorts", () => {
 	});
 
 	test("deduplicates by port number", () => {
-		execFileSyncMock.mockImplementation(
-			(...fnArgs: unknown[]) => {
-				const [cmd, args] = fnArgs as [string, string[]];
-				if (
-					cmd === "lsof" &&
-					args[0] === "-iTCP" &&
-					args[1] === "-sTCP:LISTEN"
-				) {
-					// Same port appears twice (e.g., IPv4 and IPv6)
-					return "p1234\ncnode\nn*:3000\np1234\ncnode\nn[::1]:3000\n";
-				}
-				if (cmd === "lsof" && args[0] === "-p") {
-					return "p1234\nn/Users/test/projects/my-app\n";
-				}
-				return "";
-			},
-		);
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const [cmd, args] = fnArgs as [string, string[]];
+			if (cmd === "lsof" && args[0] === "-iTCP" && args[1] === "-sTCP:LISTEN") {
+				// Same port appears twice (e.g., IPv4 and IPv6)
+				return "p1234\ncnode\nn*:3000\np1234\ncnode\nn[::1]:3000\n";
+			}
+			if (cmd === "lsof" && args[0] === "-p") {
+				return "p1234\nn/Users/test/projects/my-app\n";
+			}
+			return "";
+		});
 
 		const ports = detectListeningPorts("/Users/test/projects/my-app");
 		expect(ports).toHaveLength(1);
@@ -84,44 +72,32 @@ describe("detectListeningPorts", () => {
 	});
 
 	test("returns empty array when no ports match project dir", () => {
-		execFileSyncMock.mockImplementation(
-			(...fnArgs: unknown[]) => {
-				const [cmd, args] = fnArgs as [string, string[]];
-				if (
-					cmd === "lsof" &&
-					args[0] === "-iTCP" &&
-					args[1] === "-sTCP:LISTEN"
-				) {
-					return "p1234\ncnode\nn*:3000\n";
-				}
-				if (cmd === "lsof" && args[0] === "-p") {
-					return "p1234\nn/Users/test/other-project\n";
-				}
-				return "";
-			},
-		);
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const [cmd, args] = fnArgs as [string, string[]];
+			if (cmd === "lsof" && args[0] === "-iTCP" && args[1] === "-sTCP:LISTEN") {
+				return "p1234\ncnode\nn*:3000\n";
+			}
+			if (cmd === "lsof" && args[0] === "-p") {
+				return "p1234\nn/Users/test/other-project\n";
+			}
+			return "";
+		});
 
 		const ports = detectListeningPorts("/Users/test/projects/my-app");
 		expect(ports).toEqual([]);
 	});
 
 	test("handles multiple ports from different processes", () => {
-		execFileSyncMock.mockImplementation(
-			(...fnArgs: unknown[]) => {
-				const [cmd, args] = fnArgs as [string, string[]];
-				if (
-					cmd === "lsof" &&
-					args[0] === "-iTCP" &&
-					args[1] === "-sTCP:LISTEN"
-				) {
-					return "p1234\ncnode\nn*:3000\np5678\ncpython3\nn*:8000\n";
-				}
-				if (cmd === "lsof" && args[0] === "-p") {
-					return "p0\nn/Users/test/projects/my-app\n";
-				}
-				return "";
-			},
-		);
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const [cmd, args] = fnArgs as [string, string[]];
+			if (cmd === "lsof" && args[0] === "-iTCP" && args[1] === "-sTCP:LISTEN") {
+				return "p1234\ncnode\nn*:3000\np5678\ncpython3\nn*:8000\n";
+			}
+			if (cmd === "lsof" && args[0] === "-p") {
+				return "p0\nn/Users/test/projects/my-app\n";
+			}
+			return "";
+		});
 
 		const ports = detectListeningPorts("/Users/test/projects/my-app");
 		expect(ports).toHaveLength(2);

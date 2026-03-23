@@ -89,7 +89,9 @@ export function createVSCodeMock() {
 				get: mock((_key: string, defaultValue?: unknown) => defaultValue),
 			})),
 			onDidChangeConfiguration: mock(() => ({ dispose: mock() })),
-			showWorkspaceFolderPick: mock((_options?: unknown) => Promise.resolve(undefined as unknown)),
+			showWorkspaceFolderPick: mock((_options?: unknown) =>
+				Promise.resolve(undefined as unknown),
+			),
 			asRelativePath: mock((uri: string | { fsPath: string }) => {
 				if (typeof uri === "string") return uri;
 				const path = uri?.fsPath || "";
@@ -230,16 +232,31 @@ export function createVSCodeMock() {
 				dispose: mock(),
 			})),
 			showQuickPick: mock(() => Promise.resolve(undefined)),
-			showInputBox: mock((_options?: unknown) => Promise.resolve(undefined as unknown)),
-			createWebviewPanel: mock((_viewType: string, _title: string, _showOptions: unknown, _options?: unknown) => ({
-				webview: { html: "", onDidReceiveMessage: mock(() => ({ dispose: mock() })), postMessage: mock(() => Promise.resolve(true)), asWebviewUri: mock((uri: { fsPath: string }) => uri), cspSource: "mock-csp" },
-				onDidDispose: mock(() => ({ dispose: mock() })),
-				onDidChangeViewState: mock(() => ({ dispose: mock() })),
-				reveal: mock(),
-				dispose: mock(),
-				visible: true,
-				viewColumn: 1,
-			})),
+			showInputBox: mock((_options?: unknown) =>
+				Promise.resolve(undefined as unknown),
+			),
+			createWebviewPanel: mock(
+				(
+					_viewType: string,
+					_title: string,
+					_showOptions: unknown,
+					_options?: unknown,
+				) => ({
+					webview: {
+						html: "",
+						onDidReceiveMessage: mock(() => ({ dispose: mock() })),
+						postMessage: mock(() => Promise.resolve(true)),
+						asWebviewUri: mock((uri: { fsPath: string }) => uri),
+						cspSource: "mock-csp",
+					},
+					onDidDispose: mock(() => ({ dispose: mock() })),
+					onDidChangeViewState: mock(() => ({ dispose: mock() })),
+					reveal: mock(),
+					dispose: mock(),
+					visible: true,
+					viewColumn: 1,
+				}),
+			),
 			createTerminal: mock((_options?: unknown) => ({
 				show: mock(),
 				hide: mock(),

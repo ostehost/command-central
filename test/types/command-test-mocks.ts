@@ -11,8 +11,10 @@
 
 import { mock } from "bun:test";
 import type { GitSorter } from "../../src/git-sort/scm-sorter.js";
+
 // Module doesn't exist yet - use local placeholder type
 type TerminalLauncherService = Record<string, unknown>;
+
 import type {
 	IExtensionFilterState,
 	IExtensionFilterViewManager,

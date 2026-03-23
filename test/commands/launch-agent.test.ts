@@ -9,7 +9,9 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 // Mock child_process execFile for promisify compatibility
-const mockExecFile = mock((..._args: unknown[]) => Promise.resolve({ stdout: "{}", stderr: "" }));
+const mockExecFile = mock((..._args: unknown[]) =>
+	Promise.resolve({ stdout: "{}", stderr: "" }),
+);
 mock.module("node:child_process", () => ({
 	execFile: (
 		cmd: string,
@@ -85,17 +87,17 @@ describe("launchAgent command", () => {
 				if (!first) return;
 				projectDir = first.uri.fsPath;
 			} else {
-				const picked = await vscode.workspace.showWorkspaceFolderPick({
+				const picked = (await vscode.workspace.showWorkspaceFolderPick({
 					placeHolder: "Select project for agent",
-				}) as { uri: { fsPath: string } } | undefined;
+				})) as { uri: { fsPath: string } } | undefined;
 				if (!picked) return;
 				projectDir = picked.uri.fsPath;
 			}
 
-			const description = await vscode.window.showInputBox({
+			const description = (await vscode.window.showInputBox({
 				prompt: "What should the agent do?",
 				placeHolder: "e.g., Add unit tests for the auth module",
-			}) as string | undefined;
+			})) as string | undefined;
 			if (!description) return;
 
 			const fs = await import("node:fs");
@@ -226,7 +228,10 @@ describe("launchAgent command", () => {
 		registerCommand();
 		await commandHandler();
 
-		const [, content] = mockWriteFileSync.mock.calls[0] as unknown as [string, string];
+		const [, content] = mockWriteFileSync.mock.calls[0] as unknown as [
+			string,
+			string,
+		];
 		expect(content).toStartWith("# Task\n\n");
 	});
 
@@ -317,7 +322,7 @@ describe("launchAgent command", () => {
 		expect(args).toContain("developer");
 		expect(args).toContain("--no-bundle");
 		expect(args).toContain("--json");
-		expect(opts['timeout']).toBe(15000);
+		expect(opts["timeout"]).toBe(15000);
 	});
 
 	test("reload() is scheduled after spawn via setTimeout", async () => {

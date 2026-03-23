@@ -28,7 +28,10 @@ mock.module("node:fs", () => ({
 		if (content === undefined) throw new Error("ENOENT");
 		return content;
 	},
-	watch: (_dir: string, cb: (event: string, filename: string | null) => void) => {
+	watch: (
+		_dir: string,
+		cb: (event: string, filename: string | null) => void,
+	) => {
 		watchCallback = cb;
 		return mockWatcher;
 	},
@@ -81,10 +84,10 @@ describe("SessionWatcher", () => {
 			const agents = watcher.getAgents();
 
 			expect(agents).toHaveLength(1);
-			expect(agents[0]!.pid).toBe(12345);
-			expect(agents[0]!.projectDir).toBe("/home/user/project");
-			expect(agents[0]!.sessionId).toBe("sess-abc");
-			expect(agents[0]!.source).toBe("session-file");
+			expect(agents[0]?.pid).toBe(12345);
+			expect(agents[0]?.projectDir).toBe("/home/user/project");
+			expect(agents[0]?.sessionId).toBe("sess-abc");
+			expect(agents[0]?.source).toBe("session-file");
 		});
 
 		test("discovers multiple session files", () => {
@@ -166,7 +169,7 @@ describe("SessionWatcher", () => {
 			watchCallback?.("change", "555.json");
 
 			expect(watcher.getAgents()).toHaveLength(1);
-			expect(watcher.getAgents()[0]!.pid).toBe(555);
+			expect(watcher.getAgents()[0]?.pid).toBe(555);
 		});
 
 		test("updates agent when session file changes", () => {
@@ -180,7 +183,7 @@ describe("SessionWatcher", () => {
 			alivePids.add(777);
 
 			watcher.start();
-			expect(watcher.getAgents()[0]!.projectDir).toBe("/old-dir");
+			expect(watcher.getAgents()[0]?.projectDir).toBe("/old-dir");
 
 			// Update file content
 			sessionFiles["777.json"] = JSON.stringify({
@@ -191,7 +194,7 @@ describe("SessionWatcher", () => {
 			});
 			watchCallback?.("change", "777.json");
 
-			expect(watcher.getAgents()[0]!.projectDir).toBe("/new-dir");
+			expect(watcher.getAgents()[0]?.projectDir).toBe("/new-dir");
 		});
 
 		test("removes agent when process is no longer alive", () => {
@@ -258,7 +261,7 @@ describe("SessionWatcher", () => {
 
 			const agents = watcher.getAgents();
 			expect(agents).toHaveLength(1);
-			expect(agents[0]!.sessionId).toBe("v2");
+			expect(agents[0]?.sessionId).toBe("v2");
 		});
 	});
 

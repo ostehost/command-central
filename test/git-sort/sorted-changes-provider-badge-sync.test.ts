@@ -53,17 +53,18 @@ function setupGitExtensionMock(
 	mockGitApi: unknown,
 ) {
 	// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-	vscode.extensions.getExtension = mock((_id: string) =>
-		({
-			id: "vscode.git",
-			extensionUri: vscode.Uri.file("/mock/extension"),
-			extensionPath: "/mock/extension",
-			isActive: true,
-			packageJSON: {},
-			extensionKind: vscode.ExtensionKind.Workspace,
-			activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
-			exports: { getAPI: () => mockGitApi },
-		}) as any,
+	vscode.extensions.getExtension = mock(
+		(_id: string) =>
+			({
+				id: "vscode.git",
+				extensionUri: vscode.Uri.file("/mock/extension"),
+				extensionPath: "/mock/extension",
+				isActive: true,
+				packageJSON: {},
+				extensionKind: vscode.ExtensionKind.Workspace,
+				activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
+				exports: { getAPI: () => mockGitApi },
+			}) as any,
 	);
 }
 
@@ -97,9 +98,12 @@ describe("Badge/Title Count Synchronization", () => {
 		);
 
 		// Align workspace folder with mock repo so findRepositoryForFile matches
-		Object.defineProperty(vscode.workspace, 'workspaceFolders', {
-			value: [{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 }],
-			writable: true, configurable: true,
+		Object.defineProperty(vscode.workspace, "workspaceFolders", {
+			value: [
+				{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
+			],
+			writable: true,
+			configurable: true,
 		});
 
 		const mockContext = createMockExtensionContext();
@@ -265,9 +269,12 @@ describe("Badge/Title Count Synchronization", () => {
 		);
 
 		// Align workspace folder with mock repo so findRepositoryForFile matches
-		Object.defineProperty(vscode.workspace, 'workspaceFolders', {
-			value: [{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 }],
-			writable: true, configurable: true,
+		Object.defineProperty(vscode.workspace, "workspaceFolders", {
+			value: [
+				{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
+			],
+			writable: true,
+			configurable: true,
 		});
 
 		const mockContext = createMockExtensionContext();

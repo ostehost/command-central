@@ -57,7 +57,10 @@ function createMockFilterState(): IExtensionFilterState & {
 				}
 			}
 		},
-		validateAndCleanFilter(_workspace: string, _actualFiles: string[]): boolean {
+		validateAndCleanFilter(
+			_workspace: string,
+			_actualFiles: string[],
+		): boolean {
 			// no-op for testing
 			return false;
 		},

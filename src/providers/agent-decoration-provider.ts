@@ -78,9 +78,7 @@ export class AgentDecorationProvider
 			} else {
 				const badge = completion.status === "completed" ? "✅" : "❌";
 				const tooltip =
-					completion.status === "completed"
-						? "Just completed"
-						: "Just failed";
+					completion.status === "completed" ? "Just completed" : "Just failed";
 				const color =
 					completion.status === "completed"
 						? new vscode.ThemeColor("charts.green")

@@ -133,7 +133,7 @@ describe("AgentRegistry", () => {
 			const discovered = registry.getDiscoveredAgents(launcherTasks);
 
 			expect(discovered).toHaveLength(1);
-			expect(discovered[0]!.pid).toBe(500);
+			expect(discovered[0]?.pid).toBe(500);
 		});
 
 		test("filters out agents whose sessionId matches launcher", () => {
@@ -148,9 +148,7 @@ describe("AgentRegistry", () => {
 
 			registry.start();
 
-			const launcherTasks = [
-				createMockTask({ session_id: "shared-sess" }),
-			];
+			const launcherTasks = [createMockTask({ session_id: "shared-sess" })];
 			const discovered = registry.getDiscoveredAgents(launcherTasks);
 
 			expect(discovered).toHaveLength(0);
@@ -207,7 +205,7 @@ describe("AgentRegistry", () => {
 			const all = registry.getAllDiscovered();
 			const agent = all.find((a) => a.pid === 800);
 			expect(agent).toBeDefined();
-			expect(agent!.source).toBe("session-file");
+			expect(agent?.source).toBe("session-file");
 		});
 	});
 
@@ -247,8 +245,8 @@ describe("AgentRegistry", () => {
 			const agent = all.find((a) => a.pid === 900);
 			expect(agent).toBeDefined();
 			// Session-file should win over process
-			expect(agent!.source).toBe("session-file");
-			expect(agent!.sessionId).toBe("sess-900");
+			expect(agent?.source).toBe("session-file");
+			expect(agent?.sessionId).toBe("sess-900");
 		});
 
 		test("three sources for same PID → higher priority source fields take precedence", () => {
@@ -269,8 +267,8 @@ describe("AgentRegistry", () => {
 			const agent = all.find((a) => a.pid === 1100);
 			expect(agent).toBeDefined();
 			// Session file wins over process
-			expect(agent!.source).toBe("session-file");
-			expect(agent!.projectDir).toBe("/rich-project");
+			expect(agent?.source).toBe("session-file");
+			expect(agent?.projectDir).toBe("/rich-project");
 		});
 	});
 
@@ -292,7 +290,7 @@ describe("AgentRegistry", () => {
 			const all = registry.getAllDiscovered();
 			const agent = all.find((a) => a.pid === 1200);
 			expect(agent).toBeDefined();
-			expect(agent!.sessionId).toBe("unique-session-id");
+			expect(agent?.sessionId).toBe("unique-session-id");
 		});
 
 		test("projectDir from higher-priority source wins", () => {
@@ -311,7 +309,7 @@ describe("AgentRegistry", () => {
 			const all = registry.getAllDiscovered();
 			const agent = all.find((a) => a.pid === 1300);
 			expect(agent).toBeDefined();
-			expect(agent!.projectDir).toBe("/session-dir");
+			expect(agent?.projectDir).toBe("/session-dir");
 		});
 	});
 
@@ -351,14 +349,12 @@ describe("AgentRegistry", () => {
 
 			registry.start();
 
-			const launcherTasks = [
-				createMockTask({ session_id: "other-sess" }),
-			];
+			const launcherTasks = [createMockTask({ session_id: "other-sess" })];
 			const discovered = registry.getDiscoveredAgents(launcherTasks);
 
 			// Should pass through — neither PID nor sessionId match launcher
 			expect(discovered).toHaveLength(1);
-			expect(discovered[0]!.pid).toBe(1500);
+			expect(discovered[0]?.pid).toBe(1500);
 		});
 	});
 

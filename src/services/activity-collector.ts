@@ -157,7 +157,14 @@ export class ActivityCollector {
 			return null;
 		}
 
-		const [sha, dateStr, subject, body, authorName, authorEmail] = parts as [string, string, string, string, string, string];
+		const [sha, dateStr, subject, body, authorName, authorEmail] = parts as [
+			string,
+			string,
+			string,
+			string,
+			string,
+			string,
+		];
 		const coAuthors = this.parseCoAuthors(body);
 
 		if (!this.isAgentCommit(authorEmail, coAuthors)) {
@@ -207,7 +214,10 @@ export class ActivityCollector {
 		let match: RegExpExecArray | null;
 
 		while ((match = pattern.exec(body)) !== null) {
-			coAuthors.push({ name: match[1]?.trim() ?? "", email: match[2]?.trim() ?? "" });
+			coAuthors.push({
+				name: match[1]?.trim() ?? "",
+				email: match[2]?.trim() ?? "",
+			});
 		}
 
 		return coAuthors;

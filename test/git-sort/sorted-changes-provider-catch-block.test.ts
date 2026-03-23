@@ -92,9 +92,12 @@ describe("Regression: catch block shows 'No changes' instead of 'Open a Git repo
 		);
 
 		// Align workspace folder with mock repo so findRepositoryForFile matches
-		Object.defineProperty(vscode.workspace, 'workspaceFolders', {
-			value: [{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 }],
-			writable: true, configurable: true,
+		Object.defineProperty(vscode.workspace, "workspaceFolders", {
+			value: [
+				{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
+			],
+			writable: true,
+			configurable: true,
 		});
 
 		// Create a repo whose state throws when accessed — triggers catch block

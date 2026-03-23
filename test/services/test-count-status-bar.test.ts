@@ -144,7 +144,7 @@ describe("TestCountStatusBar", () => {
 
 		test("returns 0 and shows 'no workspace' when workspaceFolders is undefined", async () => {
 			vscodeMock.workspace.isTrusted = true;
-			(vscodeMock.workspace as Record<string, unknown>)['workspaceFolders'] =
+			(vscodeMock.workspace as Record<string, unknown>)["workspaceFolders"] =
 				undefined;
 
 			const { TestCountStatusBar } = await import(

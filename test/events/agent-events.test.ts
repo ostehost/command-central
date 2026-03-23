@@ -215,8 +215,8 @@ describe("EventEmitter fires agent lifecycle events", () => {
 		});
 
 		expect(receivedEvent).toBeDefined();
-		expect(receivedEvent!.timestamp).toBe(now);
-		expect(receivedEvent!.timestamp).toBeInstanceOf(Date);
+		expect(receivedEvent?.timestamp).toBe(now);
+		expect(receivedEvent?.timestamp).toBeInstanceOf(Date);
 
 		emitter.dispose();
 	});

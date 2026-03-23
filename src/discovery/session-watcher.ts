@@ -79,7 +79,7 @@ export class SessionWatcher implements vscode.Disposable {
 	private startWatching(): void {
 		try {
 			this.watcher = fs.watch(this.sessionsDir, (_event, filename) => {
-				if (filename && filename.endsWith(".json")) {
+				if (filename?.endsWith(".json")) {
 					this.processFile(filename);
 				}
 			});

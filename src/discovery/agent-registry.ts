@@ -160,7 +160,9 @@ export class AgentRegistry implements vscode.Disposable {
 			const existing = byPid.get(agent.pid);
 			if (!existing) {
 				byPid.set(agent.pid, agent);
-			} else if (this.sourcePriority(agent.source) > this.sourcePriority(existing.source)) {
+			} else if (
+				this.sourcePriority(agent.source) > this.sourcePriority(existing.source)
+			) {
 				// Merge: keep higher-priority source but fill in missing fields
 				byPid.set(agent.pid, {
 					...existing,
@@ -168,7 +170,9 @@ export class AgentRegistry implements vscode.Disposable {
 					// Preserve model from process scanner if session file doesn't have it
 					model: agent.model || existing.model,
 				});
-			} else if (this.sourcePriority(agent.source) < this.sourcePriority(existing.source)) {
+			} else if (
+				this.sourcePriority(agent.source) < this.sourcePriority(existing.source)
+			) {
 				// Fill in missing fields from lower-priority source
 				byPid.set(agent.pid, {
 					...agent,

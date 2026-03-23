@@ -125,7 +125,9 @@ describe("ProjectIconService", () => {
 				index: 0,
 			},
 		];
-		mockContext.subscriptions = [];
+		(
+			mockContext as { subscriptions: Array<{ dispose: () => void }> }
+		).subscriptions = [];
 	});
 
 	test("creates status bar item when icon configured", () => {

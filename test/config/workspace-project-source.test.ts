@@ -13,11 +13,13 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
-let mockWorkspaceFolders: Array<{
-	uri: { fsPath: string };
-	name: string;
-	index: number;
-}> | undefined;
+let mockWorkspaceFolders:
+	| Array<{
+			uri: { fsPath: string };
+			name: string;
+			index: number;
+	  }>
+	| undefined;
 
 let executeCommandCalls: Array<{ command: string; args: unknown[] }> = [];
 let configByScope: Map<string, Record<string, unknown>> = new Map();
@@ -108,15 +110,19 @@ describe("WorkspaceProjectSource", () => {
 
 	test("maps single workspace folder to slot1", async () => {
 		mockWorkspaceFolders = [
-			{ uri: { fsPath: "/home/user/my-project" }, name: "my-project", index: 0 },
+			{
+				uri: { fsPath: "/home/user/my-project" },
+				name: "my-project",
+				index: 0,
+			},
 		];
 
 		const projects = await source.loadProjects();
 
 		expect(projects).toHaveLength(1);
-		expect(projects[0]!.id).toBe("slot1");
-		expect(projects[0]!.sortOrder).toBe(1);
-		expect(projects[0]!.gitPath).toBe("/home/user/my-project");
+		expect(projects[0]?.id).toBe("slot1");
+		expect(projects[0]?.sortOrder).toBe(1);
+		expect(projects[0]?.gitPath).toBe("/home/user/my-project");
 	});
 
 	test("maps multiple workspace folders to sequential slots", async () => {
@@ -129,22 +135,26 @@ describe("WorkspaceProjectSource", () => {
 		const projects = await source.loadProjects();
 
 		expect(projects).toHaveLength(3);
-		expect(projects[0]!.id).toBe("slot1");
-		expect(projects[1]!.id).toBe("slot2");
-		expect(projects[2]!.id).toBe("slot3");
-		expect(projects[0]!.sortOrder).toBe(1);
-		expect(projects[1]!.sortOrder).toBe(2);
-		expect(projects[2]!.sortOrder).toBe(3);
+		expect(projects[0]?.id).toBe("slot1");
+		expect(projects[1]?.id).toBe("slot2");
+		expect(projects[2]?.id).toBe("slot3");
+		expect(projects[0]?.sortOrder).toBe(1);
+		expect(projects[1]?.sortOrder).toBe(2);
+		expect(projects[2]?.sortOrder).toBe(3);
 	});
 
 	test("extracts folder name from filesystem path correctly", async () => {
 		mockWorkspaceFolders = [
-			{ uri: { fsPath: "/deeply/nested/path/to/my-awesome-project" }, name: "my-awesome-project", index: 0 },
+			{
+				uri: { fsPath: "/deeply/nested/path/to/my-awesome-project" },
+				name: "my-awesome-project",
+				index: 0,
+			},
 		];
 
 		const projects = await source.loadProjects();
 
-		expect(projects[0]!.displayName).toBe("my-awesome-project");
+		expect(projects[0]?.displayName).toBe("my-awesome-project");
 	});
 
 	test("limits to 10 slots when >10 workspace folders present", async () => {
@@ -157,7 +167,7 @@ describe("WorkspaceProjectSource", () => {
 		const projects = await source.loadProjects();
 
 		expect(projects).toHaveLength(10);
-		expect(projects[9]!.id).toBe("slot10");
+		expect(projects[9]?.id).toBe("slot10");
 	});
 
 	test("shows truncation warning once for >10 folders", async () => {
@@ -216,13 +226,11 @@ describe("WorkspaceProjectSource", () => {
 
 		// Should have setContext calls setting active slots to true
 		const enableCalls = executeCommandCalls.filter(
-			(c) =>
-				c.command === "setContext" &&
-				(c.args[1] as boolean) === true,
+			(c) => c.command === "setContext" && (c.args[1] as boolean) === true,
 		);
 		expect(enableCalls).toHaveLength(2);
-		expect(enableCalls[0]!.args[0]).toBe("commandCentral.slot1.active");
-		expect(enableCalls[1]!.args[0]).toBe("commandCentral.slot2.active");
+		expect(enableCalls[0]?.args[0]).toBe("commandCentral.slot1.active");
+		expect(enableCalls[1]?.args[0]).toBe("commandCentral.slot2.active");
 	});
 
 	test("reads custom project.icon from workspace-folder settings", async () => {
@@ -237,12 +245,16 @@ describe("WorkspaceProjectSource", () => {
 
 		const projects = await source.loadProjects();
 
-		expect(projects[0]!.displayName).toBe("👻 ghosty");
+		expect(projects[0]?.displayName).toBe("👻 ghosty");
 	});
 
 	test("prepends custom icon emoji to folder display name", async () => {
 		mockWorkspaceFolders = [
-			{ uri: { fsPath: "/home/user/rocket-app" }, name: "rocket-app", index: 0 },
+			{
+				uri: { fsPath: "/home/user/rocket-app" },
+				name: "rocket-app",
+				index: 0,
+			},
 		];
 
 		configByScope.set("/home/user/rocket-app", {
@@ -251,18 +263,22 @@ describe("WorkspaceProjectSource", () => {
 
 		const projects = await source.loadProjects();
 
-		expect(projects[0]!.displayName).toStartWith("🚀");
-		expect(projects[0]!.displayName).toContain("rocket-app");
+		expect(projects[0]?.displayName).toStartWith("🚀");
+		expect(projects[0]?.displayName).toContain("rocket-app");
 	});
 
 	test("works without custom icon (just folder name)", async () => {
 		mockWorkspaceFolders = [
-			{ uri: { fsPath: "/home/user/plain-project" }, name: "plain-project", index: 0 },
+			{
+				uri: { fsPath: "/home/user/plain-project" },
+				name: "plain-project",
+				index: 0,
+			},
 		];
 
 		// No custom config set
 		const projects = await source.loadProjects();
 
-		expect(projects[0]!.displayName).toBe("plain-project");
+		expect(projects[0]?.displayName).toBe("plain-project");
 	});
 });

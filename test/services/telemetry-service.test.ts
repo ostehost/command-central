@@ -157,10 +157,10 @@ describe("TelemetryService", () => {
 			};
 			const props = body.batch[0]?.properties;
 			expect(props).toBeDefined();
-			expect(props?.['extension_version']).toBe("1.0.0");
-			expect(props?.['vscode_version']).toBe("1.85.0");
-			expect(props?.['os']).toBe(process.platform);
-			expect(props?.['node_version']).toBe(process.version);
+			expect(props?.["extension_version"]).toBe("1.0.0");
+			expect(props?.["vscode_version"]).toBe("1.85.0");
+			expect(props?.["os"]).toBe(process.platform);
+			expect(props?.["node_version"]).toBe(process.version);
 		});
 
 		test("uses vscode.env.machineId as distinct_id", async () => {
@@ -174,7 +174,9 @@ describe("TelemetryService", () => {
 			const body = JSON.parse(options.body as string) as {
 				batch: Array<{ properties: Record<string, string> }>;
 			};
-			expect(body.batch[0]?.properties?.['distinct_id']).toBe("test-machine-id");
+			expect(body.batch[0]?.properties?.["distinct_id"]).toBe(
+				"test-machine-id",
+			);
 		});
 	});
 
