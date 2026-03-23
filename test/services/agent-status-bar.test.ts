@@ -32,7 +32,8 @@ beforeEach(() => {
 		dispose: mock(),
 	};
 	vscodeMock = setupVSCodeMock();
-	vscodeMock.window.createStatusBarItem = mock(() => mockStatusBarItem);
+	// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+	vscodeMock.window.createStatusBarItem = mock(() => mockStatusBarItem) as any;
 });
 
 function createTask(

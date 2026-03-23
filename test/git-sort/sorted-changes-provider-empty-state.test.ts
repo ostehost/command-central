@@ -160,9 +160,10 @@ describe("Empty State Message Distinction", () => {
 		);
 
 		// Align workspace folder with mock repo so findRepositoryForFile matches
-		vscode.workspace.workspaceFolders = [
-			{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
-		] as unknown as typeof vscode.workspace.workspaceFolders;
+		Object.defineProperty(vscode.workspace, 'workspaceFolders', {
+			value: [{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 }],
+			writable: true, configurable: true,
+		});
 
 		const mockRepo = {
 			rootUri: vscode.Uri.file("/workspace"),
@@ -203,9 +204,10 @@ describe("Empty State Message Distinction", () => {
 		);
 
 		// Align workspace folder with mock repo so findRepositoryForFile matches
-		vscode.workspace.workspaceFolders = [
-			{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
-		] as unknown as typeof vscode.workspace.workspaceFolders;
+		Object.defineProperty(vscode.workspace, 'workspaceFolders', {
+			value: [{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 }],
+			writable: true, configurable: true,
+		});
 
 		const mockRepo = {
 			rootUri: vscode.Uri.file("/workspace"),
@@ -254,9 +256,10 @@ describe("Empty State Message Distinction", () => {
 		);
 
 		// Align workspace folder with mock repo so findRepositoryForFile matches
-		vscode.workspace.workspaceFolders = [
-			{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
-		] as unknown as typeof vscode.workspace.workspaceFolders;
+		Object.defineProperty(vscode.workspace, 'workspaceFolders', {
+			value: [{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 }],
+			writable: true, configurable: true,
+		});
 
 		const mockRepo = {
 			rootUri: vscode.Uri.file("/workspace"),

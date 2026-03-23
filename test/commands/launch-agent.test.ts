@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 // Mock child_process execFile for promisify compatibility
-const mockExecFile = mock(() => Promise.resolve({ stdout: "{}", stderr: "" }));
+const mockExecFile = mock((..._args: unknown[]) => Promise.resolve({ stdout: "{}", stderr: "" }));
 mock.module("node:child_process", () => ({
 	execFile: (
 		cmd: string,
@@ -59,9 +59,9 @@ describe("launchAgent command", () => {
 
 		// Capture registered command handler
 		vscodeMock.commands.registerCommand = mock(
-			(_id: string, handler: () => Promise<void>) => {
+			(_id: string, _handler: (...args: unknown[]) => unknown) => {
 				if (_id === "commandCentral.launchAgent") {
-					commandHandler = handler;
+					commandHandler = _handler as () => Promise<void>;
 				}
 				return { dispose: mock() };
 			},
@@ -81,11 +81,13 @@ describe("launchAgent command", () => {
 				return;
 			}
 			if (folders.length === 1) {
-				projectDir = folders[0].uri.fsPath;
+				const first = folders[0];
+				if (!first) return;
+				projectDir = first.uri.fsPath;
 			} else {
 				const picked = await vscode.workspace.showWorkspaceFolderPick({
 					placeHolder: "Select project for agent",
-				});
+				}) as { uri: { fsPath: string } } | undefined;
 				if (!picked) return;
 				projectDir = picked.uri.fsPath;
 			}
@@ -93,7 +95,7 @@ describe("launchAgent command", () => {
 			const description = await vscode.window.showInputBox({
 				prompt: "What should the agent do?",
 				placeHolder: "e.g., Add unit tests for the auth module",
-			});
+			}) as string | undefined;
 			if (!description) return;
 
 			const fs = await import("node:fs");
@@ -207,7 +209,7 @@ describe("launchAgent command", () => {
 		await commandHandler();
 
 		expect(mockWriteFileSync).toHaveBeenCalled();
-		const [filePath, content] = mockWriteFileSync.mock.calls[0] as [
+		const [filePath, content] = mockWriteFileSync.mock.calls[0] as unknown as [
 			string,
 			string,
 		];
@@ -224,7 +226,7 @@ describe("launchAgent command", () => {
 		registerCommand();
 		await commandHandler();
 
-		const [, content] = mockWriteFileSync.mock.calls[0] as [string, string];
+		const [, content] = mockWriteFileSync.mock.calls[0] as unknown as [string, string];
 		expect(content).toStartWith("# Task\n\n");
 	});
 
@@ -235,7 +237,7 @@ describe("launchAgent command", () => {
 		registerCommand();
 		await commandHandler();
 
-		const [, args] = mockExecFile.mock.calls[0] as [
+		const [, args] = mockExecFile.mock.calls[0] as unknown as [
 			string,
 			string[],
 			Record<string, unknown>,
@@ -244,7 +246,7 @@ describe("launchAgent command", () => {
 		const taskId = args[taskIdIdx + 1];
 		expect(taskId).toStartWith("cc-my-app-");
 		// The rest should be a valid base36 string
-		const base36Part = taskId.replace("cc-my-app-", "");
+		const base36Part = (taskId as string).replace("cc-my-app-", "");
 		expect(base36Part).toMatch(/^[0-9a-z]+$/);
 	});
 
@@ -302,7 +304,7 @@ describe("launchAgent command", () => {
 		await commandHandler();
 
 		expect(mockExecFile).toHaveBeenCalled();
-		const [cmd, args, opts] = mockExecFile.mock.calls[0] as [
+		const [cmd, args, opts] = mockExecFile.mock.calls[0] as unknown as [
 			string,
 			string[],
 			Record<string, unknown>,
@@ -315,7 +317,7 @@ describe("launchAgent command", () => {
 		expect(args).toContain("developer");
 		expect(args).toContain("--no-bundle");
 		expect(args).toContain("--json");
-		expect(opts.timeout).toBe(15000);
+		expect(opts['timeout']).toBe(15000);
 	});
 
 	test("reload() is scheduled after spawn via setTimeout", async () => {

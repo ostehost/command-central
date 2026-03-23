@@ -258,7 +258,7 @@ export class TerminalManager {
 				);
 			}
 
-			if (error.signal === "SIGKILL" || error.code === "TIMEOUT") {
+			if ((error as NodeJS.ErrnoException & { signal?: string }).signal === "SIGKILL" || error.code === "TIMEOUT") {
 				throw new LauncherTimeoutError(
 					`Launcher timed out after ${LAUNCHER_TIMEOUT_MS}ms. The project may be too large or the launcher is unresponsive.`,
 					launcher,

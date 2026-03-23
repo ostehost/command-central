@@ -165,7 +165,7 @@ describe("agent quick actions", () => {
 				Promise.resolve(undefined),
 			);
 
-			const node = undefined;
+			const node = undefined as { task?: { project_dir?: string } } | undefined;
 
 			// Simulate the guard check
 			if (!node?.task?.project_dir) {
@@ -199,7 +199,7 @@ describe("agent quick actions", () => {
 				Promise.resolve(undefined),
 			);
 
-			const node = { type: "task", task: null };
+			const node = { type: "task", task: null as { project_dir?: string } | null };
 
 			if (!node.task?.project_dir) {
 				vscodeMock.window.showWarningMessage(
@@ -351,7 +351,7 @@ describe("agent quick actions", () => {
 				Promise.resolve(undefined),
 			);
 
-			const node = undefined;
+			const node = undefined as { task?: unknown } | undefined;
 
 			if (!node?.task) {
 				vscodeMock.window.showWarningMessage(

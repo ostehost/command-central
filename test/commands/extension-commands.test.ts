@@ -38,7 +38,7 @@ function createTask(overrides: Partial<AgentTask> = {}): AgentTask {
 describe("focusAgentTerminal command", () => {
 	test("shows info message when no task provided", () => {
 		// Simulate the command handler pattern from extension.ts
-		const node: { type: string; task?: AgentTask } | undefined = undefined;
+		const node = undefined as { type: string; task?: AgentTask } | undefined;
 		const task = node?.task;
 
 		if (!task) {
@@ -147,7 +147,7 @@ describe("focusAgentTerminal command", () => {
 	});
 
 	test("Strategy 3 falls through to no-terminal message on Ghostty failure", () => {
-		const task = createTask({
+		void createTask({
 			terminal_backend: "tmux",
 			ghostty_bundle_id: null,
 			bundle_path: "(tmux-mode)",
@@ -218,7 +218,7 @@ describe("focusAgentTerminal command", () => {
 	});
 
 	test("gracefully handles select-window failure after open -a", () => {
-		const task = createTask({
+		void createTask({
 			terminal_backend: "tmux",
 			ghostty_bundle_id: "com.mitchellh.ghostty",
 			session_id: "agent-my-project",
@@ -318,7 +318,7 @@ describe("focusNextRunningAgent command", () => {
 
 describe("showAgentOutput command", () => {
 	test("shows warning when no task provided", () => {
-		const node: { type: string; task?: AgentTask } | undefined = undefined;
+		const node = undefined as { type: string; task?: AgentTask } | undefined;
 		const task = node?.task;
 
 		if (!task) {
@@ -349,7 +349,7 @@ describe("openAgentDashboard command", () => {
 		};
 
 		expect(Object.keys(tasks)).toHaveLength(2);
-		expect(tasks["t1"].status).toBe("running");
+		expect(tasks["t1"]?.status).toBe("running");
 	});
 
 	test("dashboard handles empty registry", () => {
@@ -395,7 +395,7 @@ describe("viewAgentDiff command", () => {
 	});
 
 	test("handles undefined node gracefully", () => {
-		const node: { type: string; task?: AgentTask } | undefined = undefined;
+		const node = undefined as { type: string; task?: AgentTask } | undefined;
 		const task = node?.task;
 
 		if (!task?.project_dir) {

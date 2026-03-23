@@ -1066,7 +1066,9 @@ export async function activate(
 						return;
 					}
 					if (folders.length === 1) {
-						projectDir = folders[0].uri.fsPath;
+						const first = folders[0];
+						if (!first) return;
+						projectDir = first.uri.fsPath;
 					} else {
 						const picked = await vscode.window.showWorkspaceFolderPick({
 							placeHolder: "Select project for agent",
@@ -1202,7 +1204,7 @@ export async function activate(
 						selectedFolder = selectedItem.folder;
 					} else {
 						// Single workspace folder: use it directly
-						selectedFolder = folders[0];
+						selectedFolder = folders[0] as vscode.WorkspaceFolder;
 					}
 
 					const installed = await terminalManager?.isLauncherInstalled();
@@ -1239,6 +1241,7 @@ export async function activate(
 
 						if (isInstalled) {
 							const versionInfo = await binaryManager?.getVersion();
+							if (!versionInfo) return;
 							const versionStr = versionInfo.bundleVersion ?? "unknown";
 							const hashStr = versionInfo.commitHash
 								? ` (${versionInfo.commitHash.slice(0, 8)})`
@@ -1261,10 +1264,12 @@ export async function activate(
 							},
 							async () => {
 								const release = await binaryManager?.getLatestRelease();
+								if (!release) return;
 
 								const versionInfo = isInstalled
 									? await binaryManager?.getVersion()
 									: { bundleVersion: null, commitHash: null };
+								if (!versionInfo) return;
 
 								const alreadyLatest =
 									versionInfo.bundleVersion === release.tag_name;

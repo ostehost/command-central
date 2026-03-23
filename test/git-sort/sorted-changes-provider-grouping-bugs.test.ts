@@ -109,7 +109,8 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 			undefined,
 			undefined,
 			undefined,
-			createMockGroupingStateManager(true) as unknown,
+			// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+			createMockGroupingStateManager(true) as any,
 		);
 
 		await provider.initialize();
@@ -178,7 +179,8 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 			undefined,
 			undefined,
 			undefined,
-			createMockGroupingStateManager(true) as unknown,
+			// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+			createMockGroupingStateManager(true) as any,
 		);
 
 		await provider.initialize();
@@ -204,9 +206,10 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 		);
 
 		// Align workspace folder with mock repo so findRepositoryForFile matches
-		vscode.workspace.workspaceFolders = [
-			{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
-		] as unknown as typeof vscode.workspace.workspaceFolders;
+		Object.defineProperty(vscode.workspace, 'workspaceFolders', {
+			value: [{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 }],
+			writable: true, configurable: true,
+		});
 
 		const mockRepo = {
 			rootUri: vscode.Uri.file("/workspace"),
@@ -245,7 +248,8 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 			undefined,
 			undefined,
 			undefined,
-			createMockGroupingStateManager(true) as unknown,
+			// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+			createMockGroupingStateManager(true) as any,
 		);
 
 		await provider.initialize();

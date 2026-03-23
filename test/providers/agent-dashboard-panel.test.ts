@@ -34,7 +34,8 @@ beforeEach(() => {
 			}),
 		),
 	};
-	vscodeMock.window.createWebviewPanel = mock(() => lastMockPanel);
+	// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+	vscodeMock.window.createWebviewPanel = mock(() => lastMockPanel) as any;
 });
 
 import {

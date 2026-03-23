@@ -9,11 +9,9 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AgentEvent } from "../../src/events/agent-events.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
-let vscodeMock: ReturnType<typeof setupVSCodeMock>;
-
 beforeEach(() => {
 	mock.restore();
-	vscodeMock = setupVSCodeMock();
+	setupVSCodeMock();
 });
 
 describe("AgentEvent interface", () => {
@@ -92,8 +90,8 @@ describe("EventEmitter fires agent lifecycle events", () => {
 		emitter.fire(event);
 
 		expect(received).toHaveLength(1);
-		expect(received[0].type).toBe("agent-started");
-		expect(received[0].taskId).toBe("t1");
+		expect(received[0]?.type).toBe("agent-started");
+		expect(received[0]?.taskId).toBe("t1");
 
 		emitter.dispose();
 	});

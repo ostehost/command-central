@@ -11,7 +11,7 @@ import * as path from "node:path";
 mock.module("vscode", () => ({}));
 
 // Mock fs.existsSync — control which paths "exist"
-const mockExistsSync = mock(() => false);
+const mockExistsSync = mock((..._args: unknown[]) => false);
 mock.module("node:fs", () => ({
 	existsSync: mockExistsSync,
 	// Preserve other fs exports the module may reference
@@ -20,12 +20,9 @@ mock.module("node:fs", () => ({
 
 import { resolveTasksFilePath } from "../../src/utils/tasks-file-resolver.js";
 
-function mockWorkspaceFolder(fsPath: string): {
-	uri: { fsPath: string };
-	name: string;
-	index: number;
-} {
-	return { uri: { fsPath }, name: path.basename(fsPath), index: 0 };
+function mockWorkspaceFolder(fsPath: string) {
+	// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+	return { uri: { fsPath }, name: path.basename(fsPath), index: 0 } as any;
 }
 
 describe("resolveTasksFilePath", () => {

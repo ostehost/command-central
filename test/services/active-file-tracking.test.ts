@@ -208,14 +208,12 @@ function createTrackingProvider(matchUri?: string): SortedGitChangesProvider {
 describe("Active File Tracking - Panel Force-Open Bug", () => {
 	let mockLogger: LoggerService;
 	let mockContext: vscode.ExtensionContext;
-	let _vscodeMock: ReturnType<typeof setupTestVSCodeMock>;
-
 	beforeEach(() => {
 		mock.restore();
 		activeEditorCallback = null;
 		revealCalls.clear();
 		viewVisibility.clear();
-		_vscodeMock = setupTestVSCodeMock();
+		setupTestVSCodeMock();
 		mockLogger = createMockLogger();
 		mockContext = createMockExtensionContext();
 	});

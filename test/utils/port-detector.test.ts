@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Mock child_process before importing the module under test
-const execFileSyncMock = mock(() => "");
+const execFileSyncMock = mock((..._args: unknown[]) => "");
 
 mock.module("node:child_process", () => ({
 	execFileSync: execFileSyncMock,
@@ -26,7 +26,8 @@ describe("detectListeningPorts", () => {
 	test("returns ports when lsof finds matches", () => {
 		// First call: lsof -iTCP listing
 		execFileSyncMock.mockImplementation(
-			(cmd: string, args: string[]): string => {
+			(...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[]];
 				if (
 					cmd === "lsof" &&
 					args[0] === "-iTCP" &&
@@ -60,7 +61,8 @@ describe("detectListeningPorts", () => {
 
 	test("deduplicates by port number", () => {
 		execFileSyncMock.mockImplementation(
-			(cmd: string, args: string[]): string => {
+			(...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[]];
 				if (
 					cmd === "lsof" &&
 					args[0] === "-iTCP" &&
@@ -83,7 +85,8 @@ describe("detectListeningPorts", () => {
 
 	test("returns empty array when no ports match project dir", () => {
 		execFileSyncMock.mockImplementation(
-			(cmd: string, args: string[]): string => {
+			(...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[]];
 				if (
 					cmd === "lsof" &&
 					args[0] === "-iTCP" &&
@@ -104,7 +107,8 @@ describe("detectListeningPorts", () => {
 
 	test("handles multiple ports from different processes", () => {
 		execFileSyncMock.mockImplementation(
-			(cmd: string, args: string[]): string => {
+			(...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[]];
 				if (
 					cmd === "lsof" &&
 					args[0] === "-iTCP" &&

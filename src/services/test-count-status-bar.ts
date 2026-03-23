@@ -62,7 +62,7 @@ export class TestCountStatusBar implements vscode.Disposable {
 
 			// bun test outputs summary to stderr like: "383 pass"
 			const match = stderr.match(/(\d+)\s+pass/);
-			const count = match ? Number.parseInt(match[1], 10) : 0;
+			const count = match ? Number.parseInt(match[1] ?? "0", 10) : 0;
 			this.updateCount(count);
 			return count;
 		} catch (error) {
@@ -73,7 +73,7 @@ export class TestCountStatusBar implements vscode.Disposable {
 					: "";
 			const match = output.match(/(\d+)\s+pass/);
 			if (match) {
-				const count = Number.parseInt(match[1], 10);
+				const count = Number.parseInt(match[1] ?? "0", 10);
 				this.updateCount(count);
 				return count;
 			}

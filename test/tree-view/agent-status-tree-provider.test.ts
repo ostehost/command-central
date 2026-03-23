@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Mock port-detector to avoid real lsof calls in tree provider tests
-const mockDetectListeningPorts = mock(() => []);
+const mockDetectListeningPorts = mock(() => [] as Array<{ port: number; pid: number; process: string }>);
 mock.module("../../src/utils/port-detector.js", () => ({
 	detectListeningPorts: mockDetectListeningPorts,
 }));

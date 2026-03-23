@@ -49,8 +49,8 @@ async function main() {
 			process.exit(1);
 		}
 
-		const svgWidth = Number.parseInt(viewBoxMatch[3], 10);
-		const svgHeight = Number.parseInt(viewBoxMatch[4], 10);
+		const svgWidth = Number.parseInt(viewBoxMatch[3] ?? "0", 10);
+		const svgHeight = Number.parseInt(viewBoxMatch[4] ?? "0", 10);
 		const pngName = `${basename(svgPath, ".svg")}.png`;
 		const pngPath = join(dirname(absPath), pngName);
 

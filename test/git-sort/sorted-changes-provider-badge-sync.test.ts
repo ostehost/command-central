@@ -52,18 +52,18 @@ function setupGitExtensionMock(
 	vscode: typeof import("vscode"),
 	mockGitApi: unknown,
 ) {
-	vscode.extensions.getExtension = mock(
-		() =>
-			({
-				id: "vscode.git",
-				extensionUri: vscode.Uri.file("/mock/extension"),
-				extensionPath: "/mock/extension",
-				isActive: true,
-				packageJSON: {},
-				extensionKind: vscode.ExtensionKind.Workspace,
-				activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
-				exports: { getAPI: () => mockGitApi },
-			}) as unknown,
+	// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+	vscode.extensions.getExtension = mock((_id: string) =>
+		({
+			id: "vscode.git",
+			extensionUri: vscode.Uri.file("/mock/extension"),
+			extensionPath: "/mock/extension",
+			isActive: true,
+			packageJSON: {},
+			extensionKind: vscode.ExtensionKind.Workspace,
+			activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
+			exports: { getAPI: () => mockGitApi },
+		}) as any,
 	);
 }
 
@@ -97,16 +97,18 @@ describe("Badge/Title Count Synchronization", () => {
 		);
 
 		// Align workspace folder with mock repo so findRepositoryForFile matches
-		vscode.workspace.workspaceFolders = [
-			{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
-		] as unknown as typeof vscode.workspace.workspaceFolders;
+		Object.defineProperty(vscode.workspace, 'workspaceFolders', {
+			value: [{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 }],
+			writable: true, configurable: true,
+		});
 
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		// Set up title-tracking tree view
 		const { view } = createTitleTrackingTreeView();
-		provider.setActivityBarTreeView(view as unknown);
+		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+		provider.setActivityBarTreeView(view as any);
 
 		// Mock repo with 3 modified files
 		const mockRepo = {
@@ -181,7 +183,8 @@ describe("Badge/Title Count Synchronization", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const { view } = createTitleTrackingTreeView();
-		provider.setActivityBarTreeView(view as unknown);
+		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+		provider.setActivityBarTreeView(view as any);
 
 		await provider.initialize();
 		const children = await provider.getChildren();
@@ -201,7 +204,8 @@ describe("Badge/Title Count Synchronization", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const { view } = createTitleTrackingTreeView();
-		provider.setActivityBarTreeView(view as unknown);
+		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+		provider.setActivityBarTreeView(view as any);
 
 		setupGitExtensionMock(vscode, {
 			repositories: [],
@@ -226,7 +230,8 @@ describe("Badge/Title Count Synchronization", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const { view } = createTitleTrackingTreeView();
-		provider.setActivityBarTreeView(view as unknown);
+		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+		provider.setActivityBarTreeView(view as any);
 
 		// Repo that throws during access
 		setupGitExtensionMock(vscode, {
@@ -260,17 +265,20 @@ describe("Badge/Title Count Synchronization", () => {
 		);
 
 		// Align workspace folder with mock repo so findRepositoryForFile matches
-		vscode.workspace.workspaceFolders = [
-			{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
-		] as unknown as typeof vscode.workspace.workspaceFolders;
+		Object.defineProperty(vscode.workspace, 'workspaceFolders', {
+			value: [{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 }],
+			writable: true, configurable: true,
+		});
 
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const activityBar = createTitleTrackingTreeView();
 		const panel = createTitleTrackingTreeView();
-		provider.setActivityBarTreeView(activityBar.view as unknown);
-		provider.setPanelTreeView(panel.view as unknown);
+		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+		provider.setActivityBarTreeView(activityBar.view as any);
+		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
+		provider.setPanelTreeView(panel.view as any);
 
 		// Mock repo with files
 		const mockRepo = {

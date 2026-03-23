@@ -474,7 +474,7 @@ describe("TerminalManager error handling (Fix 3)", () => {
 
 	test("throws helpful error when binary not found (ENOENT)", async () => {
 		execFileMock.mockImplementation(
-			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+			(_f: string, _a: string[], _o: object, cb: ExecFileCallback) => {
 				const err = Object.assign(new Error("command not found"), {
 					code: "ENOENT",
 				});
@@ -589,7 +589,7 @@ describe("TerminalManager error handling (Fix 3)", () => {
 
 	test("provides helpful error message with actionable guidance", async () => {
 		execFileMock.mockImplementation(
-			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+			(_f: string, _a: string[], _o: object, cb: ExecFileCallback) => {
 				const err = Object.assign(new Error("not found"), { code: "ENOENT" });
 				cb(err, { stdout: "", stderr: "" });
 			},

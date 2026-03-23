@@ -273,7 +273,8 @@ test("RED 4: Validator catches invalid tree hierarchies", async () => {
 
 	try {
 		// Try to import validator (will fail until implemented)
-		const validator = await import("../../src/types/tree-element-validator.js");
+		const modulePath = "../../src/types/tree-element-validator.js";
+		const validator = await import(/* @vite-ignore */ modulePath);
 		validateTreeHierarchy = validator.validateTreeHierarchy;
 		validatorExists = true;
 	} catch (_error) {

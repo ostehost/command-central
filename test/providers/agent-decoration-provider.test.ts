@@ -8,11 +8,9 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
-let vscodeMock: ReturnType<typeof setupVSCodeMock>;
-
 beforeEach(() => {
 	mock.restore();
-	vscodeMock = setupVSCodeMock();
+	setupVSCodeMock();
 });
 
 async function loadModule() {

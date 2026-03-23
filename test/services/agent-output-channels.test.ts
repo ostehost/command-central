@@ -8,11 +8,9 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 // Must set up mock before importing the module under test
-let vscodeMock: ReturnType<typeof setupVSCodeMock>;
-
 beforeEach(() => {
 	mock.restore();
-	vscodeMock = setupVSCodeMock();
+	setupVSCodeMock();
 });
 
 // Dynamic import to pick up mocked vscode

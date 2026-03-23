@@ -121,7 +121,7 @@ export class ActivityCollector {
 			// A new commit block starts with a line containing our SEP character
 			// and the first field is a 40-char hex SHA
 			if (line.includes(SEP)) {
-				const sha = line.split(SEP)[0];
+				const sha = line.split(SEP)[0] ?? "";
 				if (/^[0-9a-f]{40}$/i.test(sha)) {
 					if (current.length > 0) {
 						commits.push(current.join("\n"));
@@ -150,13 +150,14 @@ export class ActivityCollector {
 	): ActivityEvent | null {
 		const lines = block.split("\n");
 		const headerLine = lines[0];
+		if (!headerLine) return null;
 		const parts = headerLine.split(SEP);
 
 		if (parts.length < 6) {
 			return null;
 		}
 
-		const [sha, dateStr, subject, body, authorName, authorEmail] = parts;
+		const [sha, dateStr, subject, body, authorName, authorEmail] = parts as [string, string, string, string, string, string];
 		const coAuthors = this.parseCoAuthors(body);
 
 		if (!this.isAgentCommit(authorEmail, coAuthors)) {
@@ -168,7 +169,7 @@ export class ActivityCollector {
 		let insertions = 0;
 		let deletions = 0;
 		for (const line of numstatLines) {
-			const [ins, del] = line.split("\t");
+			const [ins = "0", del = "0"] = line.split("\t");
 			insertions += Number.parseInt(ins, 10) || 0;
 			deletions += Number.parseInt(del, 10) || 0;
 		}
@@ -206,7 +207,7 @@ export class ActivityCollector {
 		let match: RegExpExecArray | null;
 
 		while ((match = pattern.exec(body)) !== null) {
-			coAuthors.push({ name: match[1].trim(), email: match[2].trim() });
+			coAuthors.push({ name: match[1]?.trim() ?? "", email: match[2]?.trim() ?? "" });
 		}
 
 		return coAuthors;

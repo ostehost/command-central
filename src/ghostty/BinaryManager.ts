@@ -19,7 +19,6 @@ const GITHUB_API_BASE = "https://api.github.com";
 const INSTALL_DIR = path.join(os.homedir(), ".command-central", "ghostty");
 const APP_NAME = "Ghostty.app";
 const APP_PATH = path.join(INSTALL_DIR, APP_NAME);
-const _APP_BAK_PATH = path.join(INSTALL_DIR, `${APP_NAME}.bak`);
 
 /** Valid bundle ID prefixes — supports both upstream and CC fork IDs */
 const VALID_BUNDLE_ID_PREFIXES = [

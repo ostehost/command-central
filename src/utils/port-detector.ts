@@ -45,7 +45,7 @@ export function detectListeningPorts(projectDir: string): ListeningPort[] {
 						);
 						if (cwd.includes(projectDir)) {
 							ports.push({
-								port: parseInt(match[1], 10),
+								port: parseInt(match[1] ?? "0", 10),
 								pid: currentPid,
 								process: currentProcess,
 							});

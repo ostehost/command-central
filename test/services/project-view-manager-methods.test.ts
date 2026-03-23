@@ -124,8 +124,8 @@ describe("ProjectViewManager Provider Lookup Methods", () => {
 		vscode.window.createTreeView = mock(
 			<T>(
 				viewId: string,
-				options: vscode.TreeViewOptions<T>,
-			): vscode.TreeView<T> => {
+				options: import("vscode").TreeViewOptions<T>,
+			): import("vscode").TreeView<T> => {
 				const treeView = originalCreateTreeView<T>(viewId, options);
 				registeredViews.set(viewId, treeView);
 				return treeView;
@@ -146,7 +146,7 @@ describe("ProjectViewManager Provider Lookup Methods", () => {
 		expect(treeView).toBeDefined();
 
 		const provider = manager2.getProviderForTreeView(
-			treeView as vscode.TreeView<unknown>,
+			treeView as import("vscode").TreeView<unknown>,
 		);
 
 		expect(provider).toBeDefined();
