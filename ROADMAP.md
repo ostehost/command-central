@@ -50,8 +50,9 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M1-7 | README rewrite for external users | ✅ DONE | P0 | Full rewrite: problem/solution, features, config ref, roadmap |
 | M1-8 | Fix: Click-to-focus should select correct Ghostty tab | ✅ DONE | P0 | `tmux select-window` after `open -a`. 4 tests added. |
 | M1-9 | Fix: Don't open terminal for dead/stale sessions | ✅ DONE | P0 | `tmux has-session` guard. Shows "Session ended" if stale. |
-| M1-10 | Wire PostHog telemetry for install/activation/feature tracking | TODO | P0 | Moved up from M4-5. Can't launch blind. |
+| M1-10 | Wire PostHog telemetry for install/activation/feature tracking | ✅ DONE | P0 | 6 events, no SDK, batch flush, 14 tests |
 | M1-11 | Fix: native fs.watch fallback for task file outside workspace | ✅ DONE | P1 | v0.3.6 — VS Code watcher unreliable for ~/.config paths |
+| M1-12 | Fix: tmux-only agents should open in Ghostty, not VS Code terminal | TODO | P0 | Strategy 3 falls back to integrated terminal. Should `osascript` a new Ghostty tab with `tmux attach`. |
 
 ### M2: Process Auto-Discovery (v0.5.0) — THE DIFFERENTIATOR
 **Goal:** Auto-detect running Claude Code agents without any configuration. This is the unique capability no competitor has inside VS Code.
