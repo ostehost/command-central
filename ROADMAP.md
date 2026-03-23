@@ -44,12 +44,12 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M1-1 | Remove `~/projects/ghostty-launcher` default from `package.json` | ✅ DONE | P0 | Hardcoded paths removed, empty defaults |
 | M1-2 | Auto-detect `tasks.json` location via workspace config | ✅ DONE | P0 | `tasks-file-resolver.ts` — workspace → XDG → home |
 | M1-3 | Graceful degradation when Ghostty not installed | ✅ DONE | P0 | `hasLauncher` context key, menu items gated |
-| M1-4 | First-run experience: "No agents detected" → helpful onboarding | TODO | P1 | Show "Start your first agent" button, link to docs |
-| M1-5 | Update Marketplace listing: description, screenshots, keywords | TODO | P0 | New copy: agent control tower, not Git time-sorter |
-| M1-6 | Reframe Git Sort as "Agent Diff Tracker" in UI/docs | TODO | P1 | Keep feature, change narrative |
-| M1-7 | README rewrite for external users | TODO | P0 | Current README assumes internal knowledge |
-| M1-8 | Fix: Click-to-focus should select correct Ghostty tab | TODO | P0 | `open -a` opens app but doesn't select the agent's tab. Use tmux `select-window` or AppleScript to target the right tab. |
-| M1-9 | Fix: Don't open terminal for dead/stale sessions | TODO | P0 | Check `tmux has-session` before attempting focus. Show "Session ended" message if stale. |
+| M1-4 | First-run experience: "No agents detected" → helpful onboarding | ✅ DONE | P1 | Updated viewsWelcome with getting started guide |
+| M1-5 | Update Marketplace listing: description, screenshots, keywords | ✅ DONE | P0 | Agent control tower copy, new keywords, categories |
+| M1-6 | Reframe Git Sort as "Agent Diff Tracker" in UI/docs | ✅ DONE | P1 | markdownDescription + viewsWelcome reframed |
+| M1-7 | README rewrite for external users | ✅ DONE | P0 | Full rewrite: problem/solution, features, config ref, roadmap |
+| M1-8 | Fix: Click-to-focus should select correct Ghostty tab | ✅ DONE | P0 | `tmux select-window` after `open -a`. 4 tests added. |
+| M1-9 | Fix: Don't open terminal for dead/stale sessions | ✅ DONE | P0 | `tmux has-session` guard. Shows "Session ended" if stale. |
 | M1-10 | Wire PostHog telemetry for install/activation/feature tracking | TODO | P0 | Moved up from M4-5. Can't launch blind. |
 | M1-11 | Fix: native fs.watch fallback for task file outside workspace | ✅ DONE | P1 | v0.3.6 — VS Code watcher unreliable for ~/.config paths |
 
