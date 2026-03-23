@@ -75,7 +75,7 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M4-2 | X/Twitter launch thread with screen recording | TODO | P0 | Short demo: "3 agents, 1 dashboard, 0 switching" |
 | M4-3 | DEV Community article: "How I manage 10 agents" | TODO | P1 | SEO play + community credibility |
 | M4-4 | Ghostty community post (Discord/forums) | TODO | P1 | High-quality leads, small volume |
-| M4-5 | Track installs, activations, feature usage (PostHog) | TODO | P0 | Can't improve what you can't measure. Wire during M1. |
+| M4-5 | Track installs, activations, feature usage (PostHog) | ✅ DONE | P0 | `telemetry-service.ts` — 6 events, opt-in, batch flush |
 | M4-6 | Fix stale persist socket cleanup in `oste-spawn.sh` | TODO | P2 | Non-blocking. Three staleness sources (tasks.json, persist sockets, tmux) — reaper only cleans tasks.json. `cleanup_stale_persist_socket` runs after the base-name exists check, not before. See `memory/projects/launcher-bugs.md`. |
 
 ### M3: Competitive Parity (v0.8.0) — POST-LAUNCH
