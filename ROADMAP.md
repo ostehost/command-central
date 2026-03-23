@@ -2,7 +2,7 @@
 
 > v1.1 — 2026-03-22. Living document. Updated as priorities shift.
 > Strategy basis: `research/STRATEGY-SYNTHESIS-2026-03-22.md`, `research/PMF-ANALYSIS-2026-03-22.md`
-> **Critical path:** M0 ✅ → M1 (finish) → M2 (discovery) → M4 (launch) → M3 (post-launch, feedback-driven)
+> **Critical path:** M0 ✅ → M1 ✅ → M2 ✅ (core) → **M4 (LAUNCH NOW)** → M3 (post-launch, feedback-driven)
 
 ## Vision
 
@@ -52,17 +52,17 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M1-9 | Fix: Don't open terminal for dead/stale sessions | ✅ DONE | P0 | `tmux has-session` guard. Shows "Session ended" if stale. |
 | M1-10 | Wire PostHog telemetry for install/activation/feature tracking | ✅ DONE | P0 | 6 events, no SDK, batch flush, 14 tests |
 | M1-11 | Fix: native fs.watch fallback for task file outside workspace | ✅ DONE | P1 | v0.3.6 — VS Code watcher unreliable for ~/.config paths |
-| M1-12 | Fix: tmux-only agents should open in Ghostty, not VS Code terminal | TODO | P0 | Strategy 3 falls back to integrated terminal. Should `osascript` a new Ghostty tab with `tmux attach`. |
+| M1-12 | Fix: tmux-only agents should open in Ghostty, not VS Code terminal | ✅ DONE | P0 | Strategy 3 falls back to integrated terminal. Should `osascript` a new Ghostty tab with `tmux attach`. |
 
 ### M2: Process Auto-Discovery (v0.5.0) — THE DIFFERENTIATOR
 **Goal:** Auto-detect running Claude Code agents without any configuration. This is the unique capability no competitor has inside VS Code.
 
 | ID | Item | Status | Priority | Notes |
 |----|------|--------|----------|-------|
-| M2-1 | Detect Claude Code processes via `ps` scanning | TODO | P0 | Parse process args for project dir, model, session |
-| M2-2 | Watch `~/.claude/` for active session files | TODO | P0 | Claude Code writes session state here |
+| M2-1 | Detect Claude Code processes via `ps` scanning | ✅ DONE | P0 | Parse process args for project dir, model, session |
+| M2-2 | Watch `~/.claude/` for active session files | ✅ DONE | P0 | Claude Code writes session state here |
 | M2-3 | Detect git worktrees via `git worktree list` | TODO | P1 | Reliable, no permission issues |
-| M2-4 | Merge discovered agents with Launcher-managed agents | TODO | P0 | Two sources of truth → unified agent list |
+| M2-4 | Merge discovered agents with Launcher-managed agents | ✅ DONE | P0 | Two sources of truth → unified agent list |
 | M2-5 | Terminal-agnostic: work with Ghostty, iTerm2, Terminal.app, tmux | TODO | P0 | Don't require Ghostty for discovery |
 | M2-6 | Performance: poll interval tuning, debounce, lazy refresh | TODO | P1 | Can't hammer `ps` every second |
 
