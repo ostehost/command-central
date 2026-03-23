@@ -1,0 +1,122 @@
+/**
+ * Tests for tasks-file-resolver utility.
+ * Verifies: explicit config path, ~ expansion, auto-detect priority, null when missing.
+ */
+
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as os from "node:os";
+import * as path from "node:path";
+
+// Mock vscode
+mock.module("vscode", () => ({}));
+
+// Mock fs.existsSync — control which paths "exist"
+const mockExistsSync = mock(() => false);
+mock.module("node:fs", () => ({
+	existsSync: mockExistsSync,
+	// Preserve other fs exports the module may reference
+	default: { existsSync: mockExistsSync },
+}));
+
+import { resolveTasksFilePath } from "../../src/utils/tasks-file-resolver.js";
+
+function mockWorkspaceFolder(fsPath: string): {
+	uri: { fsPath: string };
+	name: string;
+	index: number;
+} {
+	return { uri: { fsPath }, name: path.basename(fsPath), index: 0 };
+}
+
+describe("resolveTasksFilePath", () => {
+	beforeEach(() => {
+		mockExistsSync.mockReset();
+		mockExistsSync.mockReturnValue(false);
+	});
+
+	test("returns expanded path when config value is set", () => {
+		const result = resolveTasksFilePath("/custom/path/tasks.json");
+		expect(result).toBe("/custom/path/tasks.json");
+	});
+
+	test("expands ~ in configured path", () => {
+		const result = resolveTasksFilePath("~/my-launcher/tasks.json");
+		const home = process.env["HOME"] || process.env["USERPROFILE"] || "";
+		expect(result).toBe(path.join(home, "my-launcher/tasks.json"));
+	});
+
+	test("returns null when config empty and no files exist", () => {
+		const result = resolveTasksFilePath("");
+		expect(result).toBeNull();
+	});
+
+	test("returns null when config is whitespace", () => {
+		const result = resolveTasksFilePath("  ");
+		expect(result).toBeNull();
+	});
+
+	test("auto-detects XDG config path", () => {
+		const xdgPath = path.join(
+			os.homedir(),
+			".config",
+			"ghostty-launcher",
+			"tasks.json",
+		);
+		mockExistsSync.mockImplementation((p: unknown) => p === xdgPath);
+
+		const result = resolveTasksFilePath("");
+		expect(result).toBe(xdgPath);
+	});
+
+	test("auto-detects home dir path", () => {
+		const homePath = path.join(os.homedir(), ".ghostty-launcher", "tasks.json");
+		mockExistsSync.mockImplementation((p: unknown) => p === homePath);
+
+		const result = resolveTasksFilePath("");
+		expect(result).toBe(homePath);
+	});
+
+	test("auto-detects workspace-local path", () => {
+		const wsPath = "/Users/test/my-project";
+		const wsLocalPath = path.join(wsPath, ".ghostty-launcher", "tasks.json");
+		mockExistsSync.mockImplementation((p: unknown) => p === wsLocalPath);
+
+		const result = resolveTasksFilePath("", [mockWorkspaceFolder(wsPath)]);
+		expect(result).toBe(wsLocalPath);
+	});
+
+	test("workspace-local takes priority over XDG", () => {
+		const wsPath = "/Users/test/my-project";
+		const wsLocalPath = path.join(wsPath, ".ghostty-launcher", "tasks.json");
+		const xdgPath = path.join(
+			os.homedir(),
+			".config",
+			"ghostty-launcher",
+			"tasks.json",
+		);
+		mockExistsSync.mockImplementation(
+			(p: unknown) => p === wsLocalPath || p === xdgPath,
+		);
+
+		const result = resolveTasksFilePath("", [mockWorkspaceFolder(wsPath)]);
+		expect(result).toBe(wsLocalPath);
+	});
+
+	test("configured path takes precedence over auto-detect", () => {
+		const xdgPath = path.join(
+			os.homedir(),
+			".config",
+			"ghostty-launcher",
+			"tasks.json",
+		);
+		mockExistsSync.mockImplementation((p: unknown) => p === xdgPath);
+
+		const result = resolveTasksFilePath("/explicit/tasks.json");
+		expect(result).toBe("/explicit/tasks.json");
+	});
+
+	test("returns null with empty workspace folders and no home files", () => {
+		const result = resolveTasksFilePath("", []);
+		expect(result).toBeNull();
+	});
+});
