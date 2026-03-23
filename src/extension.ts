@@ -671,10 +671,38 @@ export async function activate(
 					const { promisify } = await import("node:util");
 					const execFileAsync = promisify(execFile);
 
+					// Guard (M1-9): check if tmux session is still alive before attempting to open
+					if (task.session_id && isValidSessionId(task.session_id)) {
+						try {
+							await execFileAsync("tmux", [
+								"has-session",
+								"-t",
+								task.session_id,
+							]);
+						} catch {
+							vscode.window.showInformationMessage(
+								`Agent session "${task.id}" has ended. Terminal is no longer available.`,
+							);
+							return;
+						}
+					}
+
 					// Strategy 1: tmux backend with ghostty bundle
 					if (task.terminal_backend === "tmux" && task.ghostty_bundle_id) {
 						try {
 							await execFileAsync("open", ["-a", task.ghostty_bundle_id]);
+							// M1-8: select the correct tmux window/tab after bringing Ghostty to front
+							if (task.session_id && isValidSessionId(task.session_id)) {
+								try {
+									await execFileAsync("tmux", [
+										"select-window",
+										"-t",
+										task.session_id,
+									]);
+								} catch {
+									// Window selection failed — app still opened
+								}
+							}
 							return;
 						} catch {
 							// Fall through to next strategy
@@ -691,6 +719,18 @@ export async function activate(
 							const fsModule = await import("node:fs");
 							if (fsModule.existsSync(task.bundle_path)) {
 								await execFileAsync("open", ["-a", task.bundle_path]);
+								// M1-8: select the correct tmux window/tab after bringing Ghostty to front
+								if (task.session_id && isValidSessionId(task.session_id)) {
+									try {
+										await execFileAsync("tmux", [
+											"select-window",
+											"-t",
+											task.session_id,
+										]);
+									} catch {
+										// Window selection failed — app still opened
+									}
+								}
 								return;
 							}
 						} catch {

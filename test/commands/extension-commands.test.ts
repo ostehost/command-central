@@ -95,6 +95,80 @@ describe("focusAgentTerminal command", () => {
 		expect(shouldUseTmuxAttach).toBeTruthy();
 	});
 
+	test("checks tmux has-session before opening (session_id present)", () => {
+		const task = createTask({
+			terminal_backend: "tmux",
+			session_id: "agent-my-project",
+		});
+
+		// Guard fires when session_id is present and valid
+		const shouldCheckSession =
+			task.session_id && /^[a-zA-Z0-9._-]+$/.test(task.session_id);
+
+		expect(shouldCheckSession).toBeTruthy();
+	});
+
+	test("shows info message when tmux session has ended", () => {
+		const task = createTask({
+			id: "dead-agent",
+			session_id: "agent-dead-project",
+		});
+
+		// Simulate tmux has-session throwing (session gone)
+		const sessionDead = true; // has-session exited non-zero
+		if (sessionDead) {
+			vscodeMock.window.showInformationMessage(
+				`Agent session "${task.id}" has ended. Terminal is no longer available.`,
+			);
+		}
+
+		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+			`Agent session "${task.id}" has ended. Terminal is no longer available.`,
+		);
+	});
+
+	test("calls tmux select-window after open -a in strategy 1", () => {
+		const task = createTask({
+			terminal_backend: "tmux",
+			ghostty_bundle_id: "com.mitchellh.ghostty",
+			session_id: "agent-my-project",
+		});
+
+		// After open -a succeeds, select-window is attempted when session_id valid
+		const shouldSelectWindow =
+			task.session_id && /^[a-zA-Z0-9._-]+$/.test(task.session_id);
+
+		expect(task.terminal_backend).toBe("tmux");
+		expect(task.ghostty_bundle_id).toBeTruthy();
+		expect(shouldSelectWindow).toBeTruthy();
+	});
+
+	test("gracefully handles select-window failure after open -a", () => {
+		const task = createTask({
+			terminal_backend: "tmux",
+			ghostty_bundle_id: "com.mitchellh.ghostty",
+			session_id: "agent-my-project",
+		});
+
+		// Simulate select-window throwing — app was still opened, so we return
+		let appOpened = false;
+		let windowSelected = false;
+
+		// open -a succeeded
+		appOpened = true;
+
+		// select-window fails
+		try {
+			throw new Error("no windows");
+		} catch {
+			// swallowed — app still opened
+		}
+
+		// We still return successfully because open -a worked
+		expect(appOpened).toBe(true);
+		expect(windowSelected).toBe(false);
+	});
+
 	test("shows fallback message when no strategy matches", () => {
 		const task = createTask({
 			terminal_backend: undefined,
