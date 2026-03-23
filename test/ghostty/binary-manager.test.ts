@@ -18,6 +18,7 @@ const fsRmSyncMock = mock(() => undefined);
 const fsRenameSyncMock = mock(() => undefined);
 const fsWriteFileSyncMock = mock(() => undefined);
 
+import * as realChildProcess from "node:child_process";
 import * as realFs from "node:fs";
 
 mock.module("node:fs", () => ({
@@ -49,6 +50,7 @@ const execFileMock = mock(
 );
 
 mock.module("node:child_process", () => ({
+	...realChildProcess,
 	execFile: execFileMock,
 }));
 
@@ -148,7 +150,10 @@ function makeFsSetup() {
 			renameSync: fsRenameSyncMock,
 			writeFileSync: fsWriteFileSyncMock,
 		}));
-		mock.module("node:child_process", () => ({ execFile: execFileMock }));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
 		mock.module("vscode", () => ({
 			authentication: {
 				getSession: vsCodeGetSessionMock,

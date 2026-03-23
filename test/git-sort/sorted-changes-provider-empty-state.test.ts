@@ -12,6 +12,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realFsPromises from "node:fs/promises";
 import type { LoggerService } from "../../src/services/logger-service.js";
 import {
 	createMockExtensionContext,
@@ -84,6 +85,7 @@ describe("Empty State Message Distinction", () => {
 
 		// Mock filesystem
 		mock.module("node:fs/promises", () => ({
+			...realFsPromises,
 			stat: mock(async () => ({
 				mtime: new Date(),
 				isDirectory: () => false,

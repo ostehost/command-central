@@ -4,6 +4,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realChildProcess from "node:child_process";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 describe("TestCountStatusBar", () => {
@@ -170,6 +171,7 @@ describe("TestCountStatusBar", () => {
 			// Mock child_process to capture the loading state
 			let loadingText = "";
 			mock.module("node:child_process", () => ({
+				...realChildProcess,
 				execFile: (
 					_cmd: string,
 					_args: string[],
@@ -202,6 +204,7 @@ describe("TestCountStatusBar", () => {
 			];
 
 			mock.module("node:child_process", () => ({
+				...realChildProcess,
 				execFile: (
 					_cmd: string,
 					_args: string[],
@@ -237,6 +240,7 @@ describe("TestCountStatusBar", () => {
 			];
 
 			mock.module("node:child_process", () => ({
+				...realChildProcess,
 				execFile: (
 					_cmd: string,
 					_args: string[],

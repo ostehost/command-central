@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realChildProcess from "node:child_process";
 import * as realFs from "node:fs";
 
 // ── VS Code mock must be set up before importing the module under test ──
@@ -42,6 +43,7 @@ const execFileMock = mock(
 );
 
 mock.module("node:child_process", () => ({
+	...realChildProcess,
 	execFile: execFileMock,
 }));
 
@@ -82,7 +84,10 @@ describe("TerminalManager.getLauncherPath", () => {
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
-		mock.module("node:child_process", () => ({ execFile: execFileMock }));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
 		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 	});
 
@@ -126,7 +131,10 @@ describe("TerminalManager.isLauncherInstalled", () => {
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
-		mock.module("node:child_process", () => ({ execFile: execFileMock }));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
 		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		// Default: configured path is "launcher"
 		mockConfigGet.mockImplementation(() => undefined);
@@ -205,7 +213,10 @@ describe("TerminalManager.createProjectTerminal", () => {
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
-		mock.module("node:child_process", () => ({ execFile: execFileMock }));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
 		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
@@ -297,7 +308,10 @@ describe("TerminalManager.getTerminalInfo", () => {
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
-		mock.module("node:child_process", () => ({ execFile: execFileMock }));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
 		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
@@ -375,7 +389,10 @@ describe("TerminalManager.validateLauncherBinary (Fix 2)", () => {
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
-		mock.module("node:child_process", () => ({ execFile: execFileMock }));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
 		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
@@ -468,7 +485,10 @@ describe("TerminalManager error handling (Fix 3)", () => {
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
-		mock.module("node:child_process", () => ({ execFile: execFileMock }));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
 		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
@@ -626,7 +646,10 @@ describe("Multi-root workspace command support (Fix 1 - integration)", () => {
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
 		}));
-		mock.module("node:child_process", () => ({ execFile: execFileMock }));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
 		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);

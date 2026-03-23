@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realChildProcess from "node:child_process";
 import * as realFs from "node:fs";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
@@ -14,6 +15,7 @@ const mockExecFile = mock((..._args: unknown[]) =>
 	Promise.resolve({ stdout: "{}", stderr: "" }),
 );
 mock.module("node:child_process", () => ({
+	...realChildProcess,
 	execFile: (
 		cmd: string,
 		args: string[],

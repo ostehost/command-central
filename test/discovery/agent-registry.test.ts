@@ -9,10 +9,12 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
+import * as realChildProcess from "node:child_process";
 import * as realFs from "node:fs";
 
 // Mock child_process for ProcessScanner
 mock.module("node:child_process", () => ({
+	...realChildProcess,
 	execFile: (
 		_cmd: string,
 		_args: string[],

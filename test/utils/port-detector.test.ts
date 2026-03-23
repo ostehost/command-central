@@ -6,11 +6,13 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realChildProcess from "node:child_process";
 
 // Mock child_process before importing the module under test
 const execFileSyncMock = mock((..._args: unknown[]) => "");
 
 mock.module("node:child_process", () => ({
+	...realChildProcess,
 	execFileSync: execFileSyncMock,
 }));
 
