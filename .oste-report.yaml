@@ -1,0 +1,8 @@
+task_id: "m1-focus-fix"
+status: "success"
+summary: "M1-8: tmux select-window after open -a; M1-9: tmux has-session guard before any strategy"
+files_changed:
+  - "src/extension.ts"
+  - "test/commands/extension-commands.test.ts"
+tests_passing: true
+next_steps: "Consider testing on a live Ghostty setup with multiple tmux sessions to confirm tab-switching works end-to-end."
