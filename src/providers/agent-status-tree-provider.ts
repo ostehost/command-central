@@ -143,6 +143,7 @@ export class AgentStatusTreeProvider
 
 	private registry: TaskRegistry = { version: 2, tasks: {} };
 	private fileWatcher: vscode.FileSystemWatcher | null = null;
+	private _nativeWatcher: fs.FSWatcher | null = null;
 	private _filePath: string | null = null;
 	private disposables: vscode.Disposable[] = [];
 	private debounceTimer: NodeJS.Timeout | null = null;
@@ -171,16 +172,17 @@ export class AgentStatusTreeProvider
 	private getConfiguredPath(): string | null {
 		const config = vscode.workspace.getConfiguration("commandCentral");
 		const configValue = config.get<string>("agentTasksFile") ?? "";
-		return resolveTasksFilePath(
-			configValue,
-			vscode.workspace.workspaceFolders,
-		);
+		return resolveTasksFilePath(configValue, vscode.workspace.workspaceFolders);
 	}
 
 	private setupFileWatch(): void {
 		if (this.fileWatcher) {
 			this.fileWatcher.dispose();
 			this.fileWatcher = null;
+		}
+		if (this._nativeWatcher) {
+			this._nativeWatcher.close();
+			this._nativeWatcher = null;
 		}
 
 		// Clear existing debounce timer before setting up new watcher
@@ -193,13 +195,6 @@ export class AgentStatusTreeProvider
 		this._filePath = filePath;
 		if (!filePath) return;
 
-		// Use vscode.workspace.createFileSystemWatcher — handles create/change/delete natively
-		const pattern = new vscode.RelativePattern(
-			vscode.Uri.file(path.dirname(filePath)),
-			path.basename(filePath),
-		);
-		this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
-
 		const debouncedReload = () => {
 			if (this.debounceTimer) clearTimeout(this.debounceTimer);
 			this.debounceTimer = setTimeout(() => {
@@ -207,11 +202,36 @@ export class AgentStatusTreeProvider
 			}, 150);
 		};
 
+		// VS Code's createFileSystemWatcher can be unreliable for paths outside
+		// the workspace (e.g., ~/.config/). Use both VS Code watcher AND native
+		// fs.watch for defense-in-depth — whichever fires first wins via debounce.
+		const pattern = new vscode.RelativePattern(
+			vscode.Uri.file(path.dirname(filePath)),
+			path.basename(filePath),
+		);
+		this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+
 		this.disposables.push(
 			this.fileWatcher.onDidChange(debouncedReload),
 			this.fileWatcher.onDidCreate(debouncedReload),
 			this.fileWatcher.onDidDelete(debouncedReload),
 		);
+
+		// Native fs.watch fallback — watches the directory for changes to the target file
+		try {
+			const dir = path.dirname(filePath);
+			const basename = path.basename(filePath);
+			this._nativeWatcher = fs.watch(dir, (_eventType, filename) => {
+				if (filename === basename) {
+					debouncedReload();
+				}
+			});
+			this._nativeWatcher.on("error", () => {
+				// Silently ignore — VS Code watcher is the primary
+			});
+		} catch {
+			// Directory doesn't exist yet or not watchable — that's fine
+		}
 	}
 
 	reload(): void {
@@ -648,6 +668,10 @@ export class AgentStatusTreeProvider
 		this._onDidChangeTreeData.dispose();
 		this._onAgentEvent.dispose();
 		if (this.fileWatcher) this.fileWatcher.dispose();
+		if (this._nativeWatcher) {
+			this._nativeWatcher.close();
+			this._nativeWatcher = null;
+		}
 		if (this.debounceTimer) clearTimeout(this.debounceTimer);
 		if (this.autoRefreshTimer) {
 			clearInterval(this.autoRefreshTimer);
