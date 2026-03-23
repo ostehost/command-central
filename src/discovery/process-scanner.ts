@@ -12,7 +12,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { DiscoveredAgent } from "./types.js";
 
-const execFileAsync = promisify(execFile);
+const defaultExecFileAsync = promisify(execFile);
 
 /** Timeout for shell commands (ms) */
 const CMD_TIMEOUT = 5_000;
@@ -26,13 +26,19 @@ const CMD_TIMEOUT = 5_000;
  *
  * Rejects electron/helper/renderer processes.
  */
-const CLAUDE_CLI_RE =
-	/(?:^|\/)claude(?:\.js)?\s|\/claude-code\//i;
+const CLAUDE_CLI_RE = /(?:^|\/)claude(?:\.js)?\s|\/claude-code\//i;
 
-const NOISE_RE =
-	/electron|helper|renderer|gpu-process|crashpad|--type=/i;
+const NOISE_RE = /electron|helper|renderer|gpu-process|crashpad|--type=/i;
+
+type ExecFileFn = typeof defaultExecFileAsync;
 
 export class ProcessScanner {
+	private execFileAsync: ExecFileFn;
+
+	constructor(execFileFn?: ExecFileFn) {
+		this.execFileAsync = execFileFn ?? defaultExecFileAsync;
+	}
+
 	/**
 	 * Scan the process table for Claude Code instances.
 	 * Returns one DiscoveredAgent per unique PID.
@@ -67,7 +73,7 @@ export class ProcessScanner {
 	/** Run `ps` and return raw stdout */
 	private async getPsOutput(): Promise<string> {
 		try {
-			const { stdout } = await execFileAsync(
+			const { stdout } = await this.execFileAsync(
 				"ps",
 				["-eo", "pid,lstart,command"],
 				{ timeout: CMD_TIMEOUT },
@@ -129,7 +135,7 @@ export class ProcessScanner {
 	 */
 	async getProcessCwd(pid: number): Promise<string | null> {
 		try {
-			const { stdout } = await execFileAsync(
+			const { stdout } = await this.execFileAsync(
 				"lsof",
 				["-p", String(pid), "-d", "cwd", "-Fn"],
 				{ timeout: CMD_TIMEOUT },

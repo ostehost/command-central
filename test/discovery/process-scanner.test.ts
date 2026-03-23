@@ -2,45 +2,37 @@
  * ProcessScanner tests
  *
  * Validates detection of running Claude Code instances via ps/lsof.
- * All system calls are mocked — no real processes are inspected.
+ * All system calls are mocked via constructor injection — no real processes are inspected.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-
-// Mock child_process before importing the scanner
-const mockExecFile = mock(
-	(..._args: unknown[]) =>
-		Promise.resolve({ stdout: "", stderr: "" }),
-);
-
-mock.module("node:child_process", () => ({
-	execFile: (
-		cmd: string,
-		args: string[],
-		opts: Record<string, unknown>,
-		cb?: (
-			err: Error | null,
-			result: { stdout: string; stderr: string },
-		) => void,
-	) => {
-		const result = mockExecFile(cmd, args, opts);
-		if (cb) {
-			result
-				.then((r: { stdout: string; stderr: string }) => cb(null, r))
-				.catch((e: Error) => cb(e, { stdout: "", stderr: "" }));
-		}
-		return { on: () => ({}) };
-	},
-}));
-
 import { ProcessScanner } from "../../src/discovery/process-scanner.js";
+
+// Create a mock that matches the execFileAsync signature
+const mockExecFile = mock(
+	(_cmd: string, _args?: readonly string[], _opts?: Record<string, unknown>) =>
+		Promise.resolve({ stdout: "", stderr: "" }) as Promise<{
+			stdout: string;
+			stderr: string;
+		}>,
+);
 
 describe("ProcessScanner", () => {
 	let scanner: ProcessScanner;
 
 	beforeEach(() => {
-		scanner = new ProcessScanner();
 		mockExecFile.mockClear();
+		mockExecFile.mockImplementation(
+			() =>
+				Promise.resolve({ stdout: "", stderr: "" }) as Promise<{
+					stdout: string;
+					stderr: string;
+				}>,
+		);
+		// Inject the mock executor directly — no module mocking needed
+		scanner = new ProcessScanner(
+			mockExecFile as unknown as (typeof scanner)["execFileAsync"],
+		);
 	});
 
 	// ── parsePsOutput ────────────────────────────────────────────────
@@ -55,9 +47,9 @@ describe("ProcessScanner", () => {
 
 			const results = scanner.parsePsOutput(psOutput);
 			expect(results).toHaveLength(2);
-			expect(results[0]!.pid).toBe(12345);
-			expect(results[0]!.command).toContain("claude");
-			expect(results[1]!.pid).toBe(12346);
+			expect(results[0]?.pid).toBe(12345);
+			expect(results[0]?.command).toContain("claude");
+			expect(results[1]?.pid).toBe(12346);
 		});
 
 		test("filters out non-Claude processes", () => {
@@ -143,7 +135,9 @@ describe("ProcessScanner", () => {
 		});
 
 		test("returns empty object when no flags present", () => {
-			const result = scanner.parseClaudeArgs("/usr/local/bin/claude --print hello");
+			const result = scanner.parseClaudeArgs(
+				"/usr/local/bin/claude --print hello",
+			);
 			expect(result.model).toBeUndefined();
 			expect(result.sessionId).toBeUndefined();
 		});
@@ -215,10 +209,10 @@ describe("ProcessScanner", () => {
 
 			const agents = await scanner.scan();
 			expect(agents).toHaveLength(1);
-			expect(agents[0]!.pid).toBe(12345);
-			expect(agents[0]!.projectDir).toBe("/home/user/project");
-			expect(agents[0]!.model).toBe("opus");
-			expect(agents[0]!.source).toBe("process");
+			expect(agents[0]?.pid).toBe(12345);
+			expect(agents[0]?.projectDir).toBe("/home/user/project");
+			expect(agents[0]?.model).toBe("opus");
+			expect(agents[0]?.source).toBe("process");
 		});
 
 		test("returns empty array when ps output is empty", async () => {
