@@ -158,7 +158,6 @@ export class AgentStatusTreeProvider
 	private previousStatuses = new Map<string, string>();
 	private _agentRegistry: AgentRegistry | null = null;
 	private _discoveredAgents: DiscoveredAgent[] = [];
-	private _completionTimestamps = new Map<string, number>();
 
 	constructor() {
 		// Watch config changes for the tasks file path
