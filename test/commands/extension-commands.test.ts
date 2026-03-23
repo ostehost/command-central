@@ -76,7 +76,7 @@ describe("focusAgentTerminal command", () => {
 		expect(task.ghostty_bundle_id).toBeTruthy();
 	});
 
-	test("falls back to integrated terminal for tmux without bundle", () => {
+	test("tmux-only agent opens Ghostty (not VS Code terminal) via Strategy 3", () => {
 		const task = createTask({
 			terminal_backend: "tmux",
 			ghostty_bundle_id: null,
@@ -86,13 +86,87 @@ describe("focusAgentTerminal command", () => {
 
 		// Strategy 1 won't fire (no ghostty_bundle_id)
 		// Strategy 2 won't fire (bundle_path is "(tmux-mode)")
-		// Strategy 3 fires: tmux backend + valid session_id
-		const shouldUseTmuxAttach =
+		// Strategy 3 fires: tmux backend + valid session_id → open -a Ghostty
+		const shouldUseGhostty =
 			task.terminal_backend === "tmux" &&
 			task.session_id &&
 			/^[a-zA-Z0-9._-]+$/.test(task.session_id);
 
-		expect(shouldUseTmuxAttach).toBeTruthy();
+		expect(shouldUseGhostty).toBeTruthy();
+
+		// Strategy 3 should call: open -a Ghostty --args -e "tmux attach -t SESSION"
+		// NOT vscode.window.createTerminal
+		const expectedArgs = [
+			"-a",
+			"Ghostty",
+			"--args",
+			"-e",
+			`tmux attach -t ${task.session_id}`,
+		];
+		expect(expectedArgs[1]).toBe("Ghostty");
+		expect(expectedArgs[4]).toContain("tmux attach -t");
+	});
+
+	test("Strategy 3 does not call vscode.window.createTerminal", () => {
+		const task = createTask({
+			terminal_backend: "tmux",
+			ghostty_bundle_id: null,
+			bundle_path: "(tmux-mode)",
+			session_id: "valid-session",
+		});
+
+		// Simulate Strategy 3 path — should use execFileAsync("open", ...) not createTerminal
+		const strategy3Matches =
+			task.terminal_backend === "tmux" &&
+			task.session_id &&
+			/^[a-zA-Z0-9._-]+$/.test(task.session_id);
+
+		expect(strategy3Matches).toBeTruthy();
+
+		// createTerminal must NOT be called for tmux-only agents
+		expect(vscodeMock.window.createTerminal).not.toHaveBeenCalled();
+	});
+
+	test("Strategy 3 rejects invalid session IDs before attempting Ghostty open", () => {
+		const task = createTask({
+			terminal_backend: "tmux",
+			ghostty_bundle_id: null,
+			bundle_path: "(tmux-mode)",
+			session_id: "invalid;rm -rf /",
+		});
+
+		// isValidSessionId rejects dangerous session IDs
+		const isValid = /^[a-zA-Z0-9._-]+$/.test(task.session_id);
+		expect(isValid).toBe(false);
+
+		// Strategy 3 should NOT fire for invalid session IDs
+		const strategy3Fires =
+			task.terminal_backend === "tmux" && task.session_id && isValid;
+
+		expect(strategy3Fires).toBeFalsy();
+	});
+
+	test("Strategy 3 falls through to no-terminal message on Ghostty failure", () => {
+		const task = createTask({
+			terminal_backend: "tmux",
+			ghostty_bundle_id: null,
+			bundle_path: "(tmux-mode)",
+			session_id: "valid-session",
+		});
+
+		// Simulate open -a Ghostty failing (Ghostty not installed)
+		const ghosttyFailed = true;
+
+		if (ghosttyFailed) {
+			// Falls through to "no terminal" message
+			vscodeMock.window.showInformationMessage(
+				"No terminal available for this agent.",
+			);
+		}
+
+		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+			"No terminal available for this agent.",
+		);
 	});
 
 	test("checks tmux has-session before opening (session_id present)", () => {

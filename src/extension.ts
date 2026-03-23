@@ -763,19 +763,24 @@ export async function activate(
 						}
 					}
 
-					// Strategy 3: tmux attach in integrated terminal
+					// Strategy 3: tmux-only — open Ghostty with tmux attach
 					if (
 						task.terminal_backend === "tmux" &&
 						task.session_id &&
 						isValidSessionId(task.session_id)
 					) {
-						const terminal = vscode.window.createTerminal({
-							name: `Agent: ${task.id}`,
-							shellPath: "/bin/bash",
-							shellArgs: ["-c", `tmux attach -t ${task.session_id}`],
-						});
-						terminal.show();
-						return;
+						try {
+							await execFileAsync("open", [
+								"-a",
+								"Ghostty",
+								"--args",
+								"-e",
+								`tmux attach -t ${task.session_id}`,
+							]);
+							return;
+						} catch {
+							// Fall through to "no terminal" message
+						}
 					}
 
 					vscode.window.showInformationMessage(

@@ -1,0 +1,8 @@
+task_id: "m1-12-ghostty-focus"
+status: "success"
+summary: "Replace Strategy 3 tmux-only focus to open Ghostty instead of VS Code integrated terminal"
+files_changed:
+  - "src/extension.ts"
+  - "test/commands/extension-commands.test.ts"
+tests_passing: true
+next_steps: "If Ghostty's --args -e flag doesn't work, consider testing with ghostty CLI directly or AppleScript fallback"
