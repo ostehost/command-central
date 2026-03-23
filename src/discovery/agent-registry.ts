@@ -29,6 +29,9 @@ export class AgentRegistry implements vscode.Disposable {
 	private _onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChange = this._onDidChange.event;
 
+	/** Alias for onDidChange — semantic name for tree view consumers */
+	readonly onDidChangeAgents = this._onDidChange.event;
+
 	private disposables: vscode.Disposable[] = [];
 
 	constructor(sessionsDir?: string) {
@@ -46,14 +49,7 @@ export class AgentRegistry implements vscode.Disposable {
 		this.doProcessScan();
 
 		// Set up polling interval from config
-		const config = vscode.workspace.getConfiguration("commandCentral");
-		const intervalMs = config.get<number>(
-			"discovery.pollInterval",
-			5000,
-		);
-		this.scanTimer = setInterval(() => {
-			this.doProcessScan();
-		}, Math.max(intervalMs, 5000));
+		this.startPolling();
 
 		// React to config changes
 		this.disposables.push(
@@ -63,6 +59,25 @@ export class AgentRegistry implements vscode.Disposable {
 				}
 			}),
 		);
+	}
+
+	/** Start periodic process scanning at the given interval (or config default). */
+	startPolling(intervalMs?: number): void {
+		this.stopPolling();
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		const configInterval = config.get<number>("discovery.pollInterval", 5000);
+		const interval = Math.max(intervalMs ?? configInterval, 2000);
+		this.scanTimer = setInterval(() => {
+			this.doProcessScan();
+		}, interval);
+	}
+
+	/** Stop periodic process scanning. */
+	stopPolling(): void {
+		if (this.scanTimer) {
+			clearInterval(this.scanTimer);
+			this.scanTimer = null;
+		}
 	}
 
 	/**
@@ -95,10 +110,7 @@ export class AgentRegistry implements vscode.Disposable {
 	}
 
 	dispose(): void {
-		if (this.scanTimer) {
-			clearInterval(this.scanTimer);
-			this.scanTimer = null;
-		}
+		this.stopPolling();
 		this.sessionWatcher.dispose();
 		this._onDidChange.dispose();
 		for (const d of this.disposables) d.dispose();
@@ -183,16 +195,6 @@ export class AgentRegistry implements vscode.Disposable {
 	}
 
 	private restartPolling(): void {
-		if (this.scanTimer) {
-			clearInterval(this.scanTimer);
-		}
-		const config = vscode.workspace.getConfiguration("commandCentral");
-		const intervalMs = config.get<number>(
-			"discovery.pollInterval",
-			5000,
-		);
-		this.scanTimer = setInterval(() => {
-			this.doProcessScan();
-		}, Math.max(intervalMs, 5000));
+		this.startPolling();
 	}
 }

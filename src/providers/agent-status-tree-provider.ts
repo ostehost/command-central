@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { AgentRegistry } from "../discovery/agent-registry.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
 import { detectListeningPorts } from "../utils/port-detector.js";
@@ -155,6 +156,9 @@ export class AgentStatusTreeProvider
 	private debounceTimer: NodeJS.Timeout | null = null;
 	private autoRefreshTimer: NodeJS.Timeout | null = null;
 	private previousStatuses = new Map<string, string>();
+	private _agentRegistry: AgentRegistry | null = null;
+	private _discoveredAgents: DiscoveredAgent[] = [];
+	private _completionTimestamps = new Map<string, number>();
 
 	constructor() {
 		// Watch config changes for the tasks file path
@@ -168,6 +172,46 @@ export class AgentStatusTreeProvider
 		);
 		this.setupFileWatch();
 		this.reload();
+		this.initDiscovery();
+	}
+
+	/** Initialize discovery module if enabled in config */
+	private initDiscovery(): void {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		const enabled = config.get<boolean>("discovery.enabled", true);
+		if (!enabled) return;
+
+		this._agentRegistry = new AgentRegistry();
+		this._agentRegistry.start();
+
+		// Refresh tree when discovered agents change
+		this.disposables.push(
+			this._agentRegistry.onDidChangeAgents(() => {
+				this._discoveredAgents = this._agentRegistry
+					? this._agentRegistry.getDiscoveredAgents(this.getTasks())
+					: [];
+				this._onDidChangeTreeData.fire(undefined);
+			}),
+		);
+
+		// React to discovery enabled/disabled changes
+		this.disposables.push(
+			vscode.workspace.onDidChangeConfiguration((e) => {
+				if (e.affectsConfiguration("commandCentral.discovery.enabled")) {
+					const nowEnabled = vscode.workspace
+						.getConfiguration("commandCentral")
+						.get<boolean>("discovery.enabled", true);
+					if (!nowEnabled && this._agentRegistry) {
+						this._agentRegistry.dispose();
+						this._agentRegistry = null;
+						this._discoveredAgents = [];
+						this._onDidChangeTreeData.fire(undefined);
+					} else if (nowEnabled && !this._agentRegistry) {
+						this.initDiscovery();
+					}
+				}
+			}),
+		);
 	}
 
 	/** Public accessor for the configured file path */
@@ -380,8 +424,10 @@ export class AgentStatusTreeProvider
 	getChildren(element?: AgentNode): AgentNode[] {
 		if (!element) {
 			const tasks = Object.values(this.registry.tasks);
-			if (tasks.length === 0) return [];
+			const discovered = this._discoveredAgents;
+			if (tasks.length === 0 && discovered.length === 0) return [];
 
+			// Launcher-managed tasks first, sorted by start time descending
 			const taskNodes: AgentNode[] = tasks
 				.sort(
 					(a, b) =>
@@ -389,11 +435,22 @@ export class AgentStatusTreeProvider
 				)
 				.map((task) => ({ type: "task" as const, task }));
 
+			// Discovered agents second, sorted by start time descending
+			const discoveredNodes: AgentNode[] = discovered
+				.sort(
+					(a, b) =>
+						new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
+				)
+				.map((agent) => ({ type: "discovered" as const, agent }));
+
 			// Build summary node
+			const totalCount = tasks.length + discovered.length;
 			const counts = { running: 0, completed: 0, failed: 0 };
 			for (const task of tasks) {
 				if (task.status in counts) counts[task.status as keyof typeof counts]++;
 			}
+			// Discovered agents are always running (they're live processes)
+			counts.running += discovered.length;
 			const summaryParts: string[] = [];
 			if (counts.running > 0) summaryParts.push(`${counts.running} running`);
 			if (counts.completed > 0)
@@ -402,9 +459,13 @@ export class AgentStatusTreeProvider
 			const summaryLabel =
 				summaryParts.length > 0
 					? summaryParts.join(" · ")
-					: `${tasks.length} agents`;
+					: `${totalCount} agents`;
 
-			return [{ type: "summary" as const, label: summaryLabel }, ...taskNodes];
+			return [
+				{ type: "summary" as const, label: summaryLabel },
+				...taskNodes,
+				...discoveredNodes,
+			];
 		}
 
 		if (element.type === "task") {
@@ -415,7 +476,52 @@ export class AgentStatusTreeProvider
 			return this.getDetailChildren(element.task);
 		}
 
+		if (element.type === "discovered") {
+			return this.getDiscoveredChildren(element.agent);
+		}
+
 		return [];
+	}
+
+	/** Get detail children for discovered agents (no task record) */
+	private getDiscoveredChildren(agent: DiscoveredAgent): DetailNode[] {
+		const details: DetailNode[] = [
+			{
+				type: "detail",
+				label: "PID",
+				value: `${agent.pid}`,
+				taskId: `discovered-${agent.pid}`,
+			},
+			{
+				type: "detail",
+				label: "Working Dir",
+				value: agent.projectDir,
+				taskId: `discovered-${agent.pid}`,
+			},
+			{
+				type: "detail",
+				label: "Uptime",
+				value: formatElapsed(agent.startTime.toISOString()),
+				taskId: `discovered-${agent.pid}`,
+			},
+		];
+		if (agent.sessionId) {
+			details.push({
+				type: "detail",
+				label: "Session",
+				value: agent.sessionId,
+				taskId: `discovered-${agent.pid}`,
+			});
+		}
+		if (agent.model) {
+			details.push({
+				type: "detail",
+				label: "Model",
+				value: agent.model,
+				taskId: `discovered-${agent.pid}`,
+			});
+		}
+		return details;
 	}
 
 	private isCompactMode(): boolean {
@@ -571,10 +677,19 @@ export class AgentStatusTreeProvider
 
 	getParent(element: AgentNode): AgentNode | undefined {
 		if (element.type === "detail") {
+			// Check if it belongs to a discovered agent
+			if (element.taskId.startsWith("discovered-")) {
+				const pid = Number.parseInt(
+					element.taskId.replace("discovered-", ""),
+					10,
+				);
+				const agent = this._discoveredAgents.find((a) => a.pid === pid);
+				if (agent) return { type: "discovered", agent };
+			}
 			const task = this.registry.tasks[element.taskId];
 			if (task) return { type: "task", task };
 		}
-		// summary nodes are root-level, no parent
+		// summary and root-level nodes have no parent
 		return undefined;
 	}
 
@@ -674,13 +789,33 @@ export class AgentStatusTreeProvider
 	}
 
 	private createDiscoveredItem(node: DiscoveredNode): vscode.TreeItem {
-		const label = `PID ${node.agent.pid} — ${node.agent.projectDir}`;
+		const agent = node.agent;
+		const projectName = path.basename(agent.projectDir);
+		const uptime = formatElapsed(agent.startTime.toISOString());
+		const sourceLabel =
+			agent.source === "process"
+				? "(discovered via ps)"
+				: "(discovered via session file)";
+		const label = `🔄 ${projectName}`;
 		const item = new vscode.TreeItem(
 			label,
-			vscode.TreeItemCollapsibleState.None,
+			vscode.TreeItemCollapsibleState.Collapsed,
 		);
-		item.description = node.agent.model ?? node.agent.source;
+		item.description = `PID ${agent.pid} · ${uptime} ${sourceLabel}`;
+		item.iconPath = new vscode.ThemeIcon("search");
 		item.contextValue = "discoveredAgent";
+		item.tooltip = new vscode.MarkdownString(
+			[
+				`**Discovered Agent** — PID ${agent.pid}`,
+				`Project: \`${agent.projectDir}\``,
+				`Source: ${agent.source}`,
+				agent.model ? `Model: ${agent.model}` : null,
+				agent.sessionId ? `Session: ${agent.sessionId}` : null,
+				`Started: ${agent.startTime.toISOString()}`,
+			]
+				.filter(Boolean)
+				.join("\n\n"),
+		);
 		return item;
 	}
 
@@ -696,6 +831,10 @@ export class AgentStatusTreeProvider
 		if (this.autoRefreshTimer) {
 			clearInterval(this.autoRefreshTimer);
 			this.autoRefreshTimer = null;
+		}
+		if (this._agentRegistry) {
+			this._agentRegistry.dispose();
+			this._agentRegistry = null;
 		}
 		for (const d of this.disposables) d.dispose();
 	}

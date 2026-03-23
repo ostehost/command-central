@@ -256,6 +256,19 @@
           "description": "Per-project emoji icons for agent sidebar",
           "scope": "window"
         },
+        "commandCentral.discovery.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic discovery of Claude Code agents running outside the launcher",
+          "scope": "window"
+        },
+        "commandCentral.discovery.pollInterval": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 2000,
+          "description": "How often (ms) to scan for external Claude Code processes",
+          "scope": "window"
+        },
         "commandCentral.ghostty.launcherPath": {
           "type": "string",
           "default": "",
@@ -755,6 +768,18 @@
         "icon": "$(dashboard)"
       },
       {
+        "command": "commandCentral.openProjectInVSCode",
+        "title": "Open Project in VS Code",
+        "category": "Command Central",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "commandCentral.viewGitLog",
+        "title": "View Git Log",
+        "category": "Command Central",
+        "icon": "$(git-commit)"
+      },
+      {
         "command": "commandCentral.ghostty.createTerminal",
         "title": "Create Project Terminal",
         "category": "Command Central: Ghostty",
@@ -1095,6 +1120,16 @@
           "command": "commandCentral.restartAgent",
           "when": "viewItem =~ /agentTask\\.(completed|failed|stopped)/ && commandCentral.hasLauncher",
           "group": "2_actions"
+        },
+        {
+          "command": "commandCentral.openProjectInVSCode",
+          "when": "viewItem == discoveredAgent",
+          "group": "inline"
+        },
+        {
+          "command": "commandCentral.viewGitLog",
+          "when": "viewItem == discoveredAgent || viewItem =~ /^agentTask\\./",
+          "group": "navigation"
         }
       ],
       "view/title": [
