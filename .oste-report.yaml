@@ -1,9 +1,0 @@
-task_id: "ci-fix-v1"
-status: "success"
-summary: "Fixed 37 CI test failures by spreading real node:fs in mock.module() calls to prevent mock pollution"
-files_changed:
-  - "test/discovery/agent-registry.test.ts"
-  - "test/discovery/session-watcher.test.ts"
-  - "test/ghostty/binary-manager.test.ts"
-tests_passing: true
-next_steps: "Push to main and verify CI passes in GitHub Actions"
