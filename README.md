@@ -4,7 +4,7 @@
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/oste.command-central)](https://marketplace.visualstudio.com/items?itemName=oste.command-central)
 [![Installs](https://img.shields.io/visual-studio-marketplace/i/oste.command-central)](https://marketplace.visualstudio.com/items?itemName=oste.command-central)
-[![Tests](https://img.shields.io/badge/tests-674%20passed-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-764%20passed-brightgreen)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
