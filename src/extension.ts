@@ -696,22 +696,6 @@ export async function activate(
 					const { promisify } = await import("node:util");
 					const execFileAsync = promisify(execFile);
 
-					// Guard (M1-9): check if tmux session is still alive before attempting to open
-					if (task.session_id && isValidSessionId(task.session_id)) {
-						try {
-							await execFileAsync("tmux", [
-								"has-session",
-								"-t",
-								task.session_id,
-							]);
-						} catch {
-							vscode.window.showInformationMessage(
-								`Agent session "${task.id}" has ended. Terminal is no longer available.`,
-							);
-							return;
-						}
-					}
-
 					// Strategy 1: tmux backend with ghostty bundle
 					if (task.terminal_backend === "tmux" && task.ghostty_bundle_id) {
 						try {
@@ -763,13 +747,19 @@ export async function activate(
 						}
 					}
 
-					// Strategy 3: tmux-only — open Ghostty with tmux attach
+					// Strategy 3: tmux-only — open Ghostty with tmux attach (REQUIRES live session)
 					if (
 						task.terminal_backend === "tmux" &&
 						task.session_id &&
 						isValidSessionId(task.session_id)
 					) {
 						try {
+							// Guard: check if tmux session is still alive before attempting attach
+							await execFileAsync("tmux", [
+								"has-session",
+								"-t",
+								task.session_id,
+							]);
 							await execFileAsync("open", [
 								"-a",
 								"Ghostty",
@@ -779,7 +769,7 @@ export async function activate(
 							]);
 							return;
 						} catch {
-							// Fall through to "no terminal" message
+							// Session ended or Ghostty failed — fall through
 						}
 					}
 

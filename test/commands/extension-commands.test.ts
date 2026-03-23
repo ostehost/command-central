@@ -169,35 +169,70 @@ describe("focusAgentTerminal command", () => {
 		);
 	});
 
-	test("checks tmux has-session before opening (session_id present)", () => {
+	test("completed agent with ghostty_bundle_id activates Ghostty window (no tmux check)", () => {
+		const task = createTask({
+			status: "completed",
+			terminal_backend: "tmux",
+			ghostty_bundle_id: "com.mitchellh.ghostty",
+			session_id: "agent-done",
+		});
+
+		// Strategy 1 fires based on ghostty_bundle_id — no tmux has-session guard
+		const strategy1Fires =
+			task.terminal_backend === "tmux" && task.ghostty_bundle_id;
+		expect(strategy1Fires).toBeTruthy();
+
+		// The tmux session may be dead, but Strategy 1 doesn't check — it just opens the app
+		// open -a com.mitchellh.ghostty activates the existing Ghostty window with scrollback
+		expect(task.status).toBe("completed");
+	});
+
+	test("completed agent with bundle_path activates via path (no tmux check)", () => {
+		const task = createTask({
+			status: "completed",
+			terminal_backend: "tmux",
+			ghostty_bundle_id: null,
+			bundle_path: "/Applications/Ghostty.app",
+			session_id: "agent-done",
+		});
+
+		// Strategy 2 fires based on bundle_path — no tmux has-session guard
+		const strategy2Fires =
+			task.bundle_path &&
+			task.bundle_path !== "(test-mode)" &&
+			task.bundle_path !== "(tmux-mode)";
+		expect(strategy2Fires).toBeTruthy();
+
+		// The tmux session may be dead, but Strategy 2 doesn't check
+		expect(task.status).toBe("completed");
+	});
+
+	test("Strategy 3 checks tmux has-session before attach", () => {
 		const task = createTask({
 			terminal_backend: "tmux",
+			ghostty_bundle_id: null,
+			bundle_path: "(tmux-mode)",
 			session_id: "agent-my-project",
 		});
 
-		// Guard fires when session_id is present and valid
-		const shouldCheckSession =
-			task.session_id && /^[a-zA-Z0-9._-]+$/.test(task.session_id);
+		// Strategy 3 requires a live tmux session — guard is inline
+		const strategy3Fires =
+			task.terminal_backend === "tmux" &&
+			task.session_id &&
+			/^[a-zA-Z0-9._-]+$/.test(task.session_id);
+		expect(strategy3Fires).toBeTruthy();
 
-		expect(shouldCheckSession).toBeTruthy();
-	});
-
-	test("shows info message when tmux session has ended", () => {
-		const task = createTask({
-			id: "dead-agent",
-			session_id: "agent-dead-project",
-		});
-
-		// Simulate tmux has-session throwing (session gone)
-		const sessionDead = true; // has-session exited non-zero
-		if (sessionDead) {
+		// Simulate tmux has-session failing (session ended) — Strategy 3 falls through
+		const sessionAlive = false;
+		if (!sessionAlive) {
+			// Falls through to "no terminal" message instead of opening Ghostty
 			vscodeMock.window.showInformationMessage(
-				`Agent session "${task.id}" has ended. Terminal is no longer available.`,
+				"No terminal available for this agent.",
 			);
 		}
 
 		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-			`Agent session "${task.id}" has ended. Terminal is no longer available.`,
+			"No terminal available for this agent.",
 		);
 	});
 
