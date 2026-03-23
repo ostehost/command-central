@@ -7,6 +7,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realExtensionDiscovery from "../../src/utils/extension-discovery.js";
 import { createMockUri } from "../helpers/typed-mocks.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 import {
@@ -165,6 +166,7 @@ describe("filter-by-extension-command", () => {
 
 		// Mock extension discovery module
 		mock.module("../../src/utils/extension-discovery.js", () => ({
+			...realExtensionDiscovery,
 			countExtensionsByWorkspace: mock(() => new Map([["ts", new Map()]])),
 			buildExtensionMetadata: mock(() => [
 				{

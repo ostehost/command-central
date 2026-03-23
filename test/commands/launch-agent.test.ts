@@ -35,8 +35,14 @@ mock.module("node:child_process", () => ({
 	},
 }));
 
-// Mock fs.writeFileSync
-const mockWriteFileSync = mock(() => {});
+// Capture real writeFileSync before mock.module overwrites it
+const originalWriteFileSync = realFs.writeFileSync.bind(realFs);
+// Mock fs — track writeFileSync calls while still performing the real write
+const mockWriteFileSync = mock(
+	(...args: Parameters<typeof realFs.writeFileSync>) => {
+		return originalWriteFileSync(...args);
+	},
+);
 mock.module("node:fs", () => ({
 	...realFs,
 	writeFileSync: mockWriteFileSync,
