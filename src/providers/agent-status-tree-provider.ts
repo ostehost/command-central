@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
 import { detectListeningPorts } from "../utils/port-detector.js";
 import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
@@ -58,7 +59,7 @@ export interface AgentTask {
 
 // ── Tree node types ──────────────────────────────────────────────────
 
-export type AgentNode = SummaryNode | TaskNode | DetailNode;
+export type AgentNode = SummaryNode | TaskNode | DetailNode | DiscoveredNode;
 
 export interface SummaryNode {
 	type: "summary";
@@ -75,6 +76,11 @@ export interface DetailNode {
 	label: string;
 	value: string;
 	taskId: string;
+}
+
+export interface DiscoveredNode {
+	type: "discovered";
+	agent: DiscoveredAgent;
 }
 
 // ── Status icon mapping ──────────────────────────────────────────────
