@@ -1,0 +1,8 @@
+task_id: "m1-content"
+status: "success"
+summary: "Updated package.json (onboarding, git sort reframe, marketplace metadata) and rewrote README.md for external users"
+files_changed:
+  - "package.json"
+  - "README.md"
+tests_passing: true
+next_steps: "Consider updating CONFIG.md to reference the agent monitoring setup if it exists"
