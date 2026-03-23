@@ -42,23 +42,24 @@ export class ProcessScanner {
 		const candidates = this.parsePsOutput(psLines);
 
 		// Resolve CWDs in parallel (bounded by candidate count, typically < 10)
-		const agents = await Promise.all(
+		const results = await Promise.all(
 			candidates.map(async (c) => {
 				const projectDir = await this.getProcessCwd(c.pid);
 				if (!projectDir) return null;
 				const meta = this.parseClaudeArgs(c.command);
-				return {
+				const agent: DiscoveredAgent = {
 					pid: c.pid,
 					projectDir,
 					command: c.command,
 					startTime: c.startTime,
-					source: "process" as const,
+					source: "process",
 					...meta,
-				} satisfies DiscoveredAgent;
+				};
+				return agent;
 			}),
 		);
 
-		return agents.filter((a): a is DiscoveredAgent => a !== null);
+		return results.filter((a): a is DiscoveredAgent => a !== null);
 	}
 
 	// ── Internal helpers ────────────────────────────────────────────────
@@ -106,8 +107,11 @@ export class ProcessScanner {
 			);
 			if (!lstartMatch) continue;
 
-			const startTime = new Date(lstartMatch[1]);
+			const startTimeStr = lstartMatch[1];
 			const command = lstartMatch[2];
+			if (!startTimeStr || !command) continue;
+
+			const startTime = new Date(startTimeStr);
 
 			// Filter: must look like Claude Code, must not be noise
 			if (!CLAUDE_CLI_RE.test(command)) continue;

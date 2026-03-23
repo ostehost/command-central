@@ -371,6 +371,9 @@ export class AgentStatusTreeProvider
 		if (element.type === "task") {
 			return this.createTaskItem(element.task);
 		}
+		if (element.type === "discovered") {
+			return this.createDiscoveredItem(element);
+		}
 		return this.createDetailItem(element);
 	}
 
@@ -667,6 +670,17 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.None,
 		);
 		item.contextValue = "agentTaskDetail";
+		return item;
+	}
+
+	private createDiscoveredItem(node: DiscoveredNode): vscode.TreeItem {
+		const label = `PID ${node.agent.pid} — ${node.agent.projectDir}`;
+		const item = new vscode.TreeItem(
+			label,
+			vscode.TreeItemCollapsibleState.None,
+		);
+		item.description = node.agent.model ?? node.agent.source;
+		item.contextValue = "discoveredAgent";
 		return item;
 	}
 

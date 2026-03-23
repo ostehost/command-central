@@ -136,9 +136,9 @@ export class SessionWatcher implements vscode.Disposable {
 		if (!s || typeof s !== "object") return false;
 		const obj = s as Record<string, unknown>;
 		return (
-			typeof obj.pid === "number" &&
-			typeof obj.cwd === "string" &&
-			typeof obj.startedAt === "number"
+			typeof obj["pid"] === "number" &&
+			typeof obj["cwd"] === "string" &&
+			typeof obj["startedAt"] === "number"
 		);
 	}
 
