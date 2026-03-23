@@ -1,8 +1,0 @@
-task_id: "fix-focus-flow"
-status: "success"
-summary: "Moved stale tmux session guard from top-level to Strategy 3 only, so completed agents with Ghostty windows can still be focused"
-files_changed:
-  - "src/extension.ts"
-  - "test/commands/extension-commands.test.ts"
-tests_passing: true
-next_steps: "Consider adding an integration test that simulates a dead tmux session with a live Ghostty bundle_id"
