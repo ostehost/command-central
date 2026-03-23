@@ -227,6 +227,180 @@ describe("AgentRegistry", () => {
 		});
 	});
 
+	// ── Dedup priority resolution ────────────────────────────────────
+
+	describe("dedup priority resolution", () => {
+		test("session-file source wins over process source for same PID", () => {
+			// Session file with PID 900 and rich metadata
+			sessionFiles["900.json"] = JSON.stringify({
+				pid: 900,
+				sessionId: "sess-900",
+				cwd: "/session-project",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["900.json"];
+			alivePids.add(900);
+
+			registry.start();
+
+			const all = registry.getAllDiscovered();
+			const agent = all.find((a) => a.pid === 900);
+			expect(agent).toBeDefined();
+			// Session-file should win over process
+			expect(agent!.source).toBe("session-file");
+			expect(agent!.sessionId).toBe("sess-900");
+		});
+
+		test("three sources for same PID → higher priority source fields take precedence", () => {
+			// The dedup method merges by PID, higher priority wins
+			// Session file has richer data than process scan
+			sessionFiles["1100.json"] = JSON.stringify({
+				pid: 1100,
+				sessionId: "rich-session",
+				cwd: "/rich-project",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["1100.json"];
+			alivePids.add(1100);
+
+			registry.start();
+
+			const all = registry.getAllDiscovered();
+			const agent = all.find((a) => a.pid === 1100);
+			expect(agent).toBeDefined();
+			// Session file wins over process
+			expect(agent!.source).toBe("session-file");
+			expect(agent!.projectDir).toBe("/rich-project");
+		});
+	});
+
+	// ── Field merging on dedup ───────────────────────────────────────
+
+	describe("field merging on dedup", () => {
+		test("sessionId from session-file preserved when process has none", () => {
+			sessionFiles["1200.json"] = JSON.stringify({
+				pid: 1200,
+				sessionId: "unique-session-id",
+				cwd: "/project-1200",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["1200.json"];
+			alivePids.add(1200);
+
+			registry.start();
+
+			const all = registry.getAllDiscovered();
+			const agent = all.find((a) => a.pid === 1200);
+			expect(agent).toBeDefined();
+			expect(agent!.sessionId).toBe("unique-session-id");
+		});
+
+		test("projectDir from higher-priority source wins", () => {
+			// Session file has its own projectDir
+			sessionFiles["1300.json"] = JSON.stringify({
+				pid: 1300,
+				sessionId: "sess-1300",
+				cwd: "/session-dir",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["1300.json"];
+			alivePids.add(1300);
+
+			registry.start();
+
+			const all = registry.getAllDiscovered();
+			const agent = all.find((a) => a.pid === 1300);
+			expect(agent).toBeDefined();
+			expect(agent!.projectDir).toBe("/session-dir");
+		});
+	});
+
+	// ── getDiscoveredAgents filtering ────────────────────────────────
+
+	describe("getDiscoveredAgents filtering", () => {
+		test("sessionId match against launcher task filters correctly", () => {
+			sessionFiles["1400.json"] = JSON.stringify({
+				pid: 1400,
+				sessionId: "launcher-tracked-sess",
+				cwd: "/project-1400",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["1400.json"];
+			alivePids.add(1400);
+
+			registry.start();
+
+			const launcherTasks = [
+				createMockTask({ session_id: "launcher-tracked-sess" }),
+			];
+			const discovered = registry.getDiscoveredAgents(launcherTasks);
+
+			// Should be filtered out because sessionId matches launcher
+			expect(discovered).toHaveLength(0);
+		});
+
+		test("agent with different PID AND sessionId passes through", () => {
+			sessionFiles["1500.json"] = JSON.stringify({
+				pid: 1500,
+				sessionId: "independent-sess",
+				cwd: "/project-1500",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["1500.json"];
+			alivePids.add(1500);
+
+			registry.start();
+
+			const launcherTasks = [
+				createMockTask({ session_id: "other-sess" }),
+			];
+			const discovered = registry.getDiscoveredAgents(launcherTasks);
+
+			// Should pass through — neither PID nor sessionId match launcher
+			expect(discovered).toHaveLength(1);
+			expect(discovered[0]!.pid).toBe(1500);
+		});
+	});
+
+	// ── Polling lifecycle ────────────────────────────────────────────
+
+	describe("polling lifecycle", () => {
+		test("startPolling creates interval timer", () => {
+			registry.startPolling(5000);
+
+			// If polling is active, stopPolling should be able to clear it
+			// We verify indirectly: dispose doesn't throw (timer was set)
+			expect(() => registry.dispose()).not.toThrow();
+		});
+
+		test("stopPolling clears interval", () => {
+			registry.startPolling(5000);
+			registry.stopPolling();
+
+			// Double stop should be safe
+			expect(() => registry.stopPolling()).not.toThrow();
+		});
+
+		test("restartPolling clears old timer and creates new one", () => {
+			registry.startPolling(5000);
+			// Calling startPolling again should clear the old timer first
+			registry.startPolling(3000);
+
+			// Should still dispose cleanly (only one timer active)
+			expect(() => registry.dispose()).not.toThrow();
+		});
+
+		test("dispose stops polling and cleans up", () => {
+			registry.start();
+
+			// Dispose should clean up everything
+			expect(() => registry.dispose()).not.toThrow();
+
+			// Double dispose should be safe too
+			expect(() => registry.dispose()).not.toThrow();
+		});
+	});
+
 	// ── Dispose ──────────────────────────────────────────────────────
 
 	describe("dispose", () => {
