@@ -15,7 +15,8 @@ import * as vscode from "vscode";
 import { AgentRegistry } from "../discovery/agent-registry.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
-import { detectListeningPorts } from "../utils/port-detector.js";
+import type { ListeningPort } from "../utils/port-detector.js";
+import { detectListeningPortsAsync } from "../utils/port-detector.js";
 import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
@@ -158,6 +159,10 @@ export class AgentStatusTreeProvider
 	private previousStatuses = new Map<string, string>();
 	private _agentRegistry: AgentRegistry | null = null;
 	private _discoveredAgents: DiscoveredAgent[] = [];
+	/** Cached port detection results per task ID (undefined = not yet detected) */
+	private _portCache = new Map<string, ListeningPort[]>();
+	/** Task IDs with ongoing async port detection */
+	private _portDetecting = new Set<string>();
 
 	constructor() {
 		// Watch config changes for the tasks file path
@@ -287,6 +292,13 @@ export class AgentStatusTreeProvider
 		this.registry = this.readRegistry();
 		this.checkCompletionNotifications();
 		this.updateAutoRefreshTimer();
+		// Clear port cache for tasks that are no longer running
+		for (const [taskId, task] of Object.entries(this.registry.tasks)) {
+			if (task.status !== "running") {
+				this._portCache.delete(taskId);
+				this._portDetecting.delete(taskId);
+			}
+		}
 		// Set context key for welcome view
 		vscode.commands.executeCommand(
 			"setContext",
@@ -585,14 +597,35 @@ export class AgentStatusTreeProvider
 				taskId: t.id,
 			});
 		}
-		// Port detection — only for running tasks (expensive operation)
-		if (t.status === "running") {
-			const ports = detectListeningPorts(t.project_dir);
-			if (ports.length > 0) {
+		// Port detection — only for running tasks with a valid session (non-blocking)
+		if (t.status === "running" && t.session_id) {
+			const cached = this._portCache.get(t.id);
+			if (cached !== undefined) {
+				// Show cached result (may be empty — that's fine)
+				if (cached.length > 0) {
+					details.push({
+						type: "detail",
+						label: "Ports",
+						value: cached.map((p) => `${p.port} (${p.process})`).join(", "),
+						taskId: t.id,
+					});
+				}
+			} else if (!this._portDetecting.has(t.id)) {
+				// Not yet detecting — kick off async detection and show placeholder
+				this._portDetecting.add(t.id);
+				this._detectPortsAsync(t);
 				details.push({
 					type: "detail",
 					label: "Ports",
-					value: ports.map((p) => `${p.port} (${p.process})`).join(", "),
+					value: "detecting...",
+					taskId: t.id,
+				});
+			} else {
+				// Detection in progress — show placeholder
+				details.push({
+					type: "detail",
+					label: "Ports",
+					value: "detecting...",
 					taskId: t.id,
 				});
 			}
@@ -613,6 +646,22 @@ export class AgentStatusTreeProvider
 			});
 		}
 		return details;
+	}
+
+	/** Kick off async port detection; fires onDidChangeTreeData when done */
+	private async _detectPortsAsync(task: AgentTask): Promise<void> {
+		try {
+			const ports = await detectListeningPortsAsync(task.project_dir);
+			// Only update if task is still running (could have finished by now)
+			if (this.registry.tasks[task.id]?.status === "running") {
+				this._portCache.set(task.id, ports);
+				this._onDidChangeTreeData.fire(undefined);
+			}
+		} catch {
+			this._portCache.set(task.id, []);
+		} finally {
+			this._portDetecting.delete(task.id);
+		}
 	}
 
 	resolveTreeItem(
@@ -655,8 +704,10 @@ export class AgentStatusTreeProvider
 		if (!task.session_id || !isValidSessionId(task.session_id))
 			return undefined;
 		try {
-			const { execFileSync } = await import("node:child_process");
-			const output = execFileSync(
+			const { execFile } = await import("node:child_process");
+			const { promisify } = await import("node:util");
+			const execFileAsync = promisify(execFile);
+			const { stdout: output } = await execFileAsync(
 				"tmux",
 				["capture-pane", "-t", task.session_id, "-p"],
 				{
