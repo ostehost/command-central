@@ -12,7 +12,9 @@ const mockState = {
 	configEnabled: true as boolean | undefined,
 };
 
-function setupMocks() {
+// Re-register vscode mock with telemetry-specific fields.
+// Must be called in beforeEach because global-test-cleanup.ts calls mock.restore() after each test.
+function setupVSCodeMock() {
 	const base = createVSCodeMock();
 	mock.module("vscode", () => ({
 		...base,
@@ -38,14 +40,23 @@ function setupMocks() {
 	}));
 }
 
+// Register once at module level for the initial import
+setupVSCodeMock();
+
+// Dynamic import helper — the module is cached after first import, mock.module above applies
+async function getTelemetryService() {
+	const mod = await import("../../src/services/telemetry-service.js");
+	return mod.TelemetryService;
+}
+
 describe("TelemetryService", () => {
 	let mockFetch: ReturnType<typeof mock>;
 
 	beforeEach(() => {
-		mock.restore();
+		// Re-register after global-test-cleanup's mock.restore()
+		setupVSCodeMock();
 		mockState.telemetryEnabled = true;
 		mockState.configEnabled = true;
-		setupMocks();
 
 		mockFetch = mock(() => Promise.resolve({ ok: true }));
 		global.fetch = mockFetch as unknown as typeof fetch;
@@ -53,18 +64,14 @@ describe("TelemetryService", () => {
 
 	describe("Singleton", () => {
 		test("creates singleton instance via getInstance()", async () => {
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const instance = TelemetryService.getInstance("1.0.0");
 			expect(instance).toBeInstanceOf(TelemetryService);
 		});
 
 		test("returns same instance on second getInstance() call", async () => {
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const first = TelemetryService.getInstance("1.0.0");
 			const second = TelemetryService.getInstance("1.0.0");
@@ -72,9 +79,7 @@ describe("TelemetryService", () => {
 		});
 
 		test("resetInstance() creates a fresh instance", async () => {
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const first = TelemetryService.getInstance("1.0.0");
 			TelemetryService.resetInstance();
@@ -86,9 +91,7 @@ describe("TelemetryService", () => {
 	describe("Telemetry gate", () => {
 		test("sends nothing when vscode.env.isTelemetryEnabled is false", async () => {
 			mockState.telemetryEnabled = false;
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const service = TelemetryService.getInstance("1.0.0");
 
@@ -100,9 +103,7 @@ describe("TelemetryService", () => {
 
 		test("sends nothing when commandCentral.telemetry.enabled is false", async () => {
 			mockState.configEnabled = false;
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const service = TelemetryService.getInstance("1.0.0");
 
@@ -115,9 +116,7 @@ describe("TelemetryService", () => {
 		test("does not track events when both telemetry checks fail", async () => {
 			mockState.telemetryEnabled = false;
 			mockState.configEnabled = false;
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const service = TelemetryService.getInstance("1.0.0");
 
@@ -131,19 +130,14 @@ describe("TelemetryService", () => {
 
 	describe("track()", () => {
 		test("queues events with correct event name", async () => {
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const service = TelemetryService.getInstance("1.0.0");
 			service.track("my_test_event");
 			await service.flush();
 
 			expect(mockFetch).toHaveBeenCalledTimes(1);
-			const [_url, options] = mockFetch.mock.calls[0] as [
-				string,
-				RequestInit,
-			];
+			const [_url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
 			const body = JSON.parse(options.body as string) as {
 				batch: Array<{ event: string }>;
 			};
@@ -151,18 +145,13 @@ describe("TelemetryService", () => {
 		});
 
 		test("includes standard properties in each event", async () => {
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const service = TelemetryService.getInstance("1.0.0");
 			service.track("prop_test");
 			await service.flush();
 
-			const [_url, options] = mockFetch.mock.calls[0] as [
-				string,
-				RequestInit,
-			];
+			const [_url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
 			const body = JSON.parse(options.body as string) as {
 				batch: Array<{ properties: Record<string, string> }>;
 			};
@@ -175,18 +164,13 @@ describe("TelemetryService", () => {
 		});
 
 		test("uses vscode.env.machineId as distinct_id", async () => {
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const service = TelemetryService.getInstance("1.0.0");
 			service.track("machine_id_test");
 			await service.flush();
 
-			const [_url, options] = mockFetch.mock.calls[0] as [
-				string,
-				RequestInit,
-			];
+			const [_url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
 			const body = JSON.parse(options.body as string) as {
 				batch: Array<{ properties: Record<string, string> }>;
 			};
@@ -196,19 +180,14 @@ describe("TelemetryService", () => {
 
 	describe("flush()", () => {
 		test("sends batch POST to PostHog endpoint", async () => {
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const service = TelemetryService.getInstance("1.0.0");
 			service.track("flush_test");
 			await service.flush();
 
 			expect(mockFetch).toHaveBeenCalledTimes(1);
-			const [url, options] = mockFetch.mock.calls[0] as [
-				string,
-				RequestInit,
-			];
+			const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
 			expect(url).toBe("https://us.i.posthog.com/batch/");
 			expect(options.method).toBe("POST");
 			expect(
@@ -217,9 +196,7 @@ describe("TelemetryService", () => {
 		});
 
 		test("empty queue flush is a no-op", async () => {
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const service = TelemetryService.getInstance("1.0.0");
 			await service.flush();
@@ -230,9 +207,7 @@ describe("TelemetryService", () => {
 			mockFetch = mock(() => Promise.reject(new Error("Network error")));
 			global.fetch = mockFetch as unknown as typeof fetch;
 
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const service = TelemetryService.getInstance("1.0.0");
 			service.track("net_error_test");
@@ -243,9 +218,7 @@ describe("TelemetryService", () => {
 
 	describe("Auto-flush", () => {
 		test("flushes automatically when batch reaches 30 events", async () => {
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const service = TelemetryService.getInstance("1.0.0");
 
@@ -257,10 +230,7 @@ describe("TelemetryService", () => {
 			await Promise.resolve();
 
 			expect(mockFetch).toHaveBeenCalledTimes(1);
-			const [_url, options] = mockFetch.mock.calls[0] as [
-				string,
-				RequestInit,
-			];
+			const [_url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
 			const body = JSON.parse(options.body as string) as {
 				batch: Array<unknown>;
 			};
@@ -270,9 +240,7 @@ describe("TelemetryService", () => {
 
 	describe("dispose()", () => {
 		test("calls flush and clears singleton", async () => {
-			const { TelemetryService } = await import(
-				"../../src/services/telemetry-service.js"
-			);
+			const TelemetryService = await getTelemetryService();
 			TelemetryService.resetInstance();
 			const service = TelemetryService.getInstance("1.0.0");
 			service.track("dispose_test");

@@ -67,6 +67,13 @@ export function createVSCodeMock() {
 				public pattern: string,
 			) {}
 		},
+		version: "1.85.0",
+		env: {
+			isTelemetryEnabled: true,
+			machineId: "mock-machine-id",
+			appName: "Visual Studio Code",
+			language: "en",
+		},
 		workspace: {
 			isTrusted: true,
 			workspaceFolders: [
