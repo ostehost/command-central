@@ -1029,9 +1029,38 @@ export class AgentStatusTreeProvider
 			node.label,
 			vscode.TreeItemCollapsibleState.None,
 		);
-		item.iconPath = new vscode.ThemeIcon("info");
+		item.iconPath = this.getSummaryIcon();
 		item.contextValue = "agentSummary";
 		return item;
+	}
+
+	/** Compute summary icon based on aggregate agent state */
+	private getSummaryIcon(): vscode.ThemeIcon {
+		const tasks = Object.values(this.registry.tasks);
+		const discovered = this._discoveredAgents;
+
+		const hasRunning =
+			tasks.some((t) => t.status === "running") || discovered.length > 0;
+		const hasFailed = tasks.some(
+			(t) => t.status === "failed" || t.status === "killed",
+		);
+
+		if (hasRunning) {
+			return new vscode.ThemeIcon(
+				"sync~spin",
+				new vscode.ThemeColor("charts.yellow"),
+			);
+		}
+		if (hasFailed) {
+			return new vscode.ThemeIcon(
+				"warning",
+				new vscode.ThemeColor("charts.red"),
+			);
+		}
+		return new vscode.ThemeIcon(
+			"check-all",
+			new vscode.ThemeColor("charts.green"),
+		);
 	}
 
 	private formatElapsedDescription(task: AgentTask): string {
@@ -1125,7 +1154,7 @@ export class AgentStatusTreeProvider
 		item.description = discoveredDiff
 			? `PID ${agent.pid} · ${uptime} · ${discoveredDiff} ${sourceLabel}`
 			: `PID ${agent.pid} · ${uptime} ${sourceLabel}`;
-		item.iconPath = new vscode.ThemeIcon("search");
+		item.iconPath = getAgentTypeIcon(agent);
 		item.contextValue = "discoveredAgent.running";
 		item.command = {
 			command: "commandCentral.focusAgentTerminal",
