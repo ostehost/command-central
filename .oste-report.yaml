@@ -1,0 +1,8 @@
+task_id: "cc-sidebar-research"
+status: "success"
+summary: "Competitive analysis of 8 agent management tools' sidebar UX — comprehensive report with prioritized recommendations"
+files_changed:
+  - "research/RESEARCH-sidebar-ux-2026-03-24.md"
+  - "ROADMAP.md"
+tests_passing: true
+next_steps: "Implement P0 sidebar features (M2.5-1 through M2.5-3): prompt text display, diff summary, kill/stop controls"
