@@ -1,8 +1,8 @@
 # Command Central — Product Roadmap
 
-> v1.2 — 2026-03-24. Living document. Updated as priorities shift.
-> Strategy basis: `research/STRATEGY-SYNTHESIS-2026-03-22.md`, `research/PMF-ANALYSIS-2026-03-22.md`, `research/RESEARCH-sidebar-ux-2026-03-24.md`
-> **Critical path:** M0 ✅ → M1 ✅ → M2 ✅ → **M2.5 (Sidebar Redesign + P0/P1)** → Hardening/Polish → M4 (LAUNCH)
+> v1.3 — 2026-03-24. Living document. Updated as priorities shift.
+> Strategy basis: `research/STRATEGY-SYNTHESIS-2026-03-22.md`, `research/PMF-ANALYSIS-2026-03-22.md`, `research/RESEARCH-sidebar-ux-2026-03-24.md`, `research/DISSERTATION-cmdtab-platform-2026-03-24.md`
+> **Critical path:** M0 ✅ → M1 ✅ → M2 ✅ → M2.5 ✅ (core) → **M4 (LAUNCH)** — ship now, polish post-launch
 
 ## Vision
 
