@@ -56,10 +56,14 @@ function simulateNotifications(
 		if (config.masterEnabled && prev === "running") {
 			if (task.status === "completed" && config.onCompletion) {
 				const msg = `Agent ${task.id} completed`;
-				vscodeMock.window.showInformationMessage(msg, "Focus Terminal");
+				vscodeMock.window.showInformationMessage(
+					msg,
+					"View Diff",
+					"Show Output",
+				);
 			} else if (task.status === "failed" && config.onFailure) {
 				const msg = `Agent ${task.id} failed — check output`;
-				vscodeMock.window.showWarningMessage(msg, "Focus Terminal");
+				vscodeMock.window.showWarningMessage(msg, "Show Output", "View Diff");
 			}
 		}
 		previousStatuses.set(task.id, task.status);
@@ -67,7 +71,7 @@ function simulateNotifications(
 }
 
 describe("Agent Notification Flow", () => {
-	test("running→completed fires showInformationMessage with Focus Terminal", () => {
+	test("running→completed fires showInformationMessage with View Diff and Show Output", () => {
 		const prev = new Map<string, string>([["t1", "running"]]);
 		const task = createTask({ id: "t1", status: "completed" });
 
@@ -75,11 +79,12 @@ describe("Agent Notification Flow", () => {
 
 		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
 			"Agent t1 completed",
-			"Focus Terminal",
+			"View Diff",
+			"Show Output",
 		);
 	});
 
-	test("running→failed fires showWarningMessage with Focus Terminal", () => {
+	test("running→failed fires showWarningMessage with Show Output and View Diff", () => {
 		const prev = new Map<string, string>([["t1", "running"]]);
 		const task = createTask({ id: "t1", status: "failed" });
 
@@ -87,7 +92,8 @@ describe("Agent Notification Flow", () => {
 
 		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
 			"Agent t1 failed — check output",
-			"Focus Terminal",
+			"Show Output",
+			"View Diff",
 		);
 	});
 
@@ -172,11 +178,13 @@ describe("Agent Notification Flow", () => {
 
 		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
 			"Agent t1 completed",
-			"Focus Terminal",
+			"View Diff",
+			"Show Output",
 		);
 		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
 			"Agent t2 failed — check output",
-			"Focus Terminal",
+			"Show Output",
+			"View Diff",
 		);
 	});
 
