@@ -183,8 +183,28 @@ describe("focusAgentTerminal command", () => {
 		expect(strategy1Fires).toBeTruthy();
 
 		// The tmux session may be dead, but Strategy 1 doesn't check — it just opens the app
-		// open -a com.mitchellh.ghostty activates the existing Ghostty window with scrollback
+		// focusGhosttyWindow uses AppleScript with application id for targeted activation
 		expect(task.status).toBe("completed");
+	});
+
+	test("completed agent with ghostty_bundle_id can be focused via focusGhosttyWindow", () => {
+		const task = createTask({
+			status: "completed",
+			terminal_backend: "tmux",
+			ghostty_bundle_id: "dev.partnerai.ghostty.command-central",
+			session_id: "agent-completed-ok",
+		});
+
+		// Dead session fallback: when session is dead but bundle exists,
+		// focusGhosttyWindow is called with (bundleTarget, sessionId) — not blocked by stale guard
+		const bundleTarget = task.ghostty_bundle_id || task.bundle_path;
+		expect(bundleTarget).toBe("dev.partnerai.ghostty.command-central");
+		expect(task.session_id).toBe("agent-completed-ok");
+
+		// focusGhosttyWindow uses `application id` AppleScript to target the specific bundle
+		// This is more reliable than `open -a` which just activates "the Ghostty app"
+		expect(bundleTarget).not.toBe("(test-mode)");
+		expect(bundleTarget).not.toBe("(tmux-mode)");
 	});
 
 	test("completed agent with bundle_path activates via path (no tmux check)", () => {

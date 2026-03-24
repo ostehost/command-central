@@ -20,6 +20,7 @@ import {
 } from "./commands/tree-view-utils.js";
 import { BinaryManager } from "./ghostty/BinaryManager.js";
 import { TerminalManager } from "./ghostty/TerminalManager.js";
+import { focusGhosttyWindow } from "./ghostty/window-focus.js";
 import { GitSorter } from "./git-sort/scm-sorter.js";
 import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provider.js";
 import { AgentDashboardPanel } from "./providers/agent-dashboard-panel.js";
@@ -780,7 +781,7 @@ export async function activate(
 									bundleTarget !== "(tmux-mode)"
 								) {
 									try {
-										await execFileAsync("open", ["-a", bundleTarget]);
+										await focusGhosttyWindow(bundleTarget, sessionId);
 										return;
 									} catch {
 										// Bundle not running — fall through to diff viewer
@@ -808,7 +809,7 @@ export async function activate(
 						const mapping = sessionStore.lookup(projectDir);
 						if (mapping) {
 							try {
-								await execFileAsync("open", ["-a", mapping.bundlePath]);
+								await focusGhosttyWindow(mapping.bundlePath, sessionId);
 								if (sessionId && isValidSessionId(sessionId)) {
 									try {
 										await execFileAsync("tmux", [
@@ -838,7 +839,7 @@ export async function activate(
 					// Strategy 1: tmux backend with ghostty bundle
 					if (task.terminal_backend === "tmux" && task.ghostty_bundle_id) {
 						try {
-							await execFileAsync("open", ["-a", task.ghostty_bundle_id]);
+							await focusGhosttyWindow(task.ghostty_bundle_id, task.session_id);
 							// M1-8: select the correct tmux window/tab after bringing Ghostty to front
 							if (task.session_id && isValidSessionId(task.session_id)) {
 								try {
@@ -866,7 +867,7 @@ export async function activate(
 						try {
 							const fsModule = await import("node:fs");
 							if (fsModule.existsSync(task.bundle_path)) {
-								await execFileAsync("open", ["-a", task.bundle_path]);
+								await focusGhosttyWindow(task.bundle_path, task.session_id);
 								// M1-8: select the correct tmux window/tab after bringing Ghostty to front
 								if (task.session_id && isValidSessionId(task.session_id)) {
 									try {

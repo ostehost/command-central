@@ -95,6 +95,58 @@ const STATUS_ICONS: Record<AgentTask["status"], string> = {
 	killed: "💀",
 };
 
+// ── ThemeIcon + color for status (colored sidebar icons) ─────────────
+
+export const STATUS_THEME_ICONS: Record<
+	AgentTask["status"],
+	{ icon: string; color: string }
+> = {
+	running: { icon: "sync~spin", color: "charts.yellow" },
+	completed: { icon: "check", color: "charts.green" },
+	failed: { icon: "error", color: "charts.red" },
+	stopped: { icon: "debug-stop", color: "disabledForeground" },
+	killed: { icon: "close", color: "charts.red" },
+};
+
+// ── Agent type detection for discovered agents ───────────────────────
+
+export function getAgentTypeIcon(agent: DiscoveredAgent): vscode.ThemeIcon {
+	const model = agent.model?.toLowerCase() ?? "";
+
+	if (
+		model.includes("claude") ||
+		model.includes("anthropic") ||
+		model.includes("sonnet") ||
+		model.includes("opus") ||
+		model.includes("haiku")
+	) {
+		return new vscode.ThemeIcon(
+			"circle-filled",
+			new vscode.ThemeColor("charts.purple"),
+		);
+	}
+	if (
+		model.includes("gpt") ||
+		model.includes("codex") ||
+		model.includes("openai") ||
+		model.includes("o1") ||
+		model.includes("o3") ||
+		model.includes("o4")
+	) {
+		return new vscode.ThemeIcon(
+			"circle-filled",
+			new vscode.ThemeColor("charts.green"),
+		);
+	}
+	if (model.includes("gemini") || model.includes("google")) {
+		return new vscode.ThemeIcon(
+			"circle-filled",
+			new vscode.ThemeColor("charts.blue"),
+		);
+	}
+	return new vscode.ThemeIcon("search");
+}
+
 const ROLE_ICONS: Record<AgentRole, string> = {
 	planner: "🔬",
 	developer: "🔨",
@@ -1029,6 +1081,11 @@ export class AgentStatusTreeProvider
 			]
 				.filter(Boolean)
 				.join("\n\n"),
+		);
+		const statusTheme = STATUS_THEME_ICONS[task.status];
+		item.iconPath = new vscode.ThemeIcon(
+			statusTheme.icon,
+			new vscode.ThemeColor(statusTheme.color),
 		);
 		item.contextValue = `agentTask.${task.status}`;
 		item.resourceUri = vscode.Uri.parse(`agent-task:${task.id}`);
