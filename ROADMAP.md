@@ -71,14 +71,14 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 
 | ID | Item | Status | Priority | Notes |
 |----|------|--------|----------|-------|
-| M2.5-1 | Show prompt TEXT, not file path | TODO | P0 | Read temp file, extract first meaningful line. Tooltip for full text. Every competitor shows this. |
-| M2.5-2 | Diff summary per agent | TODO | P0 | `N files changed · +X / -Y`. Computed from git diff --stat between start commit and current HEAD. |
-| M2.5-3 | Kill/stop agent from sidebar | TODO | P0 | Context menu + inline button. Send SIGTERM to agent process. Table stakes — every competitor has this. |
-| M2.5-4 | View output action | TODO | P0 | Button to open agent's terminal output or last conversation log in editor. |
-| M2.5-5 | View diff action | TODO | P0 | Open VS Code diff viewer showing agent's changes (start commit → HEAD). |
+| M2.5-1 | Show prompt TEXT, not file path | ✅ DONE | P0 | `readPromptSummary()` extracts Goal section or first meaningful line. 80-char truncation + tooltip. |
+| M2.5-2 | Diff summary per agent | ✅ DONE | P0 | `getDiffSummary()` — inline `N files · +X/-Y` in description. Working tree for running, HEAD~1 for completed. |
+| M2.5-3 | Kill/stop agent from sidebar | ✅ DONE | P0 | Inline button + context menu. SIGTERM for discovered, `oste-kill.sh` for launcher tasks. Confirmation dialog. |
+| M2.5-4 | View output action | ✅ DONE | P0 | `showAgentOutput` — opens JSONL session transcript for discovered, tmux OutputChannel for launcher tasks. |
+| M2.5-5 | View diff action | ✅ DONE | P0 | `viewAgentDiff` — opens git diff in VS Code. Finds start commit via `--after` for discovered, `HEAD~1` fallback. |
 | M2.5-6 | Agent type badge | TODO | P1 | Show Claude 🟣 / Codex 🟢 / Gemini 🔵 icon instead of generic wrench on every item. |
-| M2.5-7 | Consolidate detail view | TODO | P1 | Remove: worktree path, session name (internal). Merge branch+commit into one line. Merge duration+exit+attempts into one line. |
-| M2.5-8 | Retry/restart action | TODO | P1 | Re-run agent with same prompt. Context menu item. |
+| M2.5-7 | Consolidate detail view | ✅ DONE | P1 | Git line = branch + commit hash. Result line = exit code + attempts. Worktree path and session name removed. |
+| M2.5-8 | Retry/restart action | ✅ DONE | P1 | `restartAgent` — re-runs with same prompt via `oste-spawn.sh`. Context menu for completed/failed/stopped tasks. |
 | M2.5-9 | Status color refinement | TODO | P1 | Differentiate "running" vs "waiting for input" vs "completed" vs "failed" with distinct colors. |
 | M2.5-10 | Per-file change list | TODO | P1 | Expandable list of files the agent touched with per-file +/- counts. |
 | M2.5-11 | Hardening + polish pass | TODO | P0 | Full test suite, edge cases, error handling, loading states, empty states. |
@@ -102,9 +102,9 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | ID | Item | Status | Priority | Notes |
 |----|------|--------|----------|-------|
 | M3-1 | Session grouping (by project, by role, by status) | TODO | P0 | cmux's core UX — vertical tabs with grouping |
-| M3-2 | Agent output log viewer (click → see stdout) | TODO | P0 | FleetCode, 1Code have this |
-| M3-3 | Agent lifecycle controls (kill, restart from sidebar) | TODO | P0 | Read-only dashboard isn't enough |
-| M3-4 | Diff summary per agent ("touched 12 files, +340/-87") | TODO | P1 | QA signal for review-before-merge |
+| M3-2 | Agent output log viewer (click → see stdout) | ✅ DONE | P0 | `showAgentOutput` — shipped in M2.5 |
+| M3-3 | Agent lifecycle controls (kill, restart from sidebar) | ✅ DONE | P0 | `killAgent` + `restartAgent` — shipped in M2.5 |
+| M3-4 | Diff summary per agent ("touched 12 files, +340/-87") | ✅ DONE | P1 | `getDiffSummary()` inline + `viewAgentDiff` — shipped in M2.5 |
 | M3-5 | Multi-workspace agent tracking | PARKED | P2 | Scope creep — evaluate post-launch |
 | M3-6 | Stuck-agent detection (heuristic: same state for N min) | TODO | P1 | Address "runaway agent" fear |
 
