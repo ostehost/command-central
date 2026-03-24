@@ -724,14 +724,8 @@ export async function activate(
 						const mapping = sessionStore.lookup(task.project_dir);
 						if (mapping) {
 							try {
-								await execFileAsync("open", [
-									"-a",
-									mapping.bundlePath,
-								]);
-								if (
-									task.session_id &&
-									isValidSessionId(task.session_id)
-								) {
+								await execFileAsync("open", ["-a", mapping.bundlePath]);
+								if (task.session_id && isValidSessionId(task.session_id)) {
 									try {
 										await execFileAsync("tmux", [
 											"select-window",
