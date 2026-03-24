@@ -1,8 +1,8 @@
 # Command Central — Product Roadmap
 
-> v1.1 — 2026-03-22. Living document. Updated as priorities shift.
-> Strategy basis: `research/STRATEGY-SYNTHESIS-2026-03-22.md`, `research/PMF-ANALYSIS-2026-03-22.md`
-> **Critical path:** M0 ✅ → M1 ✅ → M2 ✅ (core) → **M4 (LAUNCH NOW)** → M3 (post-launch, feedback-driven)
+> v1.2 — 2026-03-24. Living document. Updated as priorities shift.
+> Strategy basis: `research/STRATEGY-SYNTHESIS-2026-03-22.md`, `research/PMF-ANALYSIS-2026-03-22.md`, `research/RESEARCH-sidebar-ux-2026-03-24.md`
+> **Critical path:** M0 ✅ → M1 ✅ → M2 ✅ → **M2.5 (Sidebar Redesign + P0/P1)** → Hardening/Polish → M4 (LAUNCH)
 
 ## Vision
 
@@ -66,8 +66,26 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M2-5 | Terminal-agnostic: work with Ghostty, iTerm2, Terminal.app, tmux | ✅ DONE | P0 | Don't require Ghostty for discovery |
 | M2-6 | Performance: poll interval tuning, debounce, lazy refresh | ✅ DONE | P1 | Can't hammer `ps` every second |
 
-### M4: Launch & Distribute (v0.7.0) — BEFORE M3
-**Goal:** First 100 installs. Validate distribution. Ship the differentiator (M2) and launch before building competitive parity. Real feedback > guessing.
+### M2.5: Sidebar Redesign + P0/P1 Features (v0.6.0) — PRE-LAUNCH HARDENING
+**Goal:** Make the sidebar competitive. Fix the detail view, add lifecycle controls, diff summaries. Based on `research/RESEARCH-sidebar-ux-2026-03-24.md`.
+
+| ID | Item | Status | Priority | Notes |
+|----|------|--------|----------|-------|
+| M2.5-1 | Show prompt TEXT, not file path | TODO | P0 | Read temp file, extract first meaningful line. Tooltip for full text. Every competitor shows this. |
+| M2.5-2 | Diff summary per agent | TODO | P0 | `N files changed · +X / -Y`. Computed from git diff --stat between start commit and current HEAD. |
+| M2.5-3 | Kill/stop agent from sidebar | TODO | P0 | Context menu + inline button. Send SIGTERM to agent process. Table stakes — every competitor has this. |
+| M2.5-4 | View output action | TODO | P0 | Button to open agent's terminal output or last conversation log in editor. |
+| M2.5-5 | View diff action | TODO | P0 | Open VS Code diff viewer showing agent's changes (start commit → HEAD). |
+| M2.5-6 | Agent type badge | TODO | P1 | Show Claude 🟣 / Codex 🟢 / Gemini 🔵 icon instead of generic wrench on every item. |
+| M2.5-7 | Consolidate detail view | TODO | P1 | Remove: worktree path, session name (internal). Merge branch+commit into one line. Merge duration+exit+attempts into one line. |
+| M2.5-8 | Retry/restart action | TODO | P1 | Re-run agent with same prompt. Context menu item. |
+| M2.5-9 | Status color refinement | TODO | P1 | Differentiate "running" vs "waiting for input" vs "completed" vs "failed" with distinct colors. |
+| M2.5-10 | Per-file change list | TODO | P1 | Expandable list of files the agent touched with per-file +/- counts. |
+| M2.5-11 | Hardening + polish pass | TODO | P0 | Full test suite, edge cases, error handling, loading states, empty states. |
+| M2.5-12 | Marketing site update | TODO | P0 | Update cc.partnerai.dev with new sidebar features, competitor comparison, refined messaging. |
+
+### M4: Launch & Distribute (v0.7.0) — AFTER M2.5
+**Goal:** First 100 installs. Validate distribution. Ship the differentiator (M2) + competitive sidebar (M2.5) and launch. Real feedback > guessing.
 
 | ID | Item | Status | Priority | Notes |
 |----|------|--------|----------|-------|
