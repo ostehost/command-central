@@ -729,17 +729,48 @@ export async function activate(
 					const { promisify } = await import("node:util");
 					const execFileAsync = promisify(execFile);
 
-					// Guard: for completed/stopped/failed tasks, check if tmux session is alive first
+					// Guard: for completed/stopped/failed tasks, check if terminal session is alive
 					if (
 						task &&
 						task.status !== "running" &&
 						sessionId &&
 						isValidSessionId(sessionId)
 					) {
+						let sessionAlive = false;
+
+						// Check 1: persist socket (default backend — Ghostty bundles use Unix domain sockets)
 						try {
-							await execFileAsync("tmux", ["has-session", "-t", sessionId]);
-							// Session is alive — fall through to normal focus strategies
+							const os = await import("node:os");
+							const fsModule = await import("node:fs");
+							const pathModule = await import("node:path");
+							const persistSocketPath = pathModule.join(
+								os.homedir(),
+								".local",
+								"share",
+								"cc",
+								"sockets",
+								`${sessionId}.sock`,
+							);
+							if (fsModule.existsSync(persistSocketPath)) {
+								sessionAlive = true;
+							}
 						} catch {
+							// ignore — persist check failed, try tmux next
+						}
+
+						// Check 2: tmux session (fallback backend)
+						if (!sessionAlive) {
+							try {
+								await execFileAsync("tmux", ["has-session", "-t", sessionId]);
+								sessionAlive = true;
+							} catch {
+								// neither persist nor tmux alive
+							}
+						}
+
+						if (sessionAlive) {
+							// Session is alive — fall through to normal focus strategies
+						} else {
 							// Before declaring session dead, try to open the Ghostty bundle directly
 							if (task.ghostty_bundle_id || task.bundle_path) {
 								const bundleTarget = task.ghostty_bundle_id || task.bundle_path;

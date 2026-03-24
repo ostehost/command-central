@@ -200,7 +200,9 @@ export function createVSCodeMock() {
 			showInformationMessage: mock(),
 			showWarningMessage: mock(),
 			showErrorMessage: mock(),
-			setStatusBarMessage: mock(() => ({ dispose: mock() })),
+			setStatusBarMessage: mock((_message?: string, _timeoutMs?: number) => ({
+				dispose: mock(),
+			})),
 			createStatusBarItem: mock((_alignment?: number, _priority?: number) => ({
 				text: "",
 				tooltip: "",

@@ -1,9 +1,12 @@
-task_id: "cmdtab-research"
+task_id: "agent-notification-ux-overhaul"
 status: "success"
-summary: "Produced 6,200-word strategic dissertation on Cmd+Tab as Platform with macOS API deep dive, competitive analysis, and phased iteration roadmap"
+summary: "Replaced intrusive agent completion toasts with diff viewer + status bar messages, updated notification action buttons, added autoDismiss config, wrote 6 new tests"
 files_changed:
-  - "research/DISSERTATION-cmdtab-platform-2026-03-24.md"
-  - "research/_temp-research-a-macos-apis.md"
-  - "research/_temp-research-b-strategy.md"
+  - "src/extension.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "package.json"
+  - "test/integration/agent-notification-ux.test.ts"
+  - "test/integration/agent-notifications.test.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
 tests_passing: true
-next_steps: "Ship Phase 1 features: fix stale session guard bug (2hr), dock badge via NSDockTile.badgeLabel (3-4d), notification with Review Diff action (2-3d), project grouping in CC sidebar (2d)"
+next_steps: "Wire up autoDismissSeconds config to actually auto-dismiss notifications (currently config is defined but not consumed by notification logic)"
