@@ -191,20 +191,6 @@
           "markdownDescription": "Path to the agent task registry JSON file. Leave empty to auto-detect from: `${workspaceFolder}/.ghostty-launcher/tasks.json`, `~/.config/ghostty-launcher/tasks.json`, or `~/.ghostty-launcher/tasks.json`.",
           "scope": "machine"
         },
-        "commandCentral.activityTimeline.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Agent Activity timeline view",
-          "scope": "window"
-        },
-        "commandCentral.activityTimeline.lookbackDays": {
-          "type": "number",
-          "default": 7,
-          "minimum": 1,
-          "maximum": 90,
-          "description": "How many days of agent activity history to show",
-          "scope": "window"
-        },
         "commandCentral.agentStatus.autoRefreshMs": {
           "type": "number",
           "default": 5000,
@@ -714,12 +700,6 @@
         "category": "Command Central"
       },
       {
-        "command": "commandCentral.refreshActivityTimeline",
-        "title": "Refresh Agent Activity",
-        "category": "Command Central",
-        "icon": "$(refresh)"
-      },
-      {
         "command": "commandCentral.captureAgentOutput",
         "title": "Capture Agent Output",
         "category": "Command Central",
@@ -867,12 +847,6 @@
           "type": "tree",
           "when": ""
         },
-        {
-          "id": "commandCentral.activityTimeline",
-          "name": "Agent Activity",
-          "type": "tree",
-          "when": "config.commandCentral.activityTimeline.enabled"
-        }
       ],
       "commandCentralPanel": [
         {
@@ -1448,11 +1422,6 @@
           "when": "view == commandCentral.agentStatus",
           "group": "navigation@2"
         },
-        {
-          "command": "commandCentral.refreshActivityTimeline",
-          "when": "view == commandCentral.activityTimeline",
-          "group": "navigation"
-        }
       ]
     },
     "keybindings": [
