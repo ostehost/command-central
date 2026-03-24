@@ -223,6 +223,13 @@
           "description": "Play sound with agent notifications (uses VS Code sound setting)",
           "scope": "window"
         },
+        "commandCentral.notifications.autoDismissSeconds": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "description": "Auto-dismiss agent completion notifications after N seconds (0 = never auto-dismiss)",
+          "scope": "window"
+        },
         "commandCentral.projects": {
           "type": "array",
           "items": {

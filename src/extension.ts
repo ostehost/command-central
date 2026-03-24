@@ -740,29 +740,34 @@ export async function activate(
 							await execFileAsync("tmux", ["has-session", "-t", sessionId]);
 							// Session is alive — fall through to normal focus strategies
 						} catch {
-							// Session is dead — show status instead of opening empty terminal
+							// Before declaring session dead, try to open the Ghostty bundle directly
+							if (task.ghostty_bundle_id || task.bundle_path) {
+								const bundleTarget = task.ghostty_bundle_id || task.bundle_path;
+								if (
+									bundleTarget &&
+									bundleTarget !== "(test-mode)" &&
+									bundleTarget !== "(tmux-mode)"
+								) {
+									try {
+										await execFileAsync("open", ["-a", bundleTarget]);
+										return;
+									} catch {
+										// Bundle not running — fall through to diff viewer
+									}
+								}
+							}
+							// Session is dead — directly show diff (most useful post-completion action)
 							const elapsed = task.completed_at
 								? ` after ${formatElapsed(task.started_at, new Date(task.completed_at))}`
 								: "";
-							vscode.window
-								.showInformationMessage(
-									`Agent "${task.id}" ${task.status}${elapsed}. Session has ended.`,
-									"View Diff",
-									"Show Output",
-								)
-								.then((action) => {
-									if (action === "View Diff") {
-										vscode.commands.executeCommand(
-											"commandCentral.viewAgentDiff",
-											{ type: "task" as const, task },
-										);
-									} else if (action === "Show Output") {
-										vscode.commands.executeCommand(
-											"commandCentral.showAgentOutput",
-											{ type: "task" as const, task },
-										);
-									}
-								});
+							vscode.window.setStatusBarMessage(
+								`Agent "${task.id}" ${task.status}${elapsed} — showing diff`,
+								3000,
+							);
+							vscode.commands.executeCommand("commandCentral.viewAgentDiff", {
+								type: "task" as const,
+								task,
+							});
 							return;
 						}
 					}

@@ -677,7 +677,7 @@ describe("AgentStatusTreeProvider", () => {
 				vscodeMock.window.showInformationMessage as ReturnType<typeof mock>
 			).mock.calls[0] as string[] | undefined;
 			expect(callArgs?.[0]).toContain("Agent t1 completed");
-			expect(callArgs?.[1]).toBe("Focus Terminal");
+			expect(callArgs?.[1]).toBe("View Diff");
 		});
 
 		test("notification fires on running→failed transition", () => {

@@ -332,11 +332,16 @@ export class AgentStatusTreeProvider
 					const elapsed = formatElapsed(task.started_at);
 					const msg = `Agent ${task.id} completed (${elapsed})`;
 					vscode.window
-						.showInformationMessage(msg, "Focus Terminal")
+						.showInformationMessage(msg, "View Diff", "Show Output")
 						.then((action) => {
-							if (action === "Focus Terminal") {
+							if (action === "View Diff") {
+								vscode.commands.executeCommand("commandCentral.viewAgentDiff", {
+									type: "task" as const,
+									task,
+								});
+							} else if (action === "Show Output") {
 								vscode.commands.executeCommand(
-									"commandCentral.focusAgentTerminal",
+									"commandCentral.showAgentOutput",
 									{ type: "task" as const, task },
 								);
 							}
@@ -351,13 +356,18 @@ export class AgentStatusTreeProvider
 				} else if (task.status === "failed" && onFailure) {
 					const msg = `Agent ${task.id} failed — check output`;
 					vscode.window
-						.showWarningMessage(msg, "Focus Terminal")
+						.showWarningMessage(msg, "Show Output", "View Diff")
 						.then((action) => {
-							if (action === "Focus Terminal") {
+							if (action === "Show Output") {
 								vscode.commands.executeCommand(
-									"commandCentral.focusAgentTerminal",
+									"commandCentral.showAgentOutput",
 									{ type: "task" as const, task },
 								);
+							} else if (action === "View Diff") {
+								vscode.commands.executeCommand("commandCentral.viewAgentDiff", {
+									type: "task" as const,
+									task,
+								});
 							}
 						});
 					this._onAgentEvent.fire({
