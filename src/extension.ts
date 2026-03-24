@@ -27,6 +27,7 @@ import { AgentDecorationProvider } from "./providers/agent-decoration-provider.j
 import {
 	AgentStatusTreeProvider,
 	type AgentTask,
+	formatElapsed,
 	isValidSessionId,
 } from "./providers/agent-status-tree-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
@@ -727,6 +728,44 @@ export async function activate(
 					const { execFile } = await import("node:child_process");
 					const { promisify } = await import("node:util");
 					const execFileAsync = promisify(execFile);
+
+					// Guard: for completed/stopped/failed tasks, check if tmux session is alive first
+					if (
+						task &&
+						task.status !== "running" &&
+						sessionId &&
+						isValidSessionId(sessionId)
+					) {
+						try {
+							await execFileAsync("tmux", ["has-session", "-t", sessionId]);
+							// Session is alive — fall through to normal focus strategies
+						} catch {
+							// Session is dead — show status instead of opening empty terminal
+							const elapsed = task.completed_at
+								? ` after ${formatElapsed(task.started_at, new Date(task.completed_at))}`
+								: "";
+							vscode.window
+								.showInformationMessage(
+									`Agent "${task.id}" ${task.status}${elapsed}. Session has ended.`,
+									"View Diff",
+									"Show Output",
+								)
+								.then((action) => {
+									if (action === "View Diff") {
+										vscode.commands.executeCommand(
+											"commandCentral.viewAgentDiff",
+											{ type: "task" as const, task },
+										);
+									} else if (action === "Show Output") {
+										vscode.commands.executeCommand(
+											"commandCentral.showAgentOutput",
+											{ type: "task" as const, task },
+										);
+									}
+								});
+							return;
+						}
+					}
 
 					// Strategy 0: Session store lookup (works for discovered agents too)
 					if (projectDir) {
