@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Command Central | Code changes, sorted by time</title>
-  <meta name="description" content="A VS Code extension that sorts code changes by time. Today, yesterday, last week. Free, open source, zero config.">
-  <meta property="og:title" content="Command Central | Code changes, sorted by time">
-  <meta property="og:description" content="A VS Code extension that sorts code changes by time. See what changed, in the order it changed.">
+  <title>Command Central | The VS Code Agent Control Tower</title>
+  <meta name="description" content="See all your AI coding agents from one VS Code sidebar. Auto-discovers Claude Code, Codex, and Gemini — even agents running in external terminals.">
+  <meta property="og:title" content="Command Central | The VS Code Agent Control Tower">
+  <meta property="og:description" content="See all your AI coding agents from one VS Code sidebar. Auto-discovers Claude Code, Codex, and Gemini — even agents running in external terminals.">
   <meta property="og:image" content="https://partnerai.dev/images/og-card.png">
   <meta property="og:url" content="https://partnerai.dev">
   <meta property="og:type" content="website">
@@ -31,22 +31,16 @@
   </script>
   <script>
     document.addEventListener('DOMContentLoaded',function(){
-      // Click tracking via data-track attributes
-      // Event taxonomy: site_{object}_{action} — see posthog-playbook
       document.querySelectorAll('[data-track]').forEach(function(el){
         if(el.dataset.track==='email_submitted') return;
         el.addEventListener('click',function(){
           posthog.capture(el.dataset.track,{product:'command-central',source:el.dataset.source||'landing',label:el.textContent.trim().substring(0,80)})
         })
       });
-
-      // Email form submit
       var form=document.querySelector('.signup-form');
       if(form){form.addEventListener('submit',function(){
         posthog.capture('email_submitted',{product:'command-central',source:'footer'})
       })}
-
-      // Scroll depth via IntersectionObserver
       var depths=[25,50,75,100],fired={};
       function placeSentinels(){
         var h=document.body.scrollHeight;
@@ -70,7 +64,6 @@
         })
       },{threshold:0});
       sentinels.forEach(function(s){obs.observe(s)});
-      // page_leave handled by PostHog capture_pageleave:true
     });
   </script>
 </head>
@@ -82,7 +75,7 @@
       <a href="https://partnerai.dev" class="nav-brand">Partner AI™</a>
       <div class="nav-links">
         <a href="https://partnerai.dev" class="nav-link nav-link--active">Command Central</a>
-        <a href="https://github.com/ostehost" class="nav-link">GitHub</a>
+        <a href="https://github.com/ostehost/command-central" class="nav-link">GitHub</a>
       </div>
     </div>
   </nav>
@@ -94,14 +87,14 @@
         <img src="images/logo.svg" alt="Command Central" width="128" height="128" style="display:block;margin:0 auto;">
       </div>
       <div class="hero-badge">Free &amp; open source</div>
-      <h1>Code changes, sorted by time</h1>
-      <p class="subtitle">See what changed, in the order it changed.</p>
+      <h1>Stop managing terminals.<br>Start managing agents.</h1>
+      <p class="subtitle">The VS Code sidebar that sees all your AI coding agents — even the ones running in external terminals VS Code can't see.</p>
       <div class="cta-group">
         <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-primary" data-track="install_clicked" data-source="hero">Install for VS Code</a>
         <a href="https://github.com/ostehost/command-central" class="btn btn-secondary" data-track="github_clicked" data-source="hero">GitHub</a>
       </div>
       <div class="hero-screenshot">
-        <img src="assets/hero.svg" alt="Command Central showing three workspaces with time-grouped file changes" width="480" height="490" loading="eager">
+        <img src="assets/feature-agents.svg" alt="Command Central showing multiple AI agents running across projects" width="480" height="490" loading="eager">
       </div>
     </div>
   </section>
@@ -111,6 +104,14 @@
     <div class="container">
       <div class="trust-compat-inner">
         <div class="compat-row">
+          <span class="compat-label">Auto-discovers</span>
+          <div class="compat-pills">
+            <span class="compat-pill">Claude Code</span>
+            <span class="compat-pill">Codex CLI</span>
+            <span class="compat-pill">Gemini CLI</span>
+          </div>
+        </div>
+        <div class="compat-row" style="margin-top: 12px;">
           <span class="compat-label">Works with</span>
           <div class="compat-pills">
             <span class="compat-pill">
@@ -132,7 +133,7 @@
         </div>
         <div class="trust-row">
           <div class="trust-signal">
-            <span class="trust-number">383</span>
+            <span class="trust-number">765+</span>
             <span class="trust-label">tests passing</span>
           </div>
           <div class="trust-signal">
@@ -148,77 +149,101 @@
     </div>
   </section>
 
-  <!-- Features — alternating layout -->
-  <!-- Order: Time-ordering → Git-status → Filter -->
+  <!-- The Problem -->
+  <section class="use-cases">
+    <div class="container">
+      <h2>You've been here</h2>
+      <div class="use-case-grid">
+        <div class="use-case">
+          <span class="use-case-emoji">🤯</span>
+          <p class="use-case-title">Five agents. Five terminals.</p>
+          <p class="use-case-desc">Cmd+Tab roulette to find the one that just&nbsp;finished.</p>
+        </div>
+        <div class="use-case">
+          <span class="use-case-emoji">👻</span>
+          <p class="use-case-title">Invisible agents.</p>
+          <p class="use-case-desc">VS Code's Agent Sessions only sees agents it spawned. External terminals?&nbsp;Invisible.</p>
+        </div>
+        <div class="use-case">
+          <span class="use-case-emoji">💸</span>
+          <p class="use-case-title">Runaway agent.</p>
+          <p class="use-case-desc">That Claude Code instance has been running for 40 minutes. Is it stuck or just&nbsp;thinking?</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
   <section class="features">
     <div class="container">
       <h2 class="features-heading">What it does</h2>
 
-      <!-- Card 1: Text LEFT, SVG RIGHT — Time ordering -->
-      <div class="feature-card" data-track="feature_clicked" data-source="time-ordering">
+      <!-- Card 1: Agent Discovery -->
+      <div class="feature-card" data-track="feature_clicked" data-source="agent-discovery">
         <div class="feature-content">
-          <h3>Sorted by time, not name</h3>
-          <p>Adjustable time groups. Minutes, hours,&nbsp;days.</p>
+          <h3>Sees every agent, everywhere</h3>
+          <p>Auto-discovers Claude Code, Codex, and Gemini instances via process scanning and session files. Ghostty, iTerm2, Terminal.app, tmux — doesn't&nbsp;matter.</p>
         </div>
         <div class="feature-visual">
-          <img src="assets/hero.svg" alt="Command Central sidebar showing time-grouped file changes" width="100%">
+          <img src="assets/agent-status.svg" alt="Agent status tree showing running, completed, and discovered agents" width="100%">
         </div>
       </div>
 
-      <!-- Card 2: SVG LEFT, Text RIGHT (reversed) — Git status -->
-      <div class="feature-card feature-card--reverse" data-track="feature_clicked" data-source="git-status">
+      <!-- Card 2: Click to Focus -->
+      <div class="feature-card feature-card--reverse" data-track="feature_clicked" data-source="click-focus">
         <div class="feature-content">
-          <h3>Staged vs. working</h3>
-          <p>Toggle to separate staged from&nbsp;working.</p>
+          <h3>Click to focus</h3>
+          <p>Click an agent → its terminal window comes to front. No more hunting through Dock icons and tmux&nbsp;sessions.</p>
         </div>
         <div class="feature-visual">
-          <img src="assets/git-status.svg" alt="Staged and working changes split into clear groups" width="100%">
+          <img src="assets/notifications.svg" alt="Agent completion notification with Focus Terminal action" width="100%">
         </div>
       </div>
 
-      <!-- Card 3: Text LEFT, SVG RIGHT — Filter -->
-      <div class="feature-card" data-track="feature_clicked" data-source="filter">
+      <!-- Card 3: Diff Tracking -->
+      <div class="feature-card" data-track="feature_clicked" data-source="diff-tracking">
         <div class="feature-content">
-          <h3>Filter by extension</h3>
-          <p>See only the file types that&nbsp;matter.</p>
+          <h3>Agent diff tracker</h3>
+          <p>Every file every agent touches, sorted by time. See what changed this minute, this hour, or&nbsp;overnight.</p>
         </div>
         <div class="feature-visual">
-          <img src="assets/filter.svg" alt="Extension filter showing filtered files with active filter indicator" width="100%">
+          <img src="assets/hero.svg" alt="Time-grouped file changes showing agent activity" width="100%">
         </div>
       </div>
 
       <div class="features-also">
         <span class="features-also-label">Plus</span>
-        <span class="features-also-item">Multi repo workspaces</span>
-        <span class="features-also-item">Active file tracking</span>
-        <span class="features-also-item">Two layout modes</span>
-        <span class="features-also-item">Deleted file persistence</span>
-        <span class="features-also-item">Emoji icons per project</span>
+        <span class="features-also-item">Completion notifications</span>
+        <span class="features-also-item">tmux output capture</span>
+        <span class="features-also-item">Multi-workspace tracking</span>
+        <span class="features-also-item">Port detection</span>
+        <span class="features-also-item">Extension filtering</span>
         <span class="features-also-item">Zero config</span>
       </div>
 
     </div>
   </section>
 
-  <!-- Use Cases -->
-  <section class="use-cases">
+  <!-- How It Works -->
+  <section class="install-snippet">
     <div class="container">
-      <h2>You've been here</h2>
-      <div class="use-case-grid">
+      <h2>How it works</h2>
+      <p class="quiet-note">No configuration. No daemon. No API&nbsp;keys.</p>
+      <div class="use-case-grid" style="margin-top: 32px;">
         <div class="use-case">
-          <span class="use-case-emoji">🤖</span>
-          <p class="use-case-title">Three agents running.</p>
-          <p class="use-case-desc">Every file they touch, sorted by the&nbsp;minute.</p>
+          <span class="use-case-emoji">1️⃣</span>
+          <p class="use-case-title">Install the extension</p>
+          <p class="use-case-desc">One click from the VS Code&nbsp;Marketplace.</p>
         </div>
         <div class="use-case">
-          <span class="use-case-emoji">🔍</span>
-          <p class="use-case-title">Agent went wide.</p>
-          <p class="use-case-desc">Filter to .ts. Then to .css. Find what&nbsp;matters.</p>
+          <span class="use-case-emoji">2️⃣</span>
+          <p class="use-case-title">Run your agents anywhere</p>
+          <p class="use-case-desc">Ghostty, iTerm2, tmux, VS Code terminal — your&nbsp;choice.</p>
         </div>
         <div class="use-case">
-          <span class="use-case-emoji">☕</span>
-          <p class="use-case-title">Morning after.</p>
-          <p class="use-case-desc">What changed overnight, grouped by&nbsp;hour.</p>
+          <span class="use-case-emoji">3️⃣</span>
+          <p class="use-case-title">They appear in your sidebar</p>
+          <p class="use-case-desc">Auto-discovered. Status, uptime, project. Click to&nbsp;focus.</p>
         </div>
       </div>
     </div>
@@ -251,7 +276,7 @@
     </div>
   </section>
 
-  <!-- Footer CTA -->
+  <!-- Footer -->
   <footer class="footer">
     <div class="container">
       <div class="footer-links">
