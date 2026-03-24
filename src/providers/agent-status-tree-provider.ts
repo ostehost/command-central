@@ -87,9 +87,11 @@ export interface DiscoveredNode {
 
 // ── Status icon mapping ──────────────────────────────────────────────
 
-const STATUS_ICONS: Record<AgentTask["status"], string> = {
+const STATUS_ICONS: Record<string, string> = {
 	running: "🔄",
 	completed: "✅",
+	completed_stale: "✅",
+	contract_failure: "⚠️",
 	failed: "❌",
 	stopped: "⏹️",
 	killed: "💀",
@@ -98,11 +100,13 @@ const STATUS_ICONS: Record<AgentTask["status"], string> = {
 // ── ThemeIcon + color for status (colored sidebar icons) ─────────────
 
 export const STATUS_THEME_ICONS: Record<
-	AgentTask["status"],
+	string,
 	{ icon: string; color: string }
 > = {
 	running: { icon: "sync~spin", color: "charts.yellow" },
 	completed: { icon: "check", color: "charts.green" },
+	completed_stale: { icon: "check", color: "disabledForeground" },
+	contract_failure: { icon: "warning", color: "charts.yellow" },
 	failed: { icon: "error", color: "charts.red" },
 	stopped: { icon: "debug-stop", color: "disabledForeground" },
 	killed: { icon: "close", color: "charts.red" },
@@ -1111,7 +1115,10 @@ export class AgentStatusTreeProvider
 				.filter(Boolean)
 				.join("\n\n"),
 		);
-		const statusTheme = STATUS_THEME_ICONS[task.status];
+		const statusTheme = STATUS_THEME_ICONS[task.status] ?? {
+			icon: "question",
+			color: "disabledForeground",
+		};
 		item.iconPath = new vscode.ThemeIcon(
 			statusTheme.icon,
 			new vscode.ThemeColor(statusTheme.color),
