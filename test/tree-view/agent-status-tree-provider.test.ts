@@ -1081,8 +1081,7 @@ describe("AgentStatusTreeProvider", () => {
 
 	describe("getDiffSummary", () => {
 		test("parses git diff --stat summary line correctly", () => {
-			const { execFileSync } = require("node:child_process");
-			const origExecFileSync = execFileSync;
+			const { execFileSync: _execFileSync } = require("node:child_process");
 			// Mock execFileSync via provider method override
 			const task = createMockTask({ status: "completed" });
 			provider.getDiffSummary = (_dir: string, _t: AgentTask) => {
@@ -1254,7 +1253,7 @@ describe("AgentStatusTreeProvider", () => {
 			provider.getDiffSummary = () => null;
 			const p = provider as unknown as {
 				getDiscoveredChildren: (
-					agent: typeof agent,
+					a: Record<string, unknown>,
 				) => Array<{ type: string; label: string; value: string }>;
 			};
 			const details = p.getDiscoveredChildren(agent);
