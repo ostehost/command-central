@@ -165,6 +165,8 @@ export class AgentStatusTreeProvider
 	private _portDetecting = new Set<string>();
 	/** Cached prompt summaries per file path */
 	private _promptCache = new Map<string, string>();
+	/** Cached prompt summaries for discovered agents keyed by sessionId or pid */
+	private _discoveredPromptCache = new Map<string, string>();
 
 	constructor() {
 		// Watch config changes for the tasks file path
@@ -518,6 +520,16 @@ export class AgentStatusTreeProvider
 				taskId: `discovered-${agent.pid}`,
 			},
 		];
+		// Prompt for discovered agents
+		const discoveredPrompt = this.readDiscoveredPrompt(agent);
+		if (discoveredPrompt) {
+			details.push({
+				type: "detail",
+				label: "Prompt",
+				value: discoveredPrompt,
+				taskId: `discovered-${agent.pid}`,
+			});
+		}
 		// Diff summary for discovered agents (working tree vs HEAD)
 		const diffSummary = this.getDiffSummary(agent.projectDir, {
 			status: "running",
@@ -755,6 +767,101 @@ export class AgentStatusTreeProvider
 		}
 	}
 
+	/** Read a prompt summary for a discovered agent (no prompt_file available) */
+	readDiscoveredPrompt(agent: DiscoveredAgent): string | null {
+		const cacheKey = agent.sessionId ?? `pid:${agent.pid}`;
+		const cached = this._discoveredPromptCache.get(cacheKey);
+		if (cached !== undefined) return cached || null;
+
+		// Try reading prompt.md from session directory
+		if (agent.sessionId) {
+			try {
+				const homeDir = process.env["HOME"] ?? "";
+				const claudeProjectsDir = path.join(homeDir, ".claude", "projects");
+				if (fs.existsSync(claudeProjectsDir)) {
+					for (const projectEntry of fs.readdirSync(claudeProjectsDir)) {
+						const sessionDir = path.join(
+							claudeProjectsDir,
+							projectEntry,
+							"sessions",
+							agent.sessionId,
+						);
+						const promptFile = path.join(sessionDir, "prompt.md");
+						if (fs.existsSync(promptFile)) {
+							const content = fs.readFileSync(promptFile, "utf-8").trim();
+							if (content) {
+								const firstLine = content.split("\n").find((l) => l.trim());
+								const trimmed = firstLine?.trim() ?? "";
+								const result =
+									trimmed.length > 60
+										? `${trimmed.substring(0, 60)}…`
+										: trimmed;
+								this._discoveredPromptCache.set(cacheKey, result);
+								return result;
+							}
+						}
+						// Fall back to parsing JSONL for initial user message
+						const jsonlDir = path.join(claudeProjectsDir, projectEntry);
+						if (fs.existsSync(jsonlDir)) {
+							const jsonlFiles = fs
+								.readdirSync(jsonlDir)
+								.filter((f) => f.endsWith(".jsonl"));
+							for (const jsonlFile of jsonlFiles) {
+								try {
+									const lines = fs
+										.readFileSync(path.join(jsonlDir, jsonlFile), "utf-8")
+										.split("\n")
+										.filter(Boolean);
+									for (const line of lines) {
+										const entry = JSON.parse(line) as Record<string, unknown>;
+										if (
+											entry["sessionId"] === agent.sessionId &&
+											entry["type"] === "user"
+										) {
+											const msg = entry["message"] as
+												| Record<string, unknown>
+												| undefined;
+											const contentArr = msg?.["content"] as
+												| Array<Record<string, unknown>>
+												| string
+												| undefined;
+											let text = "";
+											if (typeof contentArr === "string") {
+												text = contentArr;
+											} else if (Array.isArray(contentArr)) {
+												const textBlock = contentArr.find(
+													(c) => c["type"] === "text",
+												);
+												text =
+													(textBlock?.["text"] as string | undefined) ?? "";
+											}
+											if (text) {
+												const trimmed = text.trim();
+												const result =
+													trimmed.length > 60
+														? `${trimmed.substring(0, 60)}…`
+														: trimmed;
+												this._discoveredPromptCache.set(cacheKey, result);
+												return result;
+											}
+										}
+									}
+								} catch {
+									// skip malformed JSONL
+								}
+							}
+						}
+					}
+				}
+			} catch {
+				// fall through
+			}
+		}
+
+		this._discoveredPromptCache.set(cacheKey, "");
+		return null;
+	}
+
 	/** Get a formatted diff summary for an agent's working directory */
 	getDiffSummary(projectDir: string, task: AgentTask): string | null {
 		try {
@@ -888,7 +995,10 @@ export class AgentStatusTreeProvider
 		const label = projectEmoji
 			? `${prefix} ${projectEmoji} ${task.id}`
 			: `${prefix} ${task.id}`;
-		const description = `${task.project_name} · ${elapsedDesc}`;
+		const diffSummaryInline = this.getDiffSummary(task.project_dir, task);
+		const description = diffSummaryInline
+			? `${task.project_name} · ${elapsedDesc} · ${diffSummaryInline}`
+			: `${task.project_name} · ${elapsedDesc}`;
 
 		const item = new vscode.TreeItem(
 			label,
@@ -942,9 +1052,14 @@ export class AgentStatusTreeProvider
 			label,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
-		item.description = `PID ${agent.pid} · ${uptime} ${sourceLabel}`;
+		const discoveredDiff = this.getDiffSummary(agent.projectDir, {
+			status: "running",
+		} as AgentTask);
+		item.description = discoveredDiff
+			? `PID ${agent.pid} · ${uptime} · ${discoveredDiff} ${sourceLabel}`
+			: `PID ${agent.pid} · ${uptime} ${sourceLabel}`;
 		item.iconPath = new vscode.ThemeIcon("search");
-		item.contextValue = "discoveredAgent";
+		item.contextValue = "discoveredAgent.running";
 		item.command = {
 			command: "commandCentral.focusAgentTerminal",
 			title: "Focus Terminal",

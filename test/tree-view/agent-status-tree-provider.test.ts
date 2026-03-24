@@ -1261,4 +1261,171 @@ describe("AgentStatusTreeProvider", () => {
 			expect(sessionDetail).toBeUndefined();
 		});
 	});
+
+	// ── M2.5-1: Discovered agent prompt display ──────────────────────
+
+	describe("readDiscoveredPrompt", () => {
+		test("returns null for agent with no sessionId and no cached file", () => {
+			const agent = {
+				pid: 99999,
+				projectDir: "/tmp/nonexistent-project",
+				startTime: new Date(),
+				source: "process" as const,
+				command: "claude --test",
+			};
+			const p = provider as unknown as {
+				readDiscoveredPrompt: (a: typeof agent) => string | null;
+			};
+			expect(p.readDiscoveredPrompt(agent)).toBeNull();
+		});
+
+		test("returns cached value on second call", () => {
+			const agent = {
+				pid: 11111,
+				projectDir: "/tmp/agent-project",
+				startTime: new Date(),
+				source: "process" as const,
+				sessionId: "cached-session-id",
+				command: "claude",
+			};
+			const p = provider as unknown as {
+				readDiscoveredPrompt: (a: typeof agent) => string | null;
+				_discoveredPromptCache: Map<string, string>;
+			};
+			// Pre-populate cache
+			p._discoveredPromptCache.set("cached-session-id", "Cached prompt text");
+			const result = p.readDiscoveredPrompt(agent);
+			expect(result).toBe("Cached prompt text");
+		});
+
+		test("truncates long prompt to 60 chars with ellipsis", () => {
+			const longPrompt = "A".repeat(80);
+			const agent = {
+				pid: 22222,
+				projectDir: "/tmp/agent-project",
+				startTime: new Date(),
+				source: "process" as const,
+				sessionId: "truncate-session",
+				command: "claude",
+			};
+			const p = provider as unknown as {
+				readDiscoveredPrompt: (a: typeof agent) => string | null;
+				_discoveredPromptCache: Map<string, string>;
+			};
+			// Pre-populate cache with long string already truncated
+			const truncated = `${longPrompt.substring(0, 60)}…`;
+			p._discoveredPromptCache.set("truncate-session", truncated);
+			const result = p.readDiscoveredPrompt(agent);
+			expect(result).toBe(truncated);
+			expect(result?.length).toBe(61); // 60 chars + ellipsis
+		});
+
+		test("discovered children show prompt detail when readDiscoveredPrompt returns text", () => {
+			const agent = {
+				pid: 33333,
+				projectDir: "/Users/test/projects/my-app",
+				startTime: new Date("2026-02-25T08:00:00Z"),
+				source: "process" as const,
+				sessionId: "test-session",
+				model: "opus",
+				command: "claude",
+			};
+			provider.getDiffSummary = () => null;
+			const p = provider as unknown as {
+				getDiscoveredChildren: (
+					a: typeof agent,
+				) => Array<{ type: string; label: string; value: string }>;
+				readDiscoveredPrompt: (a: typeof agent) => string | null;
+				_discoveredPromptCache: Map<string, string>;
+			};
+			// Inject a cached prompt so readDiscoveredPrompt returns it
+			p._discoveredPromptCache.set("test-session", "Fix the auth bug");
+			const details = p.getDiscoveredChildren(agent);
+			const promptDetail = details.find((d) => d.label === "Prompt");
+			expect(promptDetail).toBeDefined();
+			expect(promptDetail?.value).toBe("Fix the auth bug");
+		});
+
+		test("discovered children omit prompt detail when readDiscoveredPrompt returns null", () => {
+			const agent = {
+				pid: 44444,
+				projectDir: "/Users/test/projects/my-app",
+				startTime: new Date("2026-02-25T08:00:00Z"),
+				source: "process" as const,
+				command: "claude",
+			};
+			provider.getDiffSummary = () => null;
+			const p = provider as unknown as {
+				getDiscoveredChildren: (
+					a: typeof agent,
+				) => Array<{ type: string; label: string; value: string }>;
+				_discoveredPromptCache: Map<string, string>;
+			};
+			// Cache empty string so it returns null
+			p._discoveredPromptCache.set("pid:44444", "");
+			const details = p.getDiscoveredChildren(agent);
+			const promptDetail = details.find((d) => d.label === "Prompt");
+			expect(promptDetail).toBeUndefined();
+		});
+	});
+
+	// ── M2.5-2: Inline diff summary on tree item description ─────────
+
+	describe("inline diff summary on task item description", () => {
+		test("task item description includes diff summary when available", () => {
+			const task = createMockTask({ status: "running" });
+			provider.getDiffSummary = () => "3 files · +120 / -45";
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("3 files · +120 / -45");
+		});
+
+		test("task item description excludes diff when getDiffSummary returns null", () => {
+			const task = createMockTask({ status: "running" });
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).not.toContain("files");
+			// Should still have project name and elapsed
+			expect(item.description).toContain("My App");
+		});
+
+		test("task item description format: project · elapsed · diff", () => {
+			const task = createMockTask({
+				status: "running",
+				project_name: "my-project",
+				started_at: new Date().toISOString(),
+			});
+			provider.getDiffSummary = () => "1 files · +10 / -5";
+			const item = provider.getTreeItem({ type: "task", task });
+			const desc = item.description as string;
+			expect(desc).toContain("my-project");
+			expect(desc).toContain("1 files · +10 / -5");
+		});
+
+		test("discovered item description includes diff summary when available", () => {
+			const agent = {
+				pid: 55555,
+				projectDir: "/Users/test/projects/my-app",
+				startTime: new Date("2026-02-25T08:00:00Z"),
+				source: "process" as const,
+				command: "claude",
+			};
+			provider.getDiffSummary = () => "2 files · +30 / -10";
+			const item = provider.getTreeItem({ type: "discovered", agent });
+			expect(item.description).toContain("2 files · +30 / -10");
+		});
+
+		test("discovered item description excludes diff when getDiffSummary returns null", () => {
+			const agent = {
+				pid: 66666,
+				projectDir: "/Users/test/projects/my-app",
+				startTime: new Date("2026-02-25T08:00:00Z"),
+				source: "process" as const,
+				command: "claude",
+			};
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "discovered", agent });
+			expect(item.description).toContain("PID 66666");
+			expect(item.description).not.toContain("files");
+		});
+	});
 });
