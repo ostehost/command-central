@@ -2,11 +2,19 @@
  * Tests for SessionStore — project_dir → Ghostty bundle mapping persistence
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { SessionStore } from "../../src/services/session-store.js";
+
+// Restore real node:fs to undo mock bleed from other test files
+// (e.g. launch-agent.test.ts mocks existsSync: () => true globally).
+// We must require() the real module before mock.module overwrites it.
+const realFs = require("node:fs");
+mock.module("node:fs", () => realFs);
+
+// Re-import SessionStore AFTER restoring real fs so it binds to real existsSync
+const { SessionStore } = await import("../../src/services/session-store.js");
 
 describe("SessionStore", () => {
 	let tmpDir: string;
