@@ -1038,8 +1038,64 @@ export async function activate(
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
 				"commandCentral.showAgentOutput",
-				(node?: { type: string; task?: AgentTask }) => {
+				async (node?: {
+					type: string;
+					task?: AgentTask;
+					agent?: { pid: number; projectDir: string; sessionId?: string };
+				}) => {
 					const task = node?.task;
+					const agent = node?.agent;
+
+					// Discovered agent: open JSONL session transcript in editor
+					if (agent) {
+						const os = await import("node:os");
+						const fs = await import("node:fs");
+						// Hash the project dir the same way Claude CLI does (URL-encoded path)
+						const projectHash = agent.projectDir
+							.replaceAll("/", "-")
+							.replace(/^-/, "");
+						const sessionsDir = path.join(
+							os.homedir(),
+							".claude",
+							"projects",
+							projectHash,
+						);
+						if (!fs.existsSync(sessionsDir)) {
+							vscode.window.showWarningMessage(
+								`No Claude session directory found at: ${sessionsDir}`,
+							);
+							return;
+						}
+						// Find the most recent JSONL session file
+						const files = fs
+							.readdirSync(sessionsDir)
+							.filter((f: string) => f.endsWith(".jsonl"))
+							.map((f: string) => ({
+								name: f,
+								mtime: fs.statSync(path.join(sessionsDir, f)).mtimeMs,
+							}))
+							.sort(
+								(
+									a: { name: string; mtime: number },
+									b: { name: string; mtime: number },
+								) => b.mtime - a.mtime,
+							);
+						if (files.length === 0) {
+							vscode.window.showWarningMessage(
+								`No session files found in: ${sessionsDir}`,
+							);
+							return;
+						}
+						const latestFile = path.join(
+							sessionsDir,
+							(files[0] as { name: string; mtime: number }).name,
+						);
+						const uri = vscode.Uri.file(latestFile);
+						await vscode.commands.executeCommand("vscode.open", uri);
+						return;
+					}
+
+					// Launcher task: stream via tmux OutputChannel
 					if (!task) {
 						vscode.window.showWarningMessage(
 							"No agent selected. Right-click an agent in the tree.",
@@ -1055,8 +1111,51 @@ export async function activate(
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
 				"commandCentral.viewAgentDiff",
-				async (node?: { type: string; task?: AgentTask }) => {
+				async (node?: {
+					type: string;
+					task?: AgentTask;
+					agent?: { pid: number; projectDir: string; startTime?: Date };
+				}) => {
 					const task = node?.task;
+					const agent = node?.agent;
+
+					// Discovered agent: diff working tree vs HEAD
+					if (agent) {
+						const projectDir = agent.projectDir;
+						const projectName = path.basename(projectDir);
+						let sinceRef = "HEAD";
+						if (agent.startTime) {
+							try {
+								const { execFileSync } = await import("node:child_process");
+								const commitHash = execFileSync(
+									"git",
+									[
+										"-C",
+										projectDir,
+										"log",
+										`--before=${agent.startTime.toISOString()}`,
+										"-1",
+										"--format=%H",
+									],
+									{ encoding: "utf-8", timeout: 3000 },
+								).trim();
+								if (commitHash) sinceRef = commitHash;
+							} catch {
+								/* fallback to HEAD */
+							}
+						}
+						const terminal = vscode.window.createTerminal({
+							name: `Diff: ${projectName}`,
+							cwd: projectDir,
+						});
+						terminal.sendText(
+							`git diff ${sinceRef} --stat && echo "---" && git diff ${sinceRef}`,
+						);
+						terminal.show();
+						return;
+					}
+
+					// Launcher task: diff since started_at
 					if (!task?.project_dir) {
 						vscode.window.showWarningMessage(
 							"No agent selected. Right-click an agent in the tree.",

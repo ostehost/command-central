@@ -53,7 +53,6 @@ function setupGitExtensionMock(
 	vscode: typeof import("vscode"),
 	mockGitApi: unknown,
 ) {
-	// biome-ignore lint/suspicious/noExplicitAny: test mock cast
 	vscode.extensions.getExtension = mock(
 		(_id: string) =>
 			({
@@ -65,6 +64,7 @@ function setupGitExtensionMock(
 				extensionKind: vscode.ExtensionKind.Workspace,
 				activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
 				exports: { getAPI: () => mockGitApi },
+				// biome-ignore lint/suspicious/noExplicitAny: test mock cast
 			}) as any,
 	);
 }
