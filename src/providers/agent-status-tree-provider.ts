@@ -854,6 +854,11 @@ export class AgentStatusTreeProvider
 		item.description = `PID ${agent.pid} · ${uptime} ${sourceLabel}`;
 		item.iconPath = new vscode.ThemeIcon("search");
 		item.contextValue = "discoveredAgent";
+		item.command = {
+			command: "commandCentral.focusAgentTerminal",
+			title: "Focus Terminal",
+			arguments: [{ type: "discovered" as const, agent }],
+		};
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**Discovered Agent** — PID ${agent.pid}`,

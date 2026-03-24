@@ -706,9 +706,18 @@ export async function activate(
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
 				"commandCentral.focusAgentTerminal",
-				async (node?: { type: string; task?: AgentTask }) => {
+				async (node?: {
+					type: string;
+					task?: AgentTask;
+					agent?: { projectDir: string; sessionId?: string };
+				}) => {
+					// Support both launcher tasks and discovered agents
 					const task = node?.task;
-					if (!task) {
+					const discovered = node?.agent;
+					const projectDir = task?.project_dir ?? discovered?.projectDir;
+					const sessionId = task?.session_id ?? discovered?.sessionId;
+
+					if (!task && !discovered) {
 						vscode.window.showInformationMessage(
 							"No terminal available for this agent.",
 						);
@@ -720,17 +729,17 @@ export async function activate(
 					const execFileAsync = promisify(execFile);
 
 					// Strategy 0: Session store lookup (works for discovered agents too)
-					if (task.project_dir) {
-						const mapping = sessionStore.lookup(task.project_dir);
+					if (projectDir) {
+						const mapping = sessionStore.lookup(projectDir);
 						if (mapping) {
 							try {
 								await execFileAsync("open", ["-a", mapping.bundlePath]);
-								if (task.session_id && isValidSessionId(task.session_id)) {
+								if (sessionId && isValidSessionId(sessionId)) {
 									try {
 										await execFileAsync("tmux", [
 											"select-window",
 											"-t",
-											task.session_id,
+											sessionId,
 										]);
 									} catch {
 										// Window selection failed — app still opened
@@ -741,6 +750,14 @@ export async function activate(
 								// Bundle not running — fall through
 							}
 						}
+					}
+
+					// Discovered agents only use Strategy 0 — no task-specific strategies
+					if (!task) {
+						vscode.window.showInformationMessage(
+							"No Ghostty bundle found for this discovered agent.",
+						);
+						return;
 					}
 
 					// Strategy 1: tmux backend with ghostty bundle
