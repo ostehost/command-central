@@ -943,8 +943,35 @@ export async function activate(
 				async (node?: {
 					type: string;
 					task?: { id: string; session_id: string };
+					agent?: { pid: number; projectDir: string };
 				}) => {
 					const task = node?.task;
+					const agent = node?.agent;
+
+					// Discovered agent: kill by PID
+					if (agent) {
+						const label = path.basename(agent.projectDir);
+						const confirm = await vscode.window.showWarningMessage(
+							`Kill discovered agent "${label}" (PID ${agent.pid})?`,
+							{ modal: true },
+							"Kill",
+						);
+						if (confirm !== "Kill") return;
+						try {
+							process.kill(agent.pid, "SIGTERM");
+							agentStatusProvider?.reload();
+							vscode.window.showInformationMessage(
+								`Agent "${label}" (PID ${agent.pid}) sent SIGTERM.`,
+							);
+						} catch (err) {
+							vscode.window.showErrorMessage(
+								`Failed to kill agent: ${err instanceof Error ? err.message : String(err)}`,
+							);
+						}
+						return;
+					}
+
+					// Launcher task: kill via oste-kill.sh script
 					if (!task) {
 						vscode.window.showWarningMessage(
 							"No agent selected. Right-click an agent in the tree.",

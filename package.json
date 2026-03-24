@@ -1098,17 +1098,22 @@
         },
         {
           "command": "commandCentral.killAgent",
-          "when": "viewItem == agentTask.running && commandCentral.hasLauncher",
+          "when": "(viewItem == agentTask.running && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
           "group": "inline"
         },
         {
           "command": "commandCentral.showAgentOutput",
-          "when": "viewItem =~ /^agentTask\\.running/",
+          "when": "viewItem =~ /^agentTask\\.running/ || viewItem == discoveredAgent.running",
           "group": "inline"
         },
         {
           "command": "commandCentral.viewAgentDiff",
-          "when": "viewItem =~ /^agentTask\\./",
+          "when": "viewItem =~ /^agentTask\\./ || viewItem == discoveredAgent.running",
+          "group": "inline"
+        },
+        {
+          "command": "commandCentral.viewAgentDiff",
+          "when": "viewItem =~ /^agentTask\\./ || viewItem == discoveredAgent.running",
           "group": "navigation"
         },
         {
@@ -1123,12 +1128,12 @@
         },
         {
           "command": "commandCentral.openProjectInVSCode",
-          "when": "viewItem == discoveredAgent",
+          "when": "viewItem == discoveredAgent.running",
           "group": "inline"
         },
         {
           "command": "commandCentral.viewGitLog",
-          "when": "viewItem == discoveredAgent || viewItem =~ /^agentTask\\./",
+          "when": "viewItem == discoveredAgent.running || viewItem =~ /^agentTask\\./",
           "group": "navigation"
         }
       ],
