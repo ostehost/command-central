@@ -189,15 +189,17 @@ describe("AgentStatusTreeProvider", () => {
 	test("returns detail nodes for task children", () => {
 		const task = createMockTask();
 		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
-		// Mock out git info to test base detail structure
+		// Mock out git info, diff, and prompt to test base detail structure
 		provider.getGitInfo = () => null;
+		provider.getDiffSummary = () => null;
+		provider.readPromptSummary = () => "mock summary";
 		provider.reload();
 
 		const root = provider.getChildren();
 		const firstTask = getFirstTask(root);
 		const details = provider.getChildren(firstTask);
-		// Should have: Prompt, Worktree, Attempts, Session (no PR since null, no git since mocked)
-		expect(details).toHaveLength(4);
+		// Should have: Prompt (no git, no diff, no PR, running so no Result)
+		expect(details).toHaveLength(1);
 		expect(details.every((d) => d.type === "detail")).toBe(true);
 	});
 
@@ -207,14 +209,16 @@ describe("AgentStatusTreeProvider", () => {
 			review_status: "approved",
 		});
 		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
-		// Mock out git info to test PR detail specifically
+		// Mock out git info, diff, and prompt to test PR detail specifically
 		provider.getGitInfo = () => null;
+		provider.getDiffSummary = () => null;
+		provider.readPromptSummary = () => "mock summary";
 		provider.reload();
 
 		const root = provider.getChildren();
 		const firstTask = getFirstTask(root);
 		const details = provider.getChildren(firstTask);
-		expect(details).toHaveLength(5);
+		expect(details).toHaveLength(2); // Prompt + PR
 		const prDetail = details.find(
 			(d) => d.type === "detail" && d.label === "PR",
 		);
@@ -236,12 +240,12 @@ describe("AgentStatusTreeProvider", () => {
 	test("getTreeItem creates non-collapsible item for details", () => {
 		const node: AgentNode = {
 			type: "detail",
-			label: "Worktree",
-			value: "/some/path",
+			label: "Prompt",
+			value: "Some prompt summary",
 			taskId: "t1",
 		};
 		const item = provider.getTreeItem(node);
-		expect(item.label).toContain("Worktree: /some/path");
+		expect(item.label).toContain("Prompt: Some prompt summary");
 		expect(item.collapsibleState).toBe(0); // None
 	});
 
@@ -275,8 +279,8 @@ describe("AgentStatusTreeProvider", () => {
 
 		const parent = provider.getParent({
 			type: "detail",
-			label: "Worktree",
-			value: "/path",
+			label: "Prompt",
+			value: "some summary",
 			taskId: "test-task-1",
 		});
 		expect(parent?.type).toBe("task");
@@ -331,35 +335,44 @@ describe("AgentStatusTreeProvider", () => {
 		expect((item.tooltip as { value: string }).value).toContain("Exit code: 1");
 	});
 
-	test("shows exit_code detail node when set", () => {
-		const task = createMockTask({ status: "failed", exit_code: 127 });
+	test("shows Result detail node for failed tasks with exit code", () => {
+		const task = createMockTask({
+			status: "failed",
+			exit_code: 127,
+			attempts: 2,
+			max_attempts: 3,
+		});
 		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.getDiffSummary = () => null;
+		provider.getGitInfo = () => null;
 		provider.reload();
 
 		const root = provider.getChildren();
 		const firstTask = getFirstTask(root);
 		const details = provider.getChildren(firstTask);
-		const exitDetail = details.find(
-			(d) => d.type === "detail" && d.label === "Exit Code",
+		const resultDetail = details.find(
+			(d) => d.type === "detail" && d.label === "Result",
 		);
-		expect(exitDetail).toBeDefined();
-		if (exitDetail?.type === "detail") {
-			expect(exitDetail.value).toBe("127");
+		expect(resultDetail).toBeDefined();
+		if (resultDetail?.type === "detail") {
+			expect(resultDetail.value).toBe("Exit 127 · Attempt 2/3");
 		}
 	});
 
-	test("omits exit_code detail when not set", () => {
-		const task = createMockTask();
+	test("omits Result detail for running tasks", () => {
+		const task = createMockTask({ status: "running" });
 		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.getDiffSummary = () => null;
+		provider.getGitInfo = () => null;
 		provider.reload();
 
 		const root = provider.getChildren();
 		const firstTask = getFirstTask(root);
 		const details = provider.getChildren(firstTask);
-		const exitDetail = details.find(
-			(d) => d.type === "detail" && d.label === "Exit Code",
+		const resultDetail = details.find(
+			(d) => d.type === "detail" && d.label === "Result",
 		);
-		expect(exitDetail).toBeUndefined();
+		expect(resultDetail).toBeUndefined();
 	});
 
 	test("accepts version 2 registry", () => {
@@ -406,9 +419,11 @@ describe("AgentStatusTreeProvider", () => {
 		expect(tasks[0]?.session_id).toBe("new-id");
 	});
 
-	test("detail node shows Session label instead of tmux", () => {
+	test("detail children no longer include Session node", () => {
 		const task = createMockTask();
 		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.getDiffSummary = () => null;
+		provider.getGitInfo = () => null;
 		provider.reload();
 		const root = provider.getChildren();
 		const firstTask = getFirstTask(root);
@@ -416,10 +431,7 @@ describe("AgentStatusTreeProvider", () => {
 		const sessionDetail = details.find(
 			(d) => d.type === "detail" && d.label === "Session",
 		);
-		expect(sessionDetail).toBeDefined();
-		if (sessionDetail?.type === "detail") {
-			expect(sessionDetail.value).toBe("agent-my-app");
-		}
+		expect(sessionDetail).toBeUndefined();
 	});
 
 	test("isValidSessionId validates session names", () => {
@@ -560,10 +572,10 @@ describe("AgentStatusTreeProvider", () => {
 	// ── Feature 2: Git Branch + Last Commit ──────────────────────────
 
 	describe("git info in tree", () => {
-		test("git info detail nodes appear when getGitInfo returns data", () => {
+		test("merged Git detail node appears when getGitInfo returns data", () => {
 			const task = createMockTask();
 			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
-			// Override getGitInfo to return mock data
+			provider.getDiffSummary = () => null;
 			provider.getGitInfo = (_dir: string): GitInfo | null => ({
 				branch: "feature/my-branch",
 				lastCommit: "abc1234 fix: something (2m ago)",
@@ -573,40 +585,35 @@ describe("AgentStatusTreeProvider", () => {
 			const root = provider.getChildren();
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
-			const branchDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Branch",
+			const gitDetail = details.find(
+				(d) => d.type === "detail" && d.label === "Git",
 			);
-			const commitDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Last Commit",
-			);
-			expect(branchDetail).toBeDefined();
-			expect(commitDetail).toBeDefined();
-			if (branchDetail?.type === "detail") {
-				expect(branchDetail.value).toBe("feature/my-branch");
-			}
-			if (commitDetail?.type === "detail") {
-				expect(commitDetail.value).toBe("abc1234 fix: something (2m ago)");
+			expect(gitDetail).toBeDefined();
+			if (gitDetail?.type === "detail") {
+				expect(gitDetail.value).toBe("feature/my-branch → abc1234");
 			}
 		});
 
 		test("graceful fallback when git info is null (non-git dir)", () => {
 			const task = createMockTask();
 			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getDiffSummary = () => null;
 			provider.getGitInfo = (_dir: string): GitInfo | null => null;
 			provider.reload();
 
 			const root = provider.getChildren();
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
-			const branchDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Branch",
+			const gitDetail = details.find(
+				(d) => d.type === "detail" && d.label === "Git",
 			);
-			expect(branchDetail).toBeUndefined();
+			expect(gitDetail).toBeUndefined();
 		});
 
-		test("branch and commit format correct in detail nodes", () => {
+		test("Git detail shows branch → hash format", () => {
 			const task = createMockTask();
 			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getDiffSummary = () => null;
 			provider.getGitInfo = (_dir: string): GitInfo | null => ({
 				branch: "main",
 				lastCommit: "def5678 chore: update deps (5h ago)",
@@ -616,16 +623,10 @@ describe("AgentStatusTreeProvider", () => {
 			const root = provider.getChildren();
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
-			const branchItem = provider.getTreeItem(
-				details.find((d) => d.type === "detail" && d.label === "Branch")!,
+			const gitItem = provider.getTreeItem(
+				details.find((d) => d.type === "detail" && d.label === "Git")!,
 			);
-			expect(branchItem.label).toBe("Branch: main");
-			const commitItem = provider.getTreeItem(
-				details.find((d) => d.type === "detail" && d.label === "Last Commit")!,
-			);
-			expect(commitItem.label).toBe(
-				"Last Commit: def5678 chore: update deps (5h ago)",
-			);
+			expect(gitItem.label).toBe("Git: main → def5678");
 		});
 	});
 
@@ -757,6 +758,7 @@ describe("AgentStatusTreeProvider", () => {
 			const task = createMockTask({ status: "running" });
 			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
 			provider.getGitInfo = () => null;
+			provider.getDiffSummary = () => null;
 			provider.reload();
 
 			const root = provider.getChildren();
@@ -778,6 +780,7 @@ describe("AgentStatusTreeProvider", () => {
 			const task = createMockTask({ status: "completed" });
 			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
 			provider.getGitInfo = () => null;
+			provider.getDiffSummary = () => null;
 			provider.reload();
 
 			const root = provider.getChildren();
@@ -796,6 +799,7 @@ describe("AgentStatusTreeProvider", () => {
 			const task = createMockTask({ status: "running" });
 			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
 			provider.getGitInfo = () => null;
+			provider.getDiffSummary = () => null;
 			provider.reload();
 
 			const root = provider.getChildren();
@@ -815,6 +819,7 @@ describe("AgentStatusTreeProvider", () => {
 			const task = createMockTask({ status: "running" });
 			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
 			provider.getGitInfo = () => null;
+			provider.getDiffSummary = () => null;
 			provider.reload();
 
 			const root = provider.getChildren();
@@ -983,6 +988,324 @@ describe("AgentStatusTreeProvider", () => {
 				"commandCentral.hasAgentTasks",
 				false,
 			);
+		});
+	});
+
+	// ── M2.5 Phase 1: Sidebar Redesign ──────────────────────────────
+
+	describe("readPromptSummary", () => {
+		test("returns first meaningful line from a temp file", () => {
+			const tmpFile = "/tmp/test-prompt-summary.md";
+			const fs = require("node:fs");
+			fs.writeFileSync(tmpFile, "This is the first meaningful line\nSecond line\n");
+			try {
+				// Clear cache
+				const p = provider as unknown as { _promptCache: Map<string, string> };
+				p._promptCache.clear();
+				expect(provider.readPromptSummary(tmpFile)).toBe(
+					"This is the first meaningful line",
+				);
+			} finally {
+				fs.unlinkSync(tmpFile);
+			}
+		});
+
+		test("skips markdown headings and frontmatter", () => {
+			const tmpFile = "/tmp/test-prompt-fm.md";
+			const fs = require("node:fs");
+			fs.writeFileSync(
+				tmpFile,
+				"---\ntitle: Test\n---\n# Heading\n## Subheading\nActual content here\n",
+			);
+			try {
+				const p = provider as unknown as { _promptCache: Map<string, string> };
+				p._promptCache.clear();
+				expect(provider.readPromptSummary(tmpFile)).toBe("Actual content here");
+			} finally {
+				fs.unlinkSync(tmpFile);
+			}
+		});
+
+		test("extracts Goal section content when present", () => {
+			const tmpFile = "/tmp/test-prompt-goal.md";
+			const fs = require("node:fs");
+			fs.writeFileSync(
+				tmpFile,
+				"# Task\nSome intro\n## Goal\nAdd session persistence layer\n## Details\nMore info\n",
+			);
+			try {
+				const p = provider as unknown as { _promptCache: Map<string, string> };
+				p._promptCache.clear();
+				expect(provider.readPromptSummary(tmpFile)).toBe(
+					"Add session persistence layer",
+				);
+			} finally {
+				fs.unlinkSync(tmpFile);
+			}
+		});
+
+		test("truncates at 80 chars with ellipsis", () => {
+			const tmpFile = "/tmp/test-prompt-long.md";
+			const fs = require("node:fs");
+			const longLine = "A".repeat(100);
+			fs.writeFileSync(tmpFile, longLine);
+			try {
+				const p = provider as unknown as { _promptCache: Map<string, string> };
+				p._promptCache.clear();
+				const result = provider.readPromptSummary(tmpFile);
+				expect(result.length).toBe(81); // 80 + ellipsis
+				expect(result.endsWith("…")).toBe(true);
+			} finally {
+				fs.unlinkSync(tmpFile);
+			}
+		});
+
+		test("returns filename when file doesn't exist", () => {
+			const p = provider as unknown as { _promptCache: Map<string, string> };
+			p._promptCache.clear();
+			expect(provider.readPromptSummary("/nonexistent/path/spec.md")).toBe(
+				"spec.md",
+			);
+		});
+
+		test("caches results (doesn't re-read)", () => {
+			const tmpFile = "/tmp/test-prompt-cache.md";
+			const fs = require("node:fs");
+			fs.writeFileSync(tmpFile, "Cached content\n");
+			try {
+				const p = provider as unknown as { _promptCache: Map<string, string> };
+				p._promptCache.clear();
+				const first = provider.readPromptSummary(tmpFile);
+				// Overwrite file
+				fs.writeFileSync(tmpFile, "Different content\n");
+				const second = provider.readPromptSummary(tmpFile);
+				expect(first).toBe(second);
+				expect(second).toBe("Cached content");
+			} finally {
+				fs.unlinkSync(tmpFile);
+			}
+		});
+
+		test("getDetailChildren shows prompt text not file path", () => {
+			const tmpFile = "/tmp/test-prompt-detail.md";
+			const fs = require("node:fs");
+			fs.writeFileSync(tmpFile, "## Goal\nImplement the widget factory\n");
+			try {
+				const p = provider as unknown as { _promptCache: Map<string, string> };
+				p._promptCache.clear();
+				const task = createMockTask({ prompt_file: tmpFile });
+				provider.readRegistry = () =>
+					createMockRegistry({ "test-task-1": task });
+				provider.getGitInfo = () => null;
+				provider.getDiffSummary = () => null;
+				provider.reload();
+
+				const root = provider.getChildren();
+				const firstTask = getFirstTask(root);
+				const details = provider.getChildren(firstTask);
+				const promptDetail = details.find(
+					(d) => d.type === "detail" && d.label === "Prompt",
+				);
+				expect(promptDetail).toBeDefined();
+				if (promptDetail?.type === "detail") {
+					expect(promptDetail.value).toBe("Implement the widget factory");
+					expect(promptDetail.value).not.toContain("/tmp/");
+				}
+			} finally {
+				fs.unlinkSync(tmpFile);
+			}
+		});
+	});
+
+	describe("getDiffSummary", () => {
+		test("parses git diff --stat summary line correctly", () => {
+			const { execFileSync } = require("node:child_process");
+			const origExecFileSync = execFileSync;
+			// Mock execFileSync via provider method override
+			const task = createMockTask({ status: "completed" });
+			provider.getDiffSummary = (_dir: string, _t: AgentTask) => {
+				// Simulate parsing
+				const output =
+					" file1.ts | 10 ++++---\n file2.ts | 5 ++--\n 2 files changed, 8 insertions(+), 5 deletions(-)";
+				const summaryLine = output.split("\n").pop() ?? "";
+				const filesMatch = summaryLine.match(/(\d+)\s+files?\s+changed/);
+				const insertMatch = summaryLine.match(
+					/(\d+)\s+insertions?\(\+\)/,
+				);
+				const deleteMatch = summaryLine.match(
+					/(\d+)\s+deletions?\(-\)/,
+				);
+				if (!filesMatch) return null;
+				const files = filesMatch[1];
+				const insertions = insertMatch?.[1] ?? "0";
+				const deletions = deleteMatch?.[1] ?? "0";
+				return `${files} files · +${insertions} / -${deletions}`;
+			};
+			expect(provider.getDiffSummary("/test", task)).toBe(
+				"2 files · +8 / -5",
+			);
+		});
+
+		test("formats as 'N files · +X / -Y'", () => {
+			const task = createMockTask({ status: "running" });
+			provider.getDiffSummary = () => "4 files · +340 / -87";
+			expect(provider.getDiffSummary("/test", task)).toBe(
+				"4 files · +340 / -87",
+			);
+		});
+
+		test("returns null on git failure", () => {
+			// The real getDiffSummary catches errors and returns null
+			// Test with non-existent directory
+			const task = createMockTask({ status: "completed" });
+			const result = provider.getDiffSummary(
+				"/nonexistent/dir/that/does/not/exist",
+				task,
+			);
+			expect(result).toBeNull();
+		});
+
+		test("detail children include Changes node when diff exists", () => {
+			const task = createMockTask();
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getGitInfo = () => null;
+			provider.getDiffSummary = () => "3 files · +100 / -20";
+			provider.reload();
+
+			const root = provider.getChildren();
+			const firstTask = getFirstTask(root);
+			const details = provider.getChildren(firstTask);
+			const changesDetail = details.find(
+				(d) => d.type === "detail" && d.label === "Changes",
+			);
+			expect(changesDetail).toBeDefined();
+			if (changesDetail?.type === "detail") {
+				expect(changesDetail.value).toBe("3 files · +100 / -20");
+			}
+		});
+
+		test("detail children omit Changes node when no diff", () => {
+			const task = createMockTask();
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getGitInfo = () => null;
+			provider.getDiffSummary = () => null;
+			provider.reload();
+
+			const root = provider.getChildren();
+			const firstTask = getFirstTask(root);
+			const details = provider.getChildren(firstTask);
+			const changesDetail = details.find(
+				(d) => d.type === "detail" && d.label === "Changes",
+			);
+			expect(changesDetail).toBeUndefined();
+		});
+	});
+
+	describe("consolidated detail view", () => {
+		test("detail children no longer include Worktree node", () => {
+			const task = createMockTask();
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getGitInfo = () => null;
+			provider.getDiffSummary = () => null;
+			provider.reload();
+
+			const root = provider.getChildren();
+			const firstTask = getFirstTask(root);
+			const details = provider.getChildren(firstTask);
+			const worktreeDetail = details.find(
+				(d) => d.type === "detail" && d.label === "Worktree",
+			);
+			expect(worktreeDetail).toBeUndefined();
+		});
+
+		test("detail children include merged Git node with branch → hash", () => {
+			const task = createMockTask();
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getDiffSummary = () => null;
+			provider.getGitInfo = () => ({
+				branch: "feature/sidebar",
+				lastCommit: "a1b2c3d refactor: tree view (3m ago)",
+			});
+			provider.reload();
+
+			const root = provider.getChildren();
+			const firstTask = getFirstTask(root);
+			const details = provider.getChildren(firstTask);
+			const gitDetail = details.find(
+				(d) => d.type === "detail" && d.label === "Git",
+			);
+			expect(gitDetail).toBeDefined();
+			if (gitDetail?.type === "detail") {
+				expect(gitDetail.value).toBe("feature/sidebar → a1b2c3d");
+			}
+		});
+
+		test("Result node for completed tasks with exit code + attempts", () => {
+			const task = createMockTask({
+				status: "completed",
+				exit_code: 0,
+				attempts: 1,
+				max_attempts: 3,
+			});
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getGitInfo = () => null;
+			provider.getDiffSummary = () => null;
+			provider.reload();
+
+			const root = provider.getChildren();
+			const firstTask = getFirstTask(root);
+			const details = provider.getChildren(firstTask);
+			const resultDetail = details.find(
+				(d) => d.type === "detail" && d.label === "Result",
+			);
+			expect(resultDetail).toBeDefined();
+			if (resultDetail?.type === "detail") {
+				expect(resultDetail.value).toBe("Exit 0 · Attempt 1/3");
+			}
+		});
+
+		test("running tasks show Prompt, Changes, Git, Ports (no Result)", () => {
+			const task = createMockTask({ status: "running" });
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getDiffSummary = () => "2 files · +50 / -10";
+			provider.getGitInfo = () => ({
+				branch: "main",
+				lastCommit: "abc1234 feat: stuff (1m ago)",
+			});
+			provider.reload();
+
+			const root = provider.getChildren();
+			const firstTask = getFirstTask(root);
+			const details = provider.getChildren(firstTask);
+			const labels = details.map((d) =>
+				d.type === "detail" ? d.label : "",
+			);
+			expect(labels).toContain("Prompt");
+			expect(labels).toContain("Changes");
+			expect(labels).toContain("Git");
+			expect(labels).not.toContain("Result");
+			expect(labels).not.toContain("Worktree");
+			expect(labels).not.toContain("Session");
+		});
+
+		test("discovered children no longer include Session node", () => {
+			const agent = {
+				pid: 12345,
+				projectDir: "/Users/test/projects/my-app",
+				startTime: new Date("2026-02-25T08:00:00Z"),
+				source: "process" as const,
+				sessionId: "some-session",
+				model: "opus",
+			};
+			provider.getDiffSummary = () => null;
+			const p = provider as unknown as {
+				getDiscoveredChildren: (
+					agent: typeof agent,
+				) => Array<{ type: string; label: string; value: string }>;
+			};
+			const details = p.getDiscoveredChildren(agent);
+			const sessionDetail = details.find((d) => d.label === "Session");
+			expect(sessionDetail).toBeUndefined();
 		});
 	});
 });

@@ -163,6 +163,8 @@ export class AgentStatusTreeProvider
 	private _portCache = new Map<string, ListeningPort[]>();
 	/** Task IDs with ongoing async port detection */
 	private _portDetecting = new Set<string>();
+	/** Cached prompt summaries per file path */
+	private _promptCache = new Map<string, string>();
 
 	constructor() {
 		// Watch config changes for the tasks file path
@@ -516,11 +518,15 @@ export class AgentStatusTreeProvider
 				taskId: `discovered-${agent.pid}`,
 			},
 		];
-		if (agent.sessionId) {
+		// Diff summary for discovered agents (working tree vs HEAD)
+		const diffSummary = this.getDiffSummary(agent.projectDir, {
+			status: "running",
+		} as AgentTask);
+		if (diffSummary) {
 			details.push({
 				type: "detail",
-				label: "Session",
-				value: agent.sessionId,
+				label: "Changes",
+				value: diffSummary,
 				taskId: `discovered-${agent.pid}`,
 			});
 		}
@@ -559,36 +565,49 @@ export class AgentStatusTreeProvider
 			{
 				type: "detail",
 				label: "Prompt",
-				value: t.prompt_file,
-				taskId: t.id,
-			},
-			{
-				type: "detail",
-				label: "Worktree",
-				value: t.project_dir,
-				taskId: t.id,
-			},
-			{
-				type: "detail",
-				label: "Attempts",
-				value: `${t.attempts} / ${t.max_attempts}`,
-				taskId: t.id,
-			},
-			{
-				type: "detail",
-				label: "Session",
-				value: t.session_id,
+				value: this.readPromptSummary(t.prompt_file),
 				taskId: t.id,
 			},
 		];
-		if (t.exit_code != null) {
+
+		// Diff summary
+		const diffSummary = this.getDiffSummary(t.project_dir, t);
+		if (diffSummary) {
 			details.push({
 				type: "detail",
-				label: "Exit Code",
-				value: `${t.exit_code}`,
+				label: "Changes",
+				value: diffSummary,
 				taskId: t.id,
 			});
 		}
+
+		// Git info — merged branch + hash
+		const gitInfo = this.getGitInfo(t.project_dir);
+		if (gitInfo) {
+			details.push({
+				type: "detail",
+				label: "Git",
+				value: `${gitInfo.branch} → ${gitInfo.lastCommit.split(" ")[0]}`,
+				taskId: t.id,
+			});
+		}
+
+		// Result — merged exit code + attempts (only for terminal states)
+		if (
+			t.exit_code != null &&
+			(t.status === "completed" ||
+				t.status === "failed" ||
+				t.status === "stopped")
+		) {
+			details.push({
+				type: "detail",
+				label: "Result",
+				value: `Exit ${t.exit_code} · Attempt ${t.attempts}/${t.max_attempts}`,
+				taskId: t.id,
+			});
+		}
+
+		// PR info
 		if (t.pr_number) {
 			details.push({
 				type: "detail",
@@ -597,11 +616,11 @@ export class AgentStatusTreeProvider
 				taskId: t.id,
 			});
 		}
+
 		// Port detection — only for running tasks with a valid session (non-blocking)
 		if (t.status === "running" && t.session_id) {
 			const cached = this._portCache.get(t.id);
 			if (cached !== undefined) {
-				// Show cached result (may be empty — that's fine)
 				if (cached.length > 0) {
 					details.push({
 						type: "detail",
@@ -611,7 +630,6 @@ export class AgentStatusTreeProvider
 					});
 				}
 			} else if (!this._portDetecting.has(t.id)) {
-				// Not yet detecting — kick off async detection and show placeholder
 				this._portDetecting.add(t.id);
 				this._detectPortsAsync(t);
 				details.push({
@@ -621,7 +639,6 @@ export class AgentStatusTreeProvider
 					taskId: t.id,
 				});
 			} else {
-				// Detection in progress — show placeholder
 				details.push({
 					type: "detail",
 					label: "Ports",
@@ -630,21 +647,7 @@ export class AgentStatusTreeProvider
 				});
 			}
 		}
-		const gitInfo = this.getGitInfo(t.project_dir);
-		if (gitInfo) {
-			details.push({
-				type: "detail",
-				label: "Branch",
-				value: gitInfo.branch,
-				taskId: t.id,
-			});
-			details.push({
-				type: "detail",
-				label: "Last Commit",
-				value: gitInfo.lastCommit,
-				taskId: t.id,
-			});
-		}
+
 		return details;
 	}
 
@@ -692,6 +695,94 @@ export class AgentStatusTreeProvider
 				{ encoding: "utf-8", timeout: 2000 },
 			).trim();
 			return { branch, lastCommit };
+		} catch {
+			return null;
+		}
+	}
+
+	/** Read the first meaningful line from a prompt file as a summary */
+	readPromptSummary(promptFile: string): string {
+		const cached = this._promptCache.get(promptFile);
+		if (cached !== undefined) return cached;
+
+		try {
+			const content = fs.readFileSync(promptFile, "utf-8");
+			const lines = content.split("\n");
+
+			// Look for ## Goal section first
+			let inGoalSection = false;
+			for (const line of lines) {
+				if (/^##\s+Goal/i.test(line)) {
+					inGoalSection = true;
+					continue;
+				}
+				if (inGoalSection) {
+					const trimmed = line.trim();
+					if (trimmed.length === 0) continue;
+					if (trimmed.startsWith("#")) break; // next section
+					const result =
+						trimmed.length > 80 ? `${trimmed.substring(0, 80)}…` : trimmed;
+					this._promptCache.set(promptFile, result);
+					return result;
+				}
+			}
+
+			// Fallback: first non-empty, non-heading, non-frontmatter line
+			let inFrontmatter = false;
+			for (const line of lines) {
+				const trimmed = line.trim();
+				if (trimmed === "---") {
+					inFrontmatter = !inFrontmatter;
+					continue;
+				}
+				if (inFrontmatter) continue;
+				if (trimmed.length === 0) continue;
+				if (trimmed.startsWith("#")) continue;
+				const result =
+					trimmed.length > 80 ? `${trimmed.substring(0, 80)}…` : trimmed;
+				this._promptCache.set(promptFile, result);
+				return result;
+			}
+
+			// No meaningful content found, use basename
+			const fallback = path.basename(promptFile);
+			this._promptCache.set(promptFile, fallback);
+			return fallback;
+		} catch {
+			const fallback = path.basename(promptFile);
+			this._promptCache.set(promptFile, fallback);
+			return fallback;
+		}
+	}
+
+	/** Get a formatted diff summary for an agent's working directory */
+	getDiffSummary(projectDir: string, task: AgentTask): string | null {
+		try {
+			// For completed/failed/stopped tasks, diff HEAD~1; for running, diff working tree
+			const args =
+				task.status === "running"
+					? ["-C", projectDir, "diff", "--stat"]
+					: ["-C", projectDir, "diff", "--stat", "HEAD~1"];
+
+			const output = execFileSync("git", args, {
+				encoding: "utf-8",
+				timeout: 2000,
+			}).trim();
+
+			if (!output) return null;
+
+			// Parse the summary line: "N files changed, X insertions(+), Y deletions(-)"
+			const summaryLine = output.split("\n").pop() ?? "";
+			const filesMatch = summaryLine.match(/(\d+)\s+files?\s+changed/);
+			const insertMatch = summaryLine.match(/(\d+)\s+insertions?\(\+\)/);
+			const deleteMatch = summaryLine.match(/(\d+)\s+deletions?\(-\)/);
+
+			if (!filesMatch) return null;
+
+			const files = filesMatch[1];
+			const insertions = insertMatch?.[1] ?? "0";
+			const deletions = deleteMatch?.[1] ?? "0";
+			return `${files} files · +${insertions} / -${deletions}`;
 		} catch {
 			return null;
 		}
