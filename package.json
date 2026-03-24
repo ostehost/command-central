@@ -846,7 +846,7 @@
           "name": "Agent Status",
           "type": "tree",
           "when": ""
-        },
+        }
       ],
       "commandCentralPanel": [
         {
@@ -1421,7 +1421,7 @@
           "command": "commandCentral.refreshAgentStatus",
           "when": "view == commandCentral.agentStatus",
           "group": "navigation@2"
-        },
+        }
       ]
     },
     "keybindings": [
