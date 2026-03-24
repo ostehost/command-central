@@ -36,6 +36,7 @@ import { GroupingStateManager } from "./services/grouping-state-manager.js";
 import { LoggerService, LogLevel } from "./services/logger-service.js";
 import { ProjectIconService } from "./services/project-icon-service.js";
 import { ProjectViewManager } from "./services/project-view-manager.js";
+import { SessionStore } from "./services/session-store.js";
 import { TelemetryService } from "./services/telemetry-service.js";
 import type { GitChangeItem } from "./types/tree-element.js";
 import { GroupingViewManager } from "./ui/grouping-view-manager.js";
@@ -610,6 +611,7 @@ export async function activate(
 		// ============================================================================
 		// Agent Status Panel
 		// ============================================================================
+		const sessionStore = new SessionStore();
 		agentStatusProvider = new AgentStatusTreeProvider();
 		const agentStatusView = vscode.window.createTreeView(
 			"commandCentral.agentStatus",
@@ -631,9 +633,25 @@ export async function activate(
 		const agentStatusBar = new AgentStatusBar();
 		context.subscriptions.push(agentStatusBar);
 
-		// Update status bar on tree data changes
+		// Update status bar + session store on tree data changes
 		agentStatusProvider.onDidChangeTreeData(() => {
 			agentStatusBar.update(agentStatusProvider?.getTasks() ?? []);
+			// Populate session store from launcher tasks with bundle info
+			for (const task of agentStatusProvider?.getTasks() ?? []) {
+				if (
+					task.bundle_path &&
+					task.ghostty_bundle_id &&
+					task.bundle_path !== "(test-mode)" &&
+					task.bundle_path !== "(tmux-mode)"
+				) {
+					sessionStore.register(
+						task.project_dir,
+						task.bundle_path,
+						task.ghostty_bundle_id,
+					);
+				}
+			}
+			sessionStore.save();
 		});
 		// Initial update
 		agentStatusBar.update(agentStatusProvider.getTasks());
@@ -700,6 +718,36 @@ export async function activate(
 					const { execFile } = await import("node:child_process");
 					const { promisify } = await import("node:util");
 					const execFileAsync = promisify(execFile);
+
+					// Strategy 0: Session store lookup (works for discovered agents too)
+					if (task.project_dir) {
+						const mapping = sessionStore.lookup(task.project_dir);
+						if (mapping) {
+							try {
+								await execFileAsync("open", [
+									"-a",
+									mapping.bundlePath,
+								]);
+								if (
+									task.session_id &&
+									isValidSessionId(task.session_id)
+								) {
+									try {
+										await execFileAsync("tmux", [
+											"select-window",
+											"-t",
+											task.session_id,
+										]);
+									} catch {
+										// Window selection failed — app still opened
+									}
+								}
+								return;
+							} catch {
+								// Bundle not running — fall through
+							}
+						}
+					}
 
 					// Strategy 1: tmux backend with ghostty bundle
 					if (task.terminal_backend === "tmux" && task.ghostty_bundle_id) {
