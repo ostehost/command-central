@@ -353,6 +353,110 @@ export class TerminalManager {
 	}
 
 	/**
+	 * Routes a command through the project's Ghostty terminal.
+	 *
+	 * 1. If launcher is installed: gets tmux session, sends command via oste-steer.sh
+	 *    or creates a new project terminal if no session exists.
+	 * 2. If launcher is NOT installed: falls back to vscode.window.createTerminal().
+	 *
+	 * @param projectDir - The project directory (used to look up the tmux session)
+	 * @param command - Optional shell command to execute in the terminal
+	 * @param cwd - Optional working directory override (defaults to projectDir)
+	 */
+	async runInProjectTerminal(
+		projectDir: string,
+		command?: string,
+		cwd?: string,
+	): Promise<void> {
+		const installed = await this.isLauncherInstalled();
+
+		if (!installed) {
+			this.logger.warn(
+				"Ghostty launcher not installed — falling back to integrated terminal",
+				"TerminalManager",
+			);
+			const terminal = vscode.window.createTerminal({
+				name: `Terminal: ${path.basename(projectDir)}`,
+				cwd: cwd ?? projectDir,
+			});
+			if (command) {
+				terminal.sendText(command);
+			}
+			terminal.show();
+			return;
+		}
+
+		// Try to find existing tmux session for the project
+		const info = await this.getTerminalInfo(projectDir);
+
+		if (info.tmuxSession && command) {
+			// Send command to existing tmux session via oste-steer.sh
+			try {
+				await this.execCommand("oste-steer.sh", [
+					"--session",
+					info.tmuxSession,
+					"--raw",
+					command,
+				]);
+				this.logger.info(
+					`Sent command to tmux session ${info.tmuxSession}`,
+					"TerminalManager",
+				);
+				return;
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				this.logger.warn(
+					`Failed to steer tmux session: ${message} — creating new terminal`,
+					"TerminalManager",
+				);
+			}
+		}
+
+		// No existing session or no command to send — create a new project terminal
+		await this.createProjectTerminal(projectDir);
+
+		// If we just created a terminal and have a command, wait briefly then steer
+		if (command) {
+			// Re-fetch session info after terminal creation
+			await new Promise((resolve) => setTimeout(resolve, 1500));
+			try {
+				const newInfo = await this.getTerminalInfo(projectDir);
+				if (newInfo.tmuxSession) {
+					await this.execCommand("oste-steer.sh", [
+						"--session",
+						newInfo.tmuxSession,
+						"--raw",
+						command,
+					]);
+				}
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				this.logger.warn(
+					`Failed to send command after terminal creation: ${message}`,
+					"TerminalManager",
+				);
+			}
+		}
+	}
+
+	/**
+	 * Executes an arbitrary command (not the launcher) via child_process.
+	 * Used for oste-steer.sh and similar utilities.
+	 */
+	private async execCommand(
+		binary: string,
+		args: string[],
+	): Promise<{ stdout: string; stderr: string }> {
+		const { execFile } = await import("node:child_process");
+		const { promisify } = await import("node:util");
+		const execFileAsync = promisify(execFile);
+
+		return await execFileAsync(binary, args, {
+			timeout: LAUNCHER_TIMEOUT_MS,
+		});
+	}
+
+	/**
 	 * Checks if a binary is accessible by attempting to run it with --help.
 	 * Returns true if the binary exists (even if it exits non-zero).
 	 * Returns false only if the binary cannot be found (ENOENT).

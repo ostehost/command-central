@@ -12,6 +12,7 @@
 
 import * as path from "node:path";
 import * as vscode from "vscode";
+import type { TerminalManager } from "../ghostty/TerminalManager.js";
 import type { GitChangeItem } from "../types/tree-element.js";
 
 /**
@@ -240,16 +241,23 @@ export async function revealInFinder(item: GitChangeItem): Promise<void> {
  */
 export async function openInIntegratedTerminal(
 	item: GitChangeItem,
+	manager?: TerminalManager,
 ): Promise<void> {
 	try {
 		const directory = path.dirname(item.uri.fsPath);
-		const fileName = path.basename(item.uri.fsPath);
 
+		if (manager) {
+			// Route through Ghostty terminal (falls back internally if launcher missing)
+			await manager.runInProjectTerminal(directory, undefined, directory);
+			return;
+		}
+
+		// No manager available — use integrated terminal as fallback
+		const fileName = path.basename(item.uri.fsPath);
 		const terminal = vscode.window.createTerminal({
 			name: `Terminal - ${fileName}`,
 			cwd: directory,
 		});
-
 		terminal.show();
 	} catch (_error) {
 		vscode.window.showErrorMessage(

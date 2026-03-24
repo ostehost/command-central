@@ -555,7 +555,7 @@ export async function activate(
 				"commandCentral.gitSort.openInIntegratedTerminal",
 				async (item: GitChangeItem) => {
 					if (item?.uri) {
-						await openInIntegratedTerminal(item);
+						await openInIntegratedTerminal(item, terminalManager);
 					}
 				},
 			),
@@ -1158,7 +1158,6 @@ export async function activate(
 					// Discovered agent: diff working tree vs HEAD
 					if (agent) {
 						const projectDir = agent.projectDir;
-						const projectName = path.basename(projectDir);
 						let sinceRef = "HEAD";
 						if (agent.startTime) {
 							try {
@@ -1180,14 +1179,10 @@ export async function activate(
 								/* fallback to HEAD */
 							}
 						}
-						const terminal = vscode.window.createTerminal({
-							name: `Diff: ${projectName}`,
-							cwd: projectDir,
-						});
-						terminal.sendText(
+						await terminalManager?.runInProjectTerminal(
+							projectDir,
 							`git diff ${sinceRef} --stat && echo "---" && git diff ${sinceRef}`,
 						);
-						terminal.show();
 						return;
 					}
 
@@ -1222,14 +1217,10 @@ export async function activate(
 						}
 					}
 
-					const terminal = vscode.window.createTerminal({
-						name: `Diff: ${task.id}`,
-						cwd: task.project_dir,
-					});
-					terminal.sendText(
+					await terminalManager?.runInProjectTerminal(
+						task.project_dir,
 						`git diff ${sinceRef}..HEAD --stat && echo "---" && git diff ${sinceRef}..HEAD`,
 					);
-					terminal.show();
 				},
 			),
 		);
@@ -1290,14 +1281,10 @@ export async function activate(
 
 					// Re-spawn via launcher if prompt_file exists
 					if (task.prompt_file) {
-						const terminal = vscode.window.createTerminal({
-							name: `Restart: ${task.id}`,
-							cwd: task.project_dir,
-						});
-						terminal.sendText(
+						await terminalManager?.runInProjectTerminal(
+							task.project_dir,
 							`oste-spawn.sh "${task.project_dir}" "${task.prompt_file}" --task-id "${task.id}"`,
 						);
-						terminal.show();
 						agentStatusProvider?.reload();
 					} else {
 						vscode.window.showWarningMessage(
