@@ -1,0 +1,9 @@
+task_id: "resume-click"
+status: "success"
+summary: "Route non-running agent clicks to resumeAgentSession, simplify dead-agent block, add fallback to diff view, add 3 new tests"
+files_changed:
+  - "src/extension.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+tests_passing: true
+next_steps: "Manual QA: click a completed agent in sidebar and verify Ghostty opens with claude --resume"
