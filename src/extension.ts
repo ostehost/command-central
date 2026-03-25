@@ -29,7 +29,6 @@ import { AgentDecorationProvider } from "./providers/agent-decoration-provider.j
 import {
 	AgentStatusTreeProvider,
 	type AgentTask,
-	formatElapsed,
 	isValidSessionId,
 } from "./providers/agent-status-tree-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
@@ -731,99 +730,14 @@ export async function activate(
 					const { promisify } = await import("node:util");
 					const execFileAsync = promisify(execFile);
 
-					// Guard: for completed/stopped/failed tasks, check if terminal session is alive
-					if (
-						task &&
-						task.status !== "running" &&
-						sessionId &&
-						isValidSessionId(sessionId)
-					) {
-						let sessionAlive = false;
-
-						// Check 1: persist socket (default backend — Ghostty bundles use Unix domain sockets)
-						try {
-							const os = await import("node:os");
-							const fsModule = await import("node:fs");
-							const pathModule = await import("node:path");
-							const persistSocketPath = pathModule.join(
-								os.homedir(),
-								".local",
-								"share",
-								"cc",
-								"sockets",
-								`${sessionId}.sock`,
-							);
-							if (fsModule.existsSync(persistSocketPath)) {
-								sessionAlive = true;
-							}
-						} catch {
-							// ignore — persist check failed, try tmux next
-						}
-
-						// Check 2: tmux session (fallback backend)
-						if (!sessionAlive) {
-							try {
-								await execFileAsync("tmux", ["has-session", "-t", sessionId]);
-								sessionAlive = true;
-							} catch {
-								// neither persist nor tmux alive
-							}
-						}
-
-						if (sessionAlive) {
-							// Session is alive — fall through to normal focus strategies
-						} else {
-							// Before declaring session dead, try to open the Ghostty bundle directly
-							if (task.ghostty_bundle_id || task.bundle_path) {
-								const bundleTarget = task.ghostty_bundle_id || task.bundle_path;
-								if (
-									bundleTarget &&
-									bundleTarget !== "(test-mode)" &&
-									bundleTarget !== "(tmux-mode)"
-								) {
-									try {
-										await focusGhosttyWindow(bundleTarget, sessionId);
-										return;
-									} catch {
-										// Bundle not running — fall through to diff viewer
-									}
-								}
-							}
-							// Offer session resume for dead agents
-							const claudeSessionId = projectDir
-								? await resolveClaudeSessionId(projectDir)
-								: null;
-							if (claudeSessionId) {
-								const choice = await vscode.window.showQuickPick(
-									["Resume Session", "View Diff"],
-									{
-										placeHolder: `Agent "${task.id}" has ended. Resume its Claude Code session?`,
-									},
-								);
-								if (choice === "Resume Session") {
-									vscode.commands.executeCommand(
-										"commandCentral.resumeAgentSession",
-										node,
-									);
-									return;
-								}
-								if (!choice) return; // User cancelled
-							}
-
-							// Session is dead — show diff (most useful post-completion action)
-							const elapsed = task.completed_at
-								? ` after ${formatElapsed(task.started_at, new Date(task.completed_at))}`
-								: "";
-							vscode.window.setStatusBarMessage(
-								`Agent "${task.id}" ${task.status}${elapsed} — showing diff`,
-								3000,
-							);
-							vscode.commands.executeCommand("commandCentral.viewAgentDiff", {
-								type: "task" as const,
-								task,
-							});
-							return;
-						}
+					if (task && task.status !== "running") {
+						// Non-running agents should use resumeAgentSession directly
+						// (tree provider routes there, but handle direct invocations too)
+						vscode.commands.executeCommand(
+							"commandCentral.resumeAgentSession",
+							node,
+						);
+						return;
 					}
 
 					// Strategy 0: Session store lookup (works for discovered agents too)
@@ -1112,7 +1026,11 @@ export async function activate(
 					const claudeSessionId = await resolveClaudeSessionId(projectDir);
 					if (!claudeSessionId) {
 						vscode.window.showInformationMessage(
-							"No Claude Code session found for this project.",
+							"No Claude Code session found — showing diff instead.",
+						);
+						vscode.commands.executeCommand(
+							"commandCentral.viewAgentDiff",
+							node,
 						);
 						return;
 					}
