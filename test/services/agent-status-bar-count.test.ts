@@ -15,10 +15,7 @@ setupVSCodeMock();
 import type { AgentTask } from "../../src/providers/agent-status-tree-provider.js";
 import { AgentStatusBar } from "../../src/services/agent-status-bar.js";
 
-function makeTask(
-	id: string,
-	status: AgentTask["status"],
-): AgentTask {
+function makeTask(id: string, status: AgentTask["status"]): AgentTask {
 	return {
 		id,
 		status,
@@ -35,7 +32,6 @@ function makeTask(
 
 describe("AgentStatusBar count calculation", () => {
 	let statusBar: AgentStatusBar;
-	let lastText: string;
 	let mockItem: {
 		text: string;
 		tooltip: unknown;
@@ -114,19 +110,13 @@ describe("AgentStatusBar count calculation", () => {
 	});
 
 	test("shows only completed when all tasks are done", () => {
-		statusBar.update([
-			makeTask("a", "completed"),
-			makeTask("b", "completed"),
-		]);
+		statusBar.update([makeTask("a", "completed"), makeTask("b", "completed")]);
 		expect(mockItem.text).toContain("2 agents completed");
 		expect(mockItem.show).toHaveBeenCalled();
 	});
 
 	test("shows failed with warning icon when no running tasks", () => {
-		statusBar.update([
-			makeTask("a", "failed"),
-			makeTask("b", "completed"),
-		]);
+		statusBar.update([makeTask("a", "failed"), makeTask("b", "completed")]);
 		expect(mockItem.text).toContain("$(warning)");
 		expect(mockItem.text).toContain("1 failed");
 		expect(mockItem.text).toContain("1 completed");
