@@ -1322,6 +1322,99 @@ export async function activate(
 			),
 		);
 
+		// Open File Diff — opens a focused diff for a specific changed file
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.openFileDiff",
+				async (node?: {
+					projectDir?: string;
+					filePath?: string;
+					taskStatus?: AgentTask["status"];
+					startCommit?: string;
+				}) => {
+					if (!node?.projectDir || !node.filePath) {
+						vscode.window.showWarningMessage("No file change selected.");
+						return;
+					}
+
+					const projectDir = node.projectDir;
+					const absolutePath = path.isAbsolute(node.filePath)
+						? node.filePath
+						: path.join(projectDir, node.filePath);
+					const relativePath = path
+						.relative(projectDir, absolutePath)
+						.split(path.sep)
+						.join("/");
+
+					const beforeRef =
+						node.taskStatus === "running"
+							? "HEAD"
+							: (node.startCommit ?? "HEAD~1");
+					const afterRef =
+						node.taskStatus === "running" ? "Working Tree" : "HEAD";
+
+					try {
+						const fs = await import("node:fs");
+						const os = await import("node:os");
+						const { execFileSync } = await import("node:child_process");
+
+						const readFileAtRef = (ref: string): string | null => {
+							try {
+								return execFileSync(
+									"git",
+									["-C", projectDir, "show", `${ref}:${relativePath}`],
+									{ encoding: "utf-8", timeout: 3000 },
+								);
+							} catch {
+								return null;
+							}
+						};
+
+						const tempDir = fs.mkdtempSync(
+							path.join(os.tmpdir(), "command-central-file-diff-"),
+						);
+						const beforePath = path.join(
+							tempDir,
+							`before-${path.basename(relativePath)}`,
+						);
+						fs.writeFileSync(
+							beforePath,
+							readFileAtRef(beforeRef) ?? "",
+							"utf-8",
+						);
+						const beforeUri = vscode.Uri.file(beforePath);
+
+						let afterUri: vscode.Uri;
+						if (node.taskStatus === "running" && fs.existsSync(absolutePath)) {
+							afterUri = vscode.Uri.file(absolutePath);
+						} else {
+							const afterPath = path.join(
+								tempDir,
+								`after-${path.basename(relativePath)}`,
+							);
+							const content =
+								node.taskStatus === "running" && !fs.existsSync(absolutePath)
+									? ""
+									: (readFileAtRef("HEAD") ?? "");
+							fs.writeFileSync(afterPath, content, "utf-8");
+							afterUri = vscode.Uri.file(afterPath);
+						}
+
+						await vscode.commands.executeCommand(
+							"vscode.diff",
+							beforeUri,
+							afterUri,
+							`${path.basename(relativePath)} (${beforeRef} ↔ ${afterRef})`,
+						);
+					} catch (err) {
+						vscode.window.showErrorMessage(
+							`Failed to open file diff: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					}
+				},
+			),
+		);
+
 		// Open Agent Directory — reveals project dir in OS file manager
 		context.subscriptions.push(
 			vscode.commands.registerCommand(

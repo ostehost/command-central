@@ -379,6 +379,98 @@ describe("AgentStatusTreeProvider", () => {
 		expect(parent?.type).toBe("task");
 	});
 
+	test("appends file-change children after existing detail children", () => {
+		const task = createMockTask({ status: "completed", exit_code: 0 });
+		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.getGitInfo = () => null;
+		provider.getDiffSummary = () => null;
+		provider.readPromptSummary = () => "mock summary";
+		provider.getPerFileDiffs = () => [
+			{ filePath: "src/feature/a.ts", additions: 12, deletions: 3 },
+			{ filePath: "test/feature/a.test.ts", additions: 7, deletions: 1 },
+		];
+		provider.reload();
+
+		const root = provider.getChildren();
+		const firstTask = getFirstTask(root);
+		const children = provider.getChildren(firstTask);
+		expect(children.map((c) => c.type)).toEqual([
+			"detail",
+			"detail",
+			"fileChange",
+			"fileChange",
+		]);
+	});
+
+	test("file-change tree item shows basename, +/- stats, tooltip, and command", () => {
+		const task = createMockTask({ status: "completed", exit_code: 0 });
+		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.getGitInfo = () => null;
+		provider.getDiffSummary = () => null;
+		provider.readPromptSummary = () => "mock summary";
+		provider.getPerFileDiffs = () => [
+			{
+				filePath: "src/providers/agent-status-tree-provider.ts",
+				additions: 5,
+				deletions: 2,
+			},
+		];
+		provider.reload();
+
+		const root = provider.getChildren();
+		const firstTask = getFirstTask(root);
+		const children = provider.getChildren(firstTask);
+		const fileNode = children.find((c) => c.type === "fileChange");
+		expect(fileNode).toBeDefined();
+		const item = provider.getTreeItem(fileNode!);
+
+		expect(item.label).toBe("agent-status-tree-provider.ts");
+		expect(item.description).toBe("+5 -2");
+		expect(item.tooltip).toBe(
+			"/Users/test/projects/my-app/src/providers/agent-status-tree-provider.ts",
+		);
+		expect(item.contextValue).toBe("agentFileChange");
+		expect(item.command?.command).toBe("commandCentral.openFileDiff");
+	});
+
+	test("binary file-change tree item uses binary description", () => {
+		const task = createMockTask({ status: "completed", exit_code: 0 });
+		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.getGitInfo = () => null;
+		provider.getDiffSummary = () => null;
+		provider.readPromptSummary = () => "mock summary";
+		provider.getPerFileDiffs = () => [
+			{ filePath: "assets/logo.png", additions: -1, deletions: -1 },
+		];
+		provider.reload();
+
+		const root = provider.getChildren();
+		const firstTask = getFirstTask(root);
+		const children = provider.getChildren(firstTask);
+		const fileNode = children.find((c) => c.type === "fileChange");
+		expect(fileNode).toBeDefined();
+		const item = provider.getTreeItem(fileNode!);
+		expect(item.description).toBe("binary");
+	});
+
+	test("getParent returns task node for file-change child", () => {
+		const task = createMockTask({ status: "completed", exit_code: 0 });
+		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.reload();
+
+		const parent = provider.getParent({
+			type: "fileChange",
+			taskId: "test-task-1",
+			projectDir: task.project_dir,
+			filePath: "src/file.ts",
+			additions: 1,
+			deletions: 0,
+			taskStatus: "completed",
+			startCommit: "HEAD~1",
+		});
+		expect(parent?.type).toBe("task");
+	});
+
 	test("getParent returns undefined for task nodes", () => {
 		const task = createMockTask();
 		const parent = provider.getParent({ type: "task", task });

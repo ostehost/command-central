@@ -761,6 +761,12 @@
         "icon": "$(git-compare)"
       },
       {
+        "command": "commandCentral.openFileDiff",
+        "title": "Open File Diff",
+        "category": "Command Central",
+        "icon": "$(file-diff)"
+      },
+      {
         "command": "commandCentral.openAgentDirectory",
         "title": "Open Agent Directory",
         "category": "Command Central",
@@ -1136,6 +1142,11 @@
         {
           "command": "commandCentral.viewAgentDiff",
           "when": "viewItem =~ /^agentTask\\./ || viewItem == discoveredAgent.running",
+          "group": "navigation"
+        },
+        {
+          "command": "commandCentral.openFileDiff",
+          "when": "viewItem == agentFileChange",
           "group": "navigation"
         },
         {

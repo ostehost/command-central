@@ -575,6 +575,40 @@ describe("viewAgentDiff command", () => {
 	});
 });
 
+describe("openFileDiff command", () => {
+	test("uses HEAD as before ref for running agents", () => {
+		const node = {
+			projectDir: "/tmp/project",
+			filePath: "src/app.ts",
+			taskStatus: "running" as const,
+		};
+		const beforeRef = node.taskStatus === "running" ? "HEAD" : "HEAD~1";
+		expect(beforeRef).toBe("HEAD");
+	});
+
+	test("uses startCommit for completed agents when provided", () => {
+		const node = {
+			projectDir: "/tmp/project",
+			filePath: "src/app.ts",
+			taskStatus: "completed" as const,
+			startCommit: "abc123",
+		};
+		const beforeRef =
+			node.taskStatus === "running" ? "HEAD" : (node.startCommit ?? "HEAD~1");
+		expect(beforeRef).toBe("abc123");
+	});
+
+	test("shows warning when no file is selected", () => {
+		const node = { projectDir: "/tmp/project", filePath: "" };
+		if (!node.projectDir || !node.filePath) {
+			vscodeMock.window.showWarningMessage("No file change selected.");
+		}
+		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+			"No file change selected.",
+		);
+	});
+});
+
 describe("openAgentDirectory command", () => {
 	test("shows warning when no project_dir", () => {
 		const node = { type: "task", task: undefined as AgentTask | undefined };

@@ -9,6 +9,7 @@ type MenuContribution = {
 
 type PackageJsonShape = {
 	contributes?: {
+		commands?: Array<{ command?: string }>;
 		menus?: {
 			"view/item/context"?: MenuContribution[];
 		};
@@ -23,7 +24,23 @@ async function getViewItemContextMenu(): Promise<MenuContribution[]> {
 	return pkg.contributes?.menus?.["view/item/context"] ?? [];
 }
 
+async function getCommands(): Promise<Array<{ command?: string }>> {
+	const raw = await Bun.file(
+		new URL("../../package.json", import.meta.url),
+	).text();
+	const pkg = JSON.parse(raw) as PackageJsonShape;
+	return pkg.contributes?.commands ?? [];
+}
+
 describe("package.json agent menu contributions", () => {
+	test("registers openFileDiff command contribution", async () => {
+		const commands = await getCommands();
+		const exists = commands.some(
+			(item) => item.command === "commandCentral.openFileDiff",
+		);
+		expect(exists).toBe(true);
+	});
+
 	test("has inline restart action for failed launcher-managed tasks", async () => {
 		const menu = await getViewItemContextMenu();
 		const inlineRestart = menu.find(
@@ -50,5 +67,16 @@ describe("package.json agent menu contributions", () => {
 		expect(contextRestart).toBeDefined();
 		expect(contextRestart?.when).toContain("completed|failed|stopped");
 		expect(contextRestart?.when).toContain("commandCentral.hasLauncher");
+	});
+
+	test("adds openFileDiff action for per-file change nodes", async () => {
+		const menu = await getViewItemContextMenu();
+		const openFileDiff = menu.find(
+			(item) =>
+				item.command === "commandCentral.openFileDiff" &&
+				item.when === "viewItem == agentFileChange",
+		);
+		expect(openFileDiff).toBeDefined();
+		expect(openFileDiff?.group).toBe("navigation");
 	});
 });

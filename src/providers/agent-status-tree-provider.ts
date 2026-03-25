@@ -64,7 +64,12 @@ export interface AgentTask {
 
 // ── Tree node types ──────────────────────────────────────────────────
 
-export type AgentNode = SummaryNode | TaskNode | DetailNode | DiscoveredNode;
+export type AgentNode =
+	| SummaryNode
+	| TaskNode
+	| DetailNode
+	| FileChangeNode
+	| DiscoveredNode;
 
 export interface SummaryNode {
 	type: "summary";
@@ -84,6 +89,23 @@ export interface DetailNode {
 	description?: string;
 	icon?: string;
 	iconColor?: string;
+}
+
+export interface PerFileDiff {
+	filePath: string;
+	additions: number;
+	deletions: number;
+}
+
+export interface FileChangeNode {
+	type: "fileChange";
+	taskId: string;
+	projectDir: string;
+	filePath: string;
+	additions: number;
+	deletions: number;
+	taskStatus: AgentTask["status"];
+	startCommit?: string;
 }
 
 export interface DiscoveredNode {
@@ -541,6 +563,9 @@ export class AgentStatusTreeProvider
 		if (element.type === "task") {
 			return this.createTaskItem(element.task);
 		}
+		if (element.type === "fileChange") {
+			return this.createFileChangeItem(element);
+		}
 		if (element.type === "discovered") {
 			return this.createDiscoveredItem(element);
 		}
@@ -599,10 +624,10 @@ export class AgentStatusTreeProvider
 
 		if (element.type === "task") {
 			const compact = this.isCompactMode();
-			if (compact) {
-				return this.getCompactChildren(element.task);
-			}
-			return this.getDetailChildren(element.task);
+			const detailChildren = compact
+				? this.getCompactChildren(element.task)
+				: this.getDetailChildren(element.task);
+			return [...detailChildren, ...this.getFileChangeChildren(element.task)];
 		}
 
 		if (element.type === "discovered") {
@@ -794,6 +819,52 @@ export class AgentStatusTreeProvider
 		}
 
 		return details;
+	}
+
+	private getFileChangeChildren(t: AgentTask): FileChangeNode[] {
+		const startCommit = this.getTaskDiffStartCommit(t);
+		const fileDiffs = this.getPerFileDiffs(t.project_dir, startCommit);
+		return fileDiffs.map((diff) => ({
+			type: "fileChange",
+			taskId: t.id,
+			projectDir: t.project_dir,
+			filePath: diff.filePath,
+			additions: diff.additions,
+			deletions: diff.deletions,
+			taskStatus: t.status,
+			startCommit,
+		}));
+	}
+
+	private getTaskDiffStartCommit(t: AgentTask): string | undefined {
+		if (t.status === "running") return undefined;
+
+		const explicitStartCommit = (
+			t as AgentTask & { start_commit?: string | null }
+		).start_commit;
+		if (explicitStartCommit) return explicitStartCommit;
+
+		if (t.started_at) {
+			try {
+				const commitHash = execFileSync(
+					"git",
+					[
+						"-C",
+						t.project_dir,
+						"log",
+						`--before=${t.started_at}`,
+						"-1",
+						"--format=%H",
+					],
+					{ encoding: "utf-8", timeout: 2000 },
+				).trim();
+				if (commitHash) return commitHash;
+			} catch {
+				// Fallback to HEAD~1 below
+			}
+		}
+
+		return "HEAD~1";
 	}
 
 	/** Kick off async port detection; fires onDidChangeTreeData when done */
@@ -1029,6 +1100,48 @@ export class AgentStatusTreeProvider
 		}
 	}
 
+	/**
+	 * Get per-file diff stats via `git diff --numstat`.
+	 *
+	 * - Running agents: compare working tree vs HEAD (`startCommit` undefined)
+	 * - Completed/stopped/failed: compare `startCommit..HEAD` (fallback: HEAD~1..HEAD)
+	 */
+	getPerFileDiffs(projectDir: string, startCommit?: string): PerFileDiff[] {
+		try {
+			const args = startCommit
+				? ["-C", projectDir, "diff", "--numstat", `${startCommit}..HEAD`]
+				: ["-C", projectDir, "diff", "--numstat"];
+			const output = execFileSync("git", args, {
+				encoding: "utf-8",
+				timeout: 2000,
+			}).trim();
+			if (!output) return [];
+
+			const diffs: PerFileDiff[] = [];
+			for (const line of output.split("\n")) {
+				if (!line.trim()) continue;
+				const [additionsRaw, deletionsRaw, ...fileParts] = line.split("\t");
+				if (!additionsRaw || !deletionsRaw || fileParts.length === 0) continue;
+				const filePath = fileParts.join("\t").trim();
+				if (!filePath) continue;
+
+				const isBinary = additionsRaw === "-" || deletionsRaw === "-";
+				const additions = isBinary ? -1 : Number.parseInt(additionsRaw, 10);
+				const deletions = isBinary ? -1 : Number.parseInt(deletionsRaw, 10);
+
+				if (!isBinary && (Number.isNaN(additions) || Number.isNaN(deletions))) {
+					continue;
+				}
+
+				diffs.push({ filePath, additions, deletions });
+			}
+
+			return diffs;
+		} catch {
+			return [];
+		}
+	}
+
 	private async getLastOutputLine(
 		task: AgentTask,
 	): Promise<string | undefined> {
@@ -1068,6 +1181,10 @@ export class AgentStatusTreeProvider
 				const agent = this._discoveredAgents.find((a) => a.pid === pid);
 				if (agent) return { type: "discovered", agent };
 			}
+			const task = this.registry.tasks[element.taskId];
+			if (task) return { type: "task", task };
+		}
+		if (element.type === "fileChange") {
 			const task = this.registry.tasks[element.taskId];
 			if (task) return { type: "task", task };
 		}
@@ -1218,6 +1335,27 @@ export class AgentStatusTreeProvider
 				: "commandCentral.resumeAgentSession",
 			title: isRunning ? "Focus Terminal" : "Resume Session",
 			arguments: [{ type: "task" as const, task }],
+		};
+		return item;
+	}
+
+	private createFileChangeItem(node: FileChangeNode): vscode.TreeItem {
+		const label = path.basename(node.filePath);
+		const item = new vscode.TreeItem(
+			label,
+			vscode.TreeItemCollapsibleState.None,
+		);
+		item.description =
+			node.additions < 0 || node.deletions < 0
+				? "binary"
+				: `+${node.additions} -${node.deletions}`;
+		item.tooltip = path.join(node.projectDir, node.filePath);
+		item.iconPath = new vscode.ThemeIcon("file");
+		item.contextValue = "agentFileChange";
+		item.command = {
+			command: "commandCentral.openFileDiff",
+			title: "Open File Diff",
+			arguments: [node],
 		};
 		return item;
 	}
