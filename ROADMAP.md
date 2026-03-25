@@ -79,9 +79,9 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M2.5-6 | Agent type badge | ✅ DONE | P1 | Show Claude 🟣 / Codex 🟢 / Gemini 🔵 icon instead of generic wrench on every item. |
 | M2.5-7 | Consolidate detail view | ✅ DONE | P1 | Git line = branch + commit hash. Result line = exit code + attempts. Worktree path and session name removed. |
 | M2.5-8 | Retry/restart action | ✅ DONE | P1 | `restartAgent` — re-runs with same prompt via `oste-spawn.sh`. Context menu for completed/failed/stopped tasks. |
-| M2.5-9 | Status color refinement | TODO | P1 | Differentiate "running" vs "waiting for input" vs "completed" vs "failed" with distinct colors. |
-| M2.5-10 | Per-file change list | TODO | P1 | Expandable list of files the agent touched with per-file +/- counts. |
-| M2.5-11 | Hardening + polish pass | TODO | P0 | Full test suite, edge cases, error handling, loading states, empty states. |
+| M2.5-9 | Status color refinement | ✅ DONE | P1 | Differentiate "running" vs "waiting for input" vs "completed" vs "failed" with distinct colors. |
+| M2.5-10 | Per-file change list | ✅ DONE | P1 | Expandable list of files the agent touched with per-file +/- counts. |
+| M2.5-11 | Hardening + polish pass | ✅ DONE | P0 | Full test suite, edge cases, error handling, loading states, empty states. |
 | M2.5-12 | Marketing site update | TODO | P0 | Update cc.partnerai.dev with new sidebar features, competitor comparison, refined messaging. |
 
 ### M4: Launch & Distribute (v0.7.0) — AFTER M2.5
@@ -101,12 +101,12 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 
 | ID | Item | Status | Priority | Notes |
 |----|------|--------|----------|-------|
-| M3-1 | Session grouping (by project, by role, by status) | TODO | P0 | cmux's core UX — vertical tabs with grouping |
+| M3-1 | Session grouping (by project, by role, by status) | ✅ DONE | P0 | cmux's core UX — vertical tabs with grouping |
 | M3-2 | Agent output log viewer (click → see stdout) | ✅ DONE | P0 | `showAgentOutput` — shipped in M2.5 |
 | M3-3 | Agent lifecycle controls (kill, restart from sidebar) | ✅ DONE | P0 | `killAgent` + `restartAgent` — shipped in M2.5 |
 | M3-4 | Diff summary per agent ("touched 12 files, +340/-87") | ✅ DONE | P1 | `getDiffSummary()` inline + `viewAgentDiff` — shipped in M2.5 |
 | M3-5 | Multi-workspace agent tracking | PARKED | P2 | Scope creep — evaluate post-launch |
-| M3-6 | Stuck-agent detection (heuristic: same state for N min) | TODO | P1 | Address "runaway agent" fear |
+| M3-6 | Stuck-agent detection (heuristic: same state for N min) | ✅ DONE | P1 | Address "runaway agent" fear |
 
 ### M5: Monetization (v1.0)
 **Goal:** Pro tier generating revenue.
