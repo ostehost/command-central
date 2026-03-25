@@ -826,11 +826,14 @@ export class AgentStatusTreeProvider
 		if (!this._agentStatusView) return;
 		const taskElement = this.findTaskElement(taskId);
 		if (!taskElement) return;
-		void this._agentStatusView
-			.reveal(taskElement, { select: true, focus: false })
-			.catch(() => {
-				// Reveal failures are non-fatal (e.g., filtered-out task).
+		try {
+			void this._agentStatusView.reveal(taskElement, {
+				select: true,
+				focus: false,
 			});
+		} catch {
+			// Reveal failures are non-fatal (e.g., filtered-out task).
+		}
 	}
 
 	/** Start or stop auto-refresh timer based on whether any tasks are running */

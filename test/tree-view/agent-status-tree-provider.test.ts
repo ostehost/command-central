@@ -1210,9 +1210,7 @@ describe("AgentStatusTreeProvider", () => {
 		test("completed notification includes diff summary text and new action buttons", () => {
 			provider.getDiffSummary = () => "3 files · +45 / -12";
 			const reveal = mock(() => Promise.resolve());
-			provider.setTreeView({ reveal } as unknown as {
-				reveal: (element: unknown, options?: unknown) => Promise<void>;
-			});
+			provider.setTreeView({ reveal } as any);
 
 			// Set up running state
 			const runningTask = createMockTask({
