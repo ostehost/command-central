@@ -85,18 +85,6 @@ export interface DiscoveredNode {
 	agent: DiscoveredAgent;
 }
 
-// ── Status icon mapping ──────────────────────────────────────────────
-
-const STATUS_ICONS: Record<string, string> = {
-	running: "🔄",
-	completed: "✅",
-	completed_stale: "✅",
-	contract_failure: "⚠️",
-	failed: "❌",
-	stopped: "⏹️",
-	killed: "💀",
-};
-
 // ── ThemeIcon + color for status (colored sidebar icons) ─────────────
 
 export const STATUS_THEME_ICONS: Record<
