@@ -620,6 +620,7 @@ export async function activate(
 			"commandCentral.agentStatus",
 			{ treeDataProvider: agentStatusProvider, showCollapseAll: true },
 		);
+		agentStatusProvider.setTreeView(agentStatusView);
 		const syncAgentStatusViewContexts = async (): Promise<void> => {
 			const config = vscode.workspace.getConfiguration("commandCentral");
 			const showOnlyRunning = config.get<boolean>(

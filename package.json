@@ -250,7 +250,7 @@
         "commandCentral.notifications.sound": {
           "type": "boolean",
           "default": false,
-          "description": "Play sound with agent notifications (uses VS Code sound setting)",
+          "description": "Play a sound when an agent completes or fails",
           "scope": "window"
         },
         "commandCentral.notifications.autoDismissSeconds": {

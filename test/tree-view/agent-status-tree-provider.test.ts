@@ -1188,6 +1188,9 @@ describe("AgentStatusTreeProvider", () => {
 				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "agentStatus.notifications") return true;
+					if (_key === "onCompletion") return true;
+					if (_key === "onFailure") return true;
+					if (_key === "sound") return false;
 					if (_key === "agentStatus.groupByProject") return false;
 					return defaultValue;
 				}),
@@ -1204,33 +1207,69 @@ describe("AgentStatusTreeProvider", () => {
 			provider.reload();
 		});
 
-		test("notification fires on running→completed transition", () => {
+		test("completed notification includes diff summary text and new action buttons", () => {
+			provider.getDiffSummary = () => "3 files · +45 / -12";
+			const reveal = mock(() => Promise.resolve());
+			provider.setTreeView({ reveal } as unknown as {
+				reveal: (element: unknown, options?: unknown) => Promise<void>;
+			});
+
 			// Set up running state
-			const runningTask = createMockTask({ id: "t1", status: "running" });
+			const runningTask = createMockTask({
+				id: "t1",
+				status: "running",
+				agent_backend: "codex",
+			});
 			provider.readRegistry = () => createMockRegistry({ t1: runningTask });
 			provider.reload();
 
 			// Transition to completed
-			const completedTask = createMockTask({ id: "t1", status: "completed" });
+			const completedTask = createMockTask({
+				id: "t1",
+				status: "completed",
+				agent_backend: "codex",
+				exit_code: 0,
+			});
 			provider.readRegistry = () => createMockRegistry({ t1: completedTask });
 			provider.reload();
 
 			expect(vscodeMock.window.showInformationMessage).toHaveBeenCalled();
-			const callArgs = (
+			const infoCallArgs = (
 				vscodeMock.window.showInformationMessage as ReturnType<typeof mock>
 			).mock.calls[0] as string[] | undefined;
-			expect(callArgs?.[0]).toContain("Agent t1 completed");
-			expect(callArgs?.[1]).toBe("View Diff");
+			expect(infoCallArgs?.[0]).toContain("✅ t1 completed");
+			expect(infoCallArgs?.[0]).toContain("3 files · +45 -12");
+			expect(infoCallArgs?.[0]).toContain("[codex]");
+			expect(infoCallArgs?.[0]).toContain("exit 0");
+			expect(infoCallArgs?.[1]).toBe("Review Diff");
+			expect(infoCallArgs?.[2]).toBe("Show Output");
+			expect(infoCallArgs?.[3]).toBe("Focus Terminal");
+
+			expect(reveal).toHaveBeenCalled();
+			const revealCall = reveal.mock.calls[0] as
+				| [unknown, { select?: boolean; focus?: boolean }]
+				| undefined;
+			expect(revealCall?.[1]).toEqual({ select: true, focus: false });
 		});
 
-		test("notification fires on running→failed transition", () => {
+		test("failed notification includes exit code and new action buttons", () => {
 			// Set up running state
-			const runningTask = createMockTask({ id: "t2", status: "running" });
+			const runningTask = createMockTask({
+				id: "t2",
+				status: "running",
+				agent_backend: "gemini",
+			});
 			provider.readRegistry = () => createMockRegistry({ t2: runningTask });
 			provider.reload();
 
 			// Transition to failed
-			const failedTask = createMockTask({ id: "t2", status: "failed" });
+			const failedTask = createMockTask({
+				id: "t2",
+				status: "failed",
+				agent_backend: "gemini",
+				exit_code: 42,
+				error_message: "lint failed: missing semicolon",
+			});
 			provider.readRegistry = () => createMockRegistry({ t2: failedTask });
 			provider.reload();
 
@@ -1238,7 +1277,12 @@ describe("AgentStatusTreeProvider", () => {
 			const callArgs = (
 				vscodeMock.window.showWarningMessage as ReturnType<typeof mock>
 			).mock.calls[0] as string[] | undefined;
-			expect(callArgs?.[0]).toContain("Agent t2 failed");
+			expect(callArgs?.[0]).toContain("❌ t2 failed");
+			expect(callArgs?.[0]).toContain("exit 42");
+			expect(callArgs?.[0]).toContain("[gemini]");
+			expect(callArgs?.[1]).toBe("Show Output");
+			expect(callArgs?.[2]).toBe("Review Diff");
+			expect(callArgs?.[3]).toBe("Restart");
 		});
 
 		test("no notification on completed→completed (no transition)", () => {
@@ -1267,12 +1311,14 @@ describe("AgentStatusTreeProvider", () => {
 			).toBe(0);
 		});
 
-		test("no notification when setting is disabled", () => {
+		test("notification respects master toggle when disabled", () => {
 			// Override config to disable notifications
 			vscodeMock.workspace.getConfiguration = mock(() => ({
 				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "agentStatus.notifications") return false;
+					if (_key === "onCompletion") return true;
+					if (_key === "onFailure") return true;
 					if (_key === "agentStatus.groupByProject") return false;
 					return defaultValue;
 				}),
@@ -1282,14 +1328,97 @@ describe("AgentStatusTreeProvider", () => {
 			provider.readRegistry = () => createMockRegistry({ t5: runningTask });
 			provider.reload();
 
-			const completedTask = createMockTask({ id: "t5", status: "completed" });
-			provider.readRegistry = () => createMockRegistry({ t5: completedTask });
+			const transitionedTask = createMockTask({ id: "t5", status: "failed" });
+			provider.readRegistry = () =>
+				createMockRegistry({ t5: transitionedTask });
 			provider.reload();
 
 			expect(
 				(vscodeMock.window.showInformationMessage as ReturnType<typeof mock>)
 					.mock.calls.length,
 			).toBe(0);
+			expect(
+				(vscodeMock.window.showWarningMessage as ReturnType<typeof mock>).mock
+					.calls.length,
+			).toBe(0);
+		});
+
+		test("all running terminal transitions fire notifications", () => {
+			provider.getDiffSummary = () => "2 files · +10 / -3";
+			const running = {
+				c: createMockTask({
+					id: "c",
+					status: "running",
+					agent_backend: "codex",
+				}),
+				f: createMockTask({
+					id: "f",
+					status: "running",
+					agent_backend: "gemini",
+				}),
+				s: createMockTask({
+					id: "s",
+					status: "running",
+					agent_backend: "claude",
+				}),
+				k: createMockTask({
+					id: "k",
+					status: "running",
+					agent_backend: "codex",
+				}),
+			};
+			provider.readRegistry = () =>
+				createMockRegistry({
+					c: running.c,
+					f: running.f,
+					s: running.s,
+					k: running.k,
+				});
+			provider.reload();
+
+			provider.readRegistry = () =>
+				createMockRegistry({
+					c: createMockTask({
+						id: "c",
+						status: "completed",
+						agent_backend: "codex",
+						exit_code: 0,
+					}),
+					f: createMockTask({
+						id: "f",
+						status: "failed",
+						agent_backend: "gemini",
+						exit_code: 1,
+					}),
+					s: createMockTask({
+						id: "s",
+						status: "stopped",
+						agent_backend: "claude",
+					}),
+					k: createMockTask({
+						id: "k",
+						status: "killed",
+						agent_backend: "codex",
+					}),
+				});
+			provider.reload();
+
+			const infoCalls = (
+				vscodeMock.window.showInformationMessage as ReturnType<typeof mock>
+			).mock.calls as unknown[][];
+			const warningCalls = (
+				vscodeMock.window.showWarningMessage as ReturnType<typeof mock>
+			).mock.calls as unknown[][];
+
+			expect(infoCalls).toHaveLength(2);
+			expect(warningCalls).toHaveLength(2);
+
+			const infoMessages = infoCalls.map((c) => String(c[0]));
+			const warningMessages = warningCalls.map((c) => String(c[0]));
+			expect(infoMessages.some((m) => m.includes("✅ c completed"))).toBe(true);
+			expect(infoMessages.some((m) => m.includes("⏹️ s stopped"))).toBe(true);
+			expect(warningMessages.some((m) => m.includes("❌ f failed"))).toBe(true);
+			expect(warningMessages.some((m) => m.includes("💀 k killed"))).toBe(true);
 		});
 	});
 

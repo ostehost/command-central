@@ -446,6 +446,7 @@ export class AgentStatusTreeProvider
 	private _initialReadInProgress = true;
 	/** Prevent stale async reload results from overwriting newer state */
 	private _reloadGeneration = 0;
+	private _agentStatusView: vscode.TreeView<AgentNode> | null = null;
 
 	constructor() {
 		// Watch config changes for the tasks file path
@@ -518,6 +519,20 @@ export class AgentStatusTreeProvider
 	/** Public accessor for the configured file path */
 	get filePath(): string | null {
 		return this._filePath;
+	}
+
+	setTreeView(treeView: vscode.TreeView<AgentNode>): void {
+		this._agentStatusView = treeView;
+	}
+
+	findTaskElement(taskId: string): TreeElement | undefined {
+		const task = this.registry.tasks[taskId];
+		if (!task) return undefined;
+		const visibleTasks = this.isRunningOnlyFilterEnabled()
+			? Object.values(this.registry.tasks).filter((t) => t.status === "running")
+			: Object.values(this.registry.tasks);
+		if (!visibleTasks.some((t) => t.id === taskId)) return undefined;
+		return { type: "task", task };
 	}
 
 	private getConfiguredPath(): string | null {
@@ -634,28 +649,42 @@ export class AgentStatusTreeProvider
 		);
 		const onCompletion = notifConfig.get<boolean>("onCompletion", true);
 		const onFailure = notifConfig.get<boolean>("onFailure", true);
+		const soundEnabled = notifConfig.get<boolean>("sound", false);
+		const messageOptions = soundEnabled ? { modal: false } : undefined;
 
 		for (const task of Object.values(this.registry.tasks)) {
 			const prev = this.previousStatuses.get(task.id);
 			if (masterEnabled && prev === "running") {
+				const elapsed = formatElapsed(task.started_at);
+				const backend = this.getBackendLabel(task);
+
 				if (task.status === "completed" && onCompletion) {
-					const elapsed = formatElapsed(task.started_at);
-					const msg = `Agent ${task.id} completed (${elapsed})`;
-					vscode.window
-						.showInformationMessage(msg, "View Diff", "Show Output")
-						.then((action) => {
-							if (action === "View Diff") {
-								vscode.commands.executeCommand("commandCentral.viewAgentDiff", {
-									type: "task" as const,
-									task,
-								});
-							} else if (action === "Show Output") {
-								vscode.commands.executeCommand(
-									"commandCentral.showAgentOutput",
-									{ type: "task" as const, task },
-								);
-							}
-						});
+					const diffSummary = this.formatNotificationDiffSummary(
+						this.getDiffSummary(task.project_dir, task),
+					);
+					const exitSuffix =
+						task.exit_code != null ? ` · exit ${task.exit_code}` : "";
+					const msg = `✅ ${task.id} completed (${elapsed}) · ${diffSummary} [${backend}]${exitSuffix}`;
+					this.revealTaskInSidebar(task.id);
+					this.playNotificationSound(soundEnabled);
+					this.showInfoNotification(
+						msg,
+						messageOptions,
+						"Review Diff",
+						"Show Output",
+						"Focus Terminal",
+					).then((action) => {
+						if (action === "Review Diff") {
+							this.executeTaskCommand("commandCentral.viewAgentDiff", task);
+						} else if (action === "Show Output") {
+							this.executeTaskCommand("commandCentral.showAgentOutput", task);
+						} else if (action === "Focus Terminal") {
+							this.executeTaskCommand(
+								"commandCentral.focusAgentTerminal",
+								task,
+							);
+						}
+					});
 					this._onAgentEvent.fire({
 						type: "agent-completed",
 						taskId: task.id,
@@ -664,28 +693,53 @@ export class AgentStatusTreeProvider
 						elapsed,
 					});
 				} else if (task.status === "failed" && onFailure) {
-					const msg = `Agent ${task.id} failed — check output`;
-					vscode.window
-						.showWarningMessage(msg, "Show Output", "View Diff")
-						.then((action) => {
-							if (action === "Show Output") {
-								vscode.commands.executeCommand(
-									"commandCentral.showAgentOutput",
-									{ type: "task" as const, task },
-								);
-							} else if (action === "View Diff") {
-								vscode.commands.executeCommand("commandCentral.viewAgentDiff", {
-									type: "task" as const,
-									task,
-								});
-							}
-						});
+					const exitCode = task.exit_code ?? "unknown";
+					let msg = `❌ ${task.id} failed (${elapsed}) · exit ${exitCode} [${backend}]`;
+					const errorMessage = this.truncateErrorMessage(task.error_message);
+					if (errorMessage) msg += ` — ${errorMessage}`;
+					this.revealTaskInSidebar(task.id);
+					this.playNotificationSound(soundEnabled);
+					this.showWarningNotification(
+						msg,
+						messageOptions,
+						"Show Output",
+						"Review Diff",
+						"Restart",
+					).then((action) => {
+						if (action === "Show Output") {
+							this.executeTaskCommand("commandCentral.showAgentOutput", task);
+						} else if (action === "Review Diff") {
+							this.executeTaskCommand("commandCentral.viewAgentDiff", task);
+						} else if (action === "Restart") {
+							this.executeTaskCommand("commandCentral.restartAgent", task);
+						}
+					});
 					this._onAgentEvent.fire({
 						type: "agent-failed",
 						taskId: task.id,
 						timestamp: new Date(),
 						projectDir: task.project_dir,
 					});
+				} else if (task.status === "stopped" && onCompletion) {
+					const msg = `⏹️ ${task.id} stopped (${elapsed}) [${backend}]`;
+					this.revealTaskInSidebar(task.id);
+					this.showInfoNotification(msg, messageOptions, "Show Output").then(
+						(action) => {
+							if (action === "Show Output") {
+								this.executeTaskCommand("commandCentral.showAgentOutput", task);
+							}
+						},
+					);
+				} else if (task.status === "killed" && onFailure) {
+					const msg = `💀 ${task.id} killed (${elapsed}) [${backend}]`;
+					this.revealTaskInSidebar(task.id);
+					this.showWarningNotification(msg, messageOptions, "Show Output").then(
+						(action) => {
+							if (action === "Show Output") {
+								this.executeTaskCommand("commandCentral.showAgentOutput", task);
+							}
+						},
+					);
 				}
 			}
 			// Detect running transitions (new task appearing as running, or transition to running)
@@ -703,6 +757,80 @@ export class AgentStatusTreeProvider
 			}
 			this.previousStatuses.set(task.id, task.status);
 		}
+	}
+
+	private showInfoNotification(
+		message: string,
+		options: vscode.MessageOptions | undefined,
+		...actions: string[]
+	): Thenable<string | undefined> {
+		return options
+			? vscode.window.showInformationMessage(message, options, ...actions)
+			: vscode.window.showInformationMessage(message, ...actions);
+	}
+
+	private showWarningNotification(
+		message: string,
+		options: vscode.MessageOptions | undefined,
+		...actions: string[]
+	): Thenable<string | undefined> {
+		return options
+			? vscode.window.showWarningMessage(message, options, ...actions)
+			: vscode.window.showWarningMessage(message, ...actions);
+	}
+
+	private executeTaskCommand(command: string, task: AgentTask): void {
+		void vscode.commands.executeCommand(command, {
+			type: "task" as const,
+			task,
+		});
+	}
+
+	private playNotificationSound(enabled: boolean): void {
+		if (!enabled) return;
+		try {
+			process.stdout.write("\x07");
+		} catch {
+			// Best-effort only.
+		}
+	}
+
+	private formatNotificationDiffSummary(summary: string | null): string {
+		if (!summary) return "no changes detected";
+		const filesMatch = summary.match(/(\d+)\s+files?/i);
+		const additionsMatch = summary.match(/\+(\d+)/);
+		const deletionsMatch = summary.match(/-(\d+)/);
+		if (!filesMatch || !additionsMatch || !deletionsMatch) {
+			return summary;
+		}
+		const fileCount = Number.parseInt(filesMatch[1] ?? "0", 10);
+		const fileLabel = fileCount === 1 ? "1 file" : `${fileCount} files`;
+		return `${fileLabel} · +${additionsMatch[1]} -${deletionsMatch[1]}`;
+	}
+
+	private getBackendLabel(task: AgentTask): string {
+		const detected = detectAgentType(task);
+		if (detected !== "unknown") return detected;
+		const explicit = (task.agent_backend ?? task.cli_name ?? "").trim();
+		return explicit.length > 0 ? explicit.toLowerCase() : "unknown";
+	}
+
+	private truncateErrorMessage(errorMessage?: string | null): string | null {
+		if (!errorMessage) return null;
+		const compact = errorMessage.trim().replace(/\s+/g, " ");
+		if (compact.length <= 100) return compact;
+		return `${compact.slice(0, 97)}...`;
+	}
+
+	private revealTaskInSidebar(taskId: string): void {
+		if (!this._agentStatusView) return;
+		const taskElement = this.findTaskElement(taskId);
+		if (!taskElement) return;
+		void this._agentStatusView
+			.reveal(taskElement, { select: true, focus: false })
+			.catch(() => {
+				// Reveal failures are non-fatal (e.g., filtered-out task).
+			});
 	}
 
 	/** Start or stop auto-refresh timer based on whether any tasks are running */
