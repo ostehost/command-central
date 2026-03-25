@@ -1,9 +1,9 @@
-task_id: "resume-click"
+task_id: "fix-count-bug-research-failed-ux"
 status: "success"
-summary: "Route non-running agent clicks to resumeAgentSession, simplify dead-agent block, add fallback to diff view, add 3 new tests"
+summary: "Fixed status bar/sidebar running count disagreement by including discovered agents in getTasks(); researched failed state UX patterns from competing extensions"
 files_changed:
-  - "src/extension.ts"
   - "src/providers/agent-status-tree-provider.ts"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - "test/services/agent-status-bar-count.test.ts"
+  - "research/RESEARCH-failed-state-ux.md"
 tests_passing: true
-next_steps: "Manual QA: click a completed agent in sidebar and verify Ghostty opens with claude --resume"
+next_steps: "Implement MVP failed state UX features per research recommendations (remove/dismiss action, inline error detail node, filter toggle, inline retry icon)"
