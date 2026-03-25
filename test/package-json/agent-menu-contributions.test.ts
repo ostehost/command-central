@@ -10,6 +10,12 @@ type MenuContribution = {
 type PackageJsonShape = {
 	contributes?: {
 		commands?: Array<{ command?: string }>;
+		configuration?: {
+			properties?: Record<
+				string,
+				{ enum?: string[]; default?: string; description?: string }
+			>;
+		};
 		menus?: {
 			"view/item/context"?: MenuContribution[];
 		};
@@ -32,6 +38,16 @@ async function getCommands(): Promise<Array<{ command?: string }>> {
 	return pkg.contributes?.commands ?? [];
 }
 
+async function getConfigProperties(): Promise<
+	Record<string, { enum?: string[]; default?: string; description?: string }>
+> {
+	const raw = await Bun.file(
+		new URL("../../package.json", import.meta.url),
+	).text();
+	const pkg = JSON.parse(raw) as PackageJsonShape;
+	return pkg.contributes?.configuration?.properties ?? {};
+}
+
 describe("package.json agent menu contributions", () => {
 	test("registers openFileDiff command contribution", async () => {
 		const commands = await getCommands();
@@ -39,6 +55,22 @@ describe("package.json agent menu contributions", () => {
 			(item) => item.command === "commandCentral.openFileDiff",
 		);
 		expect(exists).toBe(true);
+	});
+
+	test("registers switchAgentBackend command contribution", async () => {
+		const commands = await getCommands();
+		const exists = commands.some(
+			(item) => item.command === "commandCentral.switchAgentBackend",
+		);
+		expect(exists).toBe(true);
+	});
+
+	test("defines defaultBackend config with codex/gemini only", async () => {
+		const properties = await getConfigProperties();
+		const setting = properties["commandCentral.agentStatus.defaultBackend"];
+		expect(setting).toBeDefined();
+		expect(setting?.default).toBe("codex");
+		expect(setting?.enum).toEqual(["codex", "gemini"]);
 	});
 
 	test("has inline restart action for failed launcher-managed tasks", async () => {

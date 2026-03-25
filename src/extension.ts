@@ -32,6 +32,7 @@ import {
 	isValidSessionId,
 } from "./providers/agent-status-tree-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
+import { AgentBackendSwitcher } from "./services/agent-backend-switcher.js";
 import { AgentOutputChannels } from "./services/agent-output-channels.js";
 import { AgentStatusBar } from "./services/agent-status-bar.js";
 import { GroupingStateManager } from "./services/grouping-state-manager.js";
@@ -654,6 +655,8 @@ export async function activate(
 		// Agent Status Bar — shows running/total count
 		const agentStatusBar = new AgentStatusBar();
 		context.subscriptions.push(agentStatusBar);
+		const agentBackendSwitcher = new AgentBackendSwitcher();
+		context.subscriptions.push(agentBackendSwitcher);
 
 		// Update status bar + session store on tree data changes
 		agentStatusProvider.onDidChangeTreeData(() => {
@@ -724,6 +727,13 @@ export async function activate(
 		const agentOutputChannel =
 			vscode.window.createOutputChannel("Agent Output");
 		context.subscriptions.push(agentOutputChannel);
+
+		const getConfiguredAgentBackend = (): "codex" | "gemini" => {
+			const configured = vscode.workspace
+				.getConfiguration("commandCentral.agentStatus")
+				.get<string>("defaultBackend", "codex");
+			return configured === "gemini" ? "gemini" : "codex";
+		};
 
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
@@ -877,6 +887,25 @@ export async function activate(
 				"commandCentral.refreshAgentStatus",
 				() => {
 					agentStatusProvider?.reload();
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.switchAgentBackend",
+				async () => {
+					const selection = await vscode.window.showQuickPick(
+						["codex", "gemini"] as const,
+						{
+							placeHolder: "Select default backend for launched agents",
+						},
+					);
+					if (!selection) return;
+					await vscode.workspace
+						.getConfiguration("commandCentral.agentStatus")
+						.update(
+							"defaultBackend",
+							selection,
+							vscode.ConfigurationTarget.Global,
+						);
 				},
 			),
 			vscode.commands.registerCommand(
@@ -1471,9 +1500,13 @@ export async function activate(
 
 					// Re-spawn via launcher if prompt_file exists
 					if (task.prompt_file) {
+						const backend =
+							task.agent_backend === "codex" || task.agent_backend === "gemini"
+								? task.agent_backend
+								: getConfiguredAgentBackend();
 						await terminalManager?.runInProjectTerminal(
 							task.project_dir,
-							`oste-spawn.sh "${task.project_dir}" "${task.prompt_file}" --task-id "${task.id}"`,
+							`oste-spawn.sh "${task.project_dir}" "${task.prompt_file}" --task-id "${task.id}" --agent "${backend}"`,
 						);
 						agentStatusProvider?.reload();
 					} else {
@@ -1530,6 +1563,7 @@ export async function activate(
 					const { execFile } = await import("node:child_process");
 					const { promisify } = await import("node:util");
 					const execFileAsync = promisify(execFile);
+					const backend = getConfiguredAgentBackend();
 
 					try {
 						await execFileAsync(
@@ -1542,6 +1576,8 @@ export async function activate(
 								"--role",
 								"developer",
 								"--no-bundle",
+								"--agent",
+								backend,
 								"--json",
 							],
 							{ timeout: 15000 },

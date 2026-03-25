@@ -298,7 +298,7 @@ describe("agent quick actions", () => {
 				cwd: task.project_dir,
 			});
 			terminal.sendText(
-				`oste-spawn.sh "${task.project_dir}" "${task.prompt_file}" --task-id "${task.id}"`,
+				`oste-spawn.sh "${task.project_dir}" "${task.prompt_file}" --task-id "${task.id}" --agent "codex"`,
 			);
 			terminal.show();
 
@@ -307,7 +307,7 @@ describe("agent quick actions", () => {
 				cwd: "/Users/test/projects/my-app",
 			});
 			expect(terminalMock.sendText).toHaveBeenCalledWith(
-				'oste-spawn.sh "/Users/test/projects/my-app" "/tmp/task.md" --task-id "cc-task-spawn"',
+				'oste-spawn.sh "/Users/test/projects/my-app" "/tmp/task.md" --task-id "cc-task-spawn" --agent "codex"',
 			);
 			expect(terminalMock.show).toHaveBeenCalled();
 		});

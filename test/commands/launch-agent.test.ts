@@ -122,6 +122,10 @@ describe("launchAgent command", () => {
 			const { execFile } = await import("node:child_process");
 			const { promisify } = await import("node:util");
 			const execFileAsync = promisify(execFile);
+			const configuredBackend = vscode.workspace
+				.getConfiguration("commandCentral.agentStatus")
+				.get("defaultBackend", "codex");
+			const backend = configuredBackend === "gemini" ? "gemini" : "codex";
 
 			try {
 				await execFileAsync(
@@ -134,6 +138,8 @@ describe("launchAgent command", () => {
 						"--role",
 						"developer",
 						"--no-bundle",
+						"--agent",
+						backend,
 						"--json",
 					],
 					{ timeout: 15000 },
@@ -331,8 +337,40 @@ describe("launchAgent command", () => {
 		expect(args).toContain("--role");
 		expect(args).toContain("developer");
 		expect(args).toContain("--no-bundle");
+		expect(args).toContain("--agent");
+		expect(args).toContain("codex");
 		expect(args).toContain("--json");
 		expect(opts["timeout"]).toBe(15000);
+	});
+
+	test("uses configured gemini backend when set", async () => {
+		vscodeMock.workspace.workspaceFolders = [
+			{ uri: { fsPath: "/projects/my-app" }, name: "my-app", index: 0 },
+		];
+		vscodeMock.workspace.getConfiguration = mock((section?: string) => ({
+			get: mock((key: string, defaultValue?: unknown) => {
+				if (
+					section === "commandCentral.agentStatus" &&
+					key === "defaultBackend"
+				) {
+					return "gemini";
+				}
+				return defaultValue;
+			}),
+			update: mock(() => Promise.resolve()),
+		}));
+
+		registerCommand();
+		await commandHandler();
+
+		const [, args] = mockExecFile.mock.calls[0] as unknown as [
+			string,
+			string[],
+			Record<string, unknown>,
+		];
+		const agentArgIndex = args.indexOf("--agent");
+		expect(agentArgIndex).toBeGreaterThan(-1);
+		expect(args[agentArgIndex + 1]).toBe("gemini");
 	});
 
 	test("reload() is scheduled after spawn via setTimeout", async () => {

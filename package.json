@@ -211,6 +211,16 @@
           "description": "Master toggle for agent notifications (overrides individual settings)",
           "scope": "window"
         },
+        "commandCentral.agentStatus.defaultBackend": {
+          "type": "string",
+          "enum": [
+            "codex",
+            "gemini"
+          ],
+          "default": "codex",
+          "description": "Default agent backend for launched terminals. Claude Code is disabled for terminal spawns.",
+          "scope": "window"
+        },
         "commandCentral.notifications.onCompletion": {
           "type": "boolean",
           "default": true,
@@ -722,6 +732,12 @@
         "command": "commandCentral.launchAgent",
         "title": "Launch Agent",
         "icon": "$(rocket)",
+        "category": "Command Central"
+      },
+      {
+        "command": "commandCentral.switchAgentBackend",
+        "title": "Switch Agent Backend",
+        "icon": "$(hubot)",
         "category": "Command Central"
       },
       {
