@@ -476,6 +476,14 @@ describe("AgentStatusTreeProvider", () => {
 		expect(item.command?.command).toBe("commandCentral.resumeAgentSession");
 	});
 
+	test("running task TreeItem routes to focusAgentTerminal", () => {
+		const task = createMockTask({ status: "running" });
+		const node: AgentNode = { type: "task", task };
+		const item = provider.getTreeItem(node);
+		expect(item.command?.command).toBe("commandCentral.focusAgentTerminal");
+		expect(item.command?.title).toBe("Focus Terminal");
+	});
+
 	test("task TreeItem command arguments contain the element", () => {
 		const task = createMockTask();
 		const node: AgentNode = { type: "task", task };
