@@ -1,0 +1,8 @@
+task_id: "status-colors"
+status: "success"
+summary: "Refined sidebar status icons/colors and summary precedence with full tree-provider test coverage updates."
+files_changed:
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+tests_passing: true
+next_steps: "Optional: align dashboard/status-bar visuals with the same contract_failure/completed_stale color semantics."

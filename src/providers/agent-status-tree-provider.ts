@@ -40,7 +40,14 @@ export type AgentRole = "developer" | "planner" | "reviewer" | "test";
 
 export interface AgentTask {
 	id: string;
-	status: "running" | "stopped" | "killed" | "completed" | "failed";
+	status:
+		| "running"
+		| "stopped"
+		| "killed"
+		| "completed"
+		| "completed_stale"
+		| "failed"
+		| "contract_failure";
 	project_dir: string;
 	project_name: string;
 	session_id: string;
@@ -210,6 +217,44 @@ export function getAgentTypeIcon(
 			);
 		default:
 			return new vscode.ThemeIcon("hubot");
+	}
+}
+
+export function getStatusThemeIcon(
+	status: AgentTask["status"],
+): vscode.ThemeIcon {
+	switch (status) {
+		case "running":
+			return new vscode.ThemeIcon(
+				"sync~spin",
+				new vscode.ThemeColor("charts.yellow"),
+			);
+		case "completed":
+			return new vscode.ThemeIcon(
+				"check",
+				new vscode.ThemeColor("charts.green"),
+			);
+		case "completed_stale":
+			return new vscode.ThemeIcon(
+				"check-all",
+				new vscode.ThemeColor("charts.green"),
+			);
+		case "failed":
+			return new vscode.ThemeIcon("error", new vscode.ThemeColor("charts.red"));
+		case "contract_failure":
+			return new vscode.ThemeIcon(
+				"warning",
+				new vscode.ThemeColor("charts.orange"),
+			);
+		case "stopped":
+			return new vscode.ThemeIcon(
+				"debug-stop",
+				new vscode.ThemeColor("charts.purple"),
+			);
+		case "killed":
+			return new vscode.ThemeIcon("close", new vscode.ThemeColor("charts.red"));
+		default:
+			return new vscode.ThemeIcon("circle-outline");
 	}
 }
 
@@ -601,7 +646,17 @@ export class AgentStatusTreeProvider
 			const totalCount = tasks.length + discovered.length;
 			const counts = { running: 0, completed: 0, failed: 0 };
 			for (const task of tasks) {
-				if (task.status in counts) counts[task.status as keyof typeof counts]++;
+				if (task.status === "running") counts.running++;
+				if (task.status === "completed" || task.status === "completed_stale") {
+					counts.completed++;
+				}
+				if (
+					task.status === "failed" ||
+					task.status === "killed" ||
+					task.status === "contract_failure"
+				) {
+					counts.failed++;
+				}
 			}
 			// Discovered agents are always running (they're live processes)
 			counts.running += discovered.length;
@@ -1261,17 +1316,23 @@ export class AgentStatusTreeProvider
 		const hasFailed = tasks.some(
 			(t) => t.status === "failed" || t.status === "killed",
 		);
+		const hasContractFailure = tasks.some(
+			(t) => t.status === "contract_failure",
+		);
 
+		if (hasFailed) {
+			return new vscode.ThemeIcon("error", new vscode.ThemeColor("charts.red"));
+		}
 		if (hasRunning) {
 			return new vscode.ThemeIcon(
 				"sync~spin",
 				new vscode.ThemeColor("charts.yellow"),
 			);
 		}
-		if (hasFailed) {
+		if (hasContractFailure) {
 			return new vscode.ThemeIcon(
 				"warning",
-				new vscode.ThemeColor("charts.red"),
+				new vscode.ThemeColor("charts.orange"),
 			);
 		}
 		return new vscode.ThemeIcon(
@@ -1286,11 +1347,18 @@ export class AgentStatusTreeProvider
 			case "running":
 				return `Running for ${elapsed}`;
 			case "completed":
+			case "completed_stale":
 				return `Completed in ${elapsed}`;
 			case "failed":
 				return `Failed after ${elapsed}`;
+			case "contract_failure":
+				return `Contract failure after ${elapsed}`;
+			case "stopped":
+				return `Stopped after ${elapsed}`;
+			case "killed":
+				return `Killed after ${elapsed}`;
 			default:
-				return elapsed;
+				return `Failed after ${elapsed}`;
 		}
 	}
 
@@ -1325,7 +1393,7 @@ export class AgentStatusTreeProvider
 				.filter(Boolean)
 				.join("\n\n"),
 		);
-		item.iconPath = getAgentTypeIcon(task);
+		item.iconPath = getStatusThemeIcon(task.status);
 		item.contextValue = `agentTask.${task.status}`;
 		item.resourceUri = vscode.Uri.parse(`agent-task:${task.id}`);
 		const isRunning = task.status === "running";
@@ -1397,7 +1465,7 @@ export class AgentStatusTreeProvider
 		item.description = discoveredDiff
 			? `PID ${agent.pid} · ${uptime} · ${discoveredDiff} ${sourceLabel}`
 			: `PID ${agent.pid} · ${uptime} ${sourceLabel}`;
-		item.iconPath = getAgentTypeIcon(agent);
+		item.iconPath = getStatusThemeIcon("running");
 		item.contextValue = "discoveredAgent.running";
 		item.command = {
 			command: "commandCentral.focusAgentTerminal",

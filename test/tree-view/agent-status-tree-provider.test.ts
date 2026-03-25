@@ -25,6 +25,7 @@ import {
 	formatElapsed,
 	type GitInfo,
 	getAgentTypeIcon,
+	getStatusThemeIcon,
 	isValidSessionId,
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
@@ -139,6 +140,29 @@ describe("agent type detection + icons", () => {
 		expect(geminiIcon.color?.id).toBe("charts.blue");
 		expect(unknownIcon.id).toBe("hubot");
 		expect(unknownIcon.color).toBeUndefined();
+	});
+});
+
+describe("status icon mapping", () => {
+	test("returns expected ThemeIcon + color for each status", () => {
+		const cases = [
+			["running", "sync~spin", "charts.yellow"],
+			["completed", "check", "charts.green"],
+			["completed_stale", "check-all", "charts.green"],
+			["failed", "error", "charts.red"],
+			["contract_failure", "warning", "charts.orange"],
+			["stopped", "debug-stop", "charts.purple"],
+			["killed", "close", "charts.red"],
+		] as const;
+
+		for (const [status, expectedIcon, expectedColor] of cases) {
+			const icon = getStatusThemeIcon(status) as {
+				id: string;
+				color?: { id: string };
+			};
+			expect(icon.id).toBe(expectedIcon);
+			expect(icon.color?.id).toBe(expectedColor);
+		}
 	});
 });
 
@@ -328,35 +352,98 @@ describe("AgentStatusTreeProvider", () => {
 		expect(item.collapsibleState).toBe(0); // None
 	});
 
-	test("launcher task icons are mapped by agent backend", () => {
+	test("launcher task icons are mapped by status", () => {
 		const cases = [
-			["claude", "charts.purple"],
-			["codex", "charts.green"],
-			["gemini", "charts.blue"],
+			["running", "sync~spin", "charts.yellow"],
+			["completed", "check", "charts.green"],
+			["completed_stale", "check-all", "charts.green"],
+			["failed", "error", "charts.red"],
+			["contract_failure", "warning", "charts.orange"],
+			["stopped", "debug-stop", "charts.purple"],
+			["killed", "close", "charts.red"],
 		] as const;
 
-		for (const [backend, expectedColor] of cases) {
+		for (const [status, expectedIcon, expectedColor] of cases) {
 			const task = createMockTask({
-				status: "running",
-				agent_backend: backend,
+				status,
 			});
 			const node: AgentNode = { type: "task", task };
 			const item = provider.getTreeItem(node);
 			const icon = item.iconPath as { id: string; color?: { id: string } };
-			expect(icon.id).toBe("hubot");
+			expect(icon.id).toBe(expectedIcon);
 			expect(icon.color?.id).toBe(expectedColor);
 		}
 	});
 
-	test("launcher task icon falls back to default hubot when unknown", () => {
-		const task = createMockTask({
-			status: "running",
-			agent_backend: undefined,
-		});
-		const item = provider.getTreeItem({ type: "task", task });
+	test("discovered agent icons use running status mapping", () => {
+		const agent = {
+			pid: 77777,
+			projectDir: "/Users/test/projects/my-app",
+			startTime: new Date("2026-02-25T08:00:00Z"),
+			source: "process" as const,
+			command: "claude",
+		};
+		const item = provider.getTreeItem({ type: "discovered", agent });
 		const icon = item.iconPath as { id: string; color?: { id: string } };
-		expect(icon.id).toBe("hubot");
-		expect(icon.color).toBeUndefined();
+		expect(icon.id).toBe("sync~spin");
+		expect(icon.color?.id).toBe("charts.yellow");
+	});
+
+	test("summary icon is red when any failed/killed task exists", () => {
+		const running = createMockTask({ id: "t1", status: "running" });
+		const failed = createMockTask({ id: "t2", status: "failed" });
+		provider.readRegistry = () =>
+			createMockRegistry({ t1: running, t2: failed });
+		provider.reload();
+
+		const summary = provider.getChildren().find((n) => n.type === "summary")!;
+		const item = provider.getTreeItem(summary);
+		const icon = item.iconPath as { id: string; color?: { id: string } };
+		expect(icon.id).toBe("error");
+		expect(icon.color?.id).toBe("charts.red");
+	});
+
+	test("summary icon is yellow when running and no failures", () => {
+		const running = createMockTask({ id: "t1", status: "running" });
+		const completed = createMockTask({ id: "t2", status: "completed" });
+		provider.readRegistry = () =>
+			createMockRegistry({ t1: running, t2: completed });
+		provider.reload();
+
+		const summary = provider.getChildren().find((n) => n.type === "summary")!;
+		const item = provider.getTreeItem(summary);
+		const icon = item.iconPath as { id: string; color?: { id: string } };
+		expect(icon.id).toBe("sync~spin");
+		expect(icon.color?.id).toBe("charts.yellow");
+	});
+
+	test("summary icon is green when all tasks are completed/completed_stale", () => {
+		const completed = createMockTask({ id: "t1", status: "completed" });
+		const stale = createMockTask({ id: "t2", status: "completed_stale" });
+		provider.readRegistry = () =>
+			createMockRegistry({ t1: completed, t2: stale });
+		provider.reload();
+
+		const summary = provider.getChildren().find((n) => n.type === "summary")!;
+		const item = provider.getTreeItem(summary);
+		const icon = item.iconPath as { id: string; color?: { id: string } };
+		expect(icon.id).toBe("check-all");
+		expect(icon.color?.id).toBe("charts.green");
+	});
+
+	test("summary icon is orange for contract failure when no running/failed", () => {
+		const contractFailure = createMockTask({
+			id: "t1",
+			status: "contract_failure",
+		});
+		provider.readRegistry = () => createMockRegistry({ t1: contractFailure });
+		provider.reload();
+
+		const summary = provider.getChildren().find((n) => n.type === "summary")!;
+		const item = provider.getTreeItem(summary);
+		const icon = item.iconPath as { id: string; color?: { id: string } };
+		expect(icon.id).toBe("warning");
+		expect(icon.color?.id).toBe("charts.orange");
 	});
 
 	test("contextValue includes status for tasks", () => {
