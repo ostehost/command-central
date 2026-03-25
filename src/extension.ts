@@ -931,7 +931,7 @@ export async function activate(
 					await config.update(
 						"agentStatus.showOnlyRunning",
 						!current,
-						vscode.ConfigurationTarget.Workspace,
+						vscode.ConfigurationTarget.Global,
 					);
 					await syncAgentStatusViewContexts();
 					agentStatusProvider?.reload();
@@ -956,7 +956,7 @@ export async function activate(
 					await config.update(
 						"agentStatus.groupByProject",
 						!current,
-						vscode.ConfigurationTarget.Workspace,
+						vscode.ConfigurationTarget.Global,
 					);
 					await syncAgentStatusViewContexts();
 					agentStatusProvider?.reload();
