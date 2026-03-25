@@ -236,7 +236,7 @@ describe("AgentStatusTreeProvider", () => {
 		const task = createMockTask({ status: "running" });
 		const node: AgentNode = { type: "task", task };
 		const item = provider.getTreeItem(node);
-		expect(item.label).toContain("🔄");
+		// Status emoji removed from label (ThemeIcon iconPath shows status instead)
 		expect(item.label).toContain("test-task-1");
 		expect(item.collapsibleState).toBe(1); // Collapsed
 	});
@@ -254,19 +254,20 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	test("status icons are correct", () => {
+		// Status is shown via ThemeIcon iconPath, not emoji in label
 		const statuses = [
-			["running", "🔄"],
-			["completed", "✅"],
-			["failed", "❌"],
-			["stopped", "⏹️"],
-			["killed", "💀"],
+			["running", "sync~spin"],
+			["completed", "check"],
+			["failed", "error"],
+			["stopped", "debug-stop"],
+			["killed", "close"],
 		] as const;
 
-		for (const [status, icon] of statuses) {
+		for (const [status, expectedIcon] of statuses) {
 			const task = createMockTask({ status });
 			const node: AgentNode = { type: "task", task };
 			const item = provider.getTreeItem(node);
-			expect(item.label).toContain(icon);
+			expect((item.iconPath as { id: string }).id).toBe(expectedIcon);
 		}
 	});
 
@@ -321,8 +322,8 @@ describe("AgentStatusTreeProvider", () => {
 	test("omits role emoji when role is null", () => {
 		const task = createMockTask({ role: null });
 		const item = provider.getTreeItem({ type: "task", task });
-		// Should have status icon but no role icon
-		expect(item.label).toBe("🔄 test-task-1");
+		// No status emoji in label, no role icon — just the task ID
+		expect(item.label).toBe("test-task-1");
 	});
 
 	test("includes terminal_backend in tooltip", () => {
@@ -949,7 +950,7 @@ describe("AgentStatusTreeProvider", () => {
 			});
 			const item = provider.getTreeItem({ type: "task", task });
 			expect(item.label).not.toContain("🎨");
-			expect(item.label).toBe("🔄 test-task-1");
+			expect(item.label).toBe("test-task-1");
 		});
 
 		test("config with multiple projects works correctly", () => {
@@ -992,7 +993,7 @@ describe("AgentStatusTreeProvider", () => {
 
 			const task = createMockTask();
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.label).toBe("🔄 test-task-1");
+			expect(item.label).toBe("test-task-1");
 		});
 	});
 

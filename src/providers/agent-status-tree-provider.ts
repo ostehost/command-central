@@ -953,9 +953,10 @@ export class AgentStatusTreeProvider
 			if (!filesMatch) return null;
 
 			const files = filesMatch[1];
+			const fileLabel = files === "1" ? "1 file" : `${files} files`;
 			const insertions = insertMatch?.[1] ?? "0";
 			const deletions = deleteMatch?.[1] ?? "0";
-			return `${files} files · +${insertions} / -${deletions}`;
+			return `${fileLabel} · +${insertions} / -${deletions}`;
 		} catch {
 			return null;
 		}
@@ -1110,14 +1111,11 @@ export class AgentStatusTreeProvider
 	}
 
 	private createTaskItem(task: AgentTask): vscode.TreeItem {
-		const icon = STATUS_ICONS[task.status] || "❓";
 		const roleIcon = task.role ? ROLE_ICONS[task.role] : null;
 		const elapsedDesc = this.formatElapsedDescription(task);
-		const prefix = roleIcon ? `${icon} ${roleIcon}` : icon;
 		const projectEmoji = this.getProjectEmoji(task.project_dir);
-		const label = projectEmoji
-			? `${prefix} ${projectEmoji} ${task.id}`
-			: `${prefix} ${task.id}`;
+		const labelParts = [roleIcon, projectEmoji, task.id].filter(Boolean);
+		const label = labelParts.join(" ");
 		const diffSummaryInline = this.getDiffSummary(task.project_dir, task);
 		const description = diffSummaryInline
 			? `${task.project_name} · ${elapsedDesc} · ${diffSummaryInline}`
