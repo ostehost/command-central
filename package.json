@@ -782,6 +782,12 @@
         "command": "command-central.showTestCount",
         "title": "Command Central: Run Tests & Update Count",
         "icon": "$(beaker)"
+      },
+      {
+        "command": "commandCentral.resumeAgentSession",
+        "title": "Resume Session",
+        "icon": "$(play)",
+        "category": "Command Central"
       }
     ],
     "views": {
@@ -1106,6 +1112,11 @@
           "command": "commandCentral.restartAgent",
           "when": "viewItem =~ /agentTask\\.(completed|failed|stopped)/ && commandCentral.hasLauncher",
           "group": "2_actions"
+        },
+        {
+          "command": "commandCentral.resumeAgentSession",
+          "when": "viewItem =~ /agentTask\\.(completed|stopped|failed)/",
+          "group": "inline"
         },
         {
           "command": "commandCentral.openProjectInVSCode",

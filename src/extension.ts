@@ -18,6 +18,7 @@ import {
 	revealInFinder,
 	selectForCompare,
 } from "./commands/tree-view-utils.js";
+import { resolveClaudeSessionId } from "./discovery/session-resolver.js";
 import { BinaryManager } from "./ghostty/BinaryManager.js";
 import { TerminalManager } from "./ghostty/TerminalManager.js";
 import { focusGhosttyWindow } from "./ghostty/window-focus.js";
@@ -788,7 +789,28 @@ export async function activate(
 									}
 								}
 							}
-							// Session is dead — directly show diff (most useful post-completion action)
+							// Offer session resume for dead agents
+							const claudeSessionId = projectDir
+								? await resolveClaudeSessionId(projectDir)
+								: null;
+							if (claudeSessionId) {
+								const choice = await vscode.window.showQuickPick(
+									["Resume Session", "View Diff"],
+									{
+										placeHolder: `Agent "${task.id}" has ended. Resume its Claude Code session?`,
+									},
+								);
+								if (choice === "Resume Session") {
+									vscode.commands.executeCommand(
+										"commandCentral.resumeAgentSession",
+										node,
+									);
+									return;
+								}
+								if (!choice) return; // User cancelled
+							}
+
+							// Session is dead — show diff (most useful post-completion action)
 							const elapsed = task.completed_at
 								? ` after ${formatElapsed(task.started_at, new Date(task.completed_at))}`
 								: "";
@@ -1066,6 +1088,49 @@ export async function activate(
 						);
 					} else {
 						vscode.window.showInformationMessage("No running agents");
+					}
+				},
+			),
+		);
+
+		// Resume Agent Session — opens Ghostty with `claude --resume`
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.resumeAgentSession",
+				async (node?: {
+					type: string;
+					task?: AgentTask;
+					agent?: { projectDir: string };
+				}) => {
+					const projectDir = node?.task?.project_dir ?? node?.agent?.projectDir;
+					if (!projectDir) {
+						vscode.window.showWarningMessage(
+							"No project directory found for this agent.",
+						);
+						return;
+					}
+					const claudeSessionId = await resolveClaudeSessionId(projectDir);
+					if (!claudeSessionId) {
+						vscode.window.showInformationMessage(
+							"No Claude Code session found for this project.",
+						);
+						return;
+					}
+					try {
+						const { execFile } = await import("node:child_process");
+						const { promisify } = await import("node:util");
+						const execFileAsync = promisify(execFile);
+						await execFileAsync("open", [
+							"-a",
+							"Ghostty",
+							"--args",
+							"-e",
+							`cd ${JSON.stringify(projectDir)} && claude --resume ${claudeSessionId}`,
+						]);
+					} catch {
+						vscode.window.showErrorMessage(
+							"Failed to open Ghostty with resumed session.",
+						);
 					}
 				},
 			),
