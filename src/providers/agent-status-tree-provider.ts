@@ -252,7 +252,7 @@ export class AgentStatusTreeProvider
 		this.disposables.push(
 			this._agentRegistry.onDidChangeAgents(() => {
 				this._discoveredAgents = this._agentRegistry
-					? this._agentRegistry.getDiscoveredAgents(this.getTasks())
+					? this._agentRegistry.getDiscoveredAgents(this.getLauncherTasks())
 					: [];
 				this._onDidChangeTreeData.fire(undefined);
 			}),
@@ -1012,9 +1012,37 @@ export class AgentStatusTreeProvider
 		return this.registry;
 	}
 
-	/** Get tasks (for command handlers) */
-	getTasks(): AgentTask[] {
+	/** Get launcher-managed tasks only (excludes discovered agents) */
+	getLauncherTasks(): AgentTask[] {
 		return Object.values(this.registry.tasks);
+	}
+
+	/**
+	 * Get all tasks including synthetic entries for discovered agents.
+	 *
+	 * Discovered agents (found via process scanning) are always running.
+	 * Including them here ensures the status bar and sidebar always agree
+	 * on the running count, since both sources are counted in the sidebar
+	 * summary node (getChildren) but the status bar previously only received
+	 * launcher tasks.
+	 */
+	getTasks(): AgentTask[] {
+		const launcherTasks = Object.values(this.registry.tasks);
+		const syntheticDiscovered: AgentTask[] = this._discoveredAgents.map(
+			(agent) => ({
+				id: `discovered-${agent.pid}`,
+				status: "running" as const,
+				project_dir: agent.projectDir,
+				project_name: agent.projectDir.split("/").pop() ?? agent.projectDir,
+				session_id: agent.sessionId ?? `pid-${agent.pid}`,
+				bundle_path: "",
+				prompt_file: "",
+				started_at: agent.startTime.toISOString(),
+				attempts: 0,
+				max_attempts: 0,
+			}),
+		);
+		return [...launcherTasks, ...syntheticDiscovered];
 	}
 
 	private getProjectEmoji(projectDir: string): string | null {
