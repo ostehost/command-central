@@ -61,7 +61,7 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 |----|------|--------|----------|-------|
 | M2-1 | Detect Claude Code processes via `ps` scanning | ✅ DONE | P0 | Parse process args for project dir, model, session |
 | M2-2 | Watch `~/.claude/` for active session files | ✅ DONE | P0 | Claude Code writes session state here |
-| M2-3 | Detect git worktrees via `git worktree list` | TODO | P1 | Reliable, no permission issues |
+| M2-3 | Detect git worktrees via `git worktree list` | ✅ DONE | P1 | Reliable, no permission issues |
 | M2-4 | Merge discovered agents with Launcher-managed agents | ✅ DONE | P0 | Two sources of truth → unified agent list |
 | M2-5 | Terminal-agnostic: work with Ghostty, iTerm2, Terminal.app, tmux | ✅ DONE | P0 | Don't require Ghostty for discovery |
 | M2-6 | Performance: poll interval tuning, debounce, lazy refresh | ✅ DONE | P1 | Can't hammer `ps` every second |
