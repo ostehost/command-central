@@ -1115,8 +1115,8 @@
         },
         {
           "command": "commandCentral.resumeAgentSession",
-          "when": "viewItem =~ /agentTask\\.(completed|stopped|failed)/",
-          "group": "inline"
+          "when": "viewItem =~ /agentTask\\.(completed|stopped|failed|completed_stale|contract_failure)/",
+          "group": "2_actions"
         },
         {
           "command": "commandCentral.openProjectInVSCode",
