@@ -76,7 +76,7 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M2.5-3 | Kill/stop agent from sidebar | ✅ DONE | P0 | Inline button + context menu. SIGTERM for discovered, `oste-kill.sh` for launcher tasks. Confirmation dialog. |
 | M2.5-4 | View output action | ✅ DONE | P0 | `showAgentOutput` — opens JSONL session transcript for discovered, tmux OutputChannel for launcher tasks. |
 | M2.5-5 | View diff action | ✅ DONE | P0 | `viewAgentDiff` — opens git diff in VS Code. Finds start commit via `--after` for discovered, `HEAD~1` fallback. |
-| M2.5-6 | Agent type badge | TODO | P1 | Show Claude 🟣 / Codex 🟢 / Gemini 🔵 icon instead of generic wrench on every item. |
+| M2.5-6 | Agent type badge | ✅ DONE | P1 | Show Claude 🟣 / Codex 🟢 / Gemini 🔵 icon instead of generic wrench on every item. |
 | M2.5-7 | Consolidate detail view | ✅ DONE | P1 | Git line = branch + commit hash. Result line = exit code + attempts. Worktree path and session name removed. |
 | M2.5-8 | Retry/restart action | ✅ DONE | P1 | `restartAgent` — re-runs with same prompt via `oste-spawn.sh`. Context menu for completed/failed/stopped tasks. |
 | M2.5-9 | Status color refinement | TODO | P1 | Differentiate "running" vs "waiting for input" vs "completed" vs "failed" with distinct colors. |
