@@ -175,6 +175,13 @@ describe("AgentStatusTreeProvider", () => {
 	beforeEach(() => {
 		mock.restore();
 		vscodeMock = setupVSCodeMock();
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return false;
+				return defaultValue;
+			}),
+		}));
 		// Ensure show*Message mocks return promises (needed for notification .then())
 		vscodeMock.window.showInformationMessage = mock(() =>
 			Promise.resolve(undefined),
@@ -262,6 +269,81 @@ describe("AgentStatusTreeProvider", () => {
 		);
 	});
 
+	test("groups root tasks by project name alphabetically when enabled", () => {
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return true;
+				return defaultValue;
+			}),
+		}));
+
+		const zetaTask = createMockTask({
+			id: "zeta-1",
+			project_name: "Zeta",
+			started_at: "2026-02-25T06:00:00Z",
+		});
+		const alphaTask = createMockTask({
+			id: "alpha-1",
+			project_name: "Alpha",
+			started_at: "2026-02-25T07:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({ "zeta-1": zetaTask, "alpha-1": alphaTask });
+		provider.reload();
+
+		const children = provider.getChildren();
+		const projectGroups = children.filter((n) => n.type === "projectGroup");
+		expect(projectGroups).toHaveLength(2);
+		expect(
+			(projectGroups[0] as { type: "projectGroup"; projectName: string })
+				.projectName,
+		).toBe("Alpha");
+		expect(
+			(projectGroups[1] as { type: "projectGroup"; projectName: string })
+				.projectName,
+		).toBe("Zeta");
+	});
+
+	test("returns grouped project children as task nodes sorted chronologically", () => {
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return true;
+				return defaultValue;
+			}),
+		}));
+
+		const older = createMockTask({
+			id: "alpha-old",
+			project_name: "Alpha",
+			started_at: "2026-02-25T06:00:00Z",
+		});
+		const newer = createMockTask({
+			id: "alpha-new",
+			project_name: "Alpha",
+			started_at: "2026-02-25T09:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({ "alpha-old": older, "alpha-new": newer });
+		provider.reload();
+
+		const rootChildren = provider.getChildren();
+		const groupNode = rootChildren.find(
+			(node) => node.type === "projectGroup",
+		) as { type: "projectGroup"; projectName: string; tasks: AgentTask[] };
+		expect(groupNode.projectName).toBe("Alpha");
+
+		const groupChildren = provider.getChildren(groupNode);
+		expect(groupChildren).toHaveLength(2);
+		expect(
+			(groupChildren[0] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("alpha-new");
+		expect(
+			(groupChildren[1] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("alpha-old");
+	});
+
 	test("filters root tasks to running only when config is enabled", () => {
 		const running = createMockTask({ id: "running-1", status: "running" });
 		const completed = createMockTask({ id: "done-1", status: "completed" });
@@ -273,6 +355,7 @@ describe("AgentStatusTreeProvider", () => {
 			update: mock(),
 			get: mock((_key: string, defaultValue?: unknown) => {
 				if (_key === "agentStatus.showOnlyRunning") return true;
+				if (_key === "agentStatus.groupByProject") return false;
 				return defaultValue;
 			}),
 		}));
@@ -350,6 +433,20 @@ describe("AgentStatusTreeProvider", () => {
 		const item = provider.getTreeItem(node);
 		expect(item.label).toContain("Prompt: Some prompt summary");
 		expect(item.collapsibleState).toBe(0); // None
+	});
+
+	test("getTreeItem creates expanded folder item for project groups", () => {
+		const node: AgentNode = {
+			type: "projectGroup",
+			projectName: "Alpha",
+			tasks: [createMockTask({ id: "alpha-1", project_name: "Alpha" })],
+		};
+		const item = provider.getTreeItem(node);
+		expect(item.label).toBe("Alpha");
+		expect(item.description).toBe("1 agents");
+		expect(item.collapsibleState).toBe(2); // Expanded
+		expect((item.iconPath as { id: string }).id).toBe("folder");
+		expect(item.contextValue).toBe("projectGroup");
 	});
 
 	test("launcher task icons are mapped by status", () => {
@@ -975,6 +1072,7 @@ describe("AgentStatusTreeProvider", () => {
 				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "agentStatus.notifications") return true;
+					if (_key === "agentStatus.groupByProject") return false;
 					return defaultValue;
 				}),
 			}));
@@ -1059,6 +1157,7 @@ describe("AgentStatusTreeProvider", () => {
 				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "agentStatus.notifications") return false;
+					if (_key === "agentStatus.groupByProject") return false;
 					return defaultValue;
 				}),
 			}));
@@ -1224,6 +1323,7 @@ describe("AgentStatusTreeProvider", () => {
 				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "projects") return [{ name: "my-app", emoji: "🚀" }];
+					if (_key === "agentStatus.groupByProject") return false;
 					return defaultValue;
 				}),
 			}));
@@ -1242,6 +1342,7 @@ describe("AgentStatusTreeProvider", () => {
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "projects")
 						return [{ name: "other-project", emoji: "🎨" }];
+					if (_key === "agentStatus.groupByProject") return false;
 					return defaultValue;
 				}),
 			}));
@@ -1264,6 +1365,7 @@ describe("AgentStatusTreeProvider", () => {
 							{ name: "api-server", emoji: "⚡" },
 							{ name: "docs", emoji: "📚" },
 						];
+					if (_key === "agentStatus.groupByProject") return false;
 					return defaultValue;
 				}),
 			}));
@@ -1290,6 +1392,7 @@ describe("AgentStatusTreeProvider", () => {
 				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "projects") return [];
+					if (_key === "agentStatus.groupByProject") return false;
 					return defaultValue;
 				}),
 			}));

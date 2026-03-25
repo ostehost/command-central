@@ -73,7 +73,7 @@ export interface AgentTask {
 
 export type AgentNode =
 	| SummaryNode
-	| TaskNode
+	| TreeElement
 	| DetailNode
 	| FileChangeNode
 	| DiscoveredNode;
@@ -87,6 +87,14 @@ export interface TaskNode {
 	type: "task";
 	task: AgentTask;
 }
+
+export interface ProjectGroupNode {
+	type: "projectGroup";
+	projectName: string;
+	tasks: AgentTask[];
+}
+
+export type TreeElement = TaskNode | ProjectGroupNode;
 
 export interface DetailNode {
 	type: "detail";
@@ -340,7 +348,10 @@ export class AgentStatusTreeProvider
 					this.reload();
 				}
 				if (
-					e.affectsConfiguration("commandCentral.agentStatus.showOnlyRunning")
+					e.affectsConfiguration(
+						"commandCentral.agentStatus.showOnlyRunning",
+					) ||
+					e.affectsConfiguration("commandCentral.agentStatus.groupByProject")
 				) {
 					this._onDidChangeTreeData.fire(undefined);
 				}
@@ -608,6 +619,9 @@ export class AgentStatusTreeProvider
 		if (element.type === "task") {
 			return this.createTaskItem(element.task);
 		}
+		if (element.type === "projectGroup") {
+			return this.createProjectGroupItem(element);
+		}
 		if (element.type === "fileChange") {
 			return this.createFileChangeItem(element);
 		}
@@ -626,16 +640,22 @@ export class AgentStatusTreeProvider
 			const discovered = this._discoveredAgents;
 			if (tasks.length === 0 && discovered.length === 0) return [];
 
-			// Launcher-managed tasks first, sorted by start time descending
-			const taskNodes: AgentNode[] = tasks
-				.sort(
-					(a, b) =>
-						new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
-				)
-				.map((task) => ({ type: "task" as const, task }));
+			const groupedByProject = this.isProjectGroupingEnabled();
+
+			// Launcher-managed tasks
+			const taskNodes: AgentNode[] = this.sortTasksByStartedAtDesc(tasks).map(
+				(task) => ({ type: "task" as const, task }),
+			);
+			const projectGroupNodes: AgentNode[] = groupedByProject
+				? this.groupTasksByProject(tasks).map((group) => ({
+						type: "projectGroup" as const,
+						projectName: group.projectName,
+						tasks: group.tasks,
+					}))
+				: [];
 
 			// Discovered agents second, sorted by start time descending
-			const discoveredNodes: AgentNode[] = discovered
+			const discoveredNodes: AgentNode[] = [...discovered]
 				.sort(
 					(a, b) =>
 						new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
@@ -672,9 +692,16 @@ export class AgentStatusTreeProvider
 
 			return [
 				{ type: "summary" as const, label: summaryLabel },
-				...taskNodes,
+				...(groupedByProject ? projectGroupNodes : taskNodes),
 				...discoveredNodes,
 			];
+		}
+
+		if (element.type === "projectGroup") {
+			return this.sortTasksByStartedAtDesc(element.tasks).map((task) => ({
+				type: "task" as const,
+				task,
+			}));
 		}
 
 		if (element.type === "task") {
@@ -755,6 +782,39 @@ export class AgentStatusTreeProvider
 	private isRunningOnlyFilterEnabled(): boolean {
 		const config = vscode.workspace.getConfiguration("commandCentral");
 		return config.get<boolean>("agentStatus.showOnlyRunning", false);
+	}
+
+	private isProjectGroupingEnabled(): boolean {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		return config.get<boolean>("agentStatus.groupByProject", true);
+	}
+
+	private sortTasksByStartedAtDesc(tasks: AgentTask[]): AgentTask[] {
+		return [...tasks].sort(
+			(a, b) =>
+				new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
+		);
+	}
+
+	private groupTasksByProject(
+		tasks: AgentTask[],
+	): Array<{ projectName: string; tasks: AgentTask[] }> {
+		const grouped = new Map<string, AgentTask[]>();
+		for (const task of tasks) {
+			const projectName = task.project_name || "(unknown project)";
+			const existing = grouped.get(projectName);
+			if (existing) {
+				existing.push(task);
+			} else {
+				grouped.set(projectName, [task]);
+			}
+		}
+		return Array.from(grouped.entries())
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([projectName, projectTasks]) => ({
+				projectName,
+				tasks: this.sortTasksByStartedAtDesc(projectTasks),
+			}));
 	}
 
 	private getCompactChildren(t: AgentTask): DetailNode[] {
@@ -1226,6 +1286,22 @@ export class AgentStatusTreeProvider
 	}
 
 	getParent(element: AgentNode): AgentNode | undefined {
+		if (element.type === "task" && this.isProjectGroupingEnabled()) {
+			const allTasks = Object.values(this.registry.tasks);
+			const visibleTasks = this.isRunningOnlyFilterEnabled()
+				? allTasks.filter((task) => task.status === "running")
+				: allTasks;
+			const groupTasks = visibleTasks.filter(
+				(task) => task.project_name === element.task.project_name,
+			);
+			if (groupTasks.some((task) => task.id === element.task.id)) {
+				return {
+					type: "projectGroup",
+					projectName: element.task.project_name,
+					tasks: this.sortTasksByStartedAtDesc(groupTasks),
+				};
+			}
+		}
 		if (element.type === "detail") {
 			// Check if it belongs to a discovered agent
 			if (element.taskId.startsWith("discovered-")) {
@@ -1303,6 +1379,17 @@ export class AgentStatusTreeProvider
 		);
 		item.iconPath = this.getSummaryIcon();
 		item.contextValue = "agentSummary";
+		return item;
+	}
+
+	private createProjectGroupItem(node: ProjectGroupNode): vscode.TreeItem {
+		const item = new vscode.TreeItem(
+			node.projectName,
+			vscode.TreeItemCollapsibleState.Expanded,
+		);
+		item.description = `${node.tasks.length} agents`;
+		item.iconPath = new vscode.ThemeIcon("folder");
+		item.contextValue = "projectGroup";
 		return item;
 	}
 

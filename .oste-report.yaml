@@ -1,0 +1,10 @@
+task_id: "session-grouping"
+status: "failure"
+summary: "Implemented project-based session grouping in Agent Status tree with config, command/context wiring, and passing tests; unable to commit due sandbox denial writing .git/index.lock"
+files_changed:
+  - "package.json"
+  - "src/extension.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+tests_passing: true
+next_steps: "Run git add/commit locally (sandbox currently blocks writing to .git), then verify git status --porcelain is clean."

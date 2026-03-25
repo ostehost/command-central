@@ -620,25 +620,39 @@ export async function activate(
 			"commandCentral.agentStatus",
 			{ treeDataProvider: agentStatusProvider, showCollapseAll: true },
 		);
-		const syncRunningFilterContext = async (): Promise<void> => {
-			const showOnlyRunning = vscode.workspace
-				.getConfiguration("commandCentral")
-				.get<boolean>("agentStatus.showOnlyRunning", false);
+		const syncAgentStatusViewContexts = async (): Promise<void> => {
+			const config = vscode.workspace.getConfiguration("commandCentral");
+			const showOnlyRunning = config.get<boolean>(
+				"agentStatus.showOnlyRunning",
+				false,
+			);
+			const groupByProject = config.get<boolean>(
+				"agentStatus.groupByProject",
+				true,
+			);
 			await vscode.commands.executeCommand(
 				"setContext",
 				"commandCentral.agentStatus.showOnlyRunning",
 				showOnlyRunning,
 			);
+			await vscode.commands.executeCommand(
+				"setContext",
+				"commandCentral.agentStatus.groupByProject",
+				groupByProject,
+			);
 		};
-		await syncRunningFilterContext();
+		await syncAgentStatusViewContexts();
 		context.subscriptions.push(agentStatusView);
 		context.subscriptions.push(agentStatusProvider);
 		context.subscriptions.push(
 			vscode.workspace.onDidChangeConfiguration((e) => {
 				if (
-					e.affectsConfiguration("commandCentral.agentStatus.showOnlyRunning")
+					e.affectsConfiguration(
+						"commandCentral.agentStatus.showOnlyRunning",
+					) ||
+					e.affectsConfiguration("commandCentral.agentStatus.groupByProject")
 				) {
-					void syncRunningFilterContext();
+					void syncAgentStatusViewContexts();
 				}
 			}),
 		);
@@ -921,7 +935,7 @@ export async function activate(
 						!current,
 						vscode.ConfigurationTarget.Workspace,
 					);
-					await syncRunningFilterContext();
+					await syncAgentStatusViewContexts();
 					agentStatusProvider?.reload();
 				},
 			),
@@ -930,6 +944,31 @@ export async function activate(
 				async () => {
 					await vscode.commands.executeCommand(
 						"commandCentral.toggleRunningFilter",
+					);
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.toggleProjectGrouping",
+				async () => {
+					const config = vscode.workspace.getConfiguration("commandCentral");
+					const current = config.get<boolean>(
+						"agentStatus.groupByProject",
+						true,
+					);
+					await config.update(
+						"agentStatus.groupByProject",
+						!current,
+						vscode.ConfigurationTarget.Workspace,
+					);
+					await syncAgentStatusViewContexts();
+					agentStatusProvider?.reload();
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.toggleProjectGroupingFlat",
+				async () => {
+					await vscode.commands.executeCommand(
+						"commandCentral.toggleProjectGrouping",
 					);
 				},
 			),
