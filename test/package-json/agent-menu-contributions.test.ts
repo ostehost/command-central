@@ -145,6 +145,14 @@ describe("package.json agent menu contributions", () => {
 		expect(setting?.description).toContain("potentially stuck");
 	});
 
+	test("defines dock bounce config enabled by default", async () => {
+		const properties = await getConfigProperties();
+		const setting = properties["commandCentral.dockBounce"];
+		expect(setting).toBeDefined();
+		expect(setting?.default).toBe(true);
+		expect(setting?.description).toContain("Dock icon");
+	});
+
 	test("has inline restart action for failed launcher-managed tasks", async () => {
 		const menu = await getViewItemContextMenu();
 		const inlineRestart = menu.find(

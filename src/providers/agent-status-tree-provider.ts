@@ -462,6 +462,8 @@ export class AgentStatusTreeProvider
 	/** Prevent stale async reload results from overwriting newer state */
 	private _reloadGeneration = 0;
 	private _agentStatusView: vscode.TreeView<AgentNode> | null = null;
+	private previousStuckStates = new Map<string, boolean>();
+	private hasInitializedStuckState = false;
 
 	constructor() {
 		// Watch config changes for the tasks file path
@@ -507,6 +509,7 @@ export class AgentStatusTreeProvider
 					? this._agentRegistry.getDiscoveredAgents(this.getLauncherTasks())
 					: [];
 				this.setHasAgentsContext();
+				this.updateDockBadge();
 				this._onDidChangeTreeData.fire(undefined);
 			}),
 		);
@@ -539,6 +542,7 @@ export class AgentStatusTreeProvider
 
 	setTreeView(treeView: vscode.TreeView<AgentNode>): void {
 		this._agentStatusView = treeView;
+		this.updateDockBadge();
 	}
 
 	findTaskElement(taskId: string): TreeElement | undefined {
@@ -650,6 +654,7 @@ export class AgentStatusTreeProvider
 		this._diffSummaryDetecting.clear();
 		this.checkCompletionNotifications();
 		this.updateAutoRefreshTimer();
+		this.checkStuckTransitions();
 		// Clear port cache for tasks that are no longer running
 		for (const [taskId, task] of Object.entries(this.registry.tasks)) {
 			if (task.status !== "running") {
@@ -658,6 +663,7 @@ export class AgentStatusTreeProvider
 			}
 		}
 		this.setHasAgentsContext();
+		this.updateDockBadge();
 		this._onDidChangeTreeData.fire(undefined);
 	}
 
@@ -668,6 +674,7 @@ export class AgentStatusTreeProvider
 			"agentStatus.notifications",
 			true,
 		);
+		const dockBounceEnabled = config.get<boolean>("dockBounce", true);
 		const notifConfig = vscode.workspace.getConfiguration(
 			"commandCentral.notifications",
 		);
@@ -678,6 +685,12 @@ export class AgentStatusTreeProvider
 
 		for (const task of Object.values(this.registry.tasks)) {
 			const prev = this.previousStatuses.get(task.id);
+			if (
+				prev === "running" &&
+				(task.status === "completed" || task.status === "failed")
+			) {
+				this.requestDockAttention(dockBounceEnabled);
+			}
 			if (masterEnabled && prev === "running") {
 				const elapsed = formatElapsed(task.started_at);
 				const backend = this.getBackendLabel(task);
@@ -694,11 +707,11 @@ export class AgentStatusTreeProvider
 					this.showInfoNotification(
 						msg,
 						messageOptions,
-						"Review Diff",
+						"View Diff",
 						"Show Output",
 						"Focus Terminal",
 					).then((action) => {
-						if (action === "Review Diff") {
+						if (action === "View Diff") {
 							this.executeTaskCommand("commandCentral.viewAgentDiff", task);
 						} else if (action === "Show Output") {
 							this.executeTaskCommand("commandCentral.showAgentOutput", task);
@@ -727,12 +740,12 @@ export class AgentStatusTreeProvider
 						msg,
 						messageOptions,
 						"Show Output",
-						"Review Diff",
+						"View Diff",
 						"Restart",
 					).then((action) => {
 						if (action === "Show Output") {
 							this.executeTaskCommand("commandCentral.showAgentOutput", task);
-						} else if (action === "Review Diff") {
+						} else if (action === "View Diff") {
 							this.executeTaskCommand("commandCentral.viewAgentDiff", task);
 						} else if (action === "Restart") {
 							this.executeTaskCommand("commandCentral.restartAgent", task);
@@ -846,6 +859,61 @@ export class AgentStatusTreeProvider
 		return `${compact.slice(0, 97)}...`;
 	}
 
+	private requestDockAttention(dockBounceEnabled: boolean): void {
+		if (!dockBounceEnabled || process.platform !== "darwin") return;
+		const windowWithAttention = vscode.window as typeof vscode.window & {
+			requestAttention?: () => void;
+		};
+		if (typeof windowWithAttention.requestAttention !== "function") return;
+		try {
+			windowWithAttention.requestAttention();
+		} catch {
+			// Best-effort only.
+		}
+	}
+
+	private updateDockBadge(): void {
+		if (process.platform !== "darwin") return;
+		const runningCount = this.getTasks().filter(
+			(task) => task.status === "running",
+		).length;
+		const tooltip =
+			runningCount === 1 ? "1 running agent" : `${runningCount} running agents`;
+		const badge: vscode.ViewBadge | undefined =
+			runningCount > 0 ? { value: runningCount, tooltip } : undefined;
+
+		const windowWithBadge = vscode.window as typeof vscode.window & {
+			badge?: vscode.ViewBadge;
+		};
+		try {
+			windowWithBadge.badge = badge;
+		} catch {
+			// Best-effort only.
+		}
+
+		if (this._agentStatusView) {
+			this._agentStatusView.badge = badge;
+		}
+	}
+
+	private checkStuckTransitions(): void {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		const dockBounceEnabled = config.get<boolean>("dockBounce", true);
+		const nextStates = new Map<string, boolean>();
+		for (const task of Object.values(this.registry.tasks)) {
+			if (task.status !== "running") continue;
+			const isStuck = this.isAgentStuck(task);
+			nextStates.set(task.id, isStuck);
+
+			const wasStuck = this.previousStuckStates.get(task.id) ?? false;
+			if (this.hasInitializedStuckState && isStuck && !wasStuck) {
+				this.requestDockAttention(dockBounceEnabled);
+			}
+		}
+		this.previousStuckStates = nextStates;
+		this.hasInitializedStuckState = true;
+	}
+
 	private revealTaskInSidebar(taskId: string): void {
 		if (!this._agentStatusView) return;
 		const taskElement = this.findTaskElement(taskId);
@@ -870,6 +938,7 @@ export class AgentStatusTreeProvider
 			const config = vscode.workspace.getConfiguration("commandCentral");
 			const intervalMs = config.get<number>("agentStatus.autoRefreshMs", 5000);
 			this.autoRefreshTimer = setInterval(() => {
+				this.checkStuckTransitions();
 				this._onDidChangeTreeData.fire(undefined);
 			}, intervalMs);
 		} else if (!hasRunning && this.autoRefreshTimer) {
@@ -2255,6 +2324,19 @@ export class AgentStatusTreeProvider
 	dispose(): void {
 		this._onDidChangeTreeData.dispose();
 		this._onAgentEvent.dispose();
+		if (process.platform === "darwin") {
+			const windowWithBadge = vscode.window as typeof vscode.window & {
+				badge?: vscode.ViewBadge;
+			};
+			try {
+				windowWithBadge.badge = undefined;
+			} catch {
+				// Best-effort only.
+			}
+			if (this._agentStatusView) {
+				this._agentStatusView.badge = undefined;
+			}
+		}
 		if (this.fileWatcher) this.fileWatcher.dispose();
 		if (this._nativeWatcher) {
 			this._nativeWatcher.close();

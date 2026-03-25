@@ -200,9 +200,11 @@ export function createVSCodeMock() {
 			Right: 2,
 		},
 		window: {
+			badge: undefined as { value: number; tooltip: string } | undefined,
 			showInformationMessage: mock(),
 			showWarningMessage: mock(),
 			showErrorMessage: mock(),
+			requestAttention: mock(),
 			setStatusBarMessage: mock((_message?: string, _timeoutMs?: number) => ({
 				dispose: mock(),
 			})),

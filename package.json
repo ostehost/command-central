@@ -231,6 +231,12 @@
           "description": "Master toggle for agent notifications (overrides individual settings)",
           "scope": "window"
         },
+        "commandCentral.dockBounce": {
+          "type": "boolean",
+          "default": true,
+          "description": "Bounce the VS Code Dock icon when agents complete, fail, or become stuck (macOS only)",
+          "scope": "window"
+        },
         "commandCentral.agentStatus.defaultBackend": {
           "type": "string",
           "enum": [

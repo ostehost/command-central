@@ -1309,6 +1309,20 @@ describe("AgentStatusTreeProvider", () => {
 
 	describe("completion notifications", () => {
 		let vscodeMock: ReturnType<typeof setupVSCodeMock>;
+		const withDarwinPlatform = (run: () => void): void => {
+			const original = Object.getOwnPropertyDescriptor(process, "platform");
+			Object.defineProperty(process, "platform", {
+				value: "darwin",
+				configurable: true,
+			});
+			try {
+				run();
+			} finally {
+				if (original) {
+					Object.defineProperty(process, "platform", original);
+				}
+			}
+		};
 
 		beforeEach(() => {
 			mock.restore();
@@ -1369,7 +1383,7 @@ describe("AgentStatusTreeProvider", () => {
 			expect(infoCallArgs?.[0]).toContain("3 files · +45 -12");
 			expect(infoCallArgs?.[0]).toContain("[codex]");
 			expect(infoCallArgs?.[0]).toContain("exit 0");
-			expect(infoCallArgs?.[1]).toBe("Review Diff");
+			expect(infoCallArgs?.[1]).toBe("View Diff");
 			expect(infoCallArgs?.[2]).toBe("Show Output");
 			expect(infoCallArgs?.[3]).toBe("Focus Terminal");
 
@@ -1409,7 +1423,7 @@ describe("AgentStatusTreeProvider", () => {
 			expect(callArgs?.[0]).toContain("exit 42");
 			expect(callArgs?.[0]).toContain("[gemini]");
 			expect(callArgs?.[1]).toBe("Show Output");
-			expect(callArgs?.[2]).toBe("Review Diff");
+			expect(callArgs?.[2]).toBe("View Diff");
 			expect(callArgs?.[3]).toBe("Restart");
 		});
 
@@ -1547,6 +1561,131 @@ describe("AgentStatusTreeProvider", () => {
 			expect(infoMessages.some((m) => m.includes("⏹️ s stopped"))).toBe(true);
 			expect(warningMessages.some((m) => m.includes("❌ f failed"))).toBe(true);
 			expect(warningMessages.some((m) => m.includes("💀 k killed"))).toBe(true);
+		});
+
+		test("completed transition requests Dock attention on macOS", () => {
+			withDarwinPlatform(() => {
+				const runningTask = createMockTask({ id: "dock-c", status: "running" });
+				provider.readRegistry = () =>
+					createMockRegistry({ "dock-c": runningTask });
+				provider.reload();
+
+				const completedTask = createMockTask({
+					id: "dock-c",
+					status: "completed",
+					exit_code: 0,
+				});
+				provider.readRegistry = () =>
+					createMockRegistry({ "dock-c": completedTask });
+				provider.reload();
+
+				expect(vscodeMock.window.requestAttention).toHaveBeenCalledTimes(1);
+			});
+		});
+
+		test("failed transition requests Dock attention on macOS", () => {
+			withDarwinPlatform(() => {
+				const runningTask = createMockTask({ id: "dock-f", status: "running" });
+				provider.readRegistry = () =>
+					createMockRegistry({ "dock-f": runningTask });
+				provider.reload();
+
+				const failedTask = createMockTask({
+					id: "dock-f",
+					status: "failed",
+					exit_code: 1,
+				});
+				provider.readRegistry = () =>
+					createMockRegistry({ "dock-f": failedTask });
+				provider.reload();
+
+				expect(vscodeMock.window.requestAttention).toHaveBeenCalledTimes(1);
+			});
+		});
+
+		test("dockBounce=false disables Dock attention", () => {
+			withDarwinPlatform(() => {
+				vscodeMock.workspace.getConfiguration = mock(() => ({
+					update: mock(),
+					get: mock((_key: string, defaultValue?: unknown) => {
+						if (_key === "agentStatus.notifications") return true;
+						if (_key === "dockBounce") return false;
+						if (_key === "onCompletion") return true;
+						if (_key === "onFailure") return true;
+						if (_key === "sound") return false;
+						if (_key === "agentStatus.groupByProject") return false;
+						return defaultValue;
+					}),
+				}));
+
+				const runningTask = createMockTask({
+					id: "dock-off",
+					status: "running",
+				});
+				provider.readRegistry = () =>
+					createMockRegistry({ "dock-off": runningTask });
+				provider.reload();
+
+				const completedTask = createMockTask({
+					id: "dock-off",
+					status: "completed",
+				});
+				provider.readRegistry = () =>
+					createMockRegistry({ "dock-off": completedTask });
+				provider.reload();
+
+				expect(vscodeMock.window.requestAttention).not.toHaveBeenCalled();
+			});
+		});
+
+		test("stuck transition requests Dock attention once", () => {
+			withDarwinPlatform(() => {
+				const runningFresh = createMockTask({
+					id: "stuck-dock",
+					status: "running",
+					started_at: new Date(Date.now() - 60_000).toISOString(),
+				});
+				provider.readRegistry = () =>
+					createMockRegistry({ "stuck-dock": runningFresh });
+				provider.reload();
+
+				const runningStuck = createMockTask({
+					id: "stuck-dock",
+					status: "running",
+					started_at: new Date(Date.now() - 20 * 60_000).toISOString(),
+				});
+				provider.readRegistry = () =>
+					createMockRegistry({ "stuck-dock": runningStuck });
+				provider.reload();
+				provider.reload();
+
+				expect(vscodeMock.window.requestAttention).toHaveBeenCalledTimes(1);
+			});
+		});
+
+		test("dock badge reflects running count and clears at zero", () => {
+			withDarwinPlatform(() => {
+				provider.readRegistry = () =>
+					createMockRegistry({
+						r1: createMockTask({ id: "r1", status: "running" }),
+						r2: createMockTask({ id: "r2", status: "running" }),
+					});
+				provider.reload();
+
+				expect(vscodeMock.window.badge).toEqual({
+					value: 2,
+					tooltip: "2 running agents",
+				});
+
+				provider.readRegistry = () =>
+					createMockRegistry({
+						r1: createMockTask({ id: "r1", status: "completed" }),
+						r2: createMockTask({ id: "r2", status: "failed" }),
+					});
+				provider.reload();
+
+				expect(vscodeMock.window.badge).toBeUndefined();
+			});
 		});
 	});
 
