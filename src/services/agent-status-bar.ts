@@ -16,7 +16,9 @@ import type { AgentTask } from "../providers/agent-status-tree-provider.js";
 const STATUS_ICON: Record<AgentTask["status"], string> = {
 	running: "$(pulse)",
 	completed: "$(check)",
+	completed_stale: "$(check-all)",
 	failed: "$(warning)",
+	contract_failure: "$(alert)",
 	stopped: "$(debug-stop)",
 	killed: "$(close)",
 };
