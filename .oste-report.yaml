@@ -1,0 +1,10 @@
+task_id: "stuck-detection"
+status: "success"
+summary: "Added stuck-agent inactivity detection with sidebar warnings and tests"
+files_changed:
+  - "package.json"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/package-json/agent-menu-contributions.test.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+tests_passing: true
+next_steps: "Validate the warning UX against a real long-running agent session in VS Code."

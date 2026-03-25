@@ -7,6 +7,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as fs from "node:fs";
 
 // Mock port-detector to avoid real lsof calls in tree provider tests
 const mockDetectListeningPorts = mock(
@@ -43,7 +44,7 @@ function createMockTask(overrides: Partial<AgentTask> = {}): AgentTask {
 		tmux_session: "agent-my-app",
 		bundle_path: "/Applications/Projects/My App.app",
 		prompt_file: "/tmp/task.md",
-		started_at: "2026-02-25T08:00:00Z",
+		started_at: new Date(Date.now() - 60_000).toISOString(),
 		attempts: 1,
 		max_attempts: 3,
 		pr_number: null,
@@ -869,6 +870,99 @@ describe("AgentStatusTreeProvider", () => {
 		const item = provider.getTreeItem(node);
 		expect(item.command).toBeDefined();
 		expect(item.command?.command).toBe("commandCentral.focusAgentTerminal");
+	});
+
+	describe("stuck agent detection", () => {
+		test("isAgentStuck returns false for non-running agents", () => {
+			const task = createMockTask({
+				id: "stuck-not-running",
+				status: "completed",
+				started_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+			});
+			expect(provider.isAgentStuck(task)).toBe(false);
+		});
+
+		test("isAgentStuck returns false for recent running agents", () => {
+			const task = createMockTask({
+				id: "stuck-recent-running",
+				status: "running",
+				started_at: new Date(Date.now() - 2 * 60_000).toISOString(),
+			});
+			expect(provider.isAgentStuck(task)).toBe(false);
+		});
+
+		test("isAgentStuck returns true for old running agents with no stream file", () => {
+			const task = createMockTask({
+				id: "stuck-old-no-stream",
+				status: "running",
+				started_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+			});
+			expect(provider.isAgentStuck(task)).toBe(true);
+		});
+
+		test("isAgentStuck returns false when stream file has recent activity", () => {
+			const task = createMockTask({
+				id: "stuck-stream-recent",
+				status: "running",
+				agent_backend: "codex",
+				started_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+			});
+			const streamFile = `/tmp/codex-stream-${task.id}.jsonl`;
+			try {
+				fs.writeFileSync(streamFile, '{"type":"turn"}\n', "utf-8");
+				const recent = new Date(Date.now() - 2 * 60_000);
+				fs.utimesSync(streamFile, recent, recent);
+				expect(provider.isAgentStuck(task)).toBe(false);
+			} finally {
+				if (fs.existsSync(streamFile)) fs.unlinkSync(streamFile);
+			}
+		});
+
+		test("isAgentStuck returns true when stream file is old", () => {
+			const task = createMockTask({
+				id: "stuck-stream-old",
+				status: "running",
+				agent_backend: "codex",
+				started_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+			});
+			const streamFile = `/tmp/codex-stream-${task.id}.jsonl`;
+			try {
+				fs.writeFileSync(streamFile, '{"type":"turn"}\n', "utf-8");
+				const old = new Date(Date.now() - 30 * 60_000);
+				fs.utimesSync(streamFile, old, old);
+				expect(provider.isAgentStuck(task)).toBe(true);
+			} finally {
+				if (fs.existsSync(streamFile)) fs.unlinkSync(streamFile);
+			}
+		});
+
+		test("stuck running agents use warning icon and warning detail", () => {
+			const task = createMockTask({
+				id: "stuck-visual",
+				status: "running",
+				started_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.getDiffSummary = () => null;
+			provider.getGitInfo = () => null;
+			provider.reload();
+
+			const item = provider.getTreeItem({ type: "task", task });
+			const icon = item.iconPath as { id: string; color?: { id: string } };
+			expect(icon.id).toBe("warning");
+			expect(icon.color?.id).toBe("charts.yellow");
+			expect(item.description).toContain("(possibly stuck)");
+
+			const root = provider.getChildren();
+			const taskNode = getFirstTask(root);
+			const children = provider.getChildren(taskNode);
+			const warningDetail = children.find(
+				(child) =>
+					child.type === "detail" &&
+					child.label.includes("No activity for 15 minutes"),
+			);
+			expect(warningDetail).toBeDefined();
+		});
 	});
 
 	test("non-running task TreeItem routes to resumeAgentSession", () => {

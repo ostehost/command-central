@@ -73,6 +73,26 @@ describe("package.json agent menu contributions", () => {
 		expect(setting?.enum).toEqual(["codex", "gemini"]);
 	});
 
+	test("defines stuck threshold config with expected bounds", async () => {
+		const properties = await getConfigProperties();
+		const setting = properties[
+			"commandCentral.agentStatus.stuckThresholdMinutes"
+		] as
+			| {
+					default?: number;
+					minimum?: number;
+					maximum?: number;
+					description?: string;
+			  }
+			| undefined;
+
+		expect(setting).toBeDefined();
+		expect(setting?.default).toBe(15);
+		expect(setting?.minimum).toBe(5);
+		expect(setting?.maximum).toBe(60);
+		expect(setting?.description).toContain("potentially stuck");
+	});
+
 	test("has inline restart action for failed launcher-managed tasks", async () => {
 		const menu = await getViewItemContextMenu();
 		const inlineRestart = menu.find(
@@ -110,5 +130,17 @@ describe("package.json agent menu contributions", () => {
 		);
 		expect(openFileDiff).toBeDefined();
 		expect(openFileDiff?.group).toBe("navigation");
+	});
+
+	test("adds context-menu kill action for running agents", async () => {
+		const menu = await getViewItemContextMenu();
+		const runningKillAction = menu.find(
+			(item) =>
+				item.command === "commandCentral.killAgent" &&
+				item.group === "2_actions" &&
+				item.when ===
+					"(viewItem == agentTask.running && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
+		);
+		expect(runningKillAction).toBeDefined();
 	});
 });

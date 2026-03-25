@@ -199,6 +199,14 @@
           "description": "Auto-refresh interval (ms) for running agents in the Agent Status tree",
           "scope": "window"
         },
+        "commandCentral.agentStatus.stuckThresholdMinutes": {
+          "type": "number",
+          "default": 15,
+          "minimum": 5,
+          "maximum": 60,
+          "description": "Minutes of inactivity before an agent is flagged as potentially stuck",
+          "scope": "window"
+        },
         "commandCentral.agentStatus.showOnlyRunning": {
           "type": "boolean",
           "default": false,
@@ -1156,6 +1164,11 @@
           "command": "commandCentral.killAgent",
           "when": "(viewItem == agentTask.running && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
           "group": "inline"
+        },
+        {
+          "command": "commandCentral.killAgent",
+          "when": "(viewItem == agentTask.running && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
+          "group": "2_actions"
         },
         {
           "command": "commandCentral.showAgentOutput",

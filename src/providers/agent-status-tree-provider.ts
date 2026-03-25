@@ -401,6 +401,14 @@ export class AgentStatusTreeProvider
 	implements vscode.TreeDataProvider<AgentNode>, vscode.Disposable
 {
 	private static readonly GIT_DIFF_TIMEOUT_MS = 1_500;
+	private static readonly STUCK_THRESHOLD_DEFAULT_MINUTES = 15;
+	private static readonly STUCK_THRESHOLD_MIN_MINUTES = 5;
+	private static readonly STUCK_THRESHOLD_MAX_MINUTES = 60;
+	private static readonly STREAM_BACKEND_PREFIXES = [
+		"claude",
+		"codex",
+		"gemini",
+	];
 
 	private _onDidChangeTreeData = new vscode.EventEmitter<
 		AgentNode | undefined | null
@@ -1148,6 +1156,18 @@ export class AgentStatusTreeProvider
 			});
 		}
 
+		if (this.isAgentStuck(t)) {
+			const thresholdMinutes = this.getStuckThresholdMinutes();
+			details.push({
+				type: "detail",
+				label: `⚠️ No activity for ${thresholdMinutes} minutes`,
+				value: "",
+				taskId: t.id,
+				icon: "alert",
+				iconColor: "charts.yellow",
+			});
+		}
+
 		details.push({
 			type: "detail",
 			label: "Prompt",
@@ -1772,20 +1792,94 @@ export class AgentStatusTreeProvider
 		}
 	}
 
+	private getStuckThresholdMinutes(): number {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		const raw = config.get<number>(
+			"agentStatus.stuckThresholdMinutes",
+			AgentStatusTreeProvider.STUCK_THRESHOLD_DEFAULT_MINUTES,
+		);
+		const clamped = Math.max(
+			AgentStatusTreeProvider.STUCK_THRESHOLD_MIN_MINUTES,
+			Math.min(
+				AgentStatusTreeProvider.STUCK_THRESHOLD_MAX_MINUTES,
+				Number.isFinite(raw)
+					? raw
+					: AgentStatusTreeProvider.STUCK_THRESHOLD_DEFAULT_MINUTES,
+			),
+		);
+		return clamped;
+	}
+
+	private getStreamFileCandidates(task: AgentTask): string[] {
+		const explicitStreamFile = (
+			task as AgentTask & { stream_file?: string | null }
+		).stream_file;
+		const prefixes = new Set<string>();
+		if (task.agent_backend) prefixes.add(task.agent_backend);
+		for (const backend of AgentStatusTreeProvider.STREAM_BACKEND_PREFIXES) {
+			prefixes.add(backend);
+		}
+		const candidates = Array.from(prefixes).map(
+			(backend) => `/tmp/${backend}-stream-${task.id}.jsonl`,
+		);
+		if (explicitStreamFile) {
+			candidates.unshift(explicitStreamFile);
+		}
+		return candidates;
+	}
+
+	private resolveStreamFilePath(task: AgentTask): string | null {
+		for (const candidate of this.getStreamFileCandidates(task)) {
+			if (fs.existsSync(candidate)) {
+				return candidate;
+			}
+		}
+		return null;
+	}
+
+	public isAgentStuck(task: AgentTask): boolean {
+		if (task.status !== "running") return false;
+
+		const startedMs = new Date(task.started_at).getTime();
+		if (!Number.isFinite(startedMs)) return false;
+
+		const now = Date.now();
+		const thresholdMs = this.getStuckThresholdMinutes() * 60_000;
+		if (now - startedMs < thresholdMs) return false;
+
+		const streamFile = this.resolveStreamFilePath(task);
+		if (!streamFile) {
+			// No stream file: fall back to elapsed runtime only.
+			return true;
+		}
+
+		try {
+			const stat = fs.statSync(streamFile);
+			return now - stat.mtimeMs >= thresholdMs;
+		} catch {
+			// Stream stat failed: use runtime fallback.
+			return true;
+		}
+	}
+
 	private createTaskItem(task: AgentTask): vscode.TreeItem {
 		const roleIcon = task.role ? ROLE_ICONS[task.role] : null;
 		const elapsedDesc = this.formatElapsedDescription(task);
 		const projectEmoji = this.getProjectEmoji(task.project_dir);
 		const labelParts = [roleIcon, projectEmoji, task.id].filter(Boolean);
 		const label = labelParts.join(" ");
+		const isStuck = this.isAgentStuck(task);
 		const diffSummaryInline = this.getCachedDiffSummaryForTask(task);
 		const diffLoading =
 			!diffSummaryInline && this.isTaskDiffSummaryLoading(task);
-		const description = diffSummaryInline
+		const baseDescription = diffSummaryInline
 			? `${task.project_name} · ${elapsedDesc} · ${diffSummaryInline}`
 			: diffLoading
 				? `${task.project_name} · ${elapsedDesc} · loading diff...`
 				: `${task.project_name} · ${elapsedDesc}`;
+		const description = isStuck
+			? `${baseDescription} (possibly stuck)`
+			: baseDescription;
 
 		const item = new vscode.TreeItem(
 			label,
@@ -1807,7 +1901,9 @@ export class AgentStatusTreeProvider
 				.filter(Boolean)
 				.join("\n\n"),
 		);
-		item.iconPath = getStatusThemeIcon(task.status);
+		item.iconPath = isStuck
+			? new vscode.ThemeIcon("warning", new vscode.ThemeColor("charts.yellow"))
+			: getStatusThemeIcon(task.status);
 		item.contextValue = `agentTask.${task.status}`;
 		item.resourceUri = vscode.Uri.parse(`agent-task:${task.id}`);
 		const isRunning = task.status === "running";
