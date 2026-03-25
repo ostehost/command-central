@@ -386,8 +386,8 @@ async function cleanupOldReleases(maxReleases: number) {
 			.filter(f => f.endsWith(".vsix"))
 			.sort((a, b) => {
 				// Extract version numbers for proper semantic sorting
-				const versionA = a.match(/(\d+)\.(\d+)\.(\d+)(?:-[\w.]+)?/);
-				const versionB = b.match(/(\d+)\.(\d+)\.(\d+)(?:-[\w.]+)?/);
+				const versionA = a.match(/(\d+)\.(\d+)\.(\d+)(?:-(\d+))?/);
+				const versionB = b.match(/(\d+)\.(\d+)\.(\d+)(?:-(\d+))?/);
 
 				if (!versionA || !versionB) return a.localeCompare(b);
 
@@ -401,8 +401,10 @@ async function cleanupOldReleases(maxReleases: number) {
 				const patchDiff = parseInt(versionB[3]) - parseInt(versionA[3]);
 				if (patchDiff !== 0) return patchDiff;
 
-				// If versions are equal, sort by full string (handles prereleases)
-				return b.localeCompare(a);
+				// Compare prerelease numbers numerically (e.g. -13 vs -9)
+				const preA = versionA[4] ? parseInt(versionA[4]) : 0;
+				const preB = versionB[4] ? parseInt(versionB[4]) : 0;
+				return preB - preA;
 			}); // Now properly sorted newest first
 
 		if (vsixFiles.length > maxReleases) {
