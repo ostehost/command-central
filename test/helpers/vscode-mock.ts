@@ -85,8 +85,11 @@ export function createVSCodeMock() {
 				onDidDelete: mock(() => ({ dispose: mock() })),
 				dispose: mock(),
 			})),
-			getConfiguration: mock(() => ({
+			getConfiguration: mock((_section?: string) => ({
 				get: mock((_key: string, defaultValue?: unknown) => defaultValue),
+				update: mock((_section: string, _value: any, _target?: any) =>
+					Promise.resolve(),
+				),
 			})),
 			onDidChangeConfiguration: mock(() => ({ dispose: mock() })),
 			showWorkspaceFolderPick: mock((_options?: unknown) =>

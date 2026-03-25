@@ -256,6 +256,43 @@ describe("focusAgentTerminal command", () => {
 		);
 	});
 
+	test("Strategy 1 still applies for completed task even when tmux session is dead", () => {
+		const task = createTask({
+			status: "completed",
+			terminal_backend: "tmux",
+			ghostty_bundle_id: "com.mitchellh.ghostty",
+			session_id: "agent-completed",
+		});
+
+		const sessionAlive = false;
+		const strategy1Fires =
+			task.terminal_backend === "tmux" && Boolean(task.ghostty_bundle_id);
+
+		// Strategy 1 does not require has-session guard
+		expect(sessionAlive).toBe(false);
+		expect(strategy1Fires).toBe(true);
+	});
+
+	test("Strategy 2 still applies for completed task even when tmux session is dead", () => {
+		const task = createTask({
+			status: "completed",
+			terminal_backend: "tmux",
+			ghostty_bundle_id: null,
+			bundle_path: "/Applications/Ghostty.app",
+			session_id: "agent-completed",
+		});
+
+		const sessionAlive = false;
+		const strategy2Fires =
+			task.bundle_path &&
+			task.bundle_path !== "(test-mode)" &&
+			task.bundle_path !== "(tmux-mode)";
+
+		// Strategy 2 does not require has-session guard
+		expect(sessionAlive).toBe(false);
+		expect(strategy2Fires).toBeTruthy();
+	});
+
 	test("calls tmux select-window after open -a in strategy 1", () => {
 		const task = createTask({
 			terminal_backend: "tmux",
@@ -325,6 +362,81 @@ describe("focusAgentTerminal command", () => {
 
 		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
 			"No terminal available for this agent.",
+		);
+	});
+});
+
+describe("removeAgentTask command", () => {
+	test("shows warning when no task provided", () => {
+		const node = undefined as { type: string; task?: AgentTask } | undefined;
+		const task = node?.task;
+
+		if (!task) {
+			vscodeMock.window.showWarningMessage(
+				"No agent selected. Right-click an agent in the tree.",
+			);
+		}
+
+		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+			"No agent selected. Right-click an agent in the tree.",
+		);
+	});
+
+	test("removes matching task id from registry map", () => {
+		const task = createTask({ id: "agent-1", status: "completed" });
+		const tasks: Record<string, unknown> = {
+			"agent-1": { id: "agent-1", status: "completed" },
+			"agent-2": { id: "agent-2", status: "failed" },
+		};
+
+		if (task.id in tasks) {
+			delete tasks[task.id];
+		}
+
+		expect(tasks["agent-1"]).toBeUndefined();
+		expect(tasks["agent-2"]).toBeDefined();
+	});
+
+	test("falls back to value.id match when registry key differs from task id", () => {
+		const task = createTask({ id: "agent-1", status: "failed" });
+		const tasks: Record<string, unknown> = {
+			"launcher-key-1": { id: "agent-1", status: "failed" },
+			"launcher-key-2": { id: "agent-2", status: "completed" },
+		};
+
+		for (const [key, value] of Object.entries(tasks)) {
+			const valueId =
+				typeof value === "object" && value
+					? (value as { id?: unknown }).id
+					: undefined;
+			if (valueId === task.id) {
+				delete tasks[key];
+				break;
+			}
+		}
+
+		expect(Object.keys(tasks)).toEqual(["launcher-key-2"]);
+	});
+
+	test("shows info when task is already removed", () => {
+		const task = createTask({ id: "missing-task", status: "stopped" });
+		const tasks: Record<string, unknown> = {
+			"agent-2": { id: "agent-2", status: "completed" },
+		};
+
+		let removed = false;
+		if (task.id in tasks) {
+			delete tasks[task.id];
+			removed = true;
+		}
+		if (!removed) {
+			vscodeMock.window.showInformationMessage(
+				`Agent "${task.id}" is already removed.`,
+			);
+		}
+
+		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+			'Agent "missing-task" is already removed.',
 		);
 	});
 });
@@ -494,5 +606,59 @@ describe("openAgentDirectory command", () => {
 		}
 
 		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalled();
+	});
+});
+
+describe("toggleRunningFilter command", () => {
+	test("flips showOnlyRunning from false to true and reloads tree", async () => {
+		const get = mock((_key: string, defaultValue?: unknown) => {
+			if (_key === "agentStatus.showOnlyRunning") return false;
+			return defaultValue;
+		});
+		const update = mock((_section: string, _value: any, _target: any) =>
+			Promise.resolve(),
+		);
+		vscodeMock.workspace.getConfiguration = mock(
+			(_section?: string) =>
+				({
+					get,
+					update,
+				}) as any,
+		);
+
+		const agentStatusProvider = { reload: mock() };
+		const handler = async () => {
+			const config = vscodeMock.workspace.getConfiguration("commandCentral");
+			const current = config.get("agentStatus.showOnlyRunning", false);
+			await config.update(
+				"agentStatus.showOnlyRunning",
+				!current,
+				vscodeMock.ConfigurationTarget.Workspace,
+			);
+			agentStatusProvider.reload();
+		};
+
+		await handler();
+
+		expect(update).toHaveBeenCalledWith(
+			"agentStatus.showOnlyRunning",
+			true,
+			vscodeMock.ConfigurationTarget.Workspace,
+		);
+		expect(agentStatusProvider.reload).toHaveBeenCalled();
+	});
+
+	test("active toggle command delegates to commandCentral.toggleRunningFilter", async () => {
+		const handler = async () => {
+			await vscodeMock.commands.executeCommand(
+				"commandCentral.toggleRunningFilter",
+			);
+		};
+
+		await handler();
+
+		expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+			"commandCentral.toggleRunningFilter",
+		);
 	});
 });

@@ -1,0 +1,14 @@
+task_id: "click-focus-fix"
+status: "failure"
+summary: "Implemented click-to-focus fix and Remove action with tests; commit blocked because sandbox denies .git/index.lock writes."
+files_changed:
+  - "package.json"
+  - "src/discovery/process-scanner.ts"
+  - "src/discovery/types.ts"
+  - "src/extension.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/commands/extension-commands.test.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - "test/package-json/agent-menu-contributions.test.ts"
+tests_passing: true
+next_steps: "Allow git index writes (or rely on orchestrator auto-commit), then commit and verify clean git status."

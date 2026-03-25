@@ -44,6 +44,8 @@ export interface AgentTask {
 	project_dir: string;
 	project_name: string;
 	session_id: string;
+	agent_backend?: string | null;
+	cli_name?: string | null;
 	tmux_session?: string;
 	bundle_path: string;
 	prompt_file: string;
@@ -56,6 +58,7 @@ export interface AgentTask {
 	terminal_backend?: "tmux" | "applescript";
 	ghostty_bundle_id?: string | null;
 	exit_code?: number | null;
+	error_message?: string | null;
 	completed_at?: string | null;
 }
 
@@ -78,6 +81,9 @@ export interface DetailNode {
 	label: string;
 	value: string;
 	taskId: string;
+	description?: string;
+	icon?: string;
+	iconColor?: string;
 }
 
 export interface DiscoveredNode {
@@ -85,58 +91,104 @@ export interface DiscoveredNode {
 	agent: DiscoveredAgent;
 }
 
-// ── ThemeIcon + color for status (colored sidebar icons) ─────────────
-
-export const STATUS_THEME_ICONS: Record<
-	string,
-	{ icon: string; color: string }
-> = {
-	running: { icon: "sync~spin", color: "charts.yellow" },
-	completed: { icon: "check", color: "charts.green" },
-	completed_stale: { icon: "check", color: "disabledForeground" },
-	contract_failure: { icon: "warning", color: "charts.yellow" },
-	failed: { icon: "error", color: "charts.red" },
-	stopped: { icon: "debug-stop", color: "disabledForeground" },
-	killed: { icon: "close", color: "charts.red" },
-};
-
 // ── Agent type detection for discovered agents ───────────────────────
 
-export function getAgentTypeIcon(agent: DiscoveredAgent): vscode.ThemeIcon {
-	const model = agent.model?.toLowerCase() ?? "";
+export type AgentType = "claude" | "codex" | "gemini" | "unknown";
 
+type AgentTypeDetectionInput = {
+	agent_backend?: string | null;
+	cli_name?: string | null;
+	process_name?: string | null;
+	command?: string | null;
+	model?: string | null;
+	session_id?: string | null;
+	id?: string | null;
+};
+
+function detectAgentTypeFromText(value: string): AgentType {
 	if (
-		model.includes("claude") ||
-		model.includes("anthropic") ||
-		model.includes("sonnet") ||
-		model.includes("opus") ||
-		model.includes("haiku")
+		value.includes("claude") ||
+		value.includes("anthropic") ||
+		value.includes("sonnet") ||
+		value.includes("opus") ||
+		value.includes("haiku")
 	) {
-		return new vscode.ThemeIcon(
-			"circle-filled",
-			new vscode.ThemeColor("charts.purple"),
-		);
+		return "claude";
 	}
 	if (
-		model.includes("gpt") ||
-		model.includes("codex") ||
-		model.includes("openai") ||
-		model.includes("o1") ||
-		model.includes("o3") ||
-		model.includes("o4")
+		value.includes("codex") ||
+		value.includes("openai") ||
+		value.includes("gpt") ||
+		/\bo1\b/.test(value) ||
+		/\bo3\b/.test(value) ||
+		/\bo4\b/.test(value)
 	) {
-		return new vscode.ThemeIcon(
-			"circle-filled",
-			new vscode.ThemeColor("charts.green"),
-		);
+		return "codex";
 	}
-	if (model.includes("gemini") || model.includes("google")) {
-		return new vscode.ThemeIcon(
-			"circle-filled",
-			new vscode.ThemeColor("charts.blue"),
-		);
+	if (value.includes("gemini") || value.includes("google")) {
+		return "gemini";
 	}
-	return new vscode.ThemeIcon("search");
+	return "unknown";
+}
+
+function extractProcessName(command?: string | null): string {
+	if (!command) return "";
+	const [firstToken] = command.trim().split(/\s+/);
+	if (!firstToken) return "";
+	return path.basename(firstToken).toLowerCase();
+}
+
+export function detectAgentType(agent: AgentTypeDetectionInput): AgentType {
+	const explicitHints = [
+		agent.agent_backend,
+		agent.cli_name,
+		agent.process_name,
+		extractProcessName(agent.command),
+	];
+	for (const hint of explicitHints) {
+		if (!hint) continue;
+		const detected = detectAgentTypeFromText(hint.toLowerCase());
+		if (detected !== "unknown") return detected;
+	}
+
+	const fallbackHints = [
+		agent.command,
+		agent.model,
+		agent.session_id,
+		agent.id,
+	];
+	for (const hint of fallbackHints) {
+		if (!hint) continue;
+		const detected = detectAgentTypeFromText(hint.toLowerCase());
+		if (detected !== "unknown") return detected;
+	}
+
+	return "unknown";
+}
+
+export function getAgentTypeIcon(
+	agent: DiscoveredAgent | AgentTask | AgentTypeDetectionInput,
+): vscode.ThemeIcon {
+	const type = detectAgentType(agent);
+	switch (type) {
+		case "claude":
+			return new vscode.ThemeIcon(
+				"hubot",
+				new vscode.ThemeColor("charts.purple"),
+			);
+		case "codex":
+			return new vscode.ThemeIcon(
+				"hubot",
+				new vscode.ThemeColor("charts.green"),
+			);
+		case "gemini":
+			return new vscode.ThemeIcon(
+				"hubot",
+				new vscode.ThemeColor("charts.blue"),
+			);
+		default:
+			return new vscode.ThemeIcon("hubot");
+	}
 }
 
 const ROLE_ICONS: Record<AgentRole, string> = {
@@ -219,6 +271,11 @@ export class AgentStatusTreeProvider
 				if (e.affectsConfiguration("commandCentral.agentTasksFile")) {
 					this.setupFileWatch();
 					this.reload();
+				}
+				if (
+					e.affectsConfiguration("commandCentral.agentStatus.showOnlyRunning")
+				) {
+					this._onDidChangeTreeData.fire(undefined);
 				}
 			}),
 		);
@@ -492,7 +549,10 @@ export class AgentStatusTreeProvider
 
 	getChildren(element?: AgentNode): AgentNode[] {
 		if (!element) {
-			const tasks = Object.values(this.registry.tasks);
+			const allTasks = Object.values(this.registry.tasks);
+			const tasks = this.isRunningOnlyFilterEnabled()
+				? allTasks.filter((task) => task.status === "running")
+				: allTasks;
 			const discovered = this._discoveredAgents;
 			if (tasks.length === 0 && discovered.length === 0) return [];
 
@@ -612,6 +672,11 @@ export class AgentStatusTreeProvider
 		return config.get<boolean>("agentStatus.compactMode", false);
 	}
 
+	private isRunningOnlyFilterEnabled(): boolean {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		return config.get<boolean>("agentStatus.showOnlyRunning", false);
+	}
+
 	private getCompactChildren(t: AgentTask): DetailNode[] {
 		const details: DetailNode[] = [];
 		const gitInfo = this.getGitInfo(t.project_dir);
@@ -627,14 +692,30 @@ export class AgentStatusTreeProvider
 	}
 
 	private getDetailChildren(t: AgentTask): DetailNode[] {
-		const details: DetailNode[] = [
-			{
+		const details: DetailNode[] = [];
+
+		if (t.status === "failed" && t.exit_code != null) {
+			const attemptsSuffix =
+				t.attempts > 1 ? ` · ${t.attempts}/${t.max_attempts} attempts` : "";
+			const errorMessage = t.error_message?.trim();
+			details.push({
 				type: "detail",
-				label: "Prompt",
-				value: this.readPromptSummary(t.prompt_file),
+				label: `Error: Exit ${t.exit_code}${attemptsSuffix}`,
+				value: "",
 				taskId: t.id,
-			},
-		];
+				description:
+					errorMessage && errorMessage.length > 0 ? errorMessage : undefined,
+				icon: "error",
+				iconColor: "charts.red",
+			});
+		}
+
+		details.push({
+			type: "detail",
+			label: "Prompt",
+			value: this.readPromptSummary(t.prompt_file),
+			taskId: t.id,
+		});
 
 		// Diff summary
 		const diffSummary = this.getDiffSummary(t.project_dir, t);
@@ -661,9 +742,7 @@ export class AgentStatusTreeProvider
 		// Result — merged exit code + attempts (only for terminal states)
 		if (
 			t.exit_code != null &&
-			(t.status === "completed" ||
-				t.status === "failed" ||
-				t.status === "stopped")
+			(t.status === "completed" || t.status === "stopped")
 		) {
 			details.push({
 				type: "detail",
@@ -1129,14 +1208,7 @@ export class AgentStatusTreeProvider
 				.filter(Boolean)
 				.join("\n\n"),
 		);
-		const statusTheme = STATUS_THEME_ICONS[task.status] ?? {
-			icon: "question",
-			color: "disabledForeground",
-		};
-		item.iconPath = new vscode.ThemeIcon(
-			statusTheme.icon,
-			new vscode.ThemeColor(statusTheme.color),
-		);
+		item.iconPath = getAgentTypeIcon(task);
 		item.contextValue = `agentTask.${task.status}`;
 		item.resourceUri = vscode.Uri.parse(`agent-task:${task.id}`);
 		const isRunning = task.status === "running";
@@ -1152,10 +1224,19 @@ export class AgentStatusTreeProvider
 
 	private createDetailItem(node: DetailNode): vscode.TreeItem {
 		const item = new vscode.TreeItem(
-			`${node.label}: ${node.value}`,
+			node.value ? `${node.label}: ${node.value}` : node.label,
 			vscode.TreeItemCollapsibleState.None,
 		);
 		item.contextValue = "agentTaskDetail";
+		if (node.description) {
+			item.description = node.description;
+		}
+		if (node.icon) {
+			item.iconPath = new vscode.ThemeIcon(
+				node.icon,
+				node.iconColor ? new vscode.ThemeColor(node.iconColor) : undefined,
+			);
+		}
 		return item;
 	}
 

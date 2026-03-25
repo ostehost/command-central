@@ -16,6 +16,8 @@ export interface DiscoveredAgent {
 	projectDir: string;
 	/** Raw command string from `ps` */
 	command: string;
+	/** CLI name if known (for example: claude, codex, gemini) */
+	cli_name?: string;
 	/** When the process started */
 	startTime: Date;
 	/** Model flag parsed from --model arg, if present */

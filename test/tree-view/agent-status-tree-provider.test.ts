@@ -21,8 +21,10 @@ import {
 	type AgentRole,
 	AgentStatusTreeProvider,
 	type AgentTask,
+	detectAgentType,
 	formatElapsed,
 	type GitInfo,
+	getAgentTypeIcon,
 	isValidSessionId,
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
@@ -91,14 +93,64 @@ describe("formatElapsed", () => {
 	});
 });
 
+describe("agent type detection + icons", () => {
+	test("detects backend/CLI hints first", () => {
+		expect(detectAgentType({ agent_backend: "claude" })).toBe("claude");
+		expect(detectAgentType({ cli_name: "codex" })).toBe("codex");
+		expect(detectAgentType({ process_name: "gemini" })).toBe("gemini");
+	});
+
+	test("falls back to command/model hints", () => {
+		expect(
+			detectAgentType({
+				command: "/usr/local/bin/codex --model gpt-5 --print hello",
+			}),
+		).toBe("codex");
+		expect(detectAgentType({ model: "claude-3.7-sonnet" })).toBe("claude");
+		expect(detectAgentType({ model: "gemini-2.5-pro" })).toBe("gemini");
+		expect(detectAgentType({ id: "unknown-task" })).toBe("unknown");
+	});
+
+	test("returns hubot icon with expected color mapping", () => {
+		const claudeIcon = getAgentTypeIcon({ cli_name: "claude" }) as {
+			id: string;
+			color?: { id: string };
+		};
+		const codexIcon = getAgentTypeIcon({
+			command: "/opt/homebrew/bin/codex run",
+		}) as {
+			id: string;
+			color?: { id: string };
+		};
+		const geminiIcon = getAgentTypeIcon({ model: "gemini-2.5-pro" }) as {
+			id: string;
+			color?: { id: string };
+		};
+		const unknownIcon = getAgentTypeIcon({}) as {
+			id: string;
+			color?: { id: string };
+		};
+
+		expect(claudeIcon.id).toBe("hubot");
+		expect(claudeIcon.color?.id).toBe("charts.purple");
+		expect(codexIcon.id).toBe("hubot");
+		expect(codexIcon.color?.id).toBe("charts.green");
+		expect(geminiIcon.id).toBe("hubot");
+		expect(geminiIcon.color?.id).toBe("charts.blue");
+		expect(unknownIcon.id).toBe("hubot");
+		expect(unknownIcon.color).toBeUndefined();
+	});
+});
+
 // ── TreeProvider tests ───────────────────────────────────────────────
 
 describe("AgentStatusTreeProvider", () => {
 	let provider: AgentStatusTreeProvider;
+	let vscodeMock: ReturnType<typeof setupVSCodeMock>;
 
 	beforeEach(() => {
 		mock.restore();
-		const vscodeMock = setupVSCodeMock();
+		vscodeMock = setupVSCodeMock();
 		// Ensure show*Message mocks return promises (needed for notification .then())
 		vscodeMock.window.showInformationMessage = mock(() =>
 			Promise.resolve(undefined),
@@ -186,6 +238,29 @@ describe("AgentStatusTreeProvider", () => {
 		);
 	});
 
+	test("filters root tasks to running only when config is enabled", () => {
+		const running = createMockTask({ id: "running-1", status: "running" });
+		const completed = createMockTask({ id: "done-1", status: "completed" });
+		provider.readRegistry = () =>
+			createMockRegistry({ "running-1": running, "done-1": completed });
+		provider.reload();
+
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.showOnlyRunning") return true;
+				return defaultValue;
+			}),
+		}));
+
+		const children = provider.getChildren();
+		const taskNodes = getTaskNodes(children);
+		expect(taskNodes).toHaveLength(1);
+		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"running-1",
+		);
+	});
+
 	test("returns detail nodes for task children", () => {
 		// Use completed status to avoid async port detection adding "detecting..." node
 		const task = createMockTask({ status: "completed", exit_code: 0 });
@@ -253,22 +328,35 @@ describe("AgentStatusTreeProvider", () => {
 		expect(item.collapsibleState).toBe(0); // None
 	});
 
-	test("status icons are correct", () => {
-		// Status is shown via ThemeIcon iconPath, not emoji in label
-		const statuses = [
-			["running", "sync~spin"],
-			["completed", "check"],
-			["failed", "error"],
-			["stopped", "debug-stop"],
-			["killed", "close"],
+	test("launcher task icons are mapped by agent backend", () => {
+		const cases = [
+			["claude", "charts.purple"],
+			["codex", "charts.green"],
+			["gemini", "charts.blue"],
 		] as const;
 
-		for (const [status, expectedIcon] of statuses) {
-			const task = createMockTask({ status });
+		for (const [backend, expectedColor] of cases) {
+			const task = createMockTask({
+				status: "running",
+				agent_backend: backend,
+			});
 			const node: AgentNode = { type: "task", task };
 			const item = provider.getTreeItem(node);
-			expect((item.iconPath as { id: string }).id).toBe(expectedIcon);
+			const icon = item.iconPath as { id: string; color?: { id: string } };
+			expect(icon.id).toBe("hubot");
+			expect(icon.color?.id).toBe(expectedColor);
 		}
+	});
+
+	test("launcher task icon falls back to default hubot when unknown", () => {
+		const task = createMockTask({
+			status: "running",
+			agent_backend: undefined,
+		});
+		const item = provider.getTreeItem({ type: "task", task });
+		const icon = item.iconPath as { id: string; color?: { id: string } };
+		expect(icon.id).toBe("hubot");
+		expect(icon.color).toBeUndefined();
 	});
 
 	test("contextValue includes status for tasks", () => {
@@ -340,27 +428,57 @@ describe("AgentStatusTreeProvider", () => {
 		expect((item.tooltip as { value: string }).value).toContain("Exit code: 1");
 	});
 
-	test("shows Result detail node for failed tasks with exit code", () => {
+	test("shows Error detail node first for failed tasks with exit code", () => {
 		const task = createMockTask({
 			status: "failed",
 			exit_code: 127,
 			attempts: 2,
 			max_attempts: 3,
+			error_message: "build failed: missing env var",
 		});
 		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
 		provider.getDiffSummary = () => null;
 		provider.getGitInfo = () => null;
+		provider.readPromptSummary = () => "mock summary";
 		provider.reload();
 
 		const root = provider.getChildren();
 		const firstTask = getFirstTask(root);
 		const details = provider.getChildren(firstTask);
-		const resultDetail = details.find(
-			(d) => d.type === "detail" && d.label === "Result",
-		);
-		expect(resultDetail).toBeDefined();
-		if (resultDetail?.type === "detail") {
-			expect(resultDetail.value).toBe("Exit 127 · Attempt 2/3");
+		const errorDetail = details[0];
+		expect(errorDetail?.type).toBe("detail");
+		if (errorDetail?.type === "detail") {
+			expect(errorDetail.label).toBe("Error: Exit 127 · 2/3 attempts");
+			expect(errorDetail.description).toBe("build failed: missing env var");
+			const treeItem = provider.getTreeItem(errorDetail);
+			expect((treeItem.iconPath as { id: string }).id).toBe("error");
+			expect((treeItem.iconPath as { color: { id: string } }).color.id).toBe(
+				"charts.red",
+			);
+			expect(treeItem.description).toBe("build failed: missing env var");
+		}
+	});
+
+	test("omits attempts suffix in Error detail when attempts is 1", () => {
+		const task = createMockTask({
+			status: "failed",
+			exit_code: 2,
+			attempts: 1,
+			max_attempts: 3,
+		});
+		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.getDiffSummary = () => null;
+		provider.getGitInfo = () => null;
+		provider.readPromptSummary = () => "mock summary";
+		provider.reload();
+
+		const root = provider.getChildren();
+		const firstTask = getFirstTask(root);
+		const details = provider.getChildren(firstTask);
+		const errorDetail = details[0];
+		expect(errorDetail?.type).toBe("detail");
+		if (errorDetail?.type === "detail") {
+			expect(errorDetail.label).toBe("Error: Exit 2");
 		}
 	});
 
@@ -675,6 +793,7 @@ describe("AgentStatusTreeProvider", () => {
 			vscodeMock = setupVSCodeMock();
 			// Make notifications enabled by default
 			vscodeMock.workspace.getConfiguration = mock(() => ({
+				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "agentStatus.notifications") return true;
 					return defaultValue;
@@ -758,6 +877,7 @@ describe("AgentStatusTreeProvider", () => {
 		test("no notification when setting is disabled", () => {
 			// Override config to disable notifications
 			vscodeMock.workspace.getConfiguration = mock(() => ({
+				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "agentStatus.notifications") return false;
 					return defaultValue;
@@ -922,6 +1042,7 @@ describe("AgentStatusTreeProvider", () => {
 
 		test("emoji prepended when project config matches", () => {
 			vscodeMock.workspace.getConfiguration = mock(() => ({
+				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "projects") return [{ name: "my-app", emoji: "🚀" }];
 					return defaultValue;
@@ -938,6 +1059,7 @@ describe("AgentStatusTreeProvider", () => {
 
 		test("no emoji when no config match", () => {
 			vscodeMock.workspace.getConfiguration = mock(() => ({
+				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "projects")
 						return [{ name: "other-project", emoji: "🎨" }];
@@ -955,6 +1077,7 @@ describe("AgentStatusTreeProvider", () => {
 
 		test("config with multiple projects works correctly", () => {
 			vscodeMock.workspace.getConfiguration = mock(() => ({
+				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "projects")
 						return [
@@ -985,6 +1108,7 @@ describe("AgentStatusTreeProvider", () => {
 
 		test("empty projects config returns no emoji", () => {
 			vscodeMock.workspace.getConfiguration = mock(() => ({
+				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "projects") return [];
 					return defaultValue;

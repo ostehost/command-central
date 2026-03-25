@@ -619,8 +619,28 @@ export async function activate(
 			"commandCentral.agentStatus",
 			{ treeDataProvider: agentStatusProvider, showCollapseAll: true },
 		);
+		const syncRunningFilterContext = async (): Promise<void> => {
+			const showOnlyRunning = vscode.workspace
+				.getConfiguration("commandCentral")
+				.get<boolean>("agentStatus.showOnlyRunning", false);
+			await vscode.commands.executeCommand(
+				"setContext",
+				"commandCentral.agentStatus.showOnlyRunning",
+				showOnlyRunning,
+			);
+		};
+		await syncRunningFilterContext();
 		context.subscriptions.push(agentStatusView);
 		context.subscriptions.push(agentStatusProvider);
+		context.subscriptions.push(
+			vscode.workspace.onDidChangeConfiguration((e) => {
+				if (
+					e.affectsConfiguration("commandCentral.agentStatus.showOnlyRunning")
+				) {
+					void syncRunningFilterContext();
+				}
+			}),
+		);
 
 		// Track agent panel visibility
 		agentStatusView.onDidChangeVisibility((e) => {
@@ -729,16 +749,6 @@ export async function activate(
 					const { execFile } = await import("node:child_process");
 					const { promisify } = await import("node:util");
 					const execFileAsync = promisify(execFile);
-
-					if (task && task.status !== "running") {
-						// Non-running agents should use resumeAgentSession directly
-						// (tree provider routes there, but handle direct invocations too)
-						vscode.commands.executeCommand(
-							"commandCentral.resumeAgentSession",
-							node,
-						);
-						return;
-					}
 
 					// Strategy 0: Session store lookup (works for discovered agents too)
 					if (projectDir) {
@@ -870,6 +880,31 @@ export async function activate(
 				},
 			),
 			vscode.commands.registerCommand(
+				"commandCentral.toggleRunningFilter",
+				async () => {
+					const config = vscode.workspace.getConfiguration("commandCentral");
+					const current = config.get<boolean>(
+						"agentStatus.showOnlyRunning",
+						false,
+					);
+					await config.update(
+						"agentStatus.showOnlyRunning",
+						!current,
+						vscode.ConfigurationTarget.Workspace,
+					);
+					await syncRunningFilterContext();
+					agentStatusProvider?.reload();
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.toggleRunningFilterActive",
+				async () => {
+					await vscode.commands.executeCommand(
+						"commandCentral.toggleRunningFilter",
+					);
+				},
+			),
+			vscode.commands.registerCommand(
 				"commandCentral.captureAgentOutput",
 				async (node?: { type: string; task?: { session_id: string } }) => {
 					const sessionId = node?.task?.session_id;
@@ -983,6 +1018,84 @@ export async function activate(
 					} catch (err) {
 						vscode.window.showErrorMessage(
 							`Failed to kill agent: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					}
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.removeAgentTask",
+				async (node?: { type: string; task?: AgentTask }) => {
+					const task = node?.task;
+					if (!task) {
+						vscode.window.showWarningMessage(
+							"No agent selected. Right-click an agent in the tree.",
+						);
+						return;
+					}
+
+					const tasksFilePath = agentStatusProvider?.filePath;
+					if (!tasksFilePath) {
+						vscode.window.showErrorMessage(
+							"Agent tasks file not configured. Set commandCentral.agentTasksFile in settings.",
+						);
+						return;
+					}
+
+					try {
+						const fs = await import("node:fs");
+						const raw = fs.readFileSync(tasksFilePath, "utf-8");
+						const parsed = JSON.parse(raw) as {
+							version?: number;
+							tasks?: Record<string, unknown>;
+						};
+						const tasks =
+							parsed.tasks && typeof parsed.tasks === "object"
+								? parsed.tasks
+								: {};
+
+						let removed = false;
+						if (task.id in tasks) {
+							delete tasks[task.id];
+							removed = true;
+						} else {
+							for (const [key, value] of Object.entries(tasks)) {
+								const valueId =
+									typeof value === "object" && value
+										? (value as { id?: unknown }).id
+										: undefined;
+								if (
+									typeof value === "object" &&
+									value &&
+									"id" in value &&
+									valueId === task.id
+								) {
+									delete tasks[key];
+									removed = true;
+									break;
+								}
+							}
+						}
+
+						if (!removed) {
+							vscode.window.showInformationMessage(
+								`Agent "${task.id}" is already removed.`,
+							);
+							return;
+						}
+
+						const version =
+							parsed.version === 1 || parsed.version === 2 ? parsed.version : 2;
+						fs.writeFileSync(
+							tasksFilePath,
+							`${JSON.stringify({ version, tasks }, null, 2)}\n`,
+							"utf-8",
+						);
+
+						agentStatusProvider?.reload();
+						vscode.window.showInformationMessage(`Removed agent "${task.id}".`);
+					} catch (err) {
+						vscode.window.showErrorMessage(
+							`Failed to remove agent: ${err instanceof Error ? err.message : String(err)}`,
 						);
 					}
 				},

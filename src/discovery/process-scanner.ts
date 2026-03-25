@@ -157,8 +157,14 @@ export class ProcessScanner {
 	 */
 	parseClaudeArgs(
 		command: string,
-	): Pick<DiscoveredAgent, "model" | "sessionId"> {
-		const result: Pick<DiscoveredAgent, "model" | "sessionId"> = {};
+	): Pick<DiscoveredAgent, "model" | "sessionId" | "cli_name"> {
+		const result: Pick<DiscoveredAgent, "model" | "sessionId" | "cli_name"> =
+			{};
+
+		const cliMatch = command.match(/\b(claude|codex|gemini)\b/i);
+		if (cliMatch) {
+			result.cli_name = cliMatch[1]?.toLowerCase();
+		}
 
 		const modelMatch = command.match(/--model\s+(\S+)/);
 		if (modelMatch) result.model = modelMatch[1];
