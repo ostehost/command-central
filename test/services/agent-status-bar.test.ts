@@ -157,17 +157,16 @@ describe("AgentStatusBar", () => {
 		expect(mockStatusBarItem.text).toBe("$(warning) 1 failed · 1 completed");
 	});
 
-	test("handles stopped and killed tasks gracefully", async () => {
+	test("handles stopped and killed tasks with terminal/failed split", async () => {
 		const { AgentStatusBar } = await loadModule();
 		const bar = new AgentStatusBar();
 
-		// stopped + killed → all go to the "else" branch (no running, no failed)
 		bar.update([
 			createTask({ id: "t1", status: "stopped" }),
 			createTask({ id: "t2", status: "killed" }),
 		]);
 
-		expect(mockStatusBarItem.text).toBe("$(check) 2 agents completed");
+		expect(mockStatusBarItem.text).toBe("$(warning) 1 failed · 1 completed");
 		expect(mockStatusBarItem.show).toHaveBeenCalled();
 	});
 
@@ -231,5 +230,24 @@ describe("AgentStatusBar", () => {
 		expect(mockStatusBarItem.text).toBe(
 			"$(pulse) 1 running · 1 completed · 1 failed",
 		);
+	});
+
+	test("tooltip truncates very long project names", async () => {
+		const { AgentStatusBar } = await loadModule();
+		const bar = new AgentStatusBar();
+		const longProjectName = "project-".repeat(20);
+
+		bar.update([
+			createTask({
+				id: "task-long",
+				status: "running",
+				project_name: longProjectName,
+			}),
+		]);
+
+		const tooltip = mockStatusBarItem.tooltip as { value: string };
+		expect(tooltip.value).toContain("task-long");
+		expect(tooltip.value).toContain("…");
+		expect(tooltip.value).not.toContain(longProjectName);
 	});
 });

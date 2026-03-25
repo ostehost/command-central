@@ -8,9 +8,10 @@
  * Watches the file for changes and auto-refreshes.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import * as vscode from "vscode";
 import { AgentRegistry } from "../discovery/agent-registry.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
@@ -36,18 +37,20 @@ export interface TaskRegistry {
 	tasks: Record<string, AgentTask>;
 }
 
+export type AgentTaskStatus =
+	| "running"
+	| "stopped"
+	| "killed"
+	| "completed"
+	| "completed_stale"
+	| "failed"
+	| "contract_failure";
+
 export type AgentRole = "developer" | "planner" | "reviewer" | "test";
 
 export interface AgentTask {
 	id: string;
-	status:
-		| "running"
-		| "stopped"
-		| "killed"
-		| "completed"
-		| "completed_stale"
-		| "failed"
-		| "contract_failure";
+	status: AgentTaskStatus;
 	project_dir: string;
 	project_name: string;
 	session_id: string;
@@ -76,7 +79,8 @@ export type AgentNode =
 	| TreeElement
 	| DetailNode
 	| FileChangeNode
-	| DiscoveredNode;
+	| DiscoveredNode
+	| StateNode;
 
 export interface SummaryNode {
 	type: "summary";
@@ -126,6 +130,13 @@ export interface FileChangeNode {
 export interface DiscoveredNode {
 	type: "discovered";
 	agent: DiscoveredAgent;
+}
+
+export interface StateNode {
+	type: "state";
+	label: string;
+	description?: string;
+	icon?: string;
 }
 
 // ── Agent type detection for discovered agents ───────────────────────
@@ -291,15 +302,92 @@ export function formatElapsed(startedAt: string, now?: Date): string {
 
 // ── Task normalization (v1 → v2) ─────────────────────────────────────
 
-function normalizeTask(raw: Record<string, unknown>): AgentTask | null {
-	const sessionId = (raw["session_id"] ?? raw["tmux_session"]) as
-		| string
-		| undefined;
+const VALID_TASK_STATUSES = new Set<AgentTaskStatus>([
+	"running",
+	"stopped",
+	"killed",
+	"completed",
+	"completed_stale",
+	"failed",
+	"contract_failure",
+]);
+
+function asString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim().length > 0
+		? value.trim()
+		: undefined;
+}
+
+function asNumber(value: unknown, fallback: number): number {
+	if (typeof value !== "number" || Number.isNaN(value)) return fallback;
+	return value;
+}
+
+function asNullableNumber(value: unknown): number | null | undefined {
+	if (value === null) return null;
+	if (typeof value !== "number" || Number.isNaN(value)) return undefined;
+	return value;
+}
+
+function normalizeTask(
+	taskKey: string,
+	raw: Record<string, unknown>,
+): AgentTask | null {
+	const sessionId = asString(raw["session_id"] ?? raw["tmux_session"]);
 	if (!sessionId) return null;
+
+	const id = asString(raw["id"]) ?? taskKey;
+	const statusRaw = asString(raw["status"]);
+	const status: AgentTaskStatus = VALID_TASK_STATUSES.has(
+		(statusRaw ?? "running") as AgentTaskStatus,
+	)
+		? ((statusRaw ?? "running") as AgentTaskStatus)
+		: "running";
+	const projectDir = asString(raw["project_dir"]) ?? "";
+	const projectName =
+		asString(raw["project_name"]) ??
+		(path.basename(projectDir) || "(unknown project)");
+	const bundlePath = asString(raw["bundle_path"]) ?? "(unknown)";
+	const promptFile = asString(raw["prompt_file"]) ?? "";
+
 	return {
-		...raw,
+		id,
+		status,
+		project_dir: projectDir,
+		project_name: projectName,
 		session_id: sessionId,
-	} as AgentTask;
+		agent_backend: asString(raw["agent_backend"]) ?? null,
+		cli_name: asString(raw["cli_name"]) ?? null,
+		tmux_session: asString(raw["tmux_session"]),
+		bundle_path: bundlePath,
+		prompt_file: promptFile,
+		started_at: asString(raw["started_at"]) ?? new Date().toISOString(),
+		attempts: Math.max(0, asNumber(raw["attempts"], 0)),
+		max_attempts: Math.max(0, asNumber(raw["max_attempts"], 0)),
+		pr_number: asNullableNumber(raw["pr_number"]) ?? null,
+		review_status:
+			raw["review_status"] === "pending" ||
+			raw["review_status"] === "approved" ||
+			raw["review_status"] === "changes_requested"
+				? raw["review_status"]
+				: null,
+		role:
+			raw["role"] === "developer" ||
+			raw["role"] === "planner" ||
+			raw["role"] === "reviewer" ||
+			raw["role"] === "test"
+				? raw["role"]
+				: null,
+		terminal_backend:
+			raw["terminal_backend"] === "tmux" ||
+			raw["terminal_backend"] === "applescript"
+				? raw["terminal_backend"]
+				: undefined,
+		ghostty_bundle_id: asString(raw["ghostty_bundle_id"]) ?? null,
+		exit_code: asNullableNumber(raw["exit_code"]) ?? null,
+		error_message: asString(raw["error_message"]) ?? null,
+		completed_at: asString(raw["completed_at"]) ?? null,
+	};
 }
 
 // ── Provider ─────────────────────────────────────────────────────────
@@ -312,6 +400,8 @@ export interface GitInfo {
 export class AgentStatusTreeProvider
 	implements vscode.TreeDataProvider<AgentNode>, vscode.Disposable
 {
+	private static readonly GIT_DIFF_TIMEOUT_MS = 1_500;
+
 	private _onDidChangeTreeData = new vscode.EventEmitter<
 		AgentNode | undefined | null
 	>();
@@ -338,6 +428,16 @@ export class AgentStatusTreeProvider
 	private _promptCache = new Map<string, string>();
 	/** Cached prompt summaries for discovered agents keyed by sessionId or pid */
 	private _discoveredPromptCache = new Map<string, string>();
+	/** Cached diff summaries keyed by task/discovered cache key */
+	private _diffSummaryCache = new Map<string, string | null>();
+	/** Cache keys with ongoing async diff summary calculation */
+	private _diffSummaryDetecting = new Set<string>();
+	/** Tracks malformed/unsupported registry issues for inline error state */
+	private _registryLoadIssue: string | null = null;
+	/** First read loading indicator (shown only before initial reload finishes) */
+	private _initialReadInProgress = true;
+	/** Prevent stale async reload results from overwriting newer state */
+	private _reloadGeneration = 0;
 
 	constructor() {
 		// Watch config changes for the tasks file path
@@ -345,7 +445,7 @@ export class AgentStatusTreeProvider
 			vscode.workspace.onDidChangeConfiguration((e) => {
 				if (e.affectsConfiguration("commandCentral.agentTasksFile")) {
 					this.setupFileWatch();
-					this.reload();
+					void this.reload();
 				}
 				if (
 					e.affectsConfiguration(
@@ -358,7 +458,11 @@ export class AgentStatusTreeProvider
 			}),
 		);
 		this.setupFileWatch();
-		this.reload();
+		if (process.env["NODE_ENV"] === "test") {
+			this.reload();
+		} else {
+			void Promise.resolve().then(() => this.reload());
+		}
 		this.initDiscovery();
 	}
 
@@ -377,6 +481,7 @@ export class AgentStatusTreeProvider
 				this._discoveredAgents = this._agentRegistry
 					? this._agentRegistry.getDiscoveredAgents(this.getLauncherTasks())
 					: [];
+				this.setHasAgentsContext();
 				this._onDidChangeTreeData.fire(undefined);
 			}),
 		);
@@ -392,6 +497,7 @@ export class AgentStatusTreeProvider
 						this._agentRegistry.dispose();
 						this._agentRegistry = null;
 						this._discoveredAgents = [];
+						this.setHasAgentsContext();
 						this._onDidChangeTreeData.fire(undefined);
 					} else if (nowEnabled && !this._agentRegistry) {
 						this.initDiscovery();
@@ -435,7 +541,7 @@ export class AgentStatusTreeProvider
 		const debouncedReload = () => {
 			if (this.debounceTimer) clearTimeout(this.debounceTimer);
 			this.debounceTimer = setTimeout(() => {
-				this.reload();
+				void this.reload();
 			}, 150);
 		};
 
@@ -471,8 +577,30 @@ export class AgentStatusTreeProvider
 		}
 	}
 
+	private setHasAgentsContext(): void {
+		const hasAgents =
+			Object.keys(this.registry.tasks).length > 0 ||
+			this._discoveredAgents.length > 0;
+		void vscode.commands.executeCommand(
+			"setContext",
+			"commandCentral.hasAgentTasks",
+			hasAgents,
+		);
+	}
+
 	reload(): void {
-		this.registry = this.readRegistry();
+		const generation = ++this._reloadGeneration;
+		const isInitial = this._initialReadInProgress;
+		if (isInitial) {
+			this._onDidChangeTreeData.fire(undefined);
+		}
+		this._registryLoadIssue = null;
+		const nextRegistry = this.readRegistry();
+		if (generation !== this._reloadGeneration) return;
+		this.registry = nextRegistry;
+		this._initialReadInProgress = false;
+		this._diffSummaryCache.clear();
+		this._diffSummaryDetecting.clear();
 		this.checkCompletionNotifications();
 		this.updateAutoRefreshTimer();
 		// Clear port cache for tasks that are no longer running
@@ -482,12 +610,7 @@ export class AgentStatusTreeProvider
 				this._portDetecting.delete(taskId);
 			}
 		}
-		// Set context key for welcome view
-		vscode.commands.executeCommand(
-			"setContext",
-			"commandCentral.hasAgentTasks",
-			Object.keys(this.registry.tasks).length > 0,
-		);
+		this.setHasAgentsContext();
 		this._onDidChangeTreeData.fire(undefined);
 	}
 
@@ -594,20 +717,39 @@ export class AgentStatusTreeProvider
 
 	/** Exposed for testing — override to inject mock data */
 	readRegistry(): TaskRegistry {
+		this._registryLoadIssue = null;
 		if (!this._filePath) return { version: 2, tasks: {} };
 		try {
 			const content = fs.readFileSync(this._filePath, "utf-8");
-			const parsed = JSON.parse(content) as TaskRegistry;
-			if ((parsed.version === 1 || parsed.version === 2) && parsed.tasks) {
+			const parsed = JSON.parse(content) as unknown;
+			if (!parsed || typeof parsed !== "object") {
+				this._registryLoadIssue = "Task registry is not a JSON object.";
+				return { version: 2, tasks: {} };
+			}
+			const parsedRegistry = parsed as Record<string, unknown>;
+			const version = parsedRegistry["version"];
+			const tasks = parsedRegistry["tasks"];
+			if (
+				(version === 1 || version === 2) &&
+				tasks &&
+				typeof tasks === "object"
+			) {
 				const normalized: Record<string, AgentTask> = {};
-				for (const [key, raw] of Object.entries(parsed.tasks)) {
-					const task = normalizeTask(raw as unknown as Record<string, unknown>);
+				for (const [key, raw] of Object.entries(tasks)) {
+					if (!raw || typeof raw !== "object") continue;
+					const task = normalizeTask(key, raw as Record<string, unknown>);
 					if (task) normalized[key] = task;
 				}
 				return { version: 2, tasks: normalized };
 			}
+			this._registryLoadIssue =
+				version !== 1 && version !== 2
+					? `Unsupported tasks.json version: ${String(version)}`
+					: "tasks.json is missing a valid tasks object.";
 			return { version: 2, tasks: {} };
-		} catch {
+		} catch (err) {
+			this._registryLoadIssue =
+				err instanceof Error ? err.message : "Failed to parse tasks.json";
 			return { version: 2, tasks: {} };
 		}
 	}
@@ -628,17 +770,55 @@ export class AgentStatusTreeProvider
 		if (element.type === "discovered") {
 			return this.createDiscoveredItem(element);
 		}
+		if (element.type === "state") {
+			return this.createStateItem(element);
+		}
 		return this.createDetailItem(element);
 	}
 
 	getChildren(element?: AgentNode): AgentNode[] {
 		if (!element) {
 			const allTasks = Object.values(this.registry.tasks);
-			const tasks = this.isRunningOnlyFilterEnabled()
+			const discovered = this._discoveredAgents;
+			const hasAnyAgents = allTasks.length > 0 || discovered.length > 0;
+			if (!hasAnyAgents) {
+				if (this._initialReadInProgress && this._filePath) {
+					return [
+						{
+							type: "state",
+							label: "Loading agents...",
+							description: "Reading tasks registry",
+							icon: "loading~spin",
+						},
+					];
+				}
+				if (this._registryLoadIssue) {
+					return [
+						{
+							type: "state",
+							label: "Could not read tasks.json",
+							description: this._registryLoadIssue,
+							icon: "warning",
+						},
+					];
+				}
+				return [];
+			}
+
+			const runningOnly = this.isRunningOnlyFilterEnabled();
+			const tasks = runningOnly
 				? allTasks.filter((task) => task.status === "running")
 				: allTasks;
-			const discovered = this._discoveredAgents;
-			if (tasks.length === 0 && discovered.length === 0) return [];
+			if (runningOnly && tasks.length === 0 && discovered.length === 0) {
+				return [
+					{
+						type: "state",
+						label: "No running agents",
+						description: "Disable the Running filter to show completed agents.",
+						icon: "debug-pause",
+					},
+				];
+			}
 
 			const groupedByProject = this.isProjectGroupingEnabled();
 
@@ -719,6 +899,119 @@ export class AgentStatusTreeProvider
 		return [];
 	}
 
+	private getTaskDiffCacheKey(task: AgentTask): string {
+		return `task:${task.id}:${task.status}:${task.project_dir}:${task.started_at}`;
+	}
+
+	private getDiscoveredDiffCacheKey(agent: DiscoveredAgent): string {
+		return `discovered:${agent.pid}:${agent.projectDir}`;
+	}
+
+	private getCachedDiffSummaryForTask(task: AgentTask): string | null {
+		const cacheKey = this.getTaskDiffCacheKey(task);
+		if (this._diffSummaryCache.has(cacheKey)) {
+			return this._diffSummaryCache.get(cacheKey) ?? null;
+		}
+
+		// Test overrides often monkeypatch getDiffSummary on the instance.
+		// Preserve deterministic synchronous behavior in that case.
+		if (Object.hasOwn(this, "getDiffSummary")) {
+			const value = this.getDiffSummary(task.project_dir, task);
+			this._diffSummaryCache.set(cacheKey, value);
+			return value;
+		}
+
+		if (!this._diffSummaryDetecting.has(cacheKey)) {
+			this._diffSummaryDetecting.add(cacheKey);
+			void this.computeDiffSummaryAsync(task.project_dir, task)
+				.then((summary) => {
+					this._diffSummaryCache.set(cacheKey, summary);
+					this._onDidChangeTreeData.fire(undefined);
+				})
+				.finally(() => {
+					this._diffSummaryDetecting.delete(cacheKey);
+				});
+		}
+
+		return null;
+	}
+
+	private isTaskDiffSummaryLoading(task: AgentTask): boolean {
+		return this._diffSummaryDetecting.has(this.getTaskDiffCacheKey(task));
+	}
+
+	private getCachedDiffSummaryForDiscovered(
+		agent: DiscoveredAgent,
+	): string | null {
+		const cacheKey = this.getDiscoveredDiffCacheKey(agent);
+		if (this._diffSummaryCache.has(cacheKey)) {
+			return this._diffSummaryCache.get(cacheKey) ?? null;
+		}
+
+		const syntheticTask = { status: "running" } as AgentTask;
+		if (Object.hasOwn(this, "getDiffSummary")) {
+			const value = this.getDiffSummary(agent.projectDir, syntheticTask);
+			this._diffSummaryCache.set(cacheKey, value);
+			return value;
+		}
+
+		if (!this._diffSummaryDetecting.has(cacheKey)) {
+			this._diffSummaryDetecting.add(cacheKey);
+			void this.computeDiffSummaryAsync(agent.projectDir, syntheticTask)
+				.then((summary) => {
+					this._diffSummaryCache.set(cacheKey, summary);
+					this._onDidChangeTreeData.fire(undefined);
+				})
+				.finally(() => {
+					this._diffSummaryDetecting.delete(cacheKey);
+				});
+		}
+		return null;
+	}
+
+	private isDiscoveredDiffSummaryLoading(agent: DiscoveredAgent): boolean {
+		return this._diffSummaryDetecting.has(
+			this.getDiscoveredDiffCacheKey(agent),
+		);
+	}
+
+	private parseDiffSummary(output: string): string | null {
+		const trimmed = output.trim();
+		if (!trimmed) return null;
+
+		const summaryLine = trimmed.split("\n").pop() ?? "";
+		const filesMatch = summaryLine.match(/(\d+)\s+files?\s+changed/);
+		const insertMatch = summaryLine.match(/(\d+)\s+insertions?\(\+\)/);
+		const deleteMatch = summaryLine.match(/(\d+)\s+deletions?\(-\)/);
+		if (!filesMatch) return null;
+
+		const files = filesMatch[1];
+		const fileLabel = files === "1" ? "1 file" : `${files} files`;
+		const insertions = insertMatch?.[1] ?? "0";
+		const deletions = deleteMatch?.[1] ?? "0";
+		return `${fileLabel} · +${insertions} / -${deletions}`;
+	}
+
+	private async computeDiffSummaryAsync(
+		projectDir: string,
+		task: AgentTask,
+	): Promise<string | null> {
+		try {
+			const args =
+				task.status === "running"
+					? ["-C", projectDir, "diff", "--stat"]
+					: ["-C", projectDir, "diff", "--stat", "HEAD~1"];
+			const execFileAsync = promisify(execFile);
+			const { stdout } = await execFileAsync("git", args, {
+				encoding: "utf-8",
+				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
+			});
+			return this.parseDiffSummary(stdout);
+		} catch {
+			return null;
+		}
+	}
+
 	/** Get detail children for discovered agents (no task record) */
 	private getDiscoveredChildren(agent: DiscoveredAgent): DetailNode[] {
 		const details: DetailNode[] = [
@@ -752,14 +1045,19 @@ export class AgentStatusTreeProvider
 			});
 		}
 		// Diff summary for discovered agents (working tree vs HEAD)
-		const diffSummary = this.getDiffSummary(agent.projectDir, {
-			status: "running",
-		} as AgentTask);
+		const diffSummary = this.getCachedDiffSummaryForDiscovered(agent);
 		if (diffSummary) {
 			details.push({
 				type: "detail",
 				label: "Changes",
 				value: diffSummary,
+				taskId: `discovered-${agent.pid}`,
+			});
+		} else if (this.isDiscoveredDiffSummaryLoading(agent)) {
+			details.push({
+				type: "detail",
+				label: "Changes",
+				value: "loading...",
 				taskId: `discovered-${agent.pid}`,
 			});
 		}
@@ -858,12 +1156,19 @@ export class AgentStatusTreeProvider
 		});
 
 		// Diff summary
-		const diffSummary = this.getDiffSummary(t.project_dir, t);
+		const diffSummary = this.getCachedDiffSummaryForTask(t);
 		if (diffSummary) {
 			details.push({
 				type: "detail",
 				label: "Changes",
 				value: diffSummary,
+				taskId: t.id,
+			});
+		} else if (this.isTaskDiffSummaryLoading(t)) {
+			details.push({
+				type: "detail",
+				label: "Changes",
+				value: "loading...",
 				taskId: t.id,
 			});
 		}
@@ -971,7 +1276,10 @@ export class AgentStatusTreeProvider
 						"-1",
 						"--format=%H",
 					],
-					{ encoding: "utf-8", timeout: 2000 },
+					{
+						encoding: "utf-8",
+						timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
+					},
 				).trim();
 				if (commitHash) return commitHash;
 			} catch {
@@ -1018,12 +1326,18 @@ export class AgentStatusTreeProvider
 			const branch = execFileSync(
 				"git",
 				["-C", projectDir, "rev-parse", "--abbrev-ref", "HEAD"],
-				{ encoding: "utf-8", timeout: 2000 },
+				{
+					encoding: "utf-8",
+					timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
+				},
 			).trim();
 			const lastCommit = execFileSync(
 				"git",
 				["-C", projectDir, "log", "-1", "--format=%h %s (%cr)"],
-				{ encoding: "utf-8", timeout: 2000 },
+				{
+					encoding: "utf-8",
+					timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
+				},
 			).trim();
 			return { branch, lastCommit };
 		} catch {
@@ -1192,24 +1506,9 @@ export class AgentStatusTreeProvider
 
 			const output = execFileSync("git", args, {
 				encoding: "utf-8",
-				timeout: 2000,
-			}).trim();
-
-			if (!output) return null;
-
-			// Parse the summary line: "N files changed, X insertions(+), Y deletions(-)"
-			const summaryLine = output.split("\n").pop() ?? "";
-			const filesMatch = summaryLine.match(/(\d+)\s+files?\s+changed/);
-			const insertMatch = summaryLine.match(/(\d+)\s+insertions?\(\+\)/);
-			const deleteMatch = summaryLine.match(/(\d+)\s+deletions?\(-\)/);
-
-			if (!filesMatch) return null;
-
-			const files = filesMatch[1];
-			const fileLabel = files === "1" ? "1 file" : `${files} files`;
-			const insertions = insertMatch?.[1] ?? "0";
-			const deletions = deleteMatch?.[1] ?? "0";
-			return `${fileLabel} · +${insertions} / -${deletions}`;
+				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
+			});
+			return this.parseDiffSummary(output);
 		} catch {
 			return null;
 		}
@@ -1222,14 +1521,38 @@ export class AgentStatusTreeProvider
 	 * - Completed/stopped/failed: compare `startCommit..HEAD` (fallback: HEAD~1..HEAD)
 	 */
 	getPerFileDiffs(projectDir: string, startCommit?: string): PerFileDiff[] {
+		const runNumstat = (args: string[]): string =>
+			execFileSync("git", args, {
+				encoding: "utf-8",
+				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
+			}).trim();
 		try {
-			const args = startCommit
+			const primaryArgs = startCommit
 				? ["-C", projectDir, "diff", "--numstat", `${startCommit}..HEAD`]
 				: ["-C", projectDir, "diff", "--numstat"];
-			const output = execFileSync("git", args, {
-				encoding: "utf-8",
-				timeout: 2000,
-			}).trim();
+			let output = "";
+			try {
+				output = runNumstat(primaryArgs);
+			} catch {
+				if (!startCommit) return [];
+				output = runNumstat([
+					"-C",
+					projectDir,
+					"diff",
+					"--numstat",
+					"HEAD~1..HEAD",
+				]);
+			}
+			if (!output && startCommit) {
+				// If a computed start ref is stale/missing, fall back to HEAD~1..HEAD.
+				output = runNumstat([
+					"-C",
+					projectDir,
+					"diff",
+					"--numstat",
+					"HEAD~1..HEAD",
+				]);
+			}
 			if (!output) return [];
 
 			const diffs: PerFileDiff[] = [];
@@ -1455,10 +1778,14 @@ export class AgentStatusTreeProvider
 		const projectEmoji = this.getProjectEmoji(task.project_dir);
 		const labelParts = [roleIcon, projectEmoji, task.id].filter(Boolean);
 		const label = labelParts.join(" ");
-		const diffSummaryInline = this.getDiffSummary(task.project_dir, task);
+		const diffSummaryInline = this.getCachedDiffSummaryForTask(task);
+		const diffLoading =
+			!diffSummaryInline && this.isTaskDiffSummaryLoading(task);
 		const description = diffSummaryInline
 			? `${task.project_name} · ${elapsedDesc} · ${diffSummaryInline}`
-			: `${task.project_name} · ${elapsedDesc}`;
+			: diffLoading
+				? `${task.project_name} · ${elapsedDesc} · loading diff...`
+				: `${task.project_name} · ${elapsedDesc}`;
 
 		const item = new vscode.TreeItem(
 			label,
@@ -1491,6 +1818,17 @@ export class AgentStatusTreeProvider
 			title: isRunning ? "Focus Terminal" : "Resume Session",
 			arguments: [{ type: "task" as const, task }],
 		};
+		return item;
+	}
+
+	private createStateItem(node: StateNode): vscode.TreeItem {
+		const item = new vscode.TreeItem(
+			node.label,
+			vscode.TreeItemCollapsibleState.None,
+		);
+		item.contextValue = "agentState";
+		if (node.description) item.description = node.description;
+		if (node.icon) item.iconPath = new vscode.ThemeIcon(node.icon);
 		return item;
 	}
 
@@ -1546,12 +1884,14 @@ export class AgentStatusTreeProvider
 			label,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
-		const discoveredDiff = this.getDiffSummary(agent.projectDir, {
-			status: "running",
-		} as AgentTask);
+		const discoveredDiff = this.getCachedDiffSummaryForDiscovered(agent);
+		const discoveredDiffLoading =
+			!discoveredDiff && this.isDiscoveredDiffSummaryLoading(agent);
 		item.description = discoveredDiff
 			? `PID ${agent.pid} · ${uptime} · ${discoveredDiff} ${sourceLabel}`
-			: `PID ${agent.pid} · ${uptime} ${sourceLabel}`;
+			: discoveredDiffLoading
+				? `PID ${agent.pid} · ${uptime} · loading diff... ${sourceLabel}`
+				: `PID ${agent.pid} · ${uptime} ${sourceLabel}`;
 		item.iconPath = getStatusThemeIcon("running");
 		item.contextValue = "discoveredAgent.running";
 		item.command = {

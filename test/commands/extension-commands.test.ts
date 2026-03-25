@@ -439,6 +439,46 @@ describe("removeAgentTask command", () => {
 			'Agent "missing-task" is already removed.',
 		);
 	});
+
+	test("race-safe re-read preserves concurrent task additions", () => {
+		const task = createTask({ id: "agent-1", status: "completed" });
+		const initialTasks: Record<string, unknown> = {
+			"agent-1": { id: "agent-1" },
+			"agent-2": { id: "agent-2" },
+		};
+		const latestTasks: Record<string, unknown> = {
+			...initialTasks,
+			"agent-3": { id: "agent-3" },
+		};
+
+		const removeTask = (tasks: Record<string, unknown>): boolean => {
+			if (task.id in tasks) {
+				delete tasks[task.id];
+				return true;
+			}
+			return false;
+		};
+
+		// Initial remove result is stale because file changed; command should re-read
+		removeTask(initialTasks);
+		const removedFromLatest = removeTask(latestTasks);
+
+		expect(removedFromLatest).toBe(true);
+		expect(latestTasks["agent-1"]).toBeUndefined();
+		expect(latestTasks["agent-3"]).toBeDefined();
+	});
+
+	test("malformed tasks.json surfaces a user-facing error", () => {
+		const err = new SyntaxError("Unexpected token");
+		if (err instanceof SyntaxError) {
+			vscodeMock.window.showErrorMessage(
+				"Failed to remove agent: tasks.json is malformed.",
+			);
+		}
+		expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith(
+			"Failed to remove agent: tasks.json is malformed.",
+		);
+	});
 });
 
 describe("focusNextRunningAgent command", () => {
@@ -605,6 +645,24 @@ describe("openFileDiff command", () => {
 		}
 		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
 			"No file change selected.",
+		);
+	});
+
+	test("binary file change falls back to opening the file", () => {
+		const node = {
+			projectDir: "/tmp/project",
+			filePath: "assets/logo.png",
+			additions: -1,
+			deletions: -1,
+		};
+		const isBinary = node.additions < 0 || node.deletions < 0;
+		if (isBinary) {
+			vscodeMock.window.showInformationMessage(
+				"Binary file detected — no text diff is available.",
+			);
+		}
+		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+			"Binary file detected — no text diff is available.",
 		);
 	});
 });

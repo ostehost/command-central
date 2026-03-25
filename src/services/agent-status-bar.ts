@@ -23,6 +23,10 @@ const STATUS_ICON: Record<AgentTask["status"], string> = {
 	killed: "$(close)",
 };
 
+function truncateForTooltip(value: string, max = 48): string {
+	return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
 export class AgentStatusBar implements vscode.Disposable {
 	private statusBarItem: vscode.StatusBarItem;
 
@@ -43,8 +47,18 @@ export class AgentStatusBar implements vscode.Disposable {
 		}
 
 		const running = tasks.filter((t) => t.status === "running").length;
-		const completed = tasks.filter((t) => t.status === "completed").length;
-		const failed = tasks.filter((t) => t.status === "failed").length;
+		const completed = tasks.filter(
+			(t) =>
+				t.status === "completed" ||
+				t.status === "completed_stale" ||
+				t.status === "stopped",
+		).length;
+		const failed = tasks.filter(
+			(t) =>
+				t.status === "failed" ||
+				t.status === "killed" ||
+				t.status === "contract_failure",
+		).length;
 
 		// Determine icon and text
 		if (running > 0) {
@@ -68,10 +82,10 @@ export class AgentStatusBar implements vscode.Disposable {
 		}
 
 		// Markdown tooltip with per-task details
-		const lines = tasks.map(
-			(t) =>
-				`- **${t.id}**: ${STATUS_ICON[t.status] ?? "$(question)"} ${t.status}`,
-		);
+		const lines = tasks.map((t) => {
+			const project = truncateForTooltip(t.project_name || "(unknown project)");
+			return `- **${t.id}** (${project}): ${STATUS_ICON[t.status] ?? "$(question)"} ${t.status}`;
+		});
 		this.statusBarItem.tooltip = new vscode.MarkdownString(lines.join("\n"));
 
 		this.statusBarItem.show();

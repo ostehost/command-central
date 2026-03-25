@@ -12,6 +12,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 const TERMINALS_JSON_PATH = "/tmp/ghostty-terminals.json";
+const WINDOW_FOCUS_TIMEOUT_MS = 4_000;
 
 export interface GhosttyTerminalMapping {
 	terminal_id: string;
@@ -80,7 +81,9 @@ tell application id "${effectiveBundleId}"
 		set index of window 1 to 1
 	end if
 end tell`;
-		await execFileAsync("osascript", ["-e", script]);
+		await execFileAsync("osascript", ["-e", script], {
+			timeout: WINDOW_FOCUS_TIMEOUT_MS,
+		});
 		return true;
 	} catch {
 		// AppleScript failed — fall back to open -a
@@ -88,7 +91,9 @@ end tell`;
 
 	// Fallback: open -a (activates the app but may not target the right window)
 	try {
-		await execFileAsync("open", ["-a", effectiveBundleId]);
+		await execFileAsync("open", ["-a", effectiveBundleId], {
+			timeout: WINDOW_FOCUS_TIMEOUT_MS,
+		});
 		return true;
 	} catch {
 		return false;

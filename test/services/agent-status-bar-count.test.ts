@@ -121,4 +121,19 @@ describe("AgentStatusBar count calculation", () => {
 		expect(mockItem.text).toContain("1 failed");
 		expect(mockItem.text).toContain("1 completed");
 	});
+
+	test("treats completed_stale and stopped as completed", () => {
+		statusBar.update([
+			makeTask("a", "completed_stale"),
+			makeTask("b", "stopped"),
+		]);
+		expect(mockItem.text).toContain("2 agents completed");
+	});
+
+	test("treats killed as failed", () => {
+		statusBar.update([makeTask("a", "killed"), makeTask("b", "completed")]);
+		expect(mockItem.text).toContain("$(warning)");
+		expect(mockItem.text).toContain("1 failed");
+		expect(mockItem.text).toContain("1 completed");
+	});
 });

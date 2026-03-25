@@ -368,6 +368,28 @@ describe("AgentStatusTreeProvider", () => {
 		);
 	});
 
+	test("shows 'No running agents' state when running filter is enabled", () => {
+		const completed = createMockTask({ id: "done-1", status: "completed" });
+		provider.readRegistry = () => createMockRegistry({ "done-1": completed });
+		provider.reload();
+
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.showOnlyRunning") return true;
+				if (_key === "agentStatus.groupByProject") return false;
+				return defaultValue;
+			}),
+		}));
+
+		const children = provider.getChildren();
+		expect(children).toHaveLength(1);
+		expect(children[0]?.type).toBe("state");
+		if (children[0]?.type === "state") {
+			expect(children[0].label).toContain("No running agents");
+		}
+	});
+
 	test("returns detail nodes for task children", () => {
 		// Use completed status to avoid async port detection adding "detecting..." node
 		const task = createMockTask({ status: "completed", exit_code: 0 });

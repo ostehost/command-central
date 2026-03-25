@@ -1062,7 +1062,12 @@
       {
         "view": "commandCentral.agentStatus",
         "contents": "No agents detected.\n\nCommand Central monitors your AI coding agents — Claude Code, Codex, and others running in terminals.\n\n**Getting Started:**\n1. Run a Claude Code agent in any terminal\n2. Configure the tasks file path in settings\n\nOr use [Ghostty Launcher](https://github.com/ostehost/ghostty-launcher) for automatic agent tracking.\n\n[Configure Tasks File](command:workbench.action.openSettings?%5B%22commandCentral.agentTasksFile%22%5D) | [Refresh](command:commandCentral.refreshAgentStatus)",
-        "when": "commandCentral.hasAgentTasks == false"
+        "when": "commandCentral.hasAgentTasks == false && !commandCentral.agentStatus.groupByProject"
+      },
+      {
+        "view": "commandCentral.agentStatus",
+        "contents": "No agents detected.\n\nProject grouping is enabled. New agents will appear under project folders automatically.\n\n**Getting Started:**\n1. Run a Claude Code/Codex/Gemini agent\n2. Ensure the tasks registry path is configured\n\n[Configure Tasks File](command:workbench.action.openSettings?%5B%22commandCentral.agentTasksFile%22%5D) | [Refresh](command:commandCentral.refreshAgentStatus)",
+        "when": "commandCentral.hasAgentTasks == false && commandCentral.agentStatus.groupByProject"
       }
     ],
     "menus": {

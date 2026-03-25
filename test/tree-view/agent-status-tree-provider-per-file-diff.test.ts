@@ -86,4 +86,34 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		expect(result).toEqual([]);
 		provider.dispose();
 	});
+
+	test("falls back to HEAD~1..HEAD when startCommit ref is stale", () => {
+		let calls = 0;
+		mockExecFileSync.mockImplementationOnce((_cmd: string, args: string[]) => {
+			lastExecArgs = args;
+			calls += 1;
+			throw new Error("bad revision");
+		});
+		mockExecFileSync.mockImplementationOnce((_cmd: string, args: string[]) => {
+			lastExecArgs = args;
+			calls += 1;
+			return "3\t1\tsrc/fallback.ts\n";
+		});
+
+		const provider = new AgentStatusTreeProvider();
+		const result = provider.getPerFileDiffs("/tmp/project", "stale-commit");
+
+		expect(calls).toBe(2);
+		expect(lastExecArgs).toEqual([
+			"-C",
+			"/tmp/project",
+			"diff",
+			"--numstat",
+			"HEAD~1..HEAD",
+		]);
+		expect(result).toEqual([
+			{ filePath: "src/fallback.ts", additions: 3, deletions: 1 },
+		]);
+		provider.dispose();
+	});
 });

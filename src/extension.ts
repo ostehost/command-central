@@ -773,6 +773,12 @@ export async function activate(
 					const { execFile } = await import("node:child_process");
 					const { promisify } = await import("node:util");
 					const execFileAsync = promisify(execFile);
+					const runExec = (
+						command: string,
+						args: string[],
+						timeout = 4000,
+					): Promise<{ stdout: string; stderr: string }> =>
+						execFileAsync(command, args, { timeout });
 
 					// Strategy 0: Session store lookup (works for discovered agents too)
 					if (projectDir) {
@@ -782,11 +788,7 @@ export async function activate(
 								await focusGhosttyWindow(mapping.bundlePath, sessionId);
 								if (sessionId && isValidSessionId(sessionId)) {
 									try {
-										await execFileAsync("tmux", [
-											"select-window",
-											"-t",
-											sessionId,
-										]);
+										await runExec("tmux", ["select-window", "-t", sessionId]);
 									} catch {
 										// Window selection failed — app still opened
 									}
@@ -813,7 +815,7 @@ export async function activate(
 							// M1-8: select the correct tmux window/tab after bringing Ghostty to front
 							if (task.session_id && isValidSessionId(task.session_id)) {
 								try {
-									await execFileAsync("tmux", [
+									await runExec("tmux", [
 										"select-window",
 										"-t",
 										task.session_id,
@@ -841,7 +843,7 @@ export async function activate(
 								// M1-8: select the correct tmux window/tab after bringing Ghostty to front
 								if (task.session_id && isValidSessionId(task.session_id)) {
 									try {
-										await execFileAsync("tmux", [
+										await runExec("tmux", [
 											"select-window",
 											"-t",
 											task.session_id,
@@ -865,12 +867,8 @@ export async function activate(
 					) {
 						try {
 							// Guard: check if tmux session is still alive before attempting attach
-							await execFileAsync("tmux", [
-								"has-session",
-								"-t",
-								task.session_id,
-							]);
-							await execFileAsync("open", [
+							await runExec("tmux", ["has-session", "-t", task.session_id]);
+							await runExec("open", [
 								"-a",
 								"Ghostty",
 								"--args",
@@ -1111,21 +1109,29 @@ export async function activate(
 
 					try {
 						const fs = await import("node:fs");
-						const raw = fs.readFileSync(tasksFilePath, "utf-8");
-						const parsed = JSON.parse(raw) as {
-							version?: number;
-							tasks?: Record<string, unknown>;
+						const parseRegistry = (rawRegistry: string) => {
+							const parsed = JSON.parse(rawRegistry) as {
+								version?: number;
+								tasks?: Record<string, unknown>;
+							};
+							const version =
+								parsed.version === 1 || parsed.version === 2
+									? parsed.version
+									: 2;
+							const tasks =
+								parsed.tasks && typeof parsed.tasks === "object"
+									? { ...parsed.tasks }
+									: {};
+							return { version, tasks };
 						};
-						const tasks =
-							parsed.tasks && typeof parsed.tasks === "object"
-								? parsed.tasks
-								: {};
 
-						let removed = false;
-						if (task.id in tasks) {
-							delete tasks[task.id];
-							removed = true;
-						} else {
+						const removeTaskFromMap = (
+							tasks: Record<string, unknown>,
+						): boolean => {
+							if (task.id in tasks) {
+								delete tasks[task.id];
+								return true;
+							}
 							for (const [key, value] of Object.entries(tasks)) {
 								const valueId =
 									typeof value === "object" && value
@@ -1138,30 +1144,65 @@ export async function activate(
 									valueId === task.id
 								) {
 									delete tasks[key];
-									removed = true;
-									break;
+									return true;
 								}
 							}
-						}
+							return false;
+						};
 
-						if (!removed) {
+						const initialRaw = fs.readFileSync(tasksFilePath, "utf-8");
+						const initialRegistry = parseRegistry(initialRaw);
+
+						if (!removeTaskFromMap(initialRegistry.tasks)) {
 							vscode.window.showInformationMessage(
 								`Agent "${task.id}" is already removed.`,
 							);
 							return;
 						}
 
-						const version =
-							parsed.version === 1 || parsed.version === 2 ? parsed.version : 2;
+						// Race-safe write: re-read before persisting to avoid clobbering
+						// unrelated changes made after the command was clicked.
+						const latestRaw = fs.readFileSync(tasksFilePath, "utf-8");
+						const registryToWrite =
+							latestRaw === initialRaw
+								? initialRegistry
+								: (() => {
+										const latestRegistry = parseRegistry(latestRaw);
+										if (!removeTaskFromMap(latestRegistry.tasks)) {
+											return null;
+										}
+										return latestRegistry;
+									})();
+
+						if (!registryToWrite) {
+							vscode.window.showInformationMessage(
+								`Agent "${task.id}" is already removed.`,
+							);
+							return;
+						}
+
 						fs.writeFileSync(
 							tasksFilePath,
-							`${JSON.stringify({ version, tasks }, null, 2)}\n`,
+							`${JSON.stringify(
+								{
+									version: registryToWrite.version,
+									tasks: registryToWrite.tasks,
+								},
+								null,
+								2,
+							)}\n`,
 							"utf-8",
 						);
 
 						agentStatusProvider?.reload();
 						vscode.window.showInformationMessage(`Removed agent "${task.id}".`);
 					} catch (err) {
+						if (err instanceof SyntaxError) {
+							vscode.window.showErrorMessage(
+								"Failed to remove agent: tasks.json is malformed.",
+							);
+							return;
+						}
 						vscode.window.showErrorMessage(
 							`Failed to remove agent: ${err instanceof Error ? err.message : String(err)}`,
 						);
@@ -1219,13 +1260,17 @@ export async function activate(
 						const { execFile } = await import("node:child_process");
 						const { promisify } = await import("node:util");
 						const execFileAsync = promisify(execFile);
-						await execFileAsync("open", [
-							"-a",
-							"Ghostty",
-							"--args",
-							"-e",
-							`cd ${JSON.stringify(projectDir)} && claude --resume ${claudeSessionId}`,
-						]);
+						await execFileAsync(
+							"open",
+							[
+								"-a",
+								"Ghostty",
+								"--args",
+								"-e",
+								`cd ${JSON.stringify(projectDir)} && claude --resume ${claudeSessionId}`,
+							],
+							{ timeout: 5000 },
+						);
 					} catch {
 						vscode.window.showErrorMessage(
 							"Failed to open Ghostty with resumed session.",
@@ -1399,6 +1444,8 @@ export async function activate(
 					filePath?: string;
 					taskStatus?: AgentTask["status"];
 					startCommit?: string;
+					additions?: number;
+					deletions?: number;
 				}) => {
 					if (!node?.projectDir || !node.filePath) {
 						vscode.window.showWarningMessage("No file change selected.");
@@ -1426,17 +1473,78 @@ export async function activate(
 						const os = await import("node:os");
 						const { execFileSync } = await import("node:child_process");
 
-						const readFileAtRef = (ref: string): string | null => {
+						const openFileIfPresent = async (): Promise<boolean> => {
+							if (!fs.existsSync(absolutePath)) return false;
+							await vscode.commands.executeCommand(
+								"vscode.open",
+								vscode.Uri.file(absolutePath),
+							);
+							return true;
+						};
+
+						if (
+							typeof node.additions === "number" &&
+							typeof node.deletions === "number" &&
+							(node.additions < 0 || node.deletions < 0)
+						) {
+							const opened = await openFileIfPresent();
+							vscode.window.showInformationMessage(
+								opened
+									? "Binary file detected — opened file directly."
+									: "Binary file detected — no text diff is available.",
+							);
+							return;
+						}
+
+						type GitFileReadResult =
+							| { kind: "text"; content: string }
+							| { kind: "missing" }
+							| { kind: "binary" };
+
+						const readFileAtRef = (ref: string): GitFileReadResult => {
 							try {
-								return execFileSync(
+								const content = execFileSync(
 									"git",
 									["-C", projectDir, "show", `${ref}:${relativePath}`],
-									{ encoding: "utf-8", timeout: 3000 },
+									{ timeout: 3000 },
 								);
+								const asBuffer = Buffer.isBuffer(content)
+									? content
+									: Buffer.from(String(content));
+								if (asBuffer.includes(0x00)) return { kind: "binary" };
+								return { kind: "text", content: asBuffer.toString("utf-8") };
 							} catch {
-								return null;
+								return { kind: "missing" };
 							}
 						};
+
+						const beforeFile = readFileAtRef(beforeRef);
+						const afterFile =
+							node.taskStatus === "running"
+								? fs.existsSync(absolutePath)
+									? ({
+											kind: "text",
+											content: fs.readFileSync(absolutePath, "utf-8"),
+										} as const)
+									: ({ kind: "missing" } as const)
+								: readFileAtRef("HEAD");
+
+						if (beforeFile.kind === "binary" || afterFile.kind === "binary") {
+							const opened = await openFileIfPresent();
+							vscode.window.showInformationMessage(
+								opened
+									? "Binary content detected — opened file directly."
+									: "Binary content detected — no text diff is available.",
+							);
+							return;
+						}
+
+						if (beforeFile.kind === "missing" && afterFile.kind === "missing") {
+							vscode.window.showInformationMessage(
+								"File does not exist in the selected revisions.",
+							);
+							return;
+						}
 
 						const tempDir = fs.mkdtempSync(
 							path.join(os.tmpdir(), "command-central-file-diff-"),
@@ -1447,32 +1555,34 @@ export async function activate(
 						);
 						fs.writeFileSync(
 							beforePath,
-							readFileAtRef(beforeRef) ?? "",
+							beforeFile.kind === "text" ? beforeFile.content : "",
 							"utf-8",
 						);
 						const beforeUri = vscode.Uri.file(beforePath);
 
-						let afterUri: vscode.Uri;
-						if (node.taskStatus === "running" && fs.existsSync(absolutePath)) {
-							afterUri = vscode.Uri.file(absolutePath);
-						} else {
-							const afterPath = path.join(
-								tempDir,
-								`after-${path.basename(relativePath)}`,
-							);
-							const content =
-								node.taskStatus === "running" && !fs.existsSync(absolutePath)
-									? ""
-									: (readFileAtRef("HEAD") ?? "");
-							fs.writeFileSync(afterPath, content, "utf-8");
-							afterUri = vscode.Uri.file(afterPath);
-						}
+						const afterPath = path.join(
+							tempDir,
+							`after-${path.basename(relativePath)}`,
+						);
+						fs.writeFileSync(
+							afterPath,
+							afterFile.kind === "text" ? afterFile.content : "",
+							"utf-8",
+						);
+						const afterUri = vscode.Uri.file(afterPath);
+
+						const changeHint =
+							beforeFile.kind === "missing" && afterFile.kind === "text"
+								? " · added"
+								: beforeFile.kind === "text" && afterFile.kind === "missing"
+									? " · deleted"
+									: "";
 
 						await vscode.commands.executeCommand(
 							"vscode.diff",
 							beforeUri,
 							afterUri,
-							`${path.basename(relativePath)} (${beforeRef} ↔ ${afterRef})`,
+							`${path.basename(relativePath)} (${beforeRef} ↔ ${afterRef}${changeHint})`,
 						);
 					} catch (err) {
 						vscode.window.showErrorMessage(
