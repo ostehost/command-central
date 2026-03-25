@@ -219,6 +219,12 @@
           "description": "Group agents by project in the Agent Status tree",
           "scope": "window"
         },
+        "commandCentral.agentStatus.sortByStatus": {
+          "type": "boolean",
+          "default": true,
+          "description": "Sort agents by status priority before start time (failed first)",
+          "scope": "window"
+        },
         "commandCentral.agentStatus.notifications": {
           "type": "boolean",
           "default": true,
@@ -783,6 +789,12 @@
         "title": "Remove",
         "category": "Command Central",
         "icon": "$(trash)"
+      },
+      {
+        "command": "commandCentral.clearTerminalTasks",
+        "title": "Clear Completed",
+        "category": "Command Central",
+        "icon": "$(clear-all)"
       },
       {
         "command": "commandCentral.focusNextRunningAgent",
@@ -1568,6 +1580,11 @@
           "command": "commandCentral.toggleProjectGroupingFlat",
           "when": "view == commandCentral.agentStatus && !commandCentral.agentStatus.groupByProject",
           "group": "navigation@4"
+        },
+        {
+          "command": "commandCentral.clearTerminalTasks",
+          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.hasTerminalTasks",
+          "group": "navigation@5"
         }
       ]
     },

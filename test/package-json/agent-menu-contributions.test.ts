@@ -13,11 +13,16 @@ type PackageJsonShape = {
 		configuration?: {
 			properties?: Record<
 				string,
-				{ enum?: string[]; default?: string; description?: string }
+				{
+					enum?: string[];
+					default?: string | boolean | number;
+					description?: string;
+				}
 			>;
 		};
 		menus?: {
 			"view/item/context"?: MenuContribution[];
+			"view/title"?: MenuContribution[];
 		};
 	};
 };
@@ -30,6 +35,14 @@ async function getViewItemContextMenu(): Promise<MenuContribution[]> {
 	return pkg.contributes?.menus?.["view/item/context"] ?? [];
 }
 
+async function getViewTitleMenu(): Promise<MenuContribution[]> {
+	const raw = await Bun.file(
+		new URL("../../package.json", import.meta.url),
+	).text();
+	const pkg = JSON.parse(raw) as PackageJsonShape;
+	return pkg.contributes?.menus?.["view/title"] ?? [];
+}
+
 async function getCommands(): Promise<Array<{ command?: string }>> {
 	const raw = await Bun.file(
 		new URL("../../package.json", import.meta.url),
@@ -39,7 +52,14 @@ async function getCommands(): Promise<Array<{ command?: string }>> {
 }
 
 async function getConfigProperties(): Promise<
-	Record<string, { enum?: string[]; default?: string; description?: string }>
+	Record<
+		string,
+		{
+			enum?: string[];
+			default?: string | boolean | number;
+			description?: string;
+		}
+	>
 > {
 	const raw = await Bun.file(
 		new URL("../../package.json", import.meta.url),
@@ -65,6 +85,14 @@ describe("package.json agent menu contributions", () => {
 		expect(exists).toBe(true);
 	});
 
+	test("registers clearTerminalTasks command contribution", async () => {
+		const commands = await getCommands();
+		const exists = commands.some(
+			(item) => item.command === "commandCentral.clearTerminalTasks",
+		);
+		expect(exists).toBe(true);
+	});
+
 	test("registers listWorktrees command contribution", async () => {
 		const commands = await getCommands();
 		const exists = commands.some(
@@ -79,6 +107,14 @@ describe("package.json agent menu contributions", () => {
 		expect(setting).toBeDefined();
 		expect(setting?.default).toBe("codex");
 		expect(setting?.enum).toEqual(["codex", "gemini"]);
+	});
+
+	test("defines status-priority sort config enabled by default", async () => {
+		const properties = await getConfigProperties();
+		const setting = properties["commandCentral.agentStatus.sortByStatus"];
+		expect(setting).toBeDefined();
+		expect(setting?.default).toBe(true);
+		expect(setting?.description).toContain("status priority");
 	});
 
 	test("defines stuck threshold config with expected bounds", async () => {
@@ -150,5 +186,19 @@ describe("package.json agent menu contributions", () => {
 					"(viewItem == agentTask.running && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
 		);
 		expect(runningKillAction).toBeDefined();
+	});
+
+	test("adds view-title clear action gated by terminal-task context key", async () => {
+		const menu = await getViewTitleMenu();
+		const clearAction = menu.find(
+			(item) =>
+				item.command === "commandCentral.clearTerminalTasks" &&
+				item.group === "navigation@5",
+		);
+		expect(clearAction).toBeDefined();
+		expect(clearAction?.when).toContain("view == commandCentral.agentStatus");
+		expect(clearAction?.when).toContain(
+			"commandCentral.agentStatus.hasTerminalTasks",
+		);
 	});
 });

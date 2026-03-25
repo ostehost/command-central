@@ -751,6 +751,72 @@ export async function activate(
 			return configured === "gemini" ? "gemini" : "codex";
 		};
 
+		const TERMINAL_TASK_STATUSES = new Set([
+			"completed",
+			"failed",
+			"stopped",
+			"killed",
+			"completed_stale",
+			"contract_failure",
+		]);
+
+		const parseRegistry = (rawRegistry: string) => {
+			const parsed = JSON.parse(rawRegistry) as {
+				version?: number;
+				tasks?: Record<string, unknown>;
+			};
+			const version =
+				parsed.version === 1 || parsed.version === 2 ? parsed.version : 2;
+			const tasks =
+				parsed.tasks && typeof parsed.tasks === "object"
+					? { ...parsed.tasks }
+					: {};
+			return { version, tasks };
+		};
+
+		const removeTaskFromMap = (
+			tasks: Record<string, unknown>,
+			taskId: string,
+		): boolean => {
+			if (taskId in tasks) {
+				delete tasks[taskId];
+				return true;
+			}
+			for (const [key, value] of Object.entries(tasks)) {
+				const valueId =
+					typeof value === "object" && value
+						? (value as { id?: unknown }).id
+						: undefined;
+				if (
+					typeof value === "object" &&
+					value &&
+					"id" in value &&
+					valueId === taskId
+				) {
+					delete tasks[key];
+					return true;
+				}
+			}
+			return false;
+		};
+
+		const removeTerminalTasksFromMap = (
+			tasks: Record<string, unknown>,
+		): number => {
+			let removed = 0;
+			for (const [key, value] of Object.entries(tasks)) {
+				const status =
+					typeof value === "object" && value
+						? (value as { status?: unknown }).status
+						: undefined;
+				if (typeof status === "string" && TERMINAL_TASK_STATUSES.has(status)) {
+					delete tasks[key];
+					removed += 1;
+				}
+			}
+			return removed;
+		};
+
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
 				"commandCentral.focusAgentTerminal",
@@ -1091,6 +1157,93 @@ export async function activate(
 				},
 			),
 			vscode.commands.registerCommand(
+				"commandCentral.clearTerminalTasks",
+				async () => {
+					const tasksFilePath = agentStatusProvider?.filePath;
+					if (!tasksFilePath) {
+						vscode.window.showErrorMessage(
+							"Agent tasks file not configured. Set commandCentral.agentTasksFile in settings.",
+						);
+						return;
+					}
+
+					try {
+						const fs = await import("node:fs");
+						const initialRaw = fs.readFileSync(tasksFilePath, "utf-8");
+						const initialRegistry = parseRegistry(initialRaw);
+						const initialTerminalCount = Object.values(
+							initialRegistry.tasks,
+						).filter((entry) => {
+							const status =
+								typeof entry === "object" && entry
+									? (entry as { status?: unknown }).status
+									: undefined;
+							return (
+								typeof status === "string" && TERMINAL_TASK_STATUSES.has(status)
+							);
+						}).length;
+
+						if (initialTerminalCount === 0) {
+							vscode.window.showInformationMessage(
+								"No completed, failed, or stopped agents to remove.",
+							);
+							return;
+						}
+
+						const confirm = await vscode.window.showWarningMessage(
+							`Remove ${initialTerminalCount} completed/failed/stopped agents?`,
+							{ modal: true },
+							"Remove",
+						);
+						if (confirm !== "Remove") return;
+
+						const latestRaw = fs.readFileSync(tasksFilePath, "utf-8");
+						const registryToWrite =
+							latestRaw === initialRaw
+								? initialRegistry
+								: parseRegistry(latestRaw);
+						const removedCount = removeTerminalTasksFromMap(
+							registryToWrite.tasks,
+						);
+
+						if (removedCount === 0) {
+							vscode.window.showInformationMessage(
+								"No completed, failed, or stopped agents to remove.",
+							);
+							return;
+						}
+
+						fs.writeFileSync(
+							tasksFilePath,
+							`${JSON.stringify(
+								{
+									version: registryToWrite.version,
+									tasks: registryToWrite.tasks,
+								},
+								null,
+								2,
+							)}\n`,
+							"utf-8",
+						);
+
+						agentStatusProvider?.reload();
+						vscode.window.showInformationMessage(
+							`Removed ${removedCount} completed/failed/stopped agents.`,
+						);
+					} catch (err) {
+						if (err instanceof SyntaxError) {
+							vscode.window.showErrorMessage(
+								"Failed to clear agents: tasks.json is malformed.",
+							);
+							return;
+						}
+						vscode.window.showErrorMessage(
+							`Failed to clear agents: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					}
+				},
+			),
+			vscode.commands.registerCommand(
 				"commandCentral.removeAgentTask",
 				async (node?: { type: string; task?: AgentTask }) => {
 					const task = node?.task;
@@ -1111,51 +1264,10 @@ export async function activate(
 
 					try {
 						const fs = await import("node:fs");
-						const parseRegistry = (rawRegistry: string) => {
-							const parsed = JSON.parse(rawRegistry) as {
-								version?: number;
-								tasks?: Record<string, unknown>;
-							};
-							const version =
-								parsed.version === 1 || parsed.version === 2
-									? parsed.version
-									: 2;
-							const tasks =
-								parsed.tasks && typeof parsed.tasks === "object"
-									? { ...parsed.tasks }
-									: {};
-							return { version, tasks };
-						};
-
-						const removeTaskFromMap = (
-							tasks: Record<string, unknown>,
-						): boolean => {
-							if (task.id in tasks) {
-								delete tasks[task.id];
-								return true;
-							}
-							for (const [key, value] of Object.entries(tasks)) {
-								const valueId =
-									typeof value === "object" && value
-										? (value as { id?: unknown }).id
-										: undefined;
-								if (
-									typeof value === "object" &&
-									value &&
-									"id" in value &&
-									valueId === task.id
-								) {
-									delete tasks[key];
-									return true;
-								}
-							}
-							return false;
-						};
-
 						const initialRaw = fs.readFileSync(tasksFilePath, "utf-8");
 						const initialRegistry = parseRegistry(initialRaw);
 
-						if (!removeTaskFromMap(initialRegistry.tasks)) {
+						if (!removeTaskFromMap(initialRegistry.tasks, task.id)) {
 							vscode.window.showInformationMessage(
 								`Agent "${task.id}" is already removed.`,
 							);
@@ -1170,7 +1282,7 @@ export async function activate(
 								? initialRegistry
 								: (() => {
 										const latestRegistry = parseRegistry(latestRaw);
-										if (!removeTaskFromMap(latestRegistry.tasks)) {
+										if (!removeTaskFromMap(latestRegistry.tasks, task.id)) {
 											return null;
 										}
 										return latestRegistry;

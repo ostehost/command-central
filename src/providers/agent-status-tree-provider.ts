@@ -317,6 +317,16 @@ const VALID_TASK_STATUSES = new Set<AgentTaskStatus>([
 	"contract_failure",
 ]);
 
+const TASK_STATUS_PRIORITY: Record<AgentTaskStatus, number> = {
+	failed: 0,
+	killed: 1,
+	contract_failure: 2,
+	running: 3,
+	stopped: 4,
+	completed: 5,
+	completed_stale: 6,
+};
+
 function asString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0
 		? value.trim()
@@ -465,7 +475,8 @@ export class AgentStatusTreeProvider
 					e.affectsConfiguration(
 						"commandCentral.agentStatus.showOnlyRunning",
 					) ||
-					e.affectsConfiguration("commandCentral.agentStatus.groupByProject")
+					e.affectsConfiguration("commandCentral.agentStatus.groupByProject") ||
+					e.affectsConfiguration("commandCentral.agentStatus.sortByStatus")
 				) {
 					this._onDidChangeTreeData.fire(undefined);
 				}
@@ -609,10 +620,18 @@ export class AgentStatusTreeProvider
 		const hasAgents =
 			Object.keys(this.registry.tasks).length > 0 ||
 			this._discoveredAgents.length > 0;
+		const hasTerminalTasks = Object.values(this.registry.tasks).some(
+			(task) => task.status !== "running",
+		);
 		void vscode.commands.executeCommand(
 			"setContext",
 			"commandCentral.hasAgentTasks",
 			hasAgents,
+		);
+		void vscode.commands.executeCommand(
+			"setContext",
+			"commandCentral.agentStatus.hasTerminalTasks",
+			hasTerminalTasks,
 		);
 	}
 
@@ -967,9 +986,10 @@ export class AgentStatusTreeProvider
 			const groupedByProject = this.isProjectGroupingEnabled();
 
 			// Launcher-managed tasks
-			const taskNodes: AgentNode[] = this.sortTasksByStartedAtDesc(tasks).map(
-				(task) => ({ type: "task" as const, task }),
-			);
+			const taskNodes: AgentNode[] = this.sortTasks(tasks).map((task) => ({
+				type: "task" as const,
+				task,
+			}));
 			const projectGroupNodes: AgentNode[] = groupedByProject
 				? this.groupAgentsByProject(tasks, discovered).map((group) => ({
 						type: "projectGroup" as const,
@@ -998,12 +1018,10 @@ export class AgentStatusTreeProvider
 		}
 
 		if (element.type === "projectGroup") {
-			const taskNodes = this.sortTasksByStartedAtDesc(element.tasks).map(
-				(task) => ({
-					type: "task" as const,
-					task,
-				}),
-			);
+			const taskNodes = this.sortTasks(element.tasks).map((task) => ({
+				type: "task" as const,
+				task,
+			}));
 			const discoveredNodes = [...(element.discoveredAgents ?? [])]
 				.sort(
 					(a, b) =>
@@ -1224,11 +1242,25 @@ export class AgentStatusTreeProvider
 		return config.get<boolean>("agentStatus.groupByProject", true);
 	}
 
-	private sortTasksByStartedAtDesc(tasks: AgentTask[]): AgentTask[] {
-		return [...tasks].sort(
-			(a, b) =>
-				new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
-		);
+	private isStatusPrioritySortEnabled(): boolean {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		return config.get<boolean>("agentStatus.sortByStatus", true);
+	}
+
+	private sortTasks(tasks: AgentTask[]): AgentTask[] {
+		const sortByStatus = this.isStatusPrioritySortEnabled();
+		return [...tasks].sort((a, b) => {
+			if (sortByStatus) {
+				const priorityDiff =
+					TASK_STATUS_PRIORITY[a.status] - TASK_STATUS_PRIORITY[b.status];
+				if (priorityDiff !== 0) {
+					return priorityDiff;
+				}
+			}
+			return (
+				new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+			);
+		});
 	}
 
 	private groupAgentsByProject(
@@ -1280,7 +1312,7 @@ export class AgentStatusTreeProvider
 			.sort((a, b) => a.projectName.localeCompare(b.projectName))
 			.map((group) => ({
 				projectName: group.projectName,
-				tasks: this.sortTasksByStartedAtDesc(group.tasks),
+				tasks: this.sortTasks(group.tasks),
 				discoveredAgents: [...group.discoveredAgents].sort(
 					(a, b) =>
 						new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
@@ -1806,7 +1838,7 @@ export class AgentStatusTreeProvider
 				return {
 					type: "projectGroup",
 					projectName: element.task.project_name,
-					tasks: this.sortTasksByStartedAtDesc(groupTasks),
+					tasks: this.sortTasks(groupTasks),
 					discoveredAgents: [],
 				};
 			}
@@ -1827,7 +1859,7 @@ export class AgentStatusTreeProvider
 				return {
 					type: "projectGroup",
 					projectName,
-					tasks: this.sortTasksByStartedAtDesc(groupTasks),
+					tasks: this.sortTasks(groupTasks),
 					discoveredAgents: groupDiscovered,
 				};
 			}

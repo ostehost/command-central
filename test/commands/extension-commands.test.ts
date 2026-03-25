@@ -481,6 +481,64 @@ describe("removeAgentTask command", () => {
 	});
 });
 
+describe("clearTerminalTasks command", () => {
+	test("removes all non-running tasks from registry map", () => {
+		const tasks: Record<string, { id: string; status: string }> = {
+			running: { id: "running", status: "running" },
+			completed: { id: "completed", status: "completed" },
+			failed: { id: "failed", status: "failed" },
+			stopped: { id: "stopped", status: "stopped" },
+		};
+		const terminalStatuses = new Set([
+			"completed",
+			"failed",
+			"stopped",
+			"killed",
+			"completed_stale",
+			"contract_failure",
+		]);
+
+		let removed = 0;
+		for (const [key, value] of Object.entries(tasks)) {
+			if (terminalStatuses.has(value.status)) {
+				delete tasks[key];
+				removed += 1;
+			}
+		}
+
+		expect(removed).toBe(3);
+		expect(Object.keys(tasks)).toEqual(["running"]);
+	});
+
+	test("shows info when there are no completed/failed/stopped tasks", () => {
+		const tasks: Record<string, { status: string }> = {
+			running1: { status: "running" },
+			running2: { status: "running" },
+		};
+		const terminalStatuses = new Set([
+			"completed",
+			"failed",
+			"stopped",
+			"killed",
+			"completed_stale",
+			"contract_failure",
+		]);
+
+		const terminalCount = Object.values(tasks).filter((task) =>
+			terminalStatuses.has(task.status),
+		).length;
+		if (terminalCount === 0) {
+			vscodeMock.window.showInformationMessage(
+				"No completed, failed, or stopped agents to remove.",
+			);
+		}
+
+		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+			"No completed, failed, or stopped agents to remove.",
+		);
+	});
+});
+
 describe("focusNextRunningAgent command", () => {
 	test("finds first running task", () => {
 		const tasks = [

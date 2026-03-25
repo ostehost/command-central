@@ -272,6 +272,91 @@ describe("AgentStatusTreeProvider", () => {
 		);
 	});
 
+	test("sorts by status priority before started_at when enabled", () => {
+		const runningNewest = createMockTask({
+			id: "running-new",
+			status: "running",
+			started_at: "2026-02-25T09:00:00Z",
+		});
+		const failedOlder = createMockTask({
+			id: "failed-old",
+			status: "failed",
+			started_at: "2026-02-25T06:00:00Z",
+		});
+		const failedNewer = createMockTask({
+			id: "failed-new",
+			status: "failed",
+			started_at: "2026-02-25T08:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				"running-new": runningNewest,
+				"failed-old": failedOlder,
+				"failed-new": failedNewer,
+			});
+		provider.reload();
+
+		const children = provider.getChildren();
+		const taskNodes = getTaskNodes(children);
+		expect(taskNodes).toHaveLength(3);
+		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"failed-new",
+		);
+		expect((taskNodes[1] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"failed-old",
+		);
+		expect((taskNodes[2] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"running-new",
+		);
+	});
+
+	test("uses chronological sorting when status sort is disabled", () => {
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return false;
+				if (_key === "agentStatus.sortByStatus") return false;
+				return defaultValue;
+			}),
+		}));
+
+		const runningNewest = createMockTask({
+			id: "running-new",
+			status: "running",
+			started_at: "2026-02-25T09:00:00Z",
+		});
+		const failedOlder = createMockTask({
+			id: "failed-old",
+			status: "failed",
+			started_at: "2026-02-25T06:00:00Z",
+		});
+		const failedNewer = createMockTask({
+			id: "failed-new",
+			status: "failed",
+			started_at: "2026-02-25T08:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				"running-new": runningNewest,
+				"failed-old": failedOlder,
+				"failed-new": failedNewer,
+			});
+		provider.reload();
+
+		const children = provider.getChildren();
+		const taskNodes = getTaskNodes(children);
+		expect(taskNodes).toHaveLength(3);
+		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"running-new",
+		);
+		expect((taskNodes[1] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"failed-new",
+		);
+		expect((taskNodes[2] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"failed-old",
+		);
+	});
+
 	test("groups root tasks by project name alphabetically when enabled", () => {
 		vscodeMock.workspace.getConfiguration = mock(() => ({
 			update: mock(),
@@ -345,6 +430,49 @@ describe("AgentStatusTreeProvider", () => {
 		expect(
 			(groupChildren[1] as { type: "task"; task: AgentTask }).task.id,
 		).toBe("alpha-old");
+	});
+
+	test("applies status-priority sort within project group children", () => {
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return true;
+				return defaultValue;
+			}),
+		}));
+
+		const runningNewest = createMockTask({
+			id: "alpha-running-new",
+			project_name: "Alpha",
+			status: "running",
+			started_at: "2026-02-25T09:00:00Z",
+		});
+		const failedOlder = createMockTask({
+			id: "alpha-failed-old",
+			project_name: "Alpha",
+			status: "failed",
+			started_at: "2026-02-25T06:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				"alpha-running-new": runningNewest,
+				"alpha-failed-old": failedOlder,
+			});
+		provider.reload();
+
+		const rootChildren = provider.getChildren();
+		const groupNode = rootChildren.find(
+			(node) => node.type === "projectGroup",
+		) as { type: "projectGroup"; projectName: string; tasks: AgentTask[] };
+		const groupChildren = provider.getChildren(groupNode);
+
+		expect(groupChildren).toHaveLength(2);
+		expect(
+			(groupChildren[0] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("alpha-failed-old");
+		expect(
+			(groupChildren[1] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("alpha-running-new");
 	});
 
 	test("filters root tasks to running only when config is enabled", () => {
@@ -1699,6 +1827,30 @@ describe("AgentStatusTreeProvider", () => {
 			expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
 				"setContext",
 				"commandCentral.hasAgentTasks",
+				false,
+			);
+		});
+
+		test("sets terminal-task context key when terminal-state tasks exist", () => {
+			const task = createMockTask({ status: "completed" });
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.reload();
+
+			expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+				"setContext",
+				"commandCentral.agentStatus.hasTerminalTasks",
+				true,
+			);
+		});
+
+		test("clears terminal-task context key when only running tasks exist", () => {
+			const task = createMockTask({ status: "running" });
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.reload();
+
+			expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+				"setContext",
+				"commandCentral.agentStatus.hasTerminalTasks",
 				false,
 			);
 		});
