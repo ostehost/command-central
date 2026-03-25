@@ -44,7 +44,9 @@ mock.module("node:child_process", () => ({
 				stdout: "",
 			};
 			if (cb) {
-				process.nextTick(() => cb(result.err, { stdout: result.stdout, stderr: "" }));
+				process.nextTick(() =>
+					cb(result.err, { stdout: result.stdout, stderr: "" }),
+				);
 			}
 		},
 	),
@@ -184,9 +186,7 @@ describe("focusGhosttyWindow", () => {
 		);
 		expect(result).toBe(true);
 		// Should use the bundle_id from terminal map, not the one passed in
-		expect(execFileCalls[0]?.args[1]).toContain(
-			"dev.partnerai.ghostty.custom",
-		);
+		expect(execFileCalls[0]?.args[1]).toContain("dev.partnerai.ghostty.custom");
 	});
 
 	test("uses provided bundleId when terminal map lookup fails", async () => {
