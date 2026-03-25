@@ -32,13 +32,14 @@ mock.module("node:child_process", () => ({
 			file: string,
 			args: string[],
 			callback: ExecFileCallback | Record<string, unknown>,
+			...rest: unknown[]
 		) => {
 			execFileCalls.push({ file, args });
 			const cb =
 				typeof callback === "function"
 					? callback
 					: // promisify passes options then callback
-						(arguments[3] as ExecFileCallback);
+						(rest[0] as ExecFileCallback);
 			const result = execFileResults.shift() ?? {
 				err: null,
 				stdout: "",
