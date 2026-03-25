@@ -1,3 +1,4 @@
+CLEAR
 # Research A: macOS APIs, Technical Feasibility & Developer Workflow Analysis
 
 > **Date:** 2026-03-24

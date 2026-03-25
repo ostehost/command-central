@@ -1,3 +1,4 @@
+CLEAR
 # PMF Analysis: Command Central + Ghostty Launcher
 **Date:** 2026-03-22
 **Prepared for:** Product Strategy

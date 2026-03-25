@@ -1,3 +1,10 @@
+## Uncovered Items
+- Per-project dock badge (active agent count) is not implemented.
+- Dock bounce on completion/error is not implemented.
+- Dock right-click menu and URL-scheme clickthrough flow are not implemented.
+- NSWorkspace activation watcher for Cmd+Tab-driven VS Code workspace sync is not implemented.
+- Scroll-to-last-output on focus is not implemented.
+
 # Cmd+Tab as Platform: The Per-Project Dock Icon as Product Foundation
 
 **Date:** 2026-03-24

@@ -1,3 +1,4 @@
+CLEAR
 # SPEC: CI Fix v3 — Spread Real Modules in All mock.module Calls
 
 ## Problem

@@ -1,3 +1,7 @@
+## Uncovered Items
+- `focusAgentTerminal` does not early-redirect non-running tasks to `resumeAgentSession` as a safety fallback.
+- `commandCentral.focusAgentTerminal` is still contributed for all `agentTask.*` context items, so non-running tasks can still invoke focus flow.
+
 # SPEC: Click Agent → Resume Interactive Session
 
 ## Problem

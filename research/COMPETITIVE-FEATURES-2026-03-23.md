@@ -1,3 +1,4 @@
+CLEAR
 # Competitive Feature Analysis — March 2026
 
 ## The Landscape

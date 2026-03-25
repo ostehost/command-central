@@ -1,3 +1,4 @@
+CLEAR
 # SPEC: tasks.json Schema Migration (v1 → v2)
 
 > Migrate the agent status tree provider from tasks.json v1 to v2 schema,

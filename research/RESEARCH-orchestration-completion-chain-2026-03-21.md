@@ -1,3 +1,9 @@
+## Uncovered Items
+- `oste-stop-hook.sh` does not forward `last_assistant_message`; it currently logs progress turns only.
+- Pending-review JSON does not include `agent_summary` or `transcript_path`.
+- Wake payload remains free-form text, not structured `TASK_COMPLETE task_id=...`.
+- `SessionEnd` safety-net hook is not configured in `~/.claude/settings.json`.
+
 # Research: Orchestration Completion Chain Best Practices
 
 > **Date:** 2026-03-21

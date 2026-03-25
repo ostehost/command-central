@@ -1,3 +1,4 @@
+CLEAR
 # SPEC: Fix CI Test Failures (GitHub Actions)
 
 > Goal: Get all 764 tests passing in CI (GitHub Actions). Currently 74 failures, 0 locally.

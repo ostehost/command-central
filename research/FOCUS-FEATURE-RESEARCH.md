@@ -1,3 +1,4 @@
+CLEAR
 # Research: Agent Terminal Focus — The Right Way
 
 > Date: 2026-03-23

@@ -1,3 +1,11 @@
+## Uncovered Items
+- Sidebar PR creation/management action is not implemented.
+- Token/cost tracking is not implemented.
+- Status timeline view is not implemented.
+- Issue tracker integration is not implemented.
+- Merge-from-sidebar action is not implemented.
+- P3 recommendations (multi-agent compare, session fork/checkpoint, mobile companion, conversation search) are not implemented.
+
 # Sidebar UX Competitive Analysis — Agent Detail Views
 
 > Research Date: 2026-03-24

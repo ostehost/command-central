@@ -1,3 +1,8 @@
+## Uncovered Items
+- Fleet dashboard across all projects is not implemented.
+- Deterministic approval checkpoints/handoff UI are not implemented.
+- Recommendation to keep Agent Activity Timeline is not reflected; the feature was removed.
+
 # Roadmap Review: Command Central & Launcher
 
 ## Executive Summary

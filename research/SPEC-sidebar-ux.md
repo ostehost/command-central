@@ -1,3 +1,4 @@
+CLEAR
 # SPEC: Agent Sidebar UX Polish
 
 ## Problems (from Mike's screenshot)

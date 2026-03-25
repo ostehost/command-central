@@ -1,3 +1,12 @@
+## Uncovered Items
+- Dock badge (active agent count) is not implemented.
+- Dock bounce on completion is not implemented.
+- Dock right-click menu is not implemented.
+- NSWorkspace-driven Cmd+Tab → workspace sync is not implemented.
+- Status menu bar item is not implemented.
+- Token/cost estimation is not implemented.
+- Click-to-focus still does not target a specific `window_id` from the terminal map.
+
 # Command Central — UI/UX Strategy
 
 **Date:** 2026-03-24

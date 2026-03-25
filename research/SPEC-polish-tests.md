@@ -1,3 +1,4 @@
+CLEAR
 # SPEC: High-Value Polish Tests
 
 > Goal: Add tests that protect real user-facing behavior and would break if actual functionality becomes unusable. NOT coverage theater.

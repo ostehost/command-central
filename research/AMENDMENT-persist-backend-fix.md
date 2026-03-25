@@ -1,3 +1,4 @@
+CLEAR
 # CRITICAL AMENDMENT: Persist Backend Session Check
 
 ## The Real Bug

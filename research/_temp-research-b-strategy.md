@@ -1,3 +1,4 @@
+CLEAR
 # Research B: Product Strategy, Competitive Positioning & Iteration Roadmap
 **Date:** 2026-03-24
 **Author:** Researcher 2 (Strategy)

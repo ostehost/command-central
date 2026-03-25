@@ -1,3 +1,4 @@
+CLEAR
 # SPEC: Click-to-Resume Agent Sessions
 
 > Feature: When clicking an agent in the sidebar, resume its Claude Code session interactively instead of opening a blank terminal.

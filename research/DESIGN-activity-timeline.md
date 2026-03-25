@@ -1,3 +1,8 @@
+## Uncovered Items
+- Activity Timeline feature was not implemented; `src/providers/activity-timeline-tree-provider.ts`, `src/providers/activity-timeline-view-manager.ts`, `src/services/activity-collector.ts`, `src/services/activity-event-types.ts`, and `src/commands/activity-timeline-commands.ts` are absent.
+- Shared task-registry reader extraction (`src/services/task-registry-reader.ts`) was not implemented.
+- `package.json` and `src/extension.ts` have no `activityTimeline` view/command/configuration wiring.
+
 # DESIGN: Agent Activity Timeline (v0.3.0 P1)
 
 > What did agents do while you were away?

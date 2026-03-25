@@ -1,3 +1,7 @@
+## Uncovered Items
+- Bulk clear action (`commandCentral.clearTerminalTasks`) is not implemented.
+- Status-priority grouping (failed/killed first) is not implemented.
+
 # Failed State UX — Competitive Analysis & Recommendations
 
 **Date:** 2026-03-25
