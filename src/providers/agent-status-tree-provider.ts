@@ -2142,8 +2142,8 @@ export class AgentStatusTreeProvider
 		item.command = {
 			command: isRunning
 				? "commandCentral.focusAgentTerminal"
-				: "commandCentral.resumeAgentSession",
-			title: isRunning ? "Focus Terminal" : "Resume Session",
+				: "commandCentral.agentQuickActions",
+			title: isRunning ? "Focus Terminal" : "Agent Actions",
 			arguments: [{ type: "task" as const, task }],
 		};
 		return item;

@@ -725,6 +725,12 @@
         "icon": "$(terminal)"
       },
       {
+        "command": "commandCentral.agentQuickActions",
+        "title": "Agent Actions",
+        "category": "Command Central",
+        "icon": "$(list-selection)"
+      },
+      {
         "command": "commandCentral.agentStatus.focus",
         "title": "Focus Agent Status",
         "category": "Command Central",

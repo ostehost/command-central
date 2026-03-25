@@ -1095,26 +1095,26 @@ describe("AgentStatusTreeProvider", () => {
 		});
 	});
 
-	test("non-running task TreeItem routes to resumeAgentSession", () => {
+	test("non-running task TreeItem routes to agentQuickActions", () => {
 		const task = createMockTask({ status: "completed" });
 		const node: AgentNode = { type: "task", task };
 		const item = provider.getTreeItem(node);
-		expect(item.command?.command).toBe("commandCentral.resumeAgentSession");
-		expect(item.command?.title).toBe("Resume Session");
+		expect(item.command?.command).toBe("commandCentral.agentQuickActions");
+		expect(item.command?.title).toBe("Agent Actions");
 	});
 
-	test("stopped task TreeItem routes to resumeAgentSession", () => {
+	test("stopped task TreeItem routes to agentQuickActions", () => {
 		const task = createMockTask({ status: "stopped" });
 		const node: AgentNode = { type: "task", task };
 		const item = provider.getTreeItem(node);
-		expect(item.command?.command).toBe("commandCentral.resumeAgentSession");
+		expect(item.command?.command).toBe("commandCentral.agentQuickActions");
 	});
 
-	test("failed task TreeItem routes to resumeAgentSession", () => {
+	test("failed task TreeItem routes to agentQuickActions", () => {
 		const task = createMockTask({ status: "failed" });
 		const node: AgentNode = { type: "task", task };
 		const item = provider.getTreeItem(node);
-		expect(item.command?.command).toBe("commandCentral.resumeAgentSession");
+		expect(item.command?.command).toBe("commandCentral.agentQuickActions");
 	});
 
 	test("running task TreeItem routes to focusAgentTerminal", () => {

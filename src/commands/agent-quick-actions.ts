@@ -1,0 +1,69 @@
+import type { AgentTaskStatus } from "../providers/agent-status-tree-provider.js";
+
+export type AgentQuickActionId =
+	| "resumeSession"
+	| "viewDiff"
+	| "showOutput"
+	| "focusTerminal"
+	| "restart"
+	| "remove";
+
+export interface AgentQuickActionDefinition {
+	id: AgentQuickActionId;
+	label: string;
+	command: string;
+}
+
+const QUICK_ACTIONS: Record<AgentQuickActionId, AgentQuickActionDefinition> = {
+	resumeSession: {
+		id: "resumeSession",
+		label: "Resume Session",
+		command: "commandCentral.resumeAgentSession",
+	},
+	viewDiff: {
+		id: "viewDiff",
+		label: "View Diff",
+		command: "commandCentral.viewAgentDiff",
+	},
+	showOutput: {
+		id: "showOutput",
+		label: "Show Output",
+		command: "commandCentral.showAgentOutput",
+	},
+	focusTerminal: {
+		id: "focusTerminal",
+		label: "Focus Terminal",
+		command: "commandCentral.focusAgentTerminal",
+	},
+	restart: {
+		id: "restart",
+		label: "Restart",
+		command: "commandCentral.restartAgent",
+	},
+	remove: {
+		id: "remove",
+		label: "Remove",
+		command: "commandCentral.removeAgentTask",
+	},
+};
+
+const STATUS_ACTIONS: Partial<Record<AgentTaskStatus, AgentQuickActionId[]>> = {
+	completed: ["viewDiff", "showOutput", "focusTerminal", "restart"],
+	completed_stale: ["viewDiff", "showOutput", "focusTerminal", "restart"],
+	failed: ["showOutput", "viewDiff", "restart", "remove"],
+	contract_failure: ["showOutput", "viewDiff", "restart", "remove"],
+	stopped: ["showOutput", "viewDiff", "remove"],
+	killed: ["showOutput", "viewDiff", "remove"],
+};
+
+export function getAgentQuickActions(
+	status: AgentTaskStatus,
+	hasResumeSession: boolean,
+): AgentQuickActionDefinition[] {
+	const base = STATUS_ACTIONS[status] ?? [];
+	const ids =
+		hasResumeSession && status !== "running"
+			? (["resumeSession", ...base] as AgentQuickActionId[])
+			: base;
+	return ids.map((id) => QUICK_ACTIONS[id]);
+}

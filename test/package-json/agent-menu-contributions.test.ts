@@ -85,6 +85,14 @@ describe("package.json agent menu contributions", () => {
 		expect(exists).toBe(true);
 	});
 
+	test("registers agentQuickActions command contribution", async () => {
+		const commands = await getCommands();
+		const exists = commands.some(
+			(item) => item.command === "commandCentral.agentQuickActions",
+		);
+		expect(exists).toBe(true);
+	});
+
 	test("registers clearTerminalTasks command contribution", async () => {
 		const commands = await getCommands();
 		const exists = commands.some(

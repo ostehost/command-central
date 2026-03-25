@@ -1,0 +1,13 @@
+task_id: "resume-click-fix"
+status: "success"
+summary: "Routed non-running agent clicks to status-aware quick actions and added tests for routing and option sets."
+files_changed:
+  - "package.json"
+  - "src/extension.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "src/commands/agent-quick-actions.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - "test/commands/agent-quick-actions-options.test.ts"
+  - "test/package-json/agent-menu-contributions.test.ts"
+tests_passing: true
+next_steps: "Commit was blocked by sandbox (.git write denied); rely on orchestrator auto-commit or run git commit outside sandbox."

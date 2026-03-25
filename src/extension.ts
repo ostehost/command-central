@@ -4,6 +4,7 @@
 
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { getAgentQuickActions } from "./commands/agent-quick-actions.js";
 import * as disableSortCommand from "./commands/disable-sort.js";
 import * as enableSortCommand from "./commands/enable-sort.js";
 import {
@@ -952,6 +953,59 @@ export async function activate(
 					vscode.window.showInformationMessage(
 						"No terminal available for this agent.",
 					);
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.agentQuickActions",
+				async (node?: { type: string; task?: AgentTask }) => {
+					const task = node?.task;
+					if (!task) {
+						vscode.window.showWarningMessage(
+							"No agent selected. Right-click an agent in the tree.",
+						);
+						return;
+					}
+					if (task.status === "running") {
+						await vscode.commands.executeCommand(
+							"commandCentral.focusAgentTerminal",
+							node,
+						);
+						return;
+					}
+
+					const hasResumeSession = Boolean(
+						await resolveClaudeSessionId(task.project_dir),
+					);
+					const actions = getAgentQuickActions(task.status, hasResumeSession);
+					if (actions.length === 0) {
+						await vscode.commands.executeCommand(
+							"commandCentral.focusAgentTerminal",
+							node,
+						);
+						return;
+					}
+
+					type AgentQuickPickItem = vscode.QuickPickItem & {
+						actionId: string;
+					};
+					const selected =
+						await vscode.window.showQuickPick<AgentQuickPickItem>(
+							actions.map((action) => ({
+								label: action.label,
+								actionId: action.id,
+							})),
+							{
+								placeHolder: `Actions for ${task.id}`,
+							},
+						);
+					if (!selected) return;
+
+					const picked = actions.find(
+						(action) => action.id === selected.actionId,
+					);
+					if (!picked) return;
+
+					await vscode.commands.executeCommand(picked.command, node);
 				},
 			),
 			vscode.commands.registerCommand(
