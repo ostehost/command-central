@@ -8,6 +8,7 @@
 
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { countAgentStatuses } from "../utils/agent-counts.js";
 import type { AgentTask } from "./agent-status-tree-provider.js";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -105,12 +106,30 @@ export class AgentDashboardPanel implements vscode.Disposable {
 
 	getHtml(tasks: Record<string, AgentTask>): string {
 		const taskList = Object.values(tasks);
-		const running = taskList.filter((t) => t.status === "running");
-		const completed = taskList.filter((t) => t.status === "completed");
-		const failed = taskList.filter((t) => t.status === "failed");
-		const stopped = taskList.filter(
-			(t) => t.status === "stopped" || t.status === "killed",
-		);
+		const counts = countAgentStatuses(taskList);
+		const running: AgentTask[] = [];
+		const completed: AgentTask[] = [];
+		const failed: AgentTask[] = [];
+		const stopped: AgentTask[] = [];
+		for (const task of taskList) {
+			switch (task.status) {
+				case "running":
+					running.push(task);
+					break;
+				case "completed":
+				case "completed_stale":
+					completed.push(task);
+					break;
+				case "failed":
+				case "killed":
+				case "contract_failure":
+					failed.push(task);
+					break;
+				case "stopped":
+					stopped.push(task);
+					break;
+			}
+		}
 
 		const emptyMessage =
 			taskList.length === 0
@@ -121,9 +140,10 @@ export class AgentDashboardPanel implements vscode.Disposable {
 			taskList.length > 0
 				? `<div class="summary">
 			<div class="summary-item"><div class="summary-count">${taskList.length}</div><div class="summary-label">Total</div></div>
-			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-blue)">${running.length}</div><div class="summary-label">Running</div></div>
-			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-green)">${completed.length}</div><div class="summary-label">Completed</div></div>
-			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-red)">${failed.length}</div><div class="summary-label">Failed</div></div>
+			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-blue)">${counts.running}</div><div class="summary-label">Running</div></div>
+			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-green)">${counts.completed}</div><div class="summary-label">Completed</div></div>
+			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-red)">${counts.failed}</div><div class="summary-label">Failed</div></div>
+			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-yellow)">${counts.stopped}</div><div class="summary-label">Stopped</div></div>
 		</div>`
 				: "";
 

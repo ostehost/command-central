@@ -111,7 +111,7 @@ describe("AgentStatusBar count calculation", () => {
 
 	test("shows only completed when all tasks are done", () => {
 		statusBar.update([makeTask("a", "completed"), makeTask("b", "completed")]);
-		expect(mockItem.text).toContain("2 agents completed");
+		expect(mockItem.text).toContain("2 completed");
 		expect(mockItem.show).toHaveBeenCalled();
 	});
 
@@ -122,12 +122,13 @@ describe("AgentStatusBar count calculation", () => {
 		expect(mockItem.text).toContain("1 completed");
 	});
 
-	test("treats completed_stale and stopped as completed", () => {
+	test("counts completed_stale as completed and stopped as stopped", () => {
 		statusBar.update([
 			makeTask("a", "completed_stale"),
 			makeTask("b", "stopped"),
 		]);
-		expect(mockItem.text).toContain("2 agents completed");
+		expect(mockItem.text).toContain("1 completed");
+		expect(mockItem.text).toContain("1 stopped");
 	});
 
 	test("treats killed as failed", () => {

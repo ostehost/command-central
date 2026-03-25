@@ -219,7 +219,8 @@ describe("AgentStatusTreeProvider", () => {
 		const t1 = createMockTask({ id: "t1", status: "running" });
 		const t2 = createMockTask({ id: "t2", status: "completed" });
 		const t3 = createMockTask({ id: "t3", status: "failed" });
-		provider.readRegistry = () => createMockRegistry({ t1, t2, t3 });
+		const t4 = createMockTask({ id: "t4", status: "stopped" });
+		provider.readRegistry = () => createMockRegistry({ t1, t2, t3, t4 });
 		provider.reload();
 
 		const children = provider.getChildren();
@@ -230,6 +231,7 @@ describe("AgentStatusTreeProvider", () => {
 			expect(summary.label).toContain("1 running");
 			expect(summary.label).toContain("1 completed");
 			expect(summary.label).toContain("1 failed");
+			expect(summary.label).toContain("1 stopped");
 		}
 	});
 

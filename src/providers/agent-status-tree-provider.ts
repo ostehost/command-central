@@ -16,6 +16,10 @@ import * as vscode from "vscode";
 import { AgentRegistry } from "../discovery/agent-registry.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
+import {
+	countAgentStatuses,
+	formatCountSummary,
+} from "../utils/agent-counts.js";
 import type { ListeningPort } from "../utils/port-detector.js";
 import { detectListeningPortsAsync } from "../utils/port-detector.js";
 import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
@@ -983,33 +987,8 @@ export class AgentStatusTreeProvider
 				)
 				.map((agent) => ({ type: "discovered" as const, agent }));
 
-			// Build summary node
-			const totalCount = tasks.length + discovered.length;
-			const counts = { running: 0, completed: 0, failed: 0 };
-			for (const task of tasks) {
-				if (task.status === "running") counts.running++;
-				if (task.status === "completed" || task.status === "completed_stale") {
-					counts.completed++;
-				}
-				if (
-					task.status === "failed" ||
-					task.status === "killed" ||
-					task.status === "contract_failure"
-				) {
-					counts.failed++;
-				}
-			}
-			// Discovered agents are always running (they're live processes)
-			counts.running += discovered.length;
-			const summaryParts: string[] = [];
-			if (counts.running > 0) summaryParts.push(`${counts.running} running`);
-			if (counts.completed > 0)
-				summaryParts.push(`${counts.completed} completed`);
-			if (counts.failed > 0) summaryParts.push(`${counts.failed} failed`);
-			const summaryLabel =
-				summaryParts.length > 0
-					? summaryParts.join(" · ")
-					: `${totalCount} agents`;
+			const counts = countAgentStatuses(this.getTasks());
+			const summaryLabel = formatCountSummary(counts);
 
 			return [
 				{ type: "summary" as const, label: summaryLabel },

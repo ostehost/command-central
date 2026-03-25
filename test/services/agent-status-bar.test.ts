@@ -120,17 +120,17 @@ describe("AgentStatusBar", () => {
 			createTask({ id: "t2", status: "completed" }),
 		]);
 
-		expect(mockStatusBarItem.text).toBe("$(check) 2 agents completed");
+		expect(mockStatusBarItem.text).toBe("$(check) 2 completed");
 		expect(mockStatusBarItem.backgroundColor).toBeUndefined();
 	});
 
-	test("shows singular 'agent' for single completed task", async () => {
+	test("shows single completed count for one completed task", async () => {
 		const { AgentStatusBar } = await loadModule();
 		const bar = new AgentStatusBar();
 
 		bar.update([createTask({ id: "t1", status: "completed" })]);
 
-		expect(mockStatusBarItem.text).toBe("$(check) 1 agent completed");
+		expect(mockStatusBarItem.text).toBe("$(check) 1 completed");
 	});
 
 	test("shows failed with warning icon and error background", async () => {
@@ -154,7 +154,7 @@ describe("AgentStatusBar", () => {
 			createTask({ id: "t2", status: "completed" }),
 		]);
 
-		expect(mockStatusBarItem.text).toBe("$(warning) 1 failed · 1 completed");
+		expect(mockStatusBarItem.text).toBe("$(warning) 1 completed · 1 failed");
 	});
 
 	test("handles stopped and killed tasks with terminal/failed split", async () => {
@@ -166,7 +166,7 @@ describe("AgentStatusBar", () => {
 			createTask({ id: "t2", status: "killed" }),
 		]);
 
-		expect(mockStatusBarItem.text).toBe("$(warning) 1 failed · 1 completed");
+		expect(mockStatusBarItem.text).toBe("$(warning) 1 failed · 1 stopped");
 		expect(mockStatusBarItem.show).toHaveBeenCalled();
 	});
 

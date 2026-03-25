@@ -201,17 +201,31 @@ describe("AgentDashboardPanel", () => {
 			panel.dispose();
 		});
 
-		test("renders Stopped section for stopped and killed tasks", () => {
+		test("renders Stopped section for stopped tasks only", () => {
 			const panel = new AgentDashboardPanel();
 			const tasks: Record<string, AgentTask> = {
 				t1: createMockTask({ id: "t1", status: "stopped" }),
-				t2: createMockTask({ id: "t2", status: "killed" }),
 			};
 			const html = panel.getHtml(tasks);
 
 			expect(html).toContain("<h2>Stopped</h2>");
 			expect(html).toContain("t1");
+			panel.dispose();
+		});
+
+		test("renders Failed section for failed, killed, and contract_failure tasks", () => {
+			const panel = new AgentDashboardPanel();
+			const tasks: Record<string, AgentTask> = {
+				t1: createMockTask({ id: "t1", status: "failed" }),
+				t2: createMockTask({ id: "t2", status: "killed" }),
+				t3: createMockTask({ id: "t3", status: "contract_failure" }),
+			};
+			const html = panel.getHtml(tasks);
+
+			expect(html).toContain("<h2>Failed</h2>");
+			expect(html).toContain("t1");
 			expect(html).toContain("t2");
+			expect(html).toContain("t3");
 			panel.dispose();
 		});
 

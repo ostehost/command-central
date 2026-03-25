@@ -4,7 +4,7 @@
  * Displays context-aware status with counts per state:
  * - Running: `$(pulse) 2 agents running`
  * - Mixed: `$(pulse) 1 running · 1 completed`
- * - All done: `$(check) 3 agents completed`
+ * - All done: `$(check) 3 completed`
  * - Failed: `$(warning) 1 failed · 2 completed`
  *
  * Tooltip shows per-task markdown details. Clicking focuses the sidebar.
@@ -12,6 +12,10 @@
 
 import * as vscode from "vscode";
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
+import {
+	countAgentStatuses,
+	formatCountSummary,
+} from "../utils/agent-counts.js";
 
 const STATUS_ICON: Record<AgentTask["status"], string> = {
 	running: "$(pulse)",
@@ -39,45 +43,30 @@ export class AgentStatusBar implements vscode.Disposable {
 	}
 
 	update(tasks: AgentTask[]): void {
-		const total = tasks.length;
-
-		if (total === 0) {
+		if (tasks.length === 0) {
 			this.statusBarItem.hide();
 			return;
 		}
 
-		const running = tasks.filter((t) => t.status === "running").length;
-		const completed = tasks.filter(
-			(t) =>
-				t.status === "completed" ||
-				t.status === "completed_stale" ||
-				t.status === "stopped",
-		).length;
-		const failed = tasks.filter(
-			(t) =>
-				t.status === "failed" ||
-				t.status === "killed" ||
-				t.status === "contract_failure",
-		).length;
+		const counts = countAgentStatuses(tasks);
+		const summary = formatCountSummary(counts);
 
 		// Determine icon and text
-		if (running > 0) {
-			const parts = [`${running} running`];
-			if (completed > 0) parts.push(`${completed} completed`);
-			if (failed > 0) parts.push(`${failed} failed`);
-			this.statusBarItem.text = `$(pulse) ${parts.join(" · ")}`;
+		if (counts.running > 0) {
+			this.statusBarItem.text = `$(pulse) ${summary}`;
 			this.statusBarItem.backgroundColor = new vscode.ThemeColor(
 				"statusBarItem.warningBackground",
 			);
-		} else if (failed > 0) {
-			const parts = [`${failed} failed`];
-			if (completed > 0) parts.push(`${completed} completed`);
-			this.statusBarItem.text = `$(warning) ${parts.join(" · ")}`;
+		} else if (counts.failed > 0) {
+			this.statusBarItem.text = `$(warning) ${summary}`;
 			this.statusBarItem.backgroundColor = new vscode.ThemeColor(
 				"statusBarItem.errorBackground",
 			);
+		} else if (counts.stopped > 0) {
+			this.statusBarItem.text = `$(debug-stop) ${summary}`;
+			this.statusBarItem.backgroundColor = undefined;
 		} else {
-			this.statusBarItem.text = `$(check) ${total} agent${total !== 1 ? "s" : ""} completed`;
+			this.statusBarItem.text = `$(check) ${summary}`;
 			this.statusBarItem.backgroundColor = undefined;
 		}
 

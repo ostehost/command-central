@@ -1,0 +1,15 @@
+task_id: "count-fix"
+status: "success"
+summary: "Unified agent status counting into a shared utility and aligned sidebar/status bar summaries (including explicit stopped counts)."
+files_changed:
+  - "src/utils/agent-counts.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "src/services/agent-status-bar.ts"
+  - "src/providers/agent-dashboard-panel.ts"
+  - "test/utils/agent-counts.test.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - "test/services/agent-status-bar.test.ts"
+  - "test/services/agent-status-bar-count.test.ts"
+  - "test/providers/agent-dashboard-panel.test.ts"
+tests_passing: true
+next_steps: "Sandbox prevented local git commit (.git/index.lock creation denied); let orchestrator auto-commit these validated changes."
