@@ -590,7 +590,7 @@ describe("openFileDiff command", () => {
 		const node = {
 			projectDir: "/tmp/project",
 			filePath: "src/app.ts",
-			taskStatus: "completed" as const,
+			taskStatus: "completed" as string,
 			startCommit: "abc123",
 		};
 		const beforeRef =
