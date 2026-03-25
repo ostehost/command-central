@@ -7,6 +7,8 @@
  *   3. Launcher        — existing tasks.json (AgentTask)
  */
 
+import type { WorktreeInfo } from "./worktree-resolver.js";
+
 export type DiscoverySource = "process" | "session-file" | "launcher";
 
 export interface DiscoveredAgent {
@@ -24,6 +26,8 @@ export interface DiscoveredAgent {
 	model?: string;
 	/** Session ID parsed from args or session file */
 	sessionId?: string;
+	/** Git worktree info if the agent is in a worktree */
+	worktree?: WorktreeInfo;
 	/** Which discovery mechanism found this agent */
 	source: DiscoverySource;
 }

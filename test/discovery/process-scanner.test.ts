@@ -244,5 +244,47 @@ describe("ProcessScanner", () => {
 			const agents = await scanner.scan();
 			expect(agents).toHaveLength(0);
 		});
+
+		test("populates worktree info when resolver detects a linked worktree", async () => {
+			const mockResolveWorktree = mock(async () => ({
+				mainRepoDir: "/home/user/project",
+				worktreeDir: "/home/user/project-feature-auth",
+				branch: "feature/auth",
+				isLinkedWorktree: true,
+			}));
+			scanner = new ProcessScanner(
+				mockExecFile as unknown as (typeof scanner)["execFileAsync"],
+				mockResolveWorktree,
+			);
+
+			mockExecFile.mockImplementation(
+				(cmd: unknown, _args: unknown, _opts: unknown) => {
+					if (cmd === "ps") {
+						return Promise.resolve({
+							stdout: [
+								"  PID   STARTED                       COMMAND",
+								"12345 Mon Jan  6 14:03:22 2025 /usr/local/bin/claude --print hello",
+							].join("\n"),
+							stderr: "",
+						});
+					}
+					if (cmd === "lsof") {
+						return Promise.resolve({
+							stdout: "p12345\nfcwd\nn/home/user/project-feature-auth\n",
+							stderr: "",
+						});
+					}
+					return Promise.resolve({ stdout: "", stderr: "" });
+				},
+			);
+
+			const agents = await scanner.scan();
+			expect(agents).toHaveLength(1);
+			expect(agents[0]?.worktree?.isLinkedWorktree).toBe(true);
+			expect(agents[0]?.worktree?.branch).toBe("feature/auth");
+			expect(mockResolveWorktree).toHaveBeenCalledWith(
+				"/home/user/project-feature-auth",
+			);
+		});
 	});
 });

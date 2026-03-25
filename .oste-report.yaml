@@ -1,0 +1,18 @@
+task_id: "worktree-detection"
+status: "success"
+summary: "Implemented git worktree detection, sidebar worktree display/grouping updates, and a new list-worktrees command with tests."
+files_changed:
+  - "package.json"
+  - "src/discovery/process-scanner.ts"
+  - "src/discovery/types.ts"
+  - "src/discovery/worktree-list.ts"
+  - "src/discovery/worktree-resolver.ts"
+  - "src/extension.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/discovery/process-scanner.test.ts"
+  - "test/discovery/worktree-list.test.ts"
+  - "test/discovery/worktree-resolver.test.ts"
+  - "test/package-json/agent-menu-contributions.test.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+tests_passing: true
+next_steps: "Commit was blocked by sandbox write restrictions on .git; rely on orchestrator auto-commit safety net to finalize changes."

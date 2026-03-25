@@ -815,6 +815,12 @@
         "icon": "$(folder-opened)"
       },
       {
+        "command": "commandCentral.listWorktrees",
+        "title": "List Git Worktrees",
+        "category": "Command Central",
+        "icon": "$(repo)"
+      },
+      {
         "command": "commandCentral.restartAgent",
         "title": "Restart Agent",
         "category": "Command Central",

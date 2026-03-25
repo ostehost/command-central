@@ -11,6 +11,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { DiscoveredAgent } from "./types.js";
+import { resolveWorktree } from "./worktree-resolver.js";
 
 const defaultExecFileAsync = promisify(execFile);
 
@@ -31,12 +32,15 @@ const CLAUDE_CLI_RE = /(?:^|\/)claude(?:\.js)?\s|\/claude-code\//i;
 const NOISE_RE = /electron|helper|renderer|gpu-process|crashpad|--type=/i;
 
 type ExecFileFn = typeof defaultExecFileAsync;
+type ResolveWorktreeFn = typeof resolveWorktree;
 
 export class ProcessScanner {
 	private execFileAsync: ExecFileFn;
+	private resolveWorktreeFn: ResolveWorktreeFn;
 
-	constructor(execFileFn?: ExecFileFn) {
+	constructor(execFileFn?: ExecFileFn, resolveWorktreeFn?: ResolveWorktreeFn) {
 		this.execFileAsync = execFileFn ?? defaultExecFileAsync;
+		this.resolveWorktreeFn = resolveWorktreeFn ?? resolveWorktree;
 	}
 
 	/**
@@ -53,12 +57,14 @@ export class ProcessScanner {
 				const projectDir = await this.getProcessCwd(c.pid);
 				if (!projectDir) return null;
 				const meta = this.parseClaudeArgs(c.command);
+				const worktree = await this.resolveWorktreeFn(projectDir);
 				const agent: DiscoveredAgent = {
 					pid: c.pid,
 					projectDir,
 					command: c.command,
 					startTime: c.startTime,
 					source: "process",
+					worktree: worktree ?? undefined,
 					...meta,
 				};
 				return agent;

@@ -2108,4 +2108,102 @@ describe("AgentStatusTreeProvider", () => {
 			expect(item.description).not.toContain("files");
 		});
 	});
+
+	describe("linked worktree display for discovered agents", () => {
+		test("discovered item description includes branch worktree badge", () => {
+			const agent = {
+				pid: 77777,
+				projectDir: "/Users/test/projects/my-app-feature-auth",
+				startTime: new Date("2026-02-25T08:00:00Z"),
+				source: "process" as const,
+				command: "claude",
+				worktree: {
+					mainRepoDir: "/Users/test/projects/my-app",
+					worktreeDir: "/Users/test/projects/my-app-feature-auth",
+					branch: "feature/auth",
+					isLinkedWorktree: true,
+				},
+			};
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "discovered", agent });
+			expect(item.description).toContain("feature/auth · worktree");
+		});
+
+		test("discovered children include Worktree detail node for linked worktrees", () => {
+			const agent = {
+				pid: 88888,
+				projectDir: "/Users/test/projects/my-app-feature-auth",
+				startTime: new Date("2026-02-25T08:00:00Z"),
+				source: "process" as const,
+				command: "claude",
+				worktree: {
+					mainRepoDir: "/Users/test/projects/my-app",
+					worktreeDir: "/Users/test/projects/my-app-feature-auth",
+					branch: "feature/auth",
+					isLinkedWorktree: true,
+				},
+			};
+			const p = provider as unknown as {
+				getDiscoveredChildren: (
+					a: typeof agent,
+				) => Array<{ type: string; label: string; value: string }>;
+			};
+			const details = p.getDiscoveredChildren(agent);
+			const worktreeDetail = details.find((d) => d.label === "Worktree");
+			expect(worktreeDetail).toBeDefined();
+			expect(worktreeDetail?.value).toContain("feature/auth");
+			expect(worktreeDetail?.value).toContain(
+				"/Users/test/projects/my-app-feature-auth",
+			);
+		});
+
+		test("project grouping uses main repo for linked worktree discovered agents", () => {
+			vscodeMock.workspace.getConfiguration = mock(() => ({
+				update: mock(),
+				get: mock((_key: string, defaultValue?: unknown) => {
+					if (_key === "agentStatus.groupByProject") return true;
+					return defaultValue;
+				}),
+			}));
+
+			const p = provider as unknown as { _discoveredAgents: unknown[] };
+			p._discoveredAgents = [
+				{
+					pid: 99001,
+					projectDir: "/Users/test/projects/my-app-feature-a",
+					startTime: new Date("2026-02-25T08:00:00Z"),
+					source: "process",
+					command: "claude",
+					worktree: {
+						mainRepoDir: "/Users/test/projects/my-app",
+						worktreeDir: "/Users/test/projects/my-app-feature-a",
+						branch: "feature/a",
+						isLinkedWorktree: true,
+					},
+				},
+				{
+					pid: 99002,
+					projectDir: "/Users/test/projects/my-app-feature-b",
+					startTime: new Date("2026-02-25T08:01:00Z"),
+					source: "process",
+					command: "claude",
+					worktree: {
+						mainRepoDir: "/Users/test/projects/my-app",
+						worktreeDir: "/Users/test/projects/my-app-feature-b",
+						branch: "feature/b",
+						isLinkedWorktree: true,
+					},
+				},
+			];
+
+			const root = provider.getChildren();
+			const projectGroups = root.filter((node) => node.type === "projectGroup");
+			expect(projectGroups).toHaveLength(1);
+			const group = projectGroups[0] as {
+				type: "projectGroup";
+				projectName: string;
+			};
+			expect(group.projectName).toBe("my-app");
+		});
+	});
 });

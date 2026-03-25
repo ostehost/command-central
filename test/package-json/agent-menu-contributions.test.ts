@@ -65,6 +65,14 @@ describe("package.json agent menu contributions", () => {
 		expect(exists).toBe(true);
 	});
 
+	test("registers listWorktrees command contribution", async () => {
+		const commands = await getCommands();
+		const exists = commands.some(
+			(item) => item.command === "commandCentral.listWorktrees",
+		);
+		expect(exists).toBe(true);
+	});
+
 	test("defines defaultBackend config with codex/gemini only", async () => {
 		const properties = await getConfigProperties();
 		const setting = properties["commandCentral.agentStatus.defaultBackend"];

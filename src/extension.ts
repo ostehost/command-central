@@ -19,6 +19,7 @@ import {
 	selectForCompare,
 } from "./commands/tree-view-utils.js";
 import { resolveClaudeSessionId } from "./discovery/session-resolver.js";
+import { parseWorktreeListPorcelain } from "./discovery/worktree-list.js";
 import { BinaryManager } from "./ghostty/BinaryManager.js";
 import { TerminalManager } from "./ghostty/TerminalManager.js";
 import { focusGhosttyWindow } from "./ghostty/window-focus.js";
@@ -1608,6 +1609,83 @@ export async function activate(
 					}
 					const uri = vscode.Uri.file(task.project_dir);
 					await vscode.commands.executeCommand("revealFileInOS", uri);
+				},
+			),
+		);
+
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.listWorktrees",
+				async () => {
+					const folders = vscode.workspace.workspaceFolders;
+					if (!folders || folders.length === 0) {
+						vscode.window.showWarningMessage("No workspace folder open.");
+						return;
+					}
+
+					let workspaceFolder: vscode.WorkspaceFolder | undefined;
+					const activeUri = vscode.window.activeTextEditor?.document.uri;
+					if (activeUri) {
+						workspaceFolder = vscode.workspace.getWorkspaceFolder(activeUri);
+					}
+					if (!workspaceFolder && folders.length === 1) {
+						workspaceFolder = folders[0];
+					}
+					if (!workspaceFolder && folders.length > 1) {
+						workspaceFolder = await vscode.window.showWorkspaceFolderPick({
+							placeHolder: "Select a workspace to list git worktrees",
+						});
+					}
+					if (!workspaceFolder) return;
+
+					try {
+						const { execFile } = await import("node:child_process");
+						const { promisify } = await import("node:util");
+						const execFileAsync = promisify(execFile);
+						const { stdout } = await execFileAsync(
+							"git",
+							[
+								"-C",
+								workspaceFolder.uri.fsPath,
+								"worktree",
+								"list",
+								"--porcelain",
+							],
+							{
+								encoding: "utf-8",
+								timeout: 3_000,
+							},
+						);
+						const worktrees = parseWorktreeListPorcelain(stdout);
+						if (worktrees.length === 0) {
+							vscode.window.showInformationMessage(
+								"No git worktrees found for this workspace.",
+							);
+							return;
+						}
+
+						const picked = await vscode.window.showQuickPick(
+							worktrees.map((worktree) => ({
+								label: worktree.branch,
+								description: worktree.path,
+								worktree,
+							})),
+							{
+								placeHolder: "Select a worktree to open",
+							},
+						);
+						if (!picked) return;
+
+						await vscode.commands.executeCommand(
+							"vscode.openFolder",
+							vscode.Uri.file(picked.worktree.path),
+							true,
+						);
+					} catch (err) {
+						vscode.window.showErrorMessage(
+							`Failed to list git worktrees: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					}
 				},
 			),
 		);

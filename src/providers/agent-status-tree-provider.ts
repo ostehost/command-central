@@ -96,6 +96,7 @@ export interface ProjectGroupNode {
 	type: "projectGroup";
 	projectName: string;
 	tasks: AgentTask[];
+	discoveredAgents?: DiscoveredAgent[];
 }
 
 export type TreeElement = TaskNode | ProjectGroupNode;
@@ -966,10 +967,11 @@ export class AgentStatusTreeProvider
 				(task) => ({ type: "task" as const, task }),
 			);
 			const projectGroupNodes: AgentNode[] = groupedByProject
-				? this.groupTasksByProject(tasks).map((group) => ({
+				? this.groupAgentsByProject(tasks, discovered).map((group) => ({
 						type: "projectGroup" as const,
 						projectName: group.projectName,
 						tasks: group.tasks,
+						discoveredAgents: group.discoveredAgents,
 					}))
 				: [];
 
@@ -1012,15 +1014,24 @@ export class AgentStatusTreeProvider
 			return [
 				{ type: "summary" as const, label: summaryLabel },
 				...(groupedByProject ? projectGroupNodes : taskNodes),
-				...discoveredNodes,
+				...(groupedByProject ? [] : discoveredNodes),
 			];
 		}
 
 		if (element.type === "projectGroup") {
-			return this.sortTasksByStartedAtDesc(element.tasks).map((task) => ({
-				type: "task" as const,
-				task,
-			}));
+			const taskNodes = this.sortTasksByStartedAtDesc(element.tasks).map(
+				(task) => ({
+					type: "task" as const,
+					task,
+				}),
+			);
+			const discoveredNodes = [...(element.discoveredAgents ?? [])]
+				.sort(
+					(a, b) =>
+						new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
+				)
+				.map((agent) => ({ type: "discovered" as const, agent }));
+			return [...taskNodes, ...discoveredNodes];
 		}
 
 		if (element.type === "task") {
@@ -1208,6 +1219,14 @@ export class AgentStatusTreeProvider
 				taskId: `discovered-${agent.pid}`,
 			});
 		}
+		if (agent.worktree?.isLinkedWorktree) {
+			details.push({
+				type: "detail",
+				label: "Worktree",
+				value: `${agent.worktree.branch} · ${agent.worktree.worktreeDir}`,
+				taskId: `discovered-${agent.pid}`,
+			});
+		}
 		return details;
 	}
 
@@ -1233,24 +1252,60 @@ export class AgentStatusTreeProvider
 		);
 	}
 
-	private groupTasksByProject(
+	private groupAgentsByProject(
 		tasks: AgentTask[],
-	): Array<{ projectName: string; tasks: AgentTask[] }> {
-		const grouped = new Map<string, AgentTask[]>();
+		discoveredAgents: DiscoveredAgent[],
+	): Array<{
+		projectName: string;
+		tasks: AgentTask[];
+		discoveredAgents: DiscoveredAgent[];
+	}> {
+		const grouped = new Map<
+			string,
+			{
+				projectName: string;
+				tasks: AgentTask[];
+				discoveredAgents: DiscoveredAgent[];
+			}
+		>();
+
 		for (const task of tasks) {
 			const projectName = task.project_name || "(unknown project)";
 			const existing = grouped.get(projectName);
 			if (existing) {
-				existing.push(task);
+				existing.tasks.push(task);
 			} else {
-				grouped.set(projectName, [task]);
+				grouped.set(projectName, {
+					projectName,
+					tasks: [task],
+					discoveredAgents: [],
+				});
 			}
 		}
-		return Array.from(grouped.entries())
-			.sort(([a], [b]) => a.localeCompare(b))
-			.map(([projectName, projectTasks]) => ({
-				projectName,
-				tasks: this.sortTasksByStartedAtDesc(projectTasks),
+
+		for (const agent of discoveredAgents) {
+			const projectName = this.getDiscoveredProjectName(agent);
+			const existing = grouped.get(projectName);
+			if (existing) {
+				existing.discoveredAgents.push(agent);
+			} else {
+				grouped.set(projectName, {
+					projectName,
+					tasks: [],
+					discoveredAgents: [agent],
+				});
+			}
+		}
+
+		return Array.from(grouped.values())
+			.sort((a, b) => a.projectName.localeCompare(b.projectName))
+			.map((group) => ({
+				projectName: group.projectName,
+				tasks: this.sortTasksByStartedAtDesc(group.tasks),
+				discoveredAgents: [...group.discoveredAgents].sort(
+					(a, b) =>
+						new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
+				),
 			}));
 	}
 
@@ -1773,6 +1828,28 @@ export class AgentStatusTreeProvider
 					type: "projectGroup",
 					projectName: element.task.project_name,
 					tasks: this.sortTasksByStartedAtDesc(groupTasks),
+					discoveredAgents: [],
+				};
+			}
+		}
+		if (element.type === "discovered" && this.isProjectGroupingEnabled()) {
+			const projectName = this.getDiscoveredProjectName(element.agent);
+			const allTasks = Object.values(this.registry.tasks);
+			const visibleTasks = this.isRunningOnlyFilterEnabled()
+				? allTasks.filter((task) => task.status === "running")
+				: allTasks;
+			const groupTasks = visibleTasks.filter(
+				(task) => task.project_name === projectName,
+			);
+			const groupDiscovered = this._discoveredAgents.filter(
+				(agent) => this.getDiscoveredProjectName(agent) === projectName,
+			);
+			if (groupTasks.length > 0 || groupDiscovered.length > 0) {
+				return {
+					type: "projectGroup",
+					projectName,
+					tasks: this.sortTasksByStartedAtDesc(groupTasks),
+					discoveredAgents: groupDiscovered,
 				};
 			}
 		}
@@ -1822,8 +1899,8 @@ export class AgentStatusTreeProvider
 			(agent) => ({
 				id: `discovered-${agent.pid}`,
 				status: "running" as const,
-				project_dir: agent.projectDir,
-				project_name: agent.projectDir.split("/").pop() ?? agent.projectDir,
+				project_dir: this.getDiscoveredProjectDir(agent),
+				project_name: this.getDiscoveredProjectName(agent),
 				session_id: agent.sessionId ?? `pid-${agent.pid}`,
 				bundle_path: "",
 				prompt_file: "",
@@ -1833,6 +1910,18 @@ export class AgentStatusTreeProvider
 			}),
 		);
 		return [...launcherTasks, ...syntheticDiscovered];
+	}
+
+	private getDiscoveredProjectDir(agent: DiscoveredAgent): string {
+		if (agent.worktree?.isLinkedWorktree) {
+			return agent.worktree.mainRepoDir;
+		}
+		return agent.projectDir;
+	}
+
+	private getDiscoveredProjectName(agent: DiscoveredAgent): string {
+		const projectDir = this.getDiscoveredProjectDir(agent);
+		return path.basename(projectDir) || projectDir;
 	}
 
 	private getProjectEmoji(projectDir: string): string | null {
@@ -1861,7 +1950,8 @@ export class AgentStatusTreeProvider
 			node.projectName,
 			vscode.TreeItemCollapsibleState.Expanded,
 		);
-		item.description = `${node.tasks.length} agents`;
+		const discoveredCount = node.discoveredAgents?.length ?? 0;
+		item.description = `${node.tasks.length + discoveredCount} agents`;
 		item.iconPath = new vscode.ThemeIcon("folder");
 		item.contextValue = "projectGroup";
 		return item;
@@ -2100,12 +2190,15 @@ export class AgentStatusTreeProvider
 
 	private createDiscoveredItem(node: DiscoveredNode): vscode.TreeItem {
 		const agent = node.agent;
-		const projectName = path.basename(agent.projectDir);
+		const projectName = this.getDiscoveredProjectName(agent);
 		const uptime = formatElapsed(agent.startTime.toISOString());
 		const sourceLabel =
 			agent.source === "process"
 				? "(discovered via ps)"
 				: "(discovered via session file)";
+		const worktreeLabel = agent.worktree?.isLinkedWorktree
+			? `${agent.worktree.branch} · worktree`
+			: null;
 		const label = `🔄 ${projectName}`;
 		const item = new vscode.TreeItem(
 			label,
@@ -2114,11 +2207,15 @@ export class AgentStatusTreeProvider
 		const discoveredDiff = this.getCachedDiffSummaryForDiscovered(agent);
 		const discoveredDiffLoading =
 			!discoveredDiff && this.isDiscoveredDiffSummaryLoading(agent);
-		item.description = discoveredDiff
-			? `PID ${agent.pid} · ${uptime} · ${discoveredDiff} ${sourceLabel}`
-			: discoveredDiffLoading
-				? `PID ${agent.pid} · ${uptime} · loading diff... ${sourceLabel}`
-				: `PID ${agent.pid} · ${uptime} ${sourceLabel}`;
+		const descriptionParts = [`PID ${agent.pid}`, uptime];
+		if (worktreeLabel) descriptionParts.push(worktreeLabel);
+		if (discoveredDiff) {
+			descriptionParts.push(discoveredDiff);
+		} else if (discoveredDiffLoading) {
+			descriptionParts.push("loading diff...");
+		}
+		descriptionParts.push(sourceLabel);
+		item.description = descriptionParts.join(" · ");
 		item.iconPath = getStatusThemeIcon("running");
 		item.contextValue = "discoveredAgent.running";
 		item.command = {
@@ -2130,6 +2227,9 @@ export class AgentStatusTreeProvider
 			[
 				`**Discovered Agent** — PID ${agent.pid}`,
 				`Project: \`${agent.projectDir}\``,
+				agent.worktree?.isLinkedWorktree
+					? `Worktree: \`${agent.worktree.branch}\` in \`${agent.worktree.worktreeDir}\` (main repo: \`${agent.worktree.mainRepoDir}\`)`
+					: null,
 				`Source: ${agent.source}`,
 				agent.model ? `Model: ${agent.model}` : null,
 				agent.sessionId ? `Session: ${agent.sessionId}` : null,
