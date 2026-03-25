@@ -1,0 +1,8 @@
+task_id: "marketing-site-v2"
+status: "success"
+summary: "Updated the launch marketing page with new hero messaging, launch feature coverage, competitor comparison, and Marketplace install CTA."
+files_changed:
+  - "site/index.html"
+  - "site/style.css"
+tests_passing: true
+next_steps: "Optional: refresh OG image/check script domain expectations to align fully with cc.partnerai.dev metadata."

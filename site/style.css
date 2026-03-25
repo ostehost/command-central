@@ -45,7 +45,9 @@ html { scroll-behavior: smooth; }
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 20% -10%, rgba(88, 166, 255, 0.18), transparent 45%),
+    linear-gradient(180deg, #0b1320 0%, var(--bg) 28%, var(--bg) 100%);
   color: var(--text);
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
@@ -205,6 +207,27 @@ a:hover {
   line-height: 1.6;
 }
 
+.hero-highlights {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin: 0 auto var(--space-6);
+  max-width: 760px;
+}
+
+.hero-highlight {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(88, 166, 255, 0.22);
+  background: rgba(88, 166, 255, 0.08);
+  color: var(--text-bright);
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
 .cta-group {
   display: flex;
   gap: var(--space-3);
@@ -246,7 +269,7 @@ a:hover {
 .hero-screenshot {
   margin-top: var(--space-7);
   margin-bottom: var(--space-4);
-  max-width: 480px;
+  max-width: 560px;
   margin-left: auto;
   margin-right: auto;
   position: relative;
@@ -389,6 +412,78 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+}
+
+.launch-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.launch-feature-card {
+  background: rgba(28, 33, 40, 0.85);
+  border: 1px solid rgba(48, 54, 61, 0.9);
+  border-radius: 14px;
+  padding: var(--space-5);
+  transition: border-color 0.2s, transform 0.2s ease;
+}
+
+.launch-feature-card:hover {
+  border-color: rgba(88, 166, 255, 0.35);
+  transform: translateY(-2px);
+}
+
+.launch-feature-card h3 {
+  font-family: var(--font-brand);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin-bottom: var(--space-2);
+}
+
+.launch-feature-card p {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  margin-bottom: var(--space-3);
+}
+
+.launch-feature-card ul {
+  margin-left: var(--space-4);
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.launch-feature-card li + li {
+  margin-top: 4px;
+}
+
+.feature-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.feature-strip-item {
+  background: rgba(28, 33, 40, 0.7);
+  border: 1px solid rgba(48, 54, 61, 0.8);
+  border-radius: 12px;
+  padding: var(--space-3);
+}
+
+.feature-strip-item img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.feature-strip-item figcaption {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin-top: var(--space-2);
+  text-align: center;
 }
 
 .features-heading {
@@ -586,6 +681,70 @@ a:hover {
 
 .use-case strong {
   color: var(--text-bright);
+}
+
+/* ─── Comparison Matrix ─── */
+.comparison-matrix {
+  padding: var(--space-8) 0;
+  border-top: 1px solid var(--border);
+}
+
+.comparison-matrix h2 {
+  text-align: center;
+  font-family: var(--font-brand);
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin-bottom: var(--space-3);
+  letter-spacing: -0.01em;
+}
+
+.comparison-matrix .quiet-note {
+  margin-bottom: var(--space-5);
+  text-align: center;
+}
+
+.matrix-wrap {
+  border: 1px solid rgba(48, 54, 61, 0.9);
+  border-radius: 12px;
+  overflow: auto;
+  background: rgba(22, 27, 34, 0.95);
+}
+
+.matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px;
+}
+
+.matrix-table th,
+.matrix-table td {
+  border-bottom: 1px solid rgba(48, 54, 61, 0.8);
+  padding: 12px 14px;
+  font-size: 0.88rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.matrix-table thead th {
+  font-family: var(--font-brand);
+  color: var(--text-bright);
+  font-weight: 600;
+  background: rgba(28, 33, 40, 0.95);
+}
+
+.matrix-table tbody th {
+  color: var(--text-bright);
+  font-weight: 500;
+}
+
+.matrix-table tbody td {
+  color: var(--text-muted);
+}
+
+.matrix-table tbody tr:hover td,
+.matrix-table tbody tr:hover th {
+  background: rgba(88, 166, 255, 0.05);
 }
 
 /* ─── Install Snippet ─── */
@@ -1033,6 +1192,11 @@ a:hover {
     margin-bottom: var(--space-5);
   }
 
+  .hero-highlights {
+    justify-content: flex-start;
+    margin-bottom: var(--space-5);
+  }
+
   .hero-screenshot {
     margin-top: var(--space-6);
   }
@@ -1128,6 +1292,18 @@ a:hover {
   .feature-visual {
     max-width: 480px;
     margin: 0 auto;
+  }
+
+  .launch-feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .launch-feature-card {
+    padding: var(--space-4);
+  }
+
+  .feature-strip {
+    grid-template-columns: 1fr;
   }
 
   /* Use case grid: stack */
