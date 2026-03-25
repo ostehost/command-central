@@ -454,6 +454,28 @@ describe("AgentStatusTreeProvider", () => {
 		expect(item.command?.command).toBe("commandCentral.focusAgentTerminal");
 	});
 
+	test("non-running task TreeItem routes to resumeAgentSession", () => {
+		const task = createMockTask({ status: "completed" });
+		const node: AgentNode = { type: "task", task };
+		const item = provider.getTreeItem(node);
+		expect(item.command?.command).toBe("commandCentral.resumeAgentSession");
+		expect(item.command?.title).toBe("Resume Session");
+	});
+
+	test("stopped task TreeItem routes to resumeAgentSession", () => {
+		const task = createMockTask({ status: "stopped" });
+		const node: AgentNode = { type: "task", task };
+		const item = provider.getTreeItem(node);
+		expect(item.command?.command).toBe("commandCentral.resumeAgentSession");
+	});
+
+	test("failed task TreeItem routes to resumeAgentSession", () => {
+		const task = createMockTask({ status: "failed" });
+		const node: AgentNode = { type: "task", task };
+		const item = provider.getTreeItem(node);
+		expect(item.command?.command).toBe("commandCentral.resumeAgentSession");
+	});
+
 	test("task TreeItem command arguments contain the element", () => {
 		const task = createMockTask();
 		const node: AgentNode = { type: "task", task };
