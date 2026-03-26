@@ -8,6 +8,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import type * as vscode from "vscode";
 
 // Mock port-detector to avoid real lsof calls in tree provider tests
@@ -161,6 +162,7 @@ describe("status icon mapping", () => {
 		const cases = [
 			["running", "sync~spin", "charts.yellow"],
 			["completed", "check", "charts.green"],
+			["completed_dirty", "check", "charts.green"],
 			["completed_stale", "check-all", "charts.green"],
 			["failed", "error", "charts.red"],
 			["contract_failure", "warning", "charts.orange"],
@@ -309,7 +311,7 @@ describe("AgentStatusTreeProvider", () => {
 			);
 		});
 
-		test("keeps running when matching discovered session is alive", () => {
+		test("still downgrades running tmux task when tmux session is unhealthy", () => {
 			const task = createMockTask({
 				id: "live-running",
 				status: "running",
@@ -324,7 +326,75 @@ describe("AgentStatusTreeProvider", () => {
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
-			expect(provider.getTasks()[0]?.status).toBe("running");
+			expect(provider.getTasks()[0]?.status).toBe("stopped");
+		});
+
+		test("downgrades unhealthy running persist task to stopped", () => {
+			const task = createMockTask({
+				id: "persist-running",
+				status: "running",
+				terminal_backend: "persist",
+			});
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set(task.session_id, {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("stopped");
+		});
+
+		test("keeps only newest running task per reused session id", () => {
+			const older = createMockTask({
+				id: "stale-running",
+				status: "running",
+				session_id: "agent-shared",
+				terminal_backend: "persist",
+				started_at: "2026-03-25T12:00:00Z",
+			});
+			const newer = createMockTask({
+				id: "fresh-running",
+				status: "running",
+				session_id: "agent-shared",
+				terminal_backend: "persist",
+				started_at: "2026-03-26T12:00:00Z",
+			});
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set("agent-shared", {
+				alive: true,
+				checkedAt: Date.now(),
+			});
+			(
+				provider as unknown as {
+					_allDiscoveredAgents: Array<{ sessionId?: string }>;
+				}
+			)._allDiscoveredAgents = [{ sessionId: "agent-shared" }];
+			provider.readRegistry = () =>
+				createMockRegistry({
+					[older.id]: older,
+					[newer.id]: newer,
+				});
+			provider.reload();
+
+			const displayStatuses = new Map(
+				provider.getTasks().map((task) => [task.id, task.status]),
+			);
+			expect(displayStatuses.get("fresh-running")).toBe("running");
+			expect(displayStatuses.get("stale-running")).toBe("stopped");
 		});
 	});
 
@@ -712,7 +782,7 @@ describe("AgentStatusTreeProvider", () => {
 		};
 		const item = provider.getTreeItem(node);
 		expect(item.label).toBe("🧩 Alpha");
-		expect(item.description).toBe("1 agents");
+		expect(item.description).toBe("1 running");
 		expect(item.collapsibleState).toBe(2); // Expanded
 		expect((item.iconPath as { id: string }).id).toBe("folder");
 		expect(item.contextValue).toBe("projectGroup");
@@ -725,6 +795,7 @@ describe("AgentStatusTreeProvider", () => {
 		const cases = [
 			["running", "sync~spin", "charts.yellow"],
 			["completed", "check", "charts.green"],
+			["completed_dirty", "check", "charts.green"],
 			["completed_stale", "check-all", "charts.green"],
 			["failed", "error", "charts.red"],
 			["contract_failure", "warning", "charts.orange"],
@@ -1061,6 +1132,57 @@ describe("AgentStatusTreeProvider", () => {
 		provider.reload();
 		const children = provider.getChildren();
 		expect(children).toHaveLength(2); // 1 summary + 1 task
+	});
+
+	test("readRegistry preserves completed_dirty and maps unknown statuses to stopped", () => {
+		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
+		const tasksFile = path.join(tmpDir, "tasks.json");
+		fs.writeFileSync(
+			tasksFile,
+			JSON.stringify({
+				version: 2,
+				tasks: {
+					dirty: {
+						id: "dirty",
+						status: "completed_dirty",
+						project_dir: "/Users/test/projects/my-app",
+						project_name: "My App",
+						session_id: "agent-my-app",
+						bundle_path: "/Applications/Projects/My App.app",
+						prompt_file: "/tmp/task.md",
+						started_at: "2026-02-25T08:00:00Z",
+						attempts: 1,
+						max_attempts: 3,
+					},
+					weird: {
+						id: "weird",
+						status: "mystery_state",
+						project_dir: "/Users/test/projects/my-app",
+						project_name: "My App",
+						session_id: "agent-my-app-weird",
+						bundle_path: "/Applications/Projects/My App.app",
+						prompt_file: "/tmp/task.md",
+						started_at: "2026-02-25T08:00:00Z",
+						attempts: 1,
+						max_attempts: 3,
+					},
+				},
+			}),
+		);
+
+		try {
+			(
+				provider as unknown as {
+					_filePath: string | null;
+				}
+			)._filePath = tasksFile;
+			const registry =
+				AgentStatusTreeProvider.prototype.readRegistry.call(provider);
+			expect(registry.tasks["dirty"]?.status).toBe("completed_dirty");
+			expect(registry.tasks["weird"]?.status).toBe("stopped");
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		}
 	});
 
 	test("normalizes v1 tmux_session to session_id", () => {
@@ -1797,8 +1919,16 @@ describe("AgentStatusTreeProvider", () => {
 			withDarwinPlatform(() => {
 				provider.readRegistry = () =>
 					createMockRegistry({
-						r1: createMockTask({ id: "r1", status: "running" }),
-						r2: createMockTask({ id: "r2", status: "running" }),
+						r1: createMockTask({
+							id: "r1",
+							status: "running",
+							session_id: "agent-r1",
+						}),
+						r2: createMockTask({
+							id: "r2",
+							status: "running",
+							session_id: "agent-r2",
+						}),
 					});
 				provider.reload();
 

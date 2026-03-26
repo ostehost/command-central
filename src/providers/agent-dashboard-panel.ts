@@ -27,6 +27,7 @@ export interface GitInfoProvider {
 const STATUS_ICONS: Record<string, string> = {
 	running: "🔄",
 	completed: "✅",
+	completed_dirty: "✅",
 	failed: "❌",
 	stopped: "⏹️",
 	killed: "💀",
@@ -117,6 +118,7 @@ export class AgentDashboardPanel implements vscode.Disposable {
 					running.push(task);
 					break;
 				case "completed":
+				case "completed_dirty":
 				case "completed_stale":
 					completed.push(task);
 					break;
@@ -160,14 +162,14 @@ body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .card { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 12px; }
 .card.running { border-left: 3px solid var(--vscode-charts-blue); }
-.card.completed { border-left: 3px solid var(--vscode-charts-green); }
+.card.completed, .card.completed_dirty, .card.completed_stale { border-left: 3px solid var(--vscode-charts-green); }
 .card.failed { border-left: 3px solid var(--vscode-charts-red); }
 .card.stopped, .card.killed { border-left: 3px solid var(--vscode-charts-yellow); }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .card-title { font-weight: bold; font-size: 14px; }
 .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .status-badge.running { background: var(--vscode-charts-blue); color: white; }
-.status-badge.completed { background: var(--vscode-charts-green); color: white; }
+.status-badge.completed, .status-badge.completed_dirty, .status-badge.completed_stale { background: var(--vscode-charts-green); color: white; }
 .status-badge.failed { background: var(--vscode-charts-red); color: white; }
 .status-badge.stopped, .status-badge.killed { background: var(--vscode-charts-yellow); color: black; }
 .detail { color: var(--vscode-descriptionForeground); font-size: 12px; margin: 4px 0; }

@@ -118,22 +118,26 @@ describe("AgentStatusBar count calculation", () => {
 	test("shows failed with warning icon when no running tasks", () => {
 		statusBar.update([makeTask("a", "failed"), makeTask("b", "completed")]);
 		expect(mockItem.text).toContain("$(warning)");
+		expect(mockItem.text).toContain("1 attention");
 		expect(mockItem.text).toContain("1 failed");
 		expect(mockItem.text).toContain("1 completed");
 	});
 
-	test("counts completed_stale as completed and stopped as stopped", () => {
+	test("counts completed_dirty/completed_stale as completed and stopped as attention", () => {
 		statusBar.update([
+			makeTask("c", "completed_dirty"),
 			makeTask("a", "completed_stale"),
 			makeTask("b", "stopped"),
 		]);
-		expect(mockItem.text).toContain("1 completed");
+		expect(mockItem.text).toContain("2 completed");
+		expect(mockItem.text).toContain("1 attention");
 		expect(mockItem.text).toContain("1 stopped");
 	});
 
 	test("treats killed as failed", () => {
 		statusBar.update([makeTask("a", "killed"), makeTask("b", "completed")]);
 		expect(mockItem.text).toContain("$(warning)");
+		expect(mockItem.text).toContain("1 attention");
 		expect(mockItem.text).toContain("1 failed");
 		expect(mockItem.text).toContain("1 completed");
 	});

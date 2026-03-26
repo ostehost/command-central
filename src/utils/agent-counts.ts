@@ -8,6 +8,10 @@ export interface AgentCounts {
 	total: number;
 }
 
+export interface FormatCountSummaryOptions {
+	includeAttention?: boolean;
+}
+
 export function countAgentStatuses(tasks: AgentTask[]): AgentCounts {
 	const counts: AgentCounts = {
 		running: 0,
@@ -24,6 +28,7 @@ export function countAgentStatuses(tasks: AgentTask[]): AgentCounts {
 				counts.running++;
 				break;
 			case "completed":
+			case "completed_dirty":
 			case "completed_stale":
 				counts.completed++;
 				break;
@@ -41,9 +46,20 @@ export function countAgentStatuses(tasks: AgentTask[]): AgentCounts {
 	return counts;
 }
 
-export function formatCountSummary(counts: AgentCounts): string {
+export function getAttentionCount(counts: AgentCounts): number {
+	return counts.failed + counts.stopped;
+}
+
+export function formatCountSummary(
+	counts: AgentCounts,
+	options: FormatCountSummaryOptions = {},
+): string {
 	const parts: string[] = [];
+	const attention = getAttentionCount(counts);
 	if (counts.running > 0) parts.push(`${counts.running} running`);
+	if (options.includeAttention && attention > 0) {
+		parts.push(`${attention} attention`);
+	}
 	if (counts.completed > 0) parts.push(`${counts.completed} completed`);
 	if (counts.failed > 0) parts.push(`${counts.failed} failed`);
 	if (counts.stopped > 0) parts.push(`${counts.stopped} stopped`);

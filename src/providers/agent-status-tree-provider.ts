@@ -48,6 +48,7 @@ export type AgentTaskStatus =
 	| "stopped"
 	| "killed"
 	| "completed"
+	| "completed_dirty"
 	| "completed_stale"
 	| "failed"
 	| "contract_failure";
@@ -71,7 +72,7 @@ export interface AgentTask {
 	pr_number?: number | null;
 	review_status?: "pending" | "approved" | "changes_requested" | null;
 	role?: AgentRole | null;
-	terminal_backend?: "tmux" | "applescript";
+	terminal_backend?: "tmux" | "persist" | "applescript";
 	ghostty_bundle_id?: string | null;
 	exit_code?: number | null;
 	error_message?: string | null;
@@ -258,6 +259,7 @@ export function getStatusThemeIcon(
 				new vscode.ThemeColor("charts.yellow"),
 			);
 		case "completed":
+		case "completed_dirty":
 			return new vscode.ThemeIcon(
 				"check",
 				new vscode.ThemeColor("charts.green"),
@@ -316,6 +318,7 @@ const VALID_TASK_STATUSES = new Set<AgentTaskStatus>([
 	"stopped",
 	"killed",
 	"completed",
+	"completed_dirty",
 	"completed_stale",
 	"failed",
 	"contract_failure",
@@ -328,7 +331,8 @@ const TASK_STATUS_PRIORITY: Record<AgentTaskStatus, number> = {
 	running: 3,
 	stopped: 4,
 	completed: 5,
-	completed_stale: 6,
+	completed_dirty: 6,
+	completed_stale: 7,
 };
 
 function asString(value: unknown): string | undefined {
@@ -357,11 +361,12 @@ function normalizeTask(
 
 	const id = asString(raw["id"]) ?? taskKey;
 	const statusRaw = asString(raw["status"]);
-	const status: AgentTaskStatus = VALID_TASK_STATUSES.has(
-		(statusRaw ?? "running") as AgentTaskStatus,
-	)
-		? ((statusRaw ?? "running") as AgentTaskStatus)
-		: "running";
+	const status: AgentTaskStatus =
+		!statusRaw || statusRaw === "active"
+			? "running"
+			: VALID_TASK_STATUSES.has(statusRaw as AgentTaskStatus)
+				? (statusRaw as AgentTaskStatus)
+				: "stopped";
 	const projectDir = asString(raw["project_dir"]) ?? "";
 	const projectName =
 		asString(raw["project_name"]) ??
@@ -399,6 +404,7 @@ function normalizeTask(
 				: null,
 		terminal_backend:
 			raw["terminal_backend"] === "tmux" ||
+			raw["terminal_backend"] === "persist" ||
 			raw["terminal_backend"] === "applescript"
 				? raw["terminal_backend"]
 				: undefined,
@@ -674,33 +680,28 @@ export class AgentStatusTreeProvider
 	private isRunningTaskHealthy(task: AgentTask): boolean {
 		if (task.status !== "running") return true;
 
-		// If we can still see the underlying process, trust it as active.
-		if (this.hasLiveDiscoveredSession(task)) return true;
+		const ageMs = this.getTaskAgeMs(task);
+		const staleThresholdMs = Math.max(
+			60 * 60_000,
+			this.getStuckThresholdMinutes() * 60_000 * 4,
+		);
+		const looksStale =
+			ageMs !== null && ageMs >= staleThresholdMs && this.isAgentStuck(task);
 
 		// Launcher sessions are expected to be tmux-backed; verify session liveness.
-		if (task.terminal_backend === "tmux" && isValidSessionId(task.session_id)) {
+		if (
+			(task.terminal_backend === "tmux" ||
+				task.terminal_backend === "persist") &&
+			isValidSessionId(task.session_id)
+		) {
 			if (!this.isTmuxSessionAlive(task.session_id)) return false;
-
-			// Long-running sessions with no discovered process and stale/no stream
-			// are likely idle shells after agent exit.
-			const ageMs = this.getTaskAgeMs(task);
-			const staleThresholdMs = Math.max(
-				60 * 60_000,
-				this.getStuckThresholdMinutes() * 60_000 * 4,
-			);
-			if (
-				ageMs !== null &&
-				ageMs >= staleThresholdMs &&
-				this.isAgentStuck(task)
-			) {
-				return false;
-			}
-
-			return true;
+			return !looksStale;
 		}
 
-		// Non-tmux backends are less deterministic here; avoid aggressive downgrades.
-		return true;
+		if (this.hasLiveDiscoveredSession(task)) {
+			return !looksStale;
+		}
+		return !looksStale;
 	}
 
 	private getEffectiveTaskStatus(task: AgentTask): AgentTaskStatus {
@@ -712,25 +713,73 @@ export class AgentStatusTreeProvider
 		const effectiveStatus = this.getEffectiveTaskStatus(task);
 		if (effectiveStatus === task.status) return task;
 
-		return {
-			...task,
-			status: effectiveStatus,
-			completed_at: task.completed_at ?? new Date().toISOString(),
-			error_message:
-				task.error_message ??
-				"Session no longer appears active. Showing as stopped.",
-		};
-	}
-
-	private getDisplayLauncherTasks(): AgentTask[] {
-		return Object.values(this.registry.tasks).map((task) =>
-			this.toDisplayTask(task),
+		return this.markTaskStopped(
+			task,
+			"Session no longer appears active. Showing as stopped.",
 		);
 	}
 
+	private markTaskStopped(task: AgentTask, reason: string): AgentTask {
+		return {
+			...task,
+			status: "stopped",
+			completed_at: task.completed_at ?? new Date().toISOString(),
+			error_message: task.error_message ?? reason,
+		};
+	}
+
+	private getTaskStartedAtMs(task: AgentTask): number {
+		const startedAtMs = new Date(task.started_at).getTime();
+		return Number.isFinite(startedAtMs) ? startedAtMs : 0;
+	}
+
+	private reconcileDuplicateRunningSessions(tasks: AgentTask[]): AgentTask[] {
+		const runningBySession = new Map<string, AgentTask[]>();
+		for (const task of tasks) {
+			if (task.status !== "running" || !task.session_id) continue;
+			const existing = runningBySession.get(task.session_id);
+			if (existing) {
+				existing.push(task);
+			} else {
+				runningBySession.set(task.session_id, [task]);
+			}
+		}
+
+		const staleTaskIds = new Set<string>();
+		for (const [sessionId, sessionTasks] of runningBySession.entries()) {
+			if (sessionTasks.length <= 1) continue;
+			const newestTask = [...sessionTasks].sort((a, b) => {
+				const startedDiff =
+					this.getTaskStartedAtMs(b) - this.getTaskStartedAtMs(a);
+				if (startedDiff !== 0) return startedDiff;
+				return b.id.localeCompare(a.id);
+			})[0];
+			for (const task of sessionTasks) {
+				if (task.id === newestTask?.id) continue;
+				staleTaskIds.add(task.id);
+			}
+			this._tmuxSessionHealthCache.delete(sessionId);
+		}
+
+		return tasks.map((task) =>
+			staleTaskIds.has(task.id)
+				? this.markTaskStopped(
+						task,
+						"Superseded by a newer task on the same session. Showing as stopped.",
+					)
+				: task,
+		);
+	}
+
+	private getDisplayLauncherTasks(): AgentTask[] {
+		const displayTasks = Object.values(this.registry.tasks).map((task) =>
+			this.toDisplayTask(task),
+		);
+		return this.reconcileDuplicateRunningSessions(displayTasks);
+	}
+
 	private getDisplayTaskById(taskId: string): AgentTask | undefined {
-		const rawTask = this.registry.tasks[taskId];
-		return rawTask ? this.toDisplayTask(rawTask) : undefined;
+		return this.getDisplayLauncherTasks().find((task) => task.id === taskId);
 	}
 
 	private getStuckRunningCount(tasks: AgentTask[]): number {
@@ -822,7 +871,9 @@ export class AgentStatusTreeProvider
 			const prev = this.previousStatuses.get(task.id);
 			if (
 				prev === "running" &&
-				(task.status === "completed" || task.status === "failed")
+				(task.status === "completed" ||
+					task.status === "completed_dirty" ||
+					task.status === "failed")
 			) {
 				this.requestDockAttention(dockBounceEnabled);
 			}
@@ -830,7 +881,10 @@ export class AgentStatusTreeProvider
 				const elapsed = formatElapsed(task.started_at);
 				const backend = this.getBackendLabel(task);
 
-				if (task.status === "completed" && onCompletion) {
+				if (
+					(task.status === "completed" || task.status === "completed_dirty") &&
+					onCompletion
+				) {
 					const diffSummary = this.formatNotificationDiffSummary(
 						this.getDiffSummary(task.project_dir, task),
 					);
@@ -1216,7 +1270,7 @@ export class AgentStatusTreeProvider
 			const counts = countAgentStatuses(allEffectiveTasks);
 			const stuckCount = this.getStuckRunningCount(allTasks);
 			const summaryLabel = [
-				formatCountSummary(counts),
+				formatCountSummary(counts, { includeAttention: true }),
 				...(stuckCount > 0 ? [`${stuckCount} stuck`] : []),
 			].join(" · ");
 			const summaryTooltip = this.getSummaryTooltip(counts, stuckCount);
@@ -1640,7 +1694,9 @@ export class AgentStatusTreeProvider
 		// Result — merged exit code + attempts (only for terminal states)
 		if (
 			t.exit_code != null &&
-			(t.status === "completed" || t.status === "stopped")
+			(t.status === "completed" ||
+				t.status === "completed_dirty" ||
+				t.status === "stopped")
 		) {
 			details.push({
 				type: "detail",
@@ -2222,7 +2278,16 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.Expanded,
 		);
 		const discoveredCount = node.discoveredAgents?.length ?? 0;
-		item.description = `${node.tasks.length + discoveredCount} agents`;
+		const counts = countAgentStatuses(node.tasks);
+		counts.running += discoveredCount;
+		counts.total += discoveredCount;
+		item.description = formatCountSummary(counts, {
+			includeAttention: true,
+		});
+		const attentionCount = counts.failed + counts.stopped;
+		if (attentionCount > 0) {
+			item.tooltip = `${attentionCount} ${attentionCount === 1 ? "agent needs" : "agents need"} attention in ${node.projectName}.`;
+		}
 		item.iconPath = new vscode.ThemeIcon("folder");
 		item.contextValue = "projectGroup";
 		return item;
@@ -2269,6 +2334,7 @@ export class AgentStatusTreeProvider
 			case "running":
 				return `Running for ${elapsed}`;
 			case "completed":
+			case "completed_dirty":
 			case "completed_stale":
 				return `Completed in ${elapsed}`;
 			case "failed":

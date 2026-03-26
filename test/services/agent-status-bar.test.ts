@@ -139,7 +139,7 @@ describe("AgentStatusBar", () => {
 
 		bar.update([createTask({ id: "t1", status: "failed" })]);
 
-		expect(mockStatusBarItem.text).toBe("$(warning) 1 failed");
+		expect(mockStatusBarItem.text).toBe("$(warning) 1 attention · 1 failed");
 		expect((mockStatusBarItem.backgroundColor as { id: string }).id).toBe(
 			"statusBarItem.errorBackground",
 		);
@@ -154,7 +154,9 @@ describe("AgentStatusBar", () => {
 			createTask({ id: "t2", status: "completed" }),
 		]);
 
-		expect(mockStatusBarItem.text).toBe("$(warning) 1 completed · 1 failed");
+		expect(mockStatusBarItem.text).toBe(
+			"$(warning) 1 attention · 1 completed · 1 failed",
+		);
 	});
 
 	test("handles stopped and killed tasks with terminal/failed split", async () => {
@@ -166,7 +168,9 @@ describe("AgentStatusBar", () => {
 			createTask({ id: "t2", status: "killed" }),
 		]);
 
-		expect(mockStatusBarItem.text).toBe("$(warning) 1 failed · 1 stopped");
+		expect(mockStatusBarItem.text).toBe(
+			"$(warning) 2 attention · 1 failed · 1 stopped",
+		);
 		expect(mockStatusBarItem.show).toHaveBeenCalled();
 	});
 
@@ -228,7 +232,7 @@ describe("AgentStatusBar", () => {
 		]);
 
 		expect(mockStatusBarItem.text).toBe(
-			"$(pulse) 1 running · 1 completed · 1 failed",
+			"$(warning) 1 running · 1 attention · 1 completed · 1 failed",
 		);
 	});
 

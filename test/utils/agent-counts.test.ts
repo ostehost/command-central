@@ -27,6 +27,7 @@ describe("countAgentStatuses", () => {
 			makeTask("r1", "running"),
 			makeTask("r2", "running"),
 			makeTask("c1", "completed"),
+			makeTask("c3", "completed_dirty"),
 			makeTask("c2", "completed_stale"),
 			makeTask("f1", "failed"),
 			makeTask("f2", "killed"),
@@ -36,10 +37,10 @@ describe("countAgentStatuses", () => {
 
 		expect(countAgentStatuses(tasks)).toEqual({
 			running: 2,
-			completed: 2,
+			completed: 3,
 			failed: 3,
 			stopped: 1,
-			total: 8,
+			total: 9,
 		});
 	});
 
@@ -91,5 +92,19 @@ describe("formatCountSummary", () => {
 		};
 
 		expect(formatCountSummary(counts)).toBe("No agents");
+	});
+
+	test("can include attention rollup in formatted summary", () => {
+		const counts: AgentCounts = {
+			running: 2,
+			completed: 1,
+			failed: 3,
+			stopped: 4,
+			total: 10,
+		};
+
+		expect(formatCountSummary(counts, { includeAttention: true })).toBe(
+			"2 running · 7 attention · 1 completed · 3 failed · 4 stopped",
+		);
 	});
 });

@@ -3,9 +3,9 @@
  *
  * Displays context-aware status with counts per state:
  * - Running: `$(pulse) 2 agents running`
- * - Mixed: `$(pulse) 1 running · 1 completed`
+ * - Mixed: `$(warning) 1 running · 2 attention · 1 completed`
  * - All done: `$(check) 3 completed`
- * - Failed: `$(warning) 1 failed · 2 completed`
+ * - Failed: `$(warning) 3 attention · 1 failed · 2 completed`
  *
  * Tooltip shows per-task markdown details. Clicking focuses the sidebar.
  */
@@ -15,11 +15,13 @@ import type { AgentTask } from "../providers/agent-status-tree-provider.js";
 import {
 	countAgentStatuses,
 	formatCountSummary,
+	getAttentionCount,
 } from "../utils/agent-counts.js";
 
 const STATUS_ICON: Record<AgentTask["status"], string> = {
 	running: "$(pulse)",
 	completed: "$(check)",
+	completed_dirty: "$(check-all)",
 	completed_stale: "$(check-all)",
 	failed: "$(warning)",
 	contract_failure: "$(alert)",
@@ -49,32 +51,43 @@ export class AgentStatusBar implements vscode.Disposable {
 		}
 
 		const counts = countAgentStatuses(tasks);
-		const summary = formatCountSummary(counts);
+		const summary = formatCountSummary(counts, { includeAttention: true });
+		const attentionCount = getAttentionCount(counts);
 
 		// Determine icon and text
-		if (counts.running > 0) {
+		if (attentionCount > 0) {
+			this.statusBarItem.text = `$(warning) ${summary}`;
+			this.statusBarItem.backgroundColor = new vscode.ThemeColor(
+				counts.failed > 0
+					? "statusBarItem.errorBackground"
+					: "statusBarItem.warningBackground",
+			);
+		} else if (counts.running > 0) {
 			this.statusBarItem.text = `$(pulse) ${summary}`;
 			this.statusBarItem.backgroundColor = new vscode.ThemeColor(
 				"statusBarItem.warningBackground",
 			);
-		} else if (counts.failed > 0) {
-			this.statusBarItem.text = `$(warning) ${summary}`;
-			this.statusBarItem.backgroundColor = new vscode.ThemeColor(
-				"statusBarItem.errorBackground",
-			);
-		} else if (counts.stopped > 0) {
-			this.statusBarItem.text = `$(debug-stop) ${summary}`;
-			this.statusBarItem.backgroundColor = undefined;
 		} else {
 			this.statusBarItem.text = `$(check) ${summary}`;
 			this.statusBarItem.backgroundColor = undefined;
 		}
 
 		// Markdown tooltip with per-task details
-		const lines = tasks.map((t) => {
-			const project = truncateForTooltip(t.project_name || "(unknown project)");
-			return `- **${t.id}** (${project}): ${STATUS_ICON[t.status] ?? "$(question)"} ${t.status}`;
-		});
+		const lines: string[] = [];
+		if (attentionCount > 0) {
+			lines.push(
+				`**${attentionCount} ${attentionCount === 1 ? "agent needs" : "agents need"} attention** — restart failed/stopped sessions after reviewing output.`,
+				"",
+			);
+		}
+		lines.push(
+			...tasks.map((t) => {
+				const project = truncateForTooltip(
+					t.project_name || "(unknown project)",
+				);
+				return `- **${t.id}** (${project}): ${STATUS_ICON[t.status] ?? "$(question)"} ${t.status}`;
+			}),
+		);
 		this.statusBarItem.tooltip = new vscode.MarkdownString(lines.join("\n"));
 
 		this.statusBarItem.show();

@@ -766,6 +766,7 @@ export async function activate(
 
 		const TERMINAL_TASK_STATUSES = new Set([
 			"completed",
+			"completed_dirty",
 			"failed",
 			"stopped",
 			"killed",

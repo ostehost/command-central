@@ -491,6 +491,7 @@ describe("clearTerminalTasks command", () => {
 		};
 		const terminalStatuses = new Set([
 			"completed",
+			"completed_dirty",
 			"failed",
 			"stopped",
 			"killed",
@@ -517,6 +518,7 @@ describe("clearTerminalTasks command", () => {
 		};
 		const terminalStatuses = new Set([
 			"completed",
+			"completed_dirty",
 			"failed",
 			"stopped",
 			"killed",

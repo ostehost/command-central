@@ -49,6 +49,7 @@ const QUICK_ACTIONS: Record<AgentQuickActionId, AgentQuickActionDefinition> = {
 
 const STATUS_ACTIONS: Partial<Record<AgentTaskStatus, AgentQuickActionId[]>> = {
 	completed: ["viewDiff", "showOutput", "focusTerminal", "restart"],
+	completed_dirty: ["viewDiff", "showOutput", "focusTerminal", "restart"],
 	completed_stale: ["viewDiff", "showOutput", "focusTerminal", "restart"],
 	failed: ["showOutput", "viewDiff", "restart", "remove"],
 	contract_failure: ["showOutput", "viewDiff", "restart", "remove"],

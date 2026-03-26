@@ -1213,7 +1213,7 @@
         },
         {
           "command": "commandCentral.removeAgentTask",
-          "when": "viewItem =~ /agentTask\\.(failed|stopped|killed|completed|completed_stale|contract_failure)/",
+          "when": "viewItem =~ /agentTask\\.(failed|stopped|killed|completed|completed_dirty|completed_stale|contract_failure)/",
           "group": "inline"
         },
         {
@@ -1244,17 +1244,17 @@
         },
         {
           "command": "commandCentral.restartAgent",
-          "when": "viewItem =~ /agentTask\\.(completed|failed|stopped)/ && commandCentral.hasLauncher",
+          "when": "viewItem =~ /agentTask\\.(completed|completed_dirty|failed|stopped)/ && commandCentral.hasLauncher",
           "group": "2_actions"
         },
         {
           "command": "commandCentral.resumeAgentSession",
-          "when": "viewItem =~ /agentTask\\.(completed|stopped|failed|completed_stale|contract_failure)/",
+          "when": "viewItem =~ /agentTask\\.(completed|completed_dirty|stopped|failed|completed_stale|contract_failure)/",
           "group": "2_actions"
         },
         {
           "command": "commandCentral.removeAgentTask",
-          "when": "viewItem =~ /agentTask\\.(failed|stopped|killed|completed|completed_stale|contract_failure)/",
+          "when": "viewItem =~ /agentTask\\.(failed|stopped|killed|completed|completed_dirty|completed_stale|contract_failure)/",
           "group": "2_actions"
         },
         {

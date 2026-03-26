@@ -177,7 +177,9 @@ describe("package.json agent menu contributions", () => {
 		);
 
 		expect(contextRestart).toBeDefined();
-		expect(contextRestart?.when).toContain("completed|failed|stopped");
+		expect(contextRestart?.when).toContain(
+			"completed|completed_dirty|failed|stopped",
+		);
 		expect(contextRestart?.when).toContain("commandCentral.hasLauncher");
 	});
 
