@@ -811,7 +811,7 @@ export class AgentStatusTreeProvider
 		const actionableCount = counts.attention;
 		if (actionableCount > 0) {
 			hints.push(
-				`${actionableCount} ${actionableCount === 1 ? "agent needs" : "agents need"} attention — use Agent Actions to restart or inspect`,
+				`${actionableCount} ${actionableCount === 1 ? "agent needs" : "agents need"} attention — use Agent Actions in Agent Status tree to restart or inspect`,
 			);
 		}
 		return hints.join("\n");
@@ -2527,20 +2527,27 @@ export class AgentStatusTreeProvider
 		const hasContractFailure = tasks.some(
 			(t) => t.status === "contract_failure",
 		);
+		const hasStopped = tasks.some((t) => t.status === "stopped");
 
 		if (hasFailed) {
 			return new vscode.ThemeIcon("error", new vscode.ThemeColor("charts.red"));
-		}
-		if (hasRunning) {
-			return new vscode.ThemeIcon(
-				"sync~spin",
-				new vscode.ThemeColor("charts.yellow"),
-			);
 		}
 		if (hasContractFailure) {
 			return new vscode.ThemeIcon(
 				"warning",
 				new vscode.ThemeColor("charts.orange"),
+			);
+		}
+		if (hasStopped) {
+			return new vscode.ThemeIcon(
+				"warning",
+				new vscode.ThemeColor("charts.yellow"),
+			);
+		}
+		if (hasRunning) {
+			return new vscode.ThemeIcon(
+				"sync~spin",
+				new vscode.ThemeColor("charts.yellow"),
 			);
 		}
 		return new vscode.ThemeIcon(

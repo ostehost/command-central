@@ -912,6 +912,26 @@ describe("AgentStatusTreeProvider", () => {
 		);
 	});
 
+	test("project group labels respect configured legacy project icons", () => {
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "projects") return [{ name: "alpha", emoji: "🛸" }];
+				return defaultValue;
+			}),
+		}));
+
+		const node: AgentNode = {
+			type: "projectGroup",
+			projectName: "Alpha",
+			projectDir: "/Users/test/projects/alpha",
+			tasks: [createMockTask({ id: "alpha-1", project_name: "Alpha" })],
+		};
+		const item = provider.getTreeItem(node);
+		expect(item.label).toBe("🛸 Alpha");
+		expect(projectIconManagerMock.getIconForProject).not.toHaveBeenCalled();
+	});
+
 	test("getTreeItem creates expanded folder-group item for grouped parents", () => {
 		const node: AgentNode = {
 			type: "folderGroup",
@@ -1019,6 +1039,18 @@ describe("AgentStatusTreeProvider", () => {
 		const icon = item.iconPath as { id: string; color?: { id: string } };
 		expect(icon.id).toBe("warning");
 		expect(icon.color?.id).toBe("charts.orange");
+	});
+
+	test("summary icon is warning yellow when stopped tasks need attention", () => {
+		const stopped = createMockTask({ id: "t1", status: "stopped" });
+		provider.readRegistry = () => createMockRegistry({ t1: stopped });
+		provider.reload();
+
+		const summary = getSummaryNode(provider.getChildren());
+		const item = provider.getTreeItem(summary);
+		const icon = item.iconPath as { id: string; color?: { id: string } };
+		expect(icon.id).toBe("warning");
+		expect(icon.color?.id).toBe("charts.yellow");
 	});
 
 	test("contextValue includes status for tasks", () => {

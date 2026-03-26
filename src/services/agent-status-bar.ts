@@ -20,7 +20,7 @@ import {
 const STATUS_ICON: Record<AgentTask["status"], string> = {
 	running: "$(pulse)",
 	completed: "$(check)",
-	completed_dirty: "$(check-all)",
+	completed_dirty: "$(check)",
 	completed_stale: "$(check-all)",
 	failed: "$(warning)",
 	contract_failure: "$(alert)",
@@ -81,7 +81,7 @@ export class AgentStatusBar implements vscode.Disposable {
 		const lines: string[] = [];
 		if (attentionCount > 0) {
 			lines.push(
-				`**${attentionCount} ${attentionCount === 1 ? "agent needs" : "agents need"} attention** — restart failed/stopped sessions after reviewing output.`,
+				`**${attentionCount} ${attentionCount === 1 ? "agent needs" : "agents need"} attention** — use Agent Actions in Agent Status tree to restart or inspect.`,
 				"",
 			);
 		}

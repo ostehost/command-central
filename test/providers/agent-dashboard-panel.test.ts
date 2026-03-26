@@ -147,7 +147,9 @@ describe("AgentDashboardPanel", () => {
 			const html = panel.getHtml(tasks);
 
 			expect(html).toContain("agents need attention");
-			expect(html).toContain("quick actions to restart or inspect");
+			expect(html).toContain(
+				"Use Agent Actions in Agent Status tree to restart or inspect.",
+			);
 			panel.dispose();
 		});
 
@@ -260,12 +262,15 @@ describe("AgentDashboardPanel", () => {
 				t1: createMockTask({ id: "t1", status: "running" }),
 				t2: createMockTask({ id: "t2", status: "completed" }),
 				t3: createMockTask({ id: "t3", status: "failed" }),
+				t4: createMockTask({ id: "t4", status: "completed_stale" }),
+				t5: createMockTask({ id: "t5", status: "contract_failure" }),
 			};
 			const html = panel.getHtml(tasks);
 
 			expect(html).toContain("🔄");
 			expect(html).toContain("✅");
 			expect(html).toContain("❌");
+			expect(html).toContain("⚠️");
 			panel.dispose();
 		});
 

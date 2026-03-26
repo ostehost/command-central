@@ -28,7 +28,9 @@ const STATUS_ICONS: Record<string, string> = {
 	running: "🔄",
 	completed: "✅",
 	completed_dirty: "✅",
+	completed_stale: "✅",
 	failed: "❌",
+	contract_failure: "⚠️",
 	stopped: "⏹️",
 	killed: "💀",
 };
@@ -150,7 +152,7 @@ export class AgentDashboardPanel implements vscode.Disposable {
 		const needsAttentionCount = counts.attention;
 		const attentionHintHtml =
 			needsAttentionCount > 0
-				? `<p class="hint">${needsAttentionCount} ${needsAttentionCount === 1 ? "agent needs" : "agents need"} attention. Use Agent Status tree quick actions to restart or inspect failed/stopped sessions.</p>`
+				? `<p class="hint">${needsAttentionCount} ${needsAttentionCount === 1 ? "agent needs" : "agents need"} attention. Use Agent Actions in Agent Status tree to restart or inspect.</p>`
 				: "";
 
 		return `<!DOCTYPE html>
@@ -163,6 +165,7 @@ body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); 
 .card.running { border-left: 3px solid var(--vscode-charts-blue); }
 .card.completed, .card.completed_dirty, .card.completed_stale { border-left: 3px solid var(--vscode-charts-green); }
 .card.failed { border-left: 3px solid var(--vscode-charts-red); }
+.card.contract_failure { border-left: 3px solid var(--vscode-charts-orange); }
 .card.stopped, .card.killed { border-left: 3px solid var(--vscode-charts-yellow); }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .card-title { font-weight: bold; font-size: 14px; }
@@ -170,6 +173,7 @@ body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); 
 .status-badge.running { background: var(--vscode-charts-blue); color: white; }
 .status-badge.completed, .status-badge.completed_dirty, .status-badge.completed_stale { background: var(--vscode-charts-green); color: white; }
 .status-badge.failed { background: var(--vscode-charts-red); color: white; }
+.status-badge.contract_failure { background: var(--vscode-charts-orange); color: black; }
 .status-badge.stopped, .status-badge.killed { background: var(--vscode-charts-yellow); color: black; }
 .detail { color: var(--vscode-descriptionForeground); font-size: 12px; margin: 4px 0; }
 .summary { display: flex; gap: 16px; margin-bottom: 16px; padding: 12px; background: var(--vscode-sideBar-background); border-radius: 6px; }
