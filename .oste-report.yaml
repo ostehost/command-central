@@ -1,11 +1,8 @@
-task_id: "cc-icon-grouping-v2"
-status: "failure"
-summary: "Implemented icon-first Agent Status grouping (auto parent groups + manual project.group override), updated configuration wiring, and expanded tree-provider tests; commit blocked by sandbox .git write denial."
+task_id: "prompt-template-ux-research"
+status: "success"
+summary: "Researched prompt templating standards and delivered a Command Central recommendation in research/RESEARCH-prompt-template-ux.md."
 files_changed:
-  - "package.json"
-  - "src/extension.ts"
-  - "src/providers/agent-status-tree-provider.ts"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
-  - "test/tree-view/agent-status-tree-provider-per-file-diff.test.ts"
+  - "research/RESEARCH-prompt-template-ux.md"
+  - ".oste-report.yaml"
 tests_passing: true
-next_steps: "Run git add/commit in an environment where .git is writable, then re-run git status --porcelain to confirm clean tree."
+next_steps: "Implement a Nunjucks-based prompt renderer and migrate launch prompt generation from inline string writing to composable templates."
