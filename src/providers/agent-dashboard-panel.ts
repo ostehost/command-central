@@ -35,6 +35,17 @@ const STATUS_ICONS: Record<string, string> = {
 	killed: "💀",
 };
 
+const STATUS_LABELS: Record<AgentTask["status"], string> = {
+	running: "running",
+	completed: "completed",
+	completed_dirty: "completed (dirty)",
+	completed_stale: "completed (stale)",
+	failed: "failed",
+	contract_failure: "contract failure",
+	stopped: "stopped",
+	killed: "killed",
+};
+
 const ROLE_ICONS: Record<string, string> = {
 	planner: "🔬",
 	developer: "🔨",
@@ -166,7 +177,8 @@ body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); 
 .card.completed, .card.completed_dirty, .card.completed_stale { border-left: 3px solid var(--vscode-charts-green); }
 .card.failed { border-left: 3px solid var(--vscode-charts-red); }
 .card.contract_failure { border-left: 3px solid var(--vscode-charts-orange); }
-.card.stopped, .card.killed { border-left: 3px solid var(--vscode-charts-yellow); }
+.card.stopped { border-left: 3px solid var(--vscode-charts-yellow); }
+.card.killed { border-left: 3px solid var(--vscode-charts-red); }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .card-title { font-weight: bold; font-size: 14px; }
 .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; }
@@ -174,7 +186,8 @@ body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); 
 .status-badge.completed, .status-badge.completed_dirty, .status-badge.completed_stale { background: var(--vscode-charts-green); color: white; }
 .status-badge.failed { background: var(--vscode-charts-red); color: white; }
 .status-badge.contract_failure { background: var(--vscode-charts-orange); color: black; }
-.status-badge.stopped, .status-badge.killed { background: var(--vscode-charts-yellow); color: black; }
+.status-badge.stopped { background: var(--vscode-charts-yellow); color: black; }
+.status-badge.killed { background: var(--vscode-charts-red); color: white; }
 .detail { color: var(--vscode-descriptionForeground); font-size: 12px; margin: 4px 0; }
 .summary { display: flex; gap: 16px; margin-bottom: 16px; padding: 12px; background: var(--vscode-sideBar-background); border-radius: 6px; }
 .summary-item { text-align: center; }
@@ -201,6 +214,7 @@ ${stopped.length > 0 ? `<h2>Stopped</h2><div class="grid">${stopped.map((t) => t
 
 	private renderCard(task: AgentTask): string {
 		const statusIcon = STATUS_ICONS[task.status] ?? "❓";
+		const statusLabel = STATUS_LABELS[task.status] ?? task.status;
 		const roleIcon =
 			task.role && ROLE_ICONS[task.role] ? `${ROLE_ICONS[task.role]} ` : "";
 		const projectName = task.project_dir ? path.basename(task.project_dir) : "";
@@ -217,7 +231,7 @@ ${stopped.length > 0 ? `<h2>Stopped</h2><div class="grid">${stopped.map((t) => t
 		return `<div class="card ${escapeHtml(task.status)}">
 	<div class="card-header">
 		<span class="card-title">${statusIcon} ${roleIcon}${escapeHtml(task.id)}</span>
-		<span class="status-badge ${escapeHtml(task.status)}">${escapeHtml(task.status)}</span>
+		<span class="status-badge ${escapeHtml(task.status)}">${escapeHtml(statusLabel)}</span>
 	</div>
 	${projectName ? `<div class="detail">Project: ${escapeHtml(projectName)}</div>` : ""}
 	${elapsed ? `<div class="detail">Elapsed: ${escapeHtml(elapsed)}</div>` : ""}

@@ -324,6 +324,36 @@ describe("AgentDashboardPanel", () => {
 			panel.dispose();
 		});
 
+		test("renders human-readable labels for special statuses", () => {
+			const panel = new AgentDashboardPanel();
+			const tasks: Record<string, AgentTask> = {
+				t1: createMockTask({ id: "t1", status: "completed_dirty" }),
+				t2: createMockTask({ id: "t2", status: "completed_stale" }),
+				t3: createMockTask({ id: "t3", status: "contract_failure" }),
+			};
+			const html = panel.getHtml(tasks);
+
+			expect(html).toContain(">completed (dirty)</span>");
+			expect(html).toContain(">completed (stale)</span>");
+			expect(html).toContain(">contract failure</span>");
+			panel.dispose();
+		});
+
+		test("uses failed color styling for killed status", () => {
+			const panel = new AgentDashboardPanel();
+			const html = panel.getHtml({
+				t1: createMockTask({ id: "t1", status: "killed" }),
+			});
+
+			expect(html).toContain(
+				".card.killed { border-left: 3px solid var(--vscode-charts-red); }",
+			);
+			expect(html).toContain(
+				".status-badge.killed { background: var(--vscode-charts-red); color: white; }",
+			);
+			panel.dispose();
+		});
+
 		test("escapes HTML in task IDs", () => {
 			const panel = new AgentDashboardPanel();
 			const tasks: Record<string, AgentTask> = {

@@ -1,11 +1,8 @@
-task_id: "final-boss-polish"
+task_id: "cc-polish-16b"
 status: "success"
-summary: "Polished agent status UX consistency for 3-state counts and icon grouping behavior."
+summary: "Polished dashboard status presentation with clearer labels and consistent killed-state coloring."
 files_changed:
   - "src/providers/agent-dashboard-panel.ts"
-  - "src/providers/agent-status-tree-provider.ts"
-  - "src/services/agent-status-bar.ts"
   - "test/providers/agent-dashboard-panel.test.ts"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
 tests_passing: true
-next_steps: "Optional: run just check to review existing non-blocking lint warnings across untouched legacy tests."
+next_steps: "Optional: quick manual smoke check of the Agent Dashboard webview in the extension host."
