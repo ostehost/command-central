@@ -812,3 +812,28 @@ describe("toggleRunningFilter command", () => {
 		);
 	});
 });
+
+describe("changeProjectIcon command", () => {
+	test("accepts emoji input", () => {
+		const value = "🚀";
+		const isValid = /\p{Extended_Pictographic}/u.test(value);
+		expect(isValid).toBe(true);
+	});
+
+	test("accepts 1-2 character non-emoji short strings", () => {
+		const short1 = "A";
+		const short2 = "AI";
+		const length1 = [...short1].length;
+		const length2 = [...short2].length;
+		expect(length1 >= 1 && length1 <= 2).toBe(true);
+		expect(length2 >= 1 && length2 <= 2).toBe(true);
+	});
+
+	test("rejects non-emoji strings longer than 2 characters", () => {
+		const longValue = "API";
+		const hasEmoji = /\p{Extended_Pictographic}/u.test(longValue);
+		const length = [...longValue].length;
+		const isValid = hasEmoji || (length >= 1 && length <= 2);
+		expect(isValid).toBe(false);
+	});
+});

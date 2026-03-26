@@ -16,6 +16,7 @@ import * as vscode from "vscode";
 import { AgentRegistry } from "../discovery/agent-registry.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
+import { ProjectIconManager } from "../services/project-icon-manager.js";
 import {
 	countAgentStatuses,
 	formatCountSummary,
@@ -99,6 +100,7 @@ export interface TaskNode {
 export interface ProjectGroupNode {
 	type: "projectGroup";
 	projectName: string;
+	projectDir?: string;
 	tasks: AgentTask[];
 	discoveredAgents?: DiscoveredAgent[];
 }
@@ -464,8 +466,10 @@ export class AgentStatusTreeProvider
 	private _agentStatusView: vscode.TreeView<AgentNode> | null = null;
 	private previousStuckStates = new Map<string, boolean>();
 	private hasInitializedStuckState = false;
+	private projectIconManager: ProjectIconManager;
 
-	constructor() {
+	constructor(projectIconManager?: ProjectIconManager) {
+		this.projectIconManager = projectIconManager ?? new ProjectIconManager();
 		// Watch config changes for the tasks file path
 		this.disposables.push(
 			vscode.workspace.onDidChangeConfiguration((e) => {
@@ -1063,6 +1067,7 @@ export class AgentStatusTreeProvider
 				? this.groupAgentsByProject(tasks, discovered).map((group) => ({
 						type: "projectGroup" as const,
 						projectName: group.projectName,
+						projectDir: group.projectDir,
 						tasks: group.tasks,
 						discoveredAgents: group.discoveredAgents,
 					}))
@@ -1337,6 +1342,7 @@ export class AgentStatusTreeProvider
 		discoveredAgents: DiscoveredAgent[],
 	): Array<{
 		projectName: string;
+		projectDir: string;
 		tasks: AgentTask[];
 		discoveredAgents: DiscoveredAgent[];
 	}> {
@@ -1344,19 +1350,24 @@ export class AgentStatusTreeProvider
 			string,
 			{
 				projectName: string;
+				projectDir: string;
 				tasks: AgentTask[];
 				discoveredAgents: DiscoveredAgent[];
 			}
 		>();
 
 		for (const task of tasks) {
-			const projectName = task.project_name || "(unknown project)";
-			const existing = grouped.get(projectName);
+			const projectDir = task.project_dir || task.project_name || "";
+			const projectName =
+				task.project_name || path.basename(projectDir) || "(unknown project)";
+			const groupKey = projectDir ? `dir:${projectDir}` : `name:${projectName}`;
+			const existing = grouped.get(groupKey);
 			if (existing) {
 				existing.tasks.push(task);
 			} else {
-				grouped.set(projectName, {
+				grouped.set(groupKey, {
 					projectName,
+					projectDir,
 					tasks: [task],
 					discoveredAgents: [],
 				});
@@ -1364,13 +1375,16 @@ export class AgentStatusTreeProvider
 		}
 
 		for (const agent of discoveredAgents) {
+			const projectDir = this.getDiscoveredProjectDir(agent);
 			const projectName = this.getDiscoveredProjectName(agent);
-			const existing = grouped.get(projectName);
+			const groupKey = projectDir ? `dir:${projectDir}` : `name:${projectName}`;
+			const existing = grouped.get(groupKey);
 			if (existing) {
 				existing.discoveredAgents.push(agent);
 			} else {
-				grouped.set(projectName, {
+				grouped.set(groupKey, {
 					projectName,
+					projectDir,
 					tasks: [],
 					discoveredAgents: [agent],
 				});
@@ -1381,6 +1395,7 @@ export class AgentStatusTreeProvider
 			.sort((a, b) => a.projectName.localeCompare(b.projectName))
 			.map((group) => ({
 				projectName: group.projectName,
+				projectDir: group.projectDir,
 				tasks: this.sortTasks(group.tasks),
 				discoveredAgents: [...group.discoveredAgents].sort(
 					(a, b) =>
@@ -1900,34 +1915,45 @@ export class AgentStatusTreeProvider
 			const visibleTasks = this.isRunningOnlyFilterEnabled()
 				? allTasks.filter((task) => task.status === "running")
 				: allTasks;
-			const groupTasks = visibleTasks.filter(
-				(task) => task.project_name === element.task.project_name,
-			);
+			const taskProjectDir = element.task.project_dir;
+			const groupTasks = taskProjectDir
+				? visibleTasks.filter((task) => task.project_dir === taskProjectDir)
+				: visibleTasks.filter(
+						(task) => task.project_name === element.task.project_name,
+					);
+			const groupDiscovered = taskProjectDir
+				? this._discoveredAgents.filter(
+						(agent) => this.getDiscoveredProjectDir(agent) === taskProjectDir,
+					)
+				: [];
 			if (groupTasks.some((task) => task.id === element.task.id)) {
 				return {
 					type: "projectGroup",
 					projectName: element.task.project_name,
+					projectDir: taskProjectDir,
 					tasks: this.sortTasks(groupTasks),
-					discoveredAgents: [],
+					discoveredAgents: groupDiscovered,
 				};
 			}
 		}
 		if (element.type === "discovered" && this.isProjectGroupingEnabled()) {
 			const projectName = this.getDiscoveredProjectName(element.agent);
+			const projectDir = this.getDiscoveredProjectDir(element.agent);
 			const allTasks = Object.values(this.registry.tasks);
 			const visibleTasks = this.isRunningOnlyFilterEnabled()
 				? allTasks.filter((task) => task.status === "running")
 				: allTasks;
 			const groupTasks = visibleTasks.filter(
-				(task) => task.project_name === projectName,
+				(task) => task.project_dir === projectDir,
 			);
 			const groupDiscovered = this._discoveredAgents.filter(
-				(agent) => this.getDiscoveredProjectName(agent) === projectName,
+				(agent) => this.getDiscoveredProjectDir(agent) === projectDir,
 			);
 			if (groupTasks.length > 0 || groupDiscovered.length > 0) {
 				return {
 					type: "projectGroup",
 					projectName,
+					projectDir,
 					tasks: this.sortTasks(groupTasks),
 					discoveredAgents: groupDiscovered,
 				};
@@ -2026,8 +2052,11 @@ export class AgentStatusTreeProvider
 	}
 
 	private createProjectGroupItem(node: ProjectGroupNode): vscode.TreeItem {
+		const projectDir =
+			node.projectDir || node.tasks[0]?.project_dir || node.projectName;
+		const icon = this.projectIconManager.getIconForProject(projectDir);
 		const item = new vscode.TreeItem(
-			node.projectName,
+			`${icon} ${node.projectName}`,
 			vscode.TreeItemCollapsibleState.Expanded,
 		);
 		const discoveredCount = node.discoveredAgents?.length ?? 0;

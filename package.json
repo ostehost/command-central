@@ -803,6 +803,12 @@
         "icon": "$(trash)"
       },
       {
+        "command": "commandCentral.changeProjectIcon",
+        "title": "Change Project Icon",
+        "category": "Command Central",
+        "icon": "$(edit)"
+      },
+      {
         "command": "commandCentral.clearTerminalTasks",
         "title": "Clear Completed",
         "category": "Command Central",
@@ -1254,6 +1260,11 @@
         {
           "command": "commandCentral.openProjectInVSCode",
           "when": "viewItem == discoveredAgent.running",
+          "group": "inline"
+        },
+        {
+          "command": "commandCentral.changeProjectIcon",
+          "when": "view == commandCentral.agentStatus && viewItem == projectGroup",
           "group": "inline"
         },
         {

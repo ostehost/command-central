@@ -172,10 +172,18 @@ describe("status icon mapping", () => {
 describe("AgentStatusTreeProvider", () => {
 	let provider: AgentStatusTreeProvider;
 	let vscodeMock: ReturnType<typeof setupVSCodeMock>;
+	let projectIconManagerMock: {
+		getIconForProject: ReturnType<typeof mock>;
+		setCustomIcon: ReturnType<typeof mock>;
+	};
 
 	beforeEach(() => {
 		mock.restore();
 		vscodeMock = setupVSCodeMock();
+		projectIconManagerMock = {
+			getIconForProject: mock(() => "🧩"),
+			setCustomIcon: mock(() => Promise.resolve()),
+		};
 		vscodeMock.workspace.getConfiguration = mock(() => ({
 			update: mock(),
 			get: mock((_key: string, defaultValue?: unknown) => {
@@ -191,7 +199,11 @@ describe("AgentStatusTreeProvider", () => {
 			Promise.resolve(undefined),
 		);
 
-		provider = new AgentStatusTreeProvider();
+		provider = new AgentStatusTreeProvider(
+			projectIconManagerMock as unknown as ConstructorParameters<
+				typeof AgentStatusTreeProvider
+			>[0],
+		);
 		// Override readRegistry to return mock data (no file I/O)
 		provider.readRegistry = () => createMockRegistry({});
 		provider.reload();
@@ -368,11 +380,13 @@ describe("AgentStatusTreeProvider", () => {
 
 		const zetaTask = createMockTask({
 			id: "zeta-1",
+			project_dir: "/Users/test/projects/zeta",
 			project_name: "Zeta",
 			started_at: "2026-02-25T06:00:00Z",
 		});
 		const alphaTask = createMockTask({
 			id: "alpha-1",
+			project_dir: "/Users/test/projects/alpha",
 			project_name: "Alpha",
 			started_at: "2026-02-25T07:00:00Z",
 		});
@@ -592,14 +606,18 @@ describe("AgentStatusTreeProvider", () => {
 		const node: AgentNode = {
 			type: "projectGroup",
 			projectName: "Alpha",
+			projectDir: "/Users/test/projects/alpha",
 			tasks: [createMockTask({ id: "alpha-1", project_name: "Alpha" })],
 		};
 		const item = provider.getTreeItem(node);
-		expect(item.label).toBe("Alpha");
+		expect(item.label).toBe("🧩 Alpha");
 		expect(item.description).toBe("1 agents");
 		expect(item.collapsibleState).toBe(2); // Expanded
 		expect((item.iconPath as { id: string }).id).toBe("folder");
 		expect(item.contextValue).toBe("projectGroup");
+		expect(projectIconManagerMock.getIconForProject).toHaveBeenCalledWith(
+			"/Users/test/projects/alpha",
+		);
 	});
 
 	test("launcher task icons are mapped by status", () => {

@@ -32,6 +32,7 @@ import {
 	AgentStatusTreeProvider,
 	type AgentTask,
 	isValidSessionId,
+	type ProjectGroupNode,
 } from "./providers/agent-status-tree-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
 import { AgentBackendSwitcher } from "./services/agent-backend-switcher.js";
@@ -39,6 +40,7 @@ import { AgentOutputChannels } from "./services/agent-output-channels.js";
 import { AgentStatusBar } from "./services/agent-status-bar.js";
 import { GroupingStateManager } from "./services/grouping-state-manager.js";
 import { LoggerService, LogLevel } from "./services/logger-service.js";
+import { ProjectIconManager } from "./services/project-icon-manager.js";
 import { ProjectIconService } from "./services/project-icon-service.js";
 import { ProjectViewManager } from "./services/project-view-manager.js";
 import { SessionStore } from "./services/session-store.js";
@@ -617,7 +619,10 @@ export async function activate(
 		// Agent Status Panel
 		// ============================================================================
 		const sessionStore = new SessionStore();
-		agentStatusProvider = new AgentStatusTreeProvider();
+		const projectIconManagerForAgents = new ProjectIconManager();
+		agentStatusProvider = new AgentStatusTreeProvider(
+			projectIconManagerForAgents,
+		);
 		const agentStatusView = vscode.window.createTreeView(
 			"commandCentral.agentStatus",
 			{ treeDataProvider: agentStatusProvider, showCollapseAll: true },
@@ -750,6 +755,13 @@ export async function activate(
 				.getConfiguration("commandCentral.agentStatus")
 				.get<string>("defaultBackend", "codex");
 			return configured === "gemini" ? "gemini" : "codex";
+		};
+		const isValidProjectIconInput = (value: string): boolean => {
+			const trimmed = value.trim();
+			if (!trimmed) return false;
+			if (/\p{Extended_Pictographic}/u.test(trimmed)) return true;
+			const length = [...trimmed].length;
+			return length >= 1 && length <= 2;
 		};
 
 		const TERMINAL_TASK_STATUSES = new Set([
@@ -1021,6 +1033,50 @@ export async function activate(
 				"commandCentral.refreshAgentStatus",
 				() => {
 					agentStatusProvider?.reload();
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.changeProjectIcon",
+				async (node?: ProjectGroupNode) => {
+					if (!node) {
+						vscode.window.showWarningMessage(
+							"No project selected. Right-click a project group in the tree.",
+						);
+						return;
+					}
+
+					const projectDir = node.projectDir || node.tasks[0]?.project_dir;
+					if (!projectDir) {
+						vscode.window.showErrorMessage(
+							"Unable to determine project directory for this group.",
+						);
+						return;
+					}
+
+					const currentIcon =
+						projectIconManagerForAgents.getIconForProject(projectDir);
+					const input = await vscode.window.showInputBox({
+						title: "Change Project Icon",
+						prompt: `Set icon for ${node.projectName}`,
+						placeHolder: "e.g. 🚀 or AI",
+						value: currentIcon,
+						validateInput: (value) =>
+							isValidProjectIconInput(value)
+								? undefined
+								: "Enter an emoji, or a 1-2 character short icon.",
+					});
+					if (input == null) return;
+
+					const nextIcon = input.trim();
+					if (!isValidProjectIconInput(nextIcon)) {
+						vscode.window.showErrorMessage(
+							"Icon must be an emoji, or a 1-2 character short icon.",
+						);
+						return;
+					}
+
+					await projectIconManagerForAgents.setCustomIcon(projectDir, nextIcon);
+					await agentStatusProvider?.reload();
 				},
 			),
 			vscode.commands.registerCommand(
