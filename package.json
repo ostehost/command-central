@@ -97,6 +97,12 @@
           "description": "Display name for this workspace project",
           "scope": "resource"
         },
+        "commandCentral.project.group": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional group override for this workspace in Agent Status (for example, `research` or `client-a`). When set, the project is always shown under that group.",
+          "scope": "resource"
+        },
         "commandCentral.gitSort.enabled": {
           "type": "boolean",
           "default": true,

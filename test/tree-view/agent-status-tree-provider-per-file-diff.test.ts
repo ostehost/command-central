@@ -88,19 +88,17 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 	});
 
 	test("falls back to HEAD~1..HEAD when startCommit ref is stale", () => {
+		const provider = new AgentStatusTreeProvider();
+		mockExecFileSync.mockReset();
 		let calls = 0;
-		mockExecFileSync.mockImplementationOnce((_cmd: string, args: string[]) => {
+		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
 			lastExecArgs = args;
 			calls += 1;
-			throw new Error("bad revision");
-		});
-		mockExecFileSync.mockImplementationOnce((_cmd: string, args: string[]) => {
-			lastExecArgs = args;
-			calls += 1;
+			if (calls === 1) {
+				throw new Error("bad revision");
+			}
 			return "3\t1\tsrc/fallback.ts\n";
 		});
-
-		const provider = new AgentStatusTreeProvider();
 		const result = provider.getPerFileDiffs("/tmp/project", "stale-commit");
 
 		expect(calls).toBe(2);

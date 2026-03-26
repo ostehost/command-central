@@ -7,9 +7,12 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import * as fs from "node:fs";
 import * as path from "node:path";
 import type * as vscode from "vscode";
+
+// Keep this test file on real node:fs even when other files mock it.
+const fs = require("node:fs") as typeof import("node:fs");
+mock.module("node:fs", () => fs);
 
 // Mock port-detector to avoid real lsof calls in tree provider tests
 const mockDetectListeningPorts = mock(
@@ -353,19 +356,20 @@ describe("AgentStatusTreeProvider", () => {
 		});
 
 		test("keeps only newest running task per reused session id", () => {
+			const now = Date.now();
 			const older = createMockTask({
 				id: "stale-running",
 				status: "running",
 				session_id: "agent-shared",
 				terminal_backend: "persist",
-				started_at: "2026-03-25T12:00:00Z",
+				started_at: new Date(now - 2 * 60 * 60_000).toISOString(),
 			});
 			const newer = createMockTask({
 				id: "fresh-running",
 				status: "running",
 				session_id: "agent-shared",
 				terminal_backend: "persist",
-				started_at: "2026-03-26T12:00:00Z",
+				started_at: new Date(now - 5 * 60_000).toISOString(),
 			});
 			(
 				provider as unknown as {
@@ -578,6 +582,125 @@ describe("AgentStatusTreeProvider", () => {
 		).toBe("Zeta");
 	});
 
+	test("auto-groups projects by workspace parent when 2+ siblings exist", () => {
+		vscodeMock.workspace.workspaceFolders = [
+			{
+				uri: { fsPath: "/Users/test/research/alpha" },
+				name: "alpha",
+				index: 0,
+			},
+			{
+				uri: { fsPath: "/Users/test/research/beta" },
+				name: "beta",
+				index: 1,
+			},
+			{
+				uri: { fsPath: "/Users/test/solo/gamma" },
+				name: "gamma",
+				index: 2,
+			},
+		];
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return true;
+				return defaultValue;
+			}),
+		}));
+
+		const alphaTask = createMockTask({
+			id: "alpha-1",
+			project_dir: "/Users/test/research/alpha",
+			project_name: "Alpha",
+		});
+		const betaTask = createMockTask({
+			id: "beta-1",
+			project_dir: "/Users/test/research/beta",
+			project_name: "Beta",
+		});
+		const gammaTask = createMockTask({
+			id: "gamma-1",
+			project_dir: "/Users/test/solo/gamma",
+			project_name: "Gamma",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[alphaTask.id]: alphaTask,
+				[betaTask.id]: betaTask,
+				[gammaTask.id]: gammaTask,
+			});
+		provider.reload();
+
+		const rootChildren = provider.getChildren();
+		const folderGroup = rootChildren.find(
+			(node) => node.type === "folderGroup",
+		) as {
+			type: "folderGroup";
+			groupName: string;
+			projectCount: number;
+		};
+		expect(folderGroup).toBeDefined();
+		expect(folderGroup.groupName).toBe("research");
+		expect(folderGroup.projectCount).toBe(2);
+
+		const nestedProjects = provider.getChildren(
+			folderGroup as unknown as AgentNode,
+		);
+		expect(nestedProjects).toHaveLength(2);
+		expect(nestedProjects.every((node) => node.type === "projectGroup")).toBe(
+			true,
+		);
+
+		const directProjects = rootChildren.filter(
+			(node) => node.type === "projectGroup",
+		) as Array<{ type: "projectGroup"; projectName: string }>;
+		expect(directProjects).toHaveLength(1);
+		expect(directProjects[0]?.projectName).toBe("Gamma");
+	});
+
+	test("manual project.group override creates a folder group even with one project", () => {
+		vscodeMock.workspace.workspaceFolders = [
+			{
+				uri: { fsPath: "/Users/test/client/project-a" },
+				name: "project-a",
+				index: 0,
+			},
+		];
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return true;
+				if (_key === "project.group") return "client-work";
+				return defaultValue;
+			}),
+		}));
+
+		const task = createMockTask({
+			id: "project-a-1",
+			project_dir: "/Users/test/client/project-a",
+			project_name: "Project A",
+		});
+		provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+		provider.reload();
+
+		const rootChildren = provider.getChildren();
+		const folderGroup = rootChildren.find(
+			(node) => node.type === "folderGroup",
+		) as {
+			type: "folderGroup";
+			groupName: string;
+			projectCount: number;
+		};
+		expect(folderGroup).toBeDefined();
+		expect(folderGroup.groupName).toBe("client-work");
+		expect(folderGroup.projectCount).toBe(1);
+		const nestedProjects = provider.getChildren(
+			folderGroup as unknown as AgentNode,
+		);
+		expect(nestedProjects).toHaveLength(1);
+		expect(nestedProjects[0]?.type).toBe("projectGroup");
+	});
+
 	test("returns grouped project children as task nodes sorted chronologically", () => {
 		vscodeMock.workspace.getConfiguration = mock(() => ({
 			update: mock(),
@@ -784,11 +907,25 @@ describe("AgentStatusTreeProvider", () => {
 		expect(item.label).toBe("🧩 Alpha");
 		expect(item.description).toBe("1 running");
 		expect(item.collapsibleState).toBe(2); // Expanded
-		expect((item.iconPath as { id: string }).id).toBe("folder");
+		expect(item.iconPath).toBeUndefined();
 		expect(item.contextValue).toBe("projectGroup");
 		expect(projectIconManagerMock.getIconForProject).toHaveBeenCalledWith(
 			"/Users/test/projects/alpha",
 		);
+	});
+
+	test("getTreeItem creates expanded folder-group item for grouped parents", () => {
+		const node: AgentNode = {
+			type: "folderGroup",
+			groupKey: "auto:/Users/test/research",
+			groupName: "research",
+			projectCount: 4,
+			projects: [],
+		};
+		const item = provider.getTreeItem(node);
+		expect(item.label).toBe("📁 research · 4");
+		expect(item.collapsibleState).toBe(2);
+		expect(item.contextValue).toBe("folderGroup");
 	});
 
 	test("launcher task icons are mapped by status", () => {
@@ -1035,8 +1172,11 @@ describe("AgentStatusTreeProvider", () => {
 	test("omits role emoji when role is null", () => {
 		const task = createMockTask({ role: null });
 		const item = provider.getTreeItem({ type: "task", task });
-		// No status emoji in label, no role icon — just the task ID
-		expect(item.label).toBe("test-task-1");
+		expect(item.label).toContain("test-task-1");
+		expect(item.label).not.toContain("🔬");
+		expect(item.label).not.toContain("🔨");
+		expect(item.label).not.toContain("🔍");
+		expect(item.label).not.toContain("🧪");
 	});
 
 	test("includes terminal_backend in tooltip", () => {
@@ -2094,7 +2234,7 @@ describe("AgentStatusTreeProvider", () => {
 			vscodeMock.workspace.getConfiguration = mock(() => ({
 				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
-					if (_key === "projects") return [{ name: "my-app", emoji: "🚀" }];
+					if (_key === "projects") return [{ name: "my-app", emoji: "🫧" }];
 					if (_key === "agentStatus.groupByProject") return false;
 					return defaultValue;
 				}),
@@ -2104,7 +2244,7 @@ describe("AgentStatusTreeProvider", () => {
 				project_dir: "/Users/test/projects/my-app",
 			});
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.label).toContain("🚀");
+			expect(item.label).toContain("🫧");
 			expect(item.label).toContain("test-task-1");
 		});
 
@@ -2113,7 +2253,7 @@ describe("AgentStatusTreeProvider", () => {
 				update: mock(),
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "projects")
-						return [{ name: "other-project", emoji: "🎨" }];
+						return [{ name: "other-project", emoji: "🛸" }];
 					if (_key === "agentStatus.groupByProject") return false;
 					return defaultValue;
 				}),
@@ -2123,8 +2263,8 @@ describe("AgentStatusTreeProvider", () => {
 				project_dir: "/Users/test/projects/my-app",
 			});
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.label).not.toContain("🎨");
-			expect(item.label).toBe("test-task-1");
+			expect(item.label).not.toContain("🛸");
+			expect(item.label).toContain("test-task-1");
 		});
 
 		test("config with multiple projects works correctly", () => {
@@ -2133,9 +2273,9 @@ describe("AgentStatusTreeProvider", () => {
 				get: mock((_key: string, defaultValue?: unknown) => {
 					if (_key === "projects")
 						return [
-							{ name: "my-app", emoji: "🚀" },
-							{ name: "api-server", emoji: "⚡" },
-							{ name: "docs", emoji: "📚" },
+							{ name: "my-app", emoji: "🫧" },
+							{ name: "api-server", emoji: "🛸" },
+							{ name: "docs", emoji: "🪁" },
 						];
 					if (_key === "agentStatus.groupByProject") return false;
 					return defaultValue;
@@ -2147,16 +2287,17 @@ describe("AgentStatusTreeProvider", () => {
 				project_dir: "/Users/test/projects/api-server",
 			});
 			const item1 = provider.getTreeItem({ type: "task", task: task1 });
-			expect(item1.label).toContain("⚡");
+			expect(item1.label).toContain("🛸");
 
 			const task2 = createMockTask({
 				id: "t2",
 				project_dir: "/Users/test/projects/unknown",
 			});
 			const item2 = provider.getTreeItem({ type: "task", task: task2 });
-			expect(item2.label).not.toContain("⚡");
-			expect(item2.label).not.toContain("🚀");
-			expect(item2.label).not.toContain("📚");
+			expect(item2.label).not.toContain("🛸");
+			expect(item2.label).not.toContain("🫧");
+			expect(item2.label).not.toContain("🪁");
+			expect(item2.label).toContain("t2");
 		});
 
 		test("empty projects config returns no emoji", () => {
@@ -2171,7 +2312,7 @@ describe("AgentStatusTreeProvider", () => {
 
 			const task = createMockTask();
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.label).toBe("test-task-1");
+			expect(item.label).toContain("test-task-1");
 		});
 	});
 

@@ -106,9 +106,19 @@ export interface ProjectGroupNode {
 	projectDir?: string;
 	tasks: AgentTask[];
 	discoveredAgents?: DiscoveredAgent[];
+	parentGroupKey?: string;
+	parentGroupName?: string;
 }
 
-export type TreeElement = TaskNode | ProjectGroupNode;
+export interface FolderGroupNode {
+	type: "folderGroup";
+	groupKey: string;
+	groupName: string;
+	projectCount: number;
+	projects: ProjectGroupNode[];
+}
+
+export type TreeElement = TaskNode | ProjectGroupNode | FolderGroupNode;
 
 export interface DetailNode {
 	type: "detail";
@@ -495,7 +505,10 @@ export class AgentStatusTreeProvider
 						"commandCentral.agentStatus.showOnlyRunning",
 					) ||
 					e.affectsConfiguration("commandCentral.agentStatus.groupByProject") ||
-					e.affectsConfiguration("commandCentral.agentStatus.sortByStatus")
+					e.affectsConfiguration("commandCentral.agentStatus.sortByStatus") ||
+					e.affectsConfiguration("commandCentral.project.group") ||
+					e.affectsConfiguration("commandCentral.project.icon") ||
+					e.affectsConfiguration("commandCentral.projects")
 				) {
 					this._onDidChangeTreeData.fire(undefined);
 				}
@@ -1185,6 +1198,9 @@ export class AgentStatusTreeProvider
 		if (element.type === "projectGroup") {
 			return this.createProjectGroupItem(element);
 		}
+		if (element.type === "folderGroup") {
+			return this.createFolderGroupItem(element);
+		}
 		if (element.type === "fileChange") {
 			return this.createFileChangeItem(element);
 		}
@@ -1248,14 +1264,8 @@ export class AgentStatusTreeProvider
 				type: "task" as const,
 				task,
 			}));
-			const projectGroupNodes: AgentNode[] = groupedByProject
-				? this.groupAgentsByProject(tasks, discovered).map((group) => ({
-						type: "projectGroup" as const,
-						projectName: group.projectName,
-						projectDir: group.projectDir,
-						tasks: group.tasks,
-						discoveredAgents: group.discoveredAgents,
-					}))
+			const groupedNodes: AgentNode[] = groupedByProject
+				? this.buildGroupedRootNodes(tasks, discovered)
 				: [];
 
 			// Discovered agents second, sorted by start time descending
@@ -1281,9 +1291,13 @@ export class AgentStatusTreeProvider
 					label: summaryLabel,
 					tooltip: summaryTooltip || undefined,
 				},
-				...(groupedByProject ? projectGroupNodes : taskNodes),
+				...(groupedByProject ? groupedNodes : taskNodes),
 				...(groupedByProject ? [] : discoveredNodes),
 			];
+		}
+
+		if (element.type === "folderGroup") {
+			return element.projects;
 		}
 
 		if (element.type === "projectGroup") {
@@ -1532,15 +1546,10 @@ export class AgentStatusTreeProvider
 		});
 	}
 
-	private groupAgentsByProject(
+	private buildProjectNodes(
 		tasks: AgentTask[],
 		discoveredAgents: DiscoveredAgent[],
-	): Array<{
-		projectName: string;
-		projectDir: string;
-		tasks: AgentTask[];
-		discoveredAgents: DiscoveredAgent[];
-	}> {
+	): ProjectGroupNode[] {
 		const grouped = new Map<
 			string,
 			{
@@ -1589,6 +1598,7 @@ export class AgentStatusTreeProvider
 		return Array.from(grouped.values())
 			.sort((a, b) => a.projectName.localeCompare(b.projectName))
 			.map((group) => ({
+				type: "projectGroup" as const,
 				projectName: group.projectName,
 				projectDir: group.projectDir,
 				tasks: this.sortTasks(group.tasks),
@@ -1597,6 +1607,165 @@ export class AgentStatusTreeProvider
 						new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
 				),
 			}));
+	}
+
+	private getWorkspaceParentGroups(): Map<
+		string,
+		{ count: number; workspaceDirs: Set<string> }
+	> {
+		const byParent = new Map<string, Set<string>>();
+		for (const folder of vscode.workspace.workspaceFolders ?? []) {
+			const workspaceDir = path.resolve(folder.uri.fsPath);
+			const parentDir = path.dirname(workspaceDir);
+			const siblingDirs = byParent.get(parentDir) ?? new Set<string>();
+			siblingDirs.add(workspaceDir);
+			byParent.set(parentDir, siblingDirs);
+		}
+
+		const result = new Map<
+			string,
+			{ count: number; workspaceDirs: Set<string> }
+		>();
+		for (const [parentDir, workspaceDirs] of byParent.entries()) {
+			if (workspaceDirs.size >= 2) {
+				result.set(parentDir, {
+					count: workspaceDirs.size,
+					workspaceDirs,
+				});
+			}
+		}
+		return result;
+	}
+
+	private getProjectGroupOverride(projectDir: string): string | null {
+		if (!projectDir) return null;
+		if (!path.isAbsolute(projectDir)) return null;
+		const normalizedProjectDir = path.resolve(projectDir);
+		const workspaceFolder = (vscode.workspace.workspaceFolders ?? []).find(
+			(folder) => path.resolve(folder.uri.fsPath) === normalizedProjectDir,
+		);
+		if (workspaceFolder) {
+			const workspaceOverride = vscode.workspace
+				.getConfiguration("commandCentral", workspaceFolder.uri)
+				.get<string>("project.group", "")
+				.trim();
+			if (workspaceOverride.length > 0) return workspaceOverride;
+		}
+
+		const settingsOverride = this.readProjectSettingFromFile(
+			projectDir,
+			"commandCentral.project.group",
+		);
+		return settingsOverride && settingsOverride.length > 0
+			? settingsOverride
+			: null;
+	}
+
+	private getAutoParentGroup(projectDir: string): {
+		groupKey: string;
+		groupName: string;
+		projectCount: number;
+	} | null {
+		if (!projectDir) return null;
+		if (!path.isAbsolute(projectDir)) return null;
+		const normalizedProjectDir = path.resolve(projectDir);
+		const parentDir = path.dirname(normalizedProjectDir);
+		const workspaceParents = this.getWorkspaceParentGroups();
+		const parentInfo = workspaceParents.get(parentDir);
+		if (!parentInfo || !parentInfo.workspaceDirs.has(normalizedProjectDir)) {
+			return null;
+		}
+
+		return {
+			groupKey: `auto:${parentDir}`,
+			groupName: path.basename(parentDir) || parentDir,
+			projectCount: parentInfo.count,
+		};
+	}
+
+	private buildGroupedRootNodes(
+		tasks: AgentTask[],
+		discoveredAgents: DiscoveredAgent[],
+	): Array<ProjectGroupNode | FolderGroupNode> {
+		const projectNodes = this.buildProjectNodes(tasks, discoveredAgents);
+		const folderGroups = new Map<
+			string,
+			{
+				groupName: string;
+				projectCount: number;
+				projects: ProjectGroupNode[];
+			}
+		>();
+		const directProjects: ProjectGroupNode[] = [];
+
+		for (const projectNode of projectNodes) {
+			const projectDir =
+				projectNode.projectDir ||
+				projectNode.tasks[0]?.project_dir ||
+				projectNode.projectName;
+			const manualGroup = this.getProjectGroupOverride(projectDir);
+			const autoParentGroup = manualGroup
+				? null
+				: this.getAutoParentGroup(projectDir);
+			const targetGroup = manualGroup
+				? {
+						groupKey: `manual:${manualGroup.toLowerCase()}`,
+						groupName: manualGroup,
+						projectCount: 1,
+					}
+				: autoParentGroup;
+			if (!targetGroup) {
+				directProjects.push(projectNode);
+				continue;
+			}
+
+			const existing = folderGroups.get(targetGroup.groupKey);
+			if (existing) {
+				existing.projects.push({
+					...projectNode,
+					parentGroupKey: targetGroup.groupKey,
+					parentGroupName: targetGroup.groupName,
+				});
+				if (targetGroup.groupKey.startsWith("manual:")) {
+					existing.projectCount += 1;
+				}
+				continue;
+			}
+			folderGroups.set(targetGroup.groupKey, {
+				groupName: targetGroup.groupName,
+				projectCount: targetGroup.projectCount,
+				projects: [
+					{
+						...projectNode,
+						parentGroupKey: targetGroup.groupKey,
+						parentGroupName: targetGroup.groupName,
+					},
+				],
+			});
+		}
+
+		const folderGroupNodes: FolderGroupNode[] = Array.from(
+			folderGroups.entries(),
+		)
+			.map(([groupKey, entry]) => ({
+				type: "folderGroup",
+				groupKey,
+				groupName: entry.groupName,
+				projectCount: entry.projectCount,
+				projects: [...entry.projects].sort((a, b) =>
+					a.projectName.localeCompare(b.projectName),
+				),
+			}))
+			.sort((a, b) => a.groupName.localeCompare(b.groupName));
+
+		const sortedDirectProjects = [...directProjects].sort((a, b) =>
+			a.projectName.localeCompare(b.projectName),
+		);
+		return [...folderGroupNodes, ...sortedDirectProjects].sort((a, b) => {
+			const left = a.type === "folderGroup" ? a.groupName : a.projectName;
+			const right = b.type === "folderGroup" ? b.groupName : b.projectName;
+			return left.localeCompare(right);
+		});
 	}
 
 	private getCompactChildren(t: AgentTask): DetailNode[] {
@@ -2118,53 +2287,63 @@ export class AgentStatusTreeProvider
 	}
 
 	getParent(element: AgentNode): AgentNode | undefined {
-		if (element.type === "task" && this.isProjectGroupingEnabled()) {
+		if (this.isProjectGroupingEnabled()) {
 			const allTasks = this.getDisplayLauncherTasks();
 			const visibleTasks = this.isRunningOnlyFilterEnabled()
 				? allTasks.filter((task) => task.status === "running")
 				: allTasks;
-			const taskProjectDir = element.task.project_dir;
-			const groupTasks = taskProjectDir
-				? visibleTasks.filter((task) => task.project_dir === taskProjectDir)
-				: visibleTasks.filter(
-						(task) => task.project_name === element.task.project_name,
-					);
-			const groupDiscovered = taskProjectDir
-				? this._discoveredAgents.filter(
-						(agent) => this.getDiscoveredProjectDir(agent) === taskProjectDir,
-					)
-				: [];
-			if (groupTasks.some((task) => task.id === element.task.id)) {
-				return {
-					type: "projectGroup",
-					projectName: element.task.project_name,
-					projectDir: taskProjectDir,
-					tasks: this.sortTasks(groupTasks),
-					discoveredAgents: groupDiscovered,
-				};
+			const groupedRoots = this.buildGroupedRootNodes(
+				visibleTasks,
+				this._discoveredAgents,
+			);
+
+			const findProjectParent = (
+				matcher: (project: ProjectGroupNode) => boolean,
+			): ProjectGroupNode | undefined => {
+				for (const root of groupedRoots) {
+					if (root.type === "projectGroup") {
+						if (matcher(root)) return root;
+						continue;
+					}
+					const nested = root.projects.find((project) => matcher(project));
+					if (nested) return nested;
+				}
+				return undefined;
+			};
+
+			if (element.type === "task") {
+				return findProjectParent((project) =>
+					project.tasks.some((task) => task.id === element.task.id),
+				);
 			}
-		}
-		if (element.type === "discovered" && this.isProjectGroupingEnabled()) {
-			const projectName = this.getDiscoveredProjectName(element.agent);
-			const projectDir = this.getDiscoveredProjectDir(element.agent);
-			const allTasks = this.getDisplayLauncherTasks();
-			const visibleTasks = this.isRunningOnlyFilterEnabled()
-				? allTasks.filter((task) => task.status === "running")
-				: allTasks;
-			const groupTasks = visibleTasks.filter(
-				(task) => task.project_dir === projectDir,
-			);
-			const groupDiscovered = this._discoveredAgents.filter(
-				(agent) => this.getDiscoveredProjectDir(agent) === projectDir,
-			);
-			if (groupTasks.length > 0 || groupDiscovered.length > 0) {
-				return {
-					type: "projectGroup",
-					projectName,
-					projectDir,
-					tasks: this.sortTasks(groupTasks),
-					discoveredAgents: groupDiscovered,
-				};
+
+			if (element.type === "discovered") {
+				return findProjectParent((project) =>
+					(project.discoveredAgents ?? []).some(
+						(agent) => agent.pid === element.agent.pid,
+					),
+				);
+			}
+
+			if (element.type === "projectGroup") {
+				const knownParentKey = element.parentGroupKey;
+				if (knownParentKey) {
+					return groupedRoots.find(
+						(root) =>
+							root.type === "folderGroup" && root.groupKey === knownParentKey,
+					);
+				}
+
+				for (const root of groupedRoots) {
+					if (root.type !== "folderGroup") continue;
+					const match = root.projects.some((project) => {
+						const sameDir =
+							(project.projectDir ?? "") === (element.projectDir ?? "");
+						if (sameDir && element.projectDir) return true;
+						return project.projectName === element.projectName;
+					});
+					if (match) return root;
+				}
 			}
 		}
 		if (element.type === "detail") {
@@ -2247,7 +2426,27 @@ export class AgentStatusTreeProvider
 		return path.basename(projectDir) || projectDir;
 	}
 
-	private getProjectEmoji(projectDir: string): string | null {
+	private readProjectSettingFromFile(
+		projectDir: string,
+		settingKey: string,
+	): string | null {
+		if (!projectDir) return null;
+		if (!path.isAbsolute(projectDir)) return null;
+		const settingsPath = path.join(projectDir, ".vscode", "settings.json");
+		if (!fs.existsSync(settingsPath)) return null;
+		try {
+			const raw = fs.readFileSync(settingsPath, "utf-8");
+			const parsed = JSON.parse(raw) as Record<string, unknown>;
+			const value = parsed[settingKey];
+			return typeof value === "string" && value.trim().length > 0
+				? value.trim()
+				: null;
+		} catch {
+			return null;
+		}
+	}
+
+	private getLegacyProjectEmoji(projectDir: string): string | null {
 		const config = vscode.workspace.getConfiguration("commandCentral");
 		const projects = config.get<Array<{ name: string; emoji: string }>>(
 			"projects",
@@ -2256,6 +2455,20 @@ export class AgentStatusTreeProvider
 		const dirName = path.basename(projectDir);
 		const match = projects.find((p) => p.name === dirName);
 		return match?.emoji ?? null;
+	}
+
+	private getProjectIcon(projectDir: string): string {
+		if (!projectDir || !path.isAbsolute(projectDir)) {
+			return this.getLegacyProjectEmoji(projectDir) ?? "📁";
+		}
+		const configuredIcon = this.readProjectSettingFromFile(
+			projectDir,
+			"commandCentral.project.icon",
+		);
+		if (configuredIcon) return configuredIcon;
+		const legacyIcon = this.getLegacyProjectEmoji(projectDir);
+		if (legacyIcon) return legacyIcon;
+		return this.projectIconManager.getIconForProject(projectDir);
 	}
 
 	private createSummaryItem(node: SummaryNode): vscode.TreeItem {
@@ -2272,7 +2485,7 @@ export class AgentStatusTreeProvider
 	private createProjectGroupItem(node: ProjectGroupNode): vscode.TreeItem {
 		const projectDir =
 			node.projectDir || node.tasks[0]?.project_dir || node.projectName;
-		const icon = this.projectIconManager.getIconForProject(projectDir);
+		const icon = this.getProjectIcon(projectDir);
 		const item = new vscode.TreeItem(
 			`${icon} ${node.projectName}`,
 			vscode.TreeItemCollapsibleState.Expanded,
@@ -2288,8 +2501,16 @@ export class AgentStatusTreeProvider
 		if (attentionCount > 0) {
 			item.tooltip = `${attentionCount} ${attentionCount === 1 ? "agent needs" : "agents need"} attention in ${node.projectName}.`;
 		}
-		item.iconPath = new vscode.ThemeIcon("folder");
 		item.contextValue = "projectGroup";
+		return item;
+	}
+
+	private createFolderGroupItem(node: FolderGroupNode): vscode.TreeItem {
+		const item = new vscode.TreeItem(
+			`📁 ${node.groupName} · ${node.projectCount}`,
+			vscode.TreeItemCollapsibleState.Expanded,
+		);
+		item.contextValue = "folderGroup";
 		return item;
 	}
 
@@ -2423,8 +2644,8 @@ export class AgentStatusTreeProvider
 	private createTaskItem(task: AgentTask): vscode.TreeItem {
 		const roleIcon = task.role ? ROLE_ICONS[task.role] : null;
 		const elapsedDesc = this.formatElapsedDescription(task);
-		const projectEmoji = this.getProjectEmoji(task.project_dir);
-		const labelParts = [roleIcon, projectEmoji, task.id].filter(Boolean);
+		const projectIcon = this.getProjectIcon(task.project_dir);
+		const labelParts = [projectIcon, roleIcon, task.id].filter(Boolean);
 		const label = labelParts.join(" ");
 		const isStuck = this.isAgentStuck(task);
 		const diffSummaryInline = this.getCachedDiffSummaryForTask(task);
@@ -2528,6 +2749,8 @@ export class AgentStatusTreeProvider
 	private createDiscoveredItem(node: DiscoveredNode): vscode.TreeItem {
 		const agent = node.agent;
 		const projectName = this.getDiscoveredProjectName(agent);
+		const projectDir = this.getDiscoveredProjectDir(agent);
+		const projectIcon = this.getProjectIcon(projectDir);
 		const uptime = formatElapsed(agent.startTime.toISOString());
 		const sourceLabel =
 			agent.source === "process"
@@ -2536,7 +2759,7 @@ export class AgentStatusTreeProvider
 		const worktreeLabel = agent.worktree?.isLinkedWorktree
 			? `${agent.worktree.branch} · worktree`
 			: null;
-		const label = `🔄 ${projectName}`;
+		const label = `${projectIcon} ${projectName}`;
 		const item = new vscode.TreeItem(
 			label,
 			vscode.TreeItemCollapsibleState.Collapsed,

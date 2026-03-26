@@ -662,6 +662,13 @@ export async function activate(
 				) {
 					void syncAgentStatusViewContexts();
 				}
+				if (
+					e.affectsConfiguration("commandCentral.project.group") ||
+					e.affectsConfiguration("commandCentral.project.icon") ||
+					e.affectsConfiguration("commandCentral.projects")
+				) {
+					void agentStatusProvider?.reload();
+				}
 			}),
 		);
 
