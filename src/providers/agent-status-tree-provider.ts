@@ -18,6 +18,7 @@ import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
 import {
+	type AgentCounts,
 	countAgentStatuses,
 	formatCountSummary,
 } from "../utils/agent-counts.js";
@@ -90,6 +91,7 @@ export type AgentNode =
 export interface SummaryNode {
 	type: "summary";
 	label: string;
+	tooltip?: string;
 }
 
 export interface TaskNode {
@@ -445,6 +447,7 @@ export class AgentStatusTreeProvider
 	private previousStatuses = new Map<string, string>();
 	private _agentRegistry: AgentRegistry | null = null;
 	private _discoveredAgents: DiscoveredAgent[] = [];
+	private _allDiscoveredAgents: DiscoveredAgent[] = [];
 	/** Cached port detection results per task ID (undefined = not yet detected) */
 	private _portCache = new Map<string, ListeningPort[]>();
 	/** Task IDs with ongoing async port detection */
@@ -466,6 +469,10 @@ export class AgentStatusTreeProvider
 	private _agentStatusView: vscode.TreeView<AgentNode> | null = null;
 	private previousStuckStates = new Map<string, boolean>();
 	private hasInitializedStuckState = false;
+	private readonly _tmuxSessionHealthCache = new Map<
+		string,
+		{ alive: boolean; checkedAt: number }
+	>();
 	private projectIconManager: ProjectIconManager;
 
 	constructor(projectIconManager?: ProjectIconManager) {
@@ -505,10 +512,17 @@ export class AgentStatusTreeProvider
 
 		this._agentRegistry = new AgentRegistry();
 		this._agentRegistry.start();
+		this._allDiscoveredAgents = this._agentRegistry.getAllDiscovered();
+		this._discoveredAgents = this._agentRegistry.getDiscoveredAgents(
+			this.getLauncherTasks(),
+		);
 
 		// Refresh tree when discovered agents change
 		this.disposables.push(
 			this._agentRegistry.onDidChangeAgents(() => {
+				this._allDiscoveredAgents = this._agentRegistry
+					? this._agentRegistry.getAllDiscovered()
+					: [];
 				this._discoveredAgents = this._agentRegistry
 					? this._agentRegistry.getDiscoveredAgents(this.getLauncherTasks())
 					: [];
@@ -529,6 +543,7 @@ export class AgentStatusTreeProvider
 						this._agentRegistry.dispose();
 						this._agentRegistry = null;
 						this._discoveredAgents = [];
+						this._allDiscoveredAgents = [];
 						this.setHasAgentsContext();
 						this._onDidChangeTreeData.fire(undefined);
 					} else if (nowEnabled && !this._agentRegistry) {
@@ -550,11 +565,11 @@ export class AgentStatusTreeProvider
 	}
 
 	findTaskElement(taskId: string): TreeElement | undefined {
-		const task = this.registry.tasks[taskId];
+		const task = this.getDisplayTaskById(taskId);
 		if (!task) return undefined;
 		const visibleTasks = this.isRunningOnlyFilterEnabled()
-			? Object.values(this.registry.tasks).filter((t) => t.status === "running")
-			: Object.values(this.registry.tasks);
+			? this.getDisplayLauncherTasks().filter((t) => t.status === "running")
+			: this.getDisplayLauncherTasks();
 		if (!visibleTasks.some((t) => t.id === taskId)) return undefined;
 		return { type: "task", task };
 	}
@@ -624,11 +639,127 @@ export class AgentStatusTreeProvider
 		}
 	}
 
+	private getTaskAgeMs(task: AgentTask): number | null {
+		const startedMs = new Date(task.started_at).getTime();
+		if (!Number.isFinite(startedMs)) return null;
+		return Math.max(0, Date.now() - startedMs);
+	}
+
+	private hasLiveDiscoveredSession(task: AgentTask): boolean {
+		if (!task.session_id) return false;
+		return this._allDiscoveredAgents.some(
+			(agent) => agent.sessionId === task.session_id,
+		);
+	}
+
+	private isTmuxSessionAlive(sessionId: string): boolean {
+		const cacheTtlMs = 5_000;
+		const cached = this._tmuxSessionHealthCache.get(sessionId);
+		const now = Date.now();
+		if (cached && now - cached.checkedAt < cacheTtlMs) {
+			return cached.alive;
+		}
+
+		let alive = false;
+		try {
+			execFileSync("tmux", ["has-session", "-t", sessionId], { timeout: 500 });
+			alive = true;
+		} catch {
+			alive = false;
+		}
+		this._tmuxSessionHealthCache.set(sessionId, { alive, checkedAt: now });
+		return alive;
+	}
+
+	private isRunningTaskHealthy(task: AgentTask): boolean {
+		if (task.status !== "running") return true;
+
+		// If we can still see the underlying process, trust it as active.
+		if (this.hasLiveDiscoveredSession(task)) return true;
+
+		// Launcher sessions are expected to be tmux-backed; verify session liveness.
+		if (task.terminal_backend === "tmux" && isValidSessionId(task.session_id)) {
+			if (!this.isTmuxSessionAlive(task.session_id)) return false;
+
+			// Long-running sessions with no discovered process and stale/no stream
+			// are likely idle shells after agent exit.
+			const ageMs = this.getTaskAgeMs(task);
+			const staleThresholdMs = Math.max(
+				60 * 60_000,
+				this.getStuckThresholdMinutes() * 60_000 * 4,
+			);
+			if (
+				ageMs !== null &&
+				ageMs >= staleThresholdMs &&
+				this.isAgentStuck(task)
+			) {
+				return false;
+			}
+
+			return true;
+		}
+
+		// Non-tmux backends are less deterministic here; avoid aggressive downgrades.
+		return true;
+	}
+
+	private getEffectiveTaskStatus(task: AgentTask): AgentTaskStatus {
+		if (task.status !== "running") return task.status;
+		return this.isRunningTaskHealthy(task) ? "running" : "stopped";
+	}
+
+	private toDisplayTask(task: AgentTask): AgentTask {
+		const effectiveStatus = this.getEffectiveTaskStatus(task);
+		if (effectiveStatus === task.status) return task;
+
+		return {
+			...task,
+			status: effectiveStatus,
+			completed_at: task.completed_at ?? new Date().toISOString(),
+			error_message:
+				task.error_message ??
+				"Session no longer appears active. Showing as stopped.",
+		};
+	}
+
+	private getDisplayLauncherTasks(): AgentTask[] {
+		return Object.values(this.registry.tasks).map((task) =>
+			this.toDisplayTask(task),
+		);
+	}
+
+	private getDisplayTaskById(taskId: string): AgentTask | undefined {
+		const rawTask = this.registry.tasks[taskId];
+		return rawTask ? this.toDisplayTask(rawTask) : undefined;
+	}
+
+	private getStuckRunningCount(tasks: AgentTask[]): number {
+		return tasks.filter(
+			(task) => task.status === "running" && this.isAgentStuck(task),
+		).length;
+	}
+
+	private getSummaryTooltip(counts: AgentCounts, stuckCount: number): string {
+		const hints: string[] = [];
+		if (stuckCount > 0) {
+			hints.push(
+				`${stuckCount} running ${stuckCount === 1 ? "agent is" : "agents are"} possibly stuck`,
+			);
+		}
+		const actionableCount = counts.failed + counts.stopped;
+		if (actionableCount > 0) {
+			hints.push(
+				`${actionableCount} ${actionableCount === 1 ? "agent needs" : "agents need"} attention — use Agent Actions to restart or inspect`,
+			);
+		}
+		return hints.join("\n");
+	}
+
 	private setHasAgentsContext(): void {
 		const hasAgents =
 			Object.keys(this.registry.tasks).length > 0 ||
 			this._discoveredAgents.length > 0;
-		const hasTerminalTasks = Object.values(this.registry.tasks).some(
+		const hasTerminalTasks = this.getDisplayLauncherTasks().some(
 			(task) => task.status !== "running",
 		);
 		void vscode.commands.executeCommand(
@@ -904,7 +1035,7 @@ export class AgentStatusTreeProvider
 		const config = vscode.workspace.getConfiguration("commandCentral");
 		const dockBounceEnabled = config.get<boolean>("dockBounce", true);
 		const nextStates = new Map<string, boolean>();
-		for (const task of Object.values(this.registry.tasks)) {
+		for (const task of this.getDisplayLauncherTasks()) {
 			if (task.status !== "running") continue;
 			const isStuck = this.isAgentStuck(task);
 			nextStates.set(task.id, isStuck);
@@ -934,8 +1065,8 @@ export class AgentStatusTreeProvider
 
 	/** Start or stop auto-refresh timer based on whether any tasks are running */
 	private updateAutoRefreshTimer(): void {
-		const hasRunning = Object.values(this.registry.tasks).some(
-			(t) => t.status === "running",
+		const hasRunning = this.getDisplayLauncherTasks().some(
+			(task) => task.status === "running",
 		);
 
 		if (hasRunning && !this.autoRefreshTimer) {
@@ -1014,7 +1145,7 @@ export class AgentStatusTreeProvider
 
 	getChildren(element?: AgentNode): AgentNode[] {
 		if (!element) {
-			const allTasks = Object.values(this.registry.tasks);
+			const allTasks = this.getDisplayLauncherTasks();
 			const discovered = this._discoveredAgents;
 			const hasAnyAgents = allTasks.length > 0 || discovered.length > 0;
 			if (!hasAnyAgents) {
@@ -1081,11 +1212,21 @@ export class AgentStatusTreeProvider
 				)
 				.map((agent) => ({ type: "discovered" as const, agent }));
 
-			const counts = countAgentStatuses(this.getTasks());
-			const summaryLabel = formatCountSummary(counts);
+			const allEffectiveTasks = this.getTasks();
+			const counts = countAgentStatuses(allEffectiveTasks);
+			const stuckCount = this.getStuckRunningCount(allTasks);
+			const summaryLabel = [
+				formatCountSummary(counts),
+				...(stuckCount > 0 ? [`${stuckCount} stuck`] : []),
+			].join(" · ");
+			const summaryTooltip = this.getSummaryTooltip(counts, stuckCount);
 
 			return [
-				{ type: "summary" as const, label: summaryLabel },
+				{
+					type: "summary" as const,
+					label: summaryLabel,
+					tooltip: summaryTooltip || undefined,
+				},
 				...(groupedByProject ? projectGroupNodes : taskNodes),
 				...(groupedByProject ? [] : discoveredNodes),
 			];
@@ -1420,6 +1561,7 @@ export class AgentStatusTreeProvider
 
 	private getDetailChildren(t: AgentTask): DetailNode[] {
 		const details: DetailNode[] = [];
+		const rawStatus = this.registry.tasks[t.id]?.status;
 
 		if (t.status === "failed" && t.exit_code != null) {
 			const attemptsSuffix =
@@ -1434,6 +1576,16 @@ export class AgentStatusTreeProvider
 					errorMessage && errorMessage.length > 0 ? errorMessage : undefined,
 				icon: "error",
 				iconColor: "charts.red",
+			});
+		}
+		if (rawStatus === "running" && t.status === "stopped") {
+			details.push({
+				type: "detail",
+				label: "⚠️ Session appears inactive",
+				value: "Counted as stopped for health-aware summary",
+				taskId: t.id,
+				icon: "alert",
+				iconColor: "charts.yellow",
 			});
 		}
 
@@ -1911,7 +2063,7 @@ export class AgentStatusTreeProvider
 
 	getParent(element: AgentNode): AgentNode | undefined {
 		if (element.type === "task" && this.isProjectGroupingEnabled()) {
-			const allTasks = Object.values(this.registry.tasks);
+			const allTasks = this.getDisplayLauncherTasks();
 			const visibleTasks = this.isRunningOnlyFilterEnabled()
 				? allTasks.filter((task) => task.status === "running")
 				: allTasks;
@@ -1939,7 +2091,7 @@ export class AgentStatusTreeProvider
 		if (element.type === "discovered" && this.isProjectGroupingEnabled()) {
 			const projectName = this.getDiscoveredProjectName(element.agent);
 			const projectDir = this.getDiscoveredProjectDir(element.agent);
-			const allTasks = Object.values(this.registry.tasks);
+			const allTasks = this.getDisplayLauncherTasks();
 			const visibleTasks = this.isRunningOnlyFilterEnabled()
 				? allTasks.filter((task) => task.status === "running")
 				: allTasks;
@@ -1969,11 +2121,11 @@ export class AgentStatusTreeProvider
 				const agent = this._discoveredAgents.find((a) => a.pid === pid);
 				if (agent) return { type: "discovered", agent };
 			}
-			const task = this.registry.tasks[element.taskId];
+			const task = this.getDisplayTaskById(element.taskId);
 			if (task) return { type: "task", task };
 		}
 		if (element.type === "fileChange") {
-			const task = this.registry.tasks[element.taskId];
+			const task = this.getDisplayTaskById(element.taskId);
 			if (task) return { type: "task", task };
 		}
 		// summary and root-level nodes have no parent
@@ -1983,6 +2135,15 @@ export class AgentStatusTreeProvider
 	/** Get the full task registry */
 	getRegistry(): TaskRegistry {
 		return this.registry;
+	}
+
+	/** Get launcher tasks with effective runtime status applied for UI display. */
+	getDisplayRegistryTasks(): Record<string, AgentTask> {
+		const displayTasks: Record<string, AgentTask> = {};
+		for (const [id, task] of Object.entries(this.registry.tasks)) {
+			displayTasks[id] = this.toDisplayTask(task);
+		}
+		return displayTasks;
 	}
 
 	/** Get launcher-managed tasks only (excludes discovered agents) */
@@ -2000,7 +2161,7 @@ export class AgentStatusTreeProvider
 	 * launcher tasks.
 	 */
 	getTasks(): AgentTask[] {
-		const launcherTasks = Object.values(this.registry.tasks);
+		const launcherTasks = this.getDisplayLauncherTasks();
 		const syntheticDiscovered: AgentTask[] = this._discoveredAgents.map(
 			(agent) => ({
 				id: `discovered-${agent.pid}`,
@@ -2048,6 +2209,7 @@ export class AgentStatusTreeProvider
 		);
 		item.iconPath = this.getSummaryIcon();
 		item.contextValue = "agentSummary";
+		if (node.tooltip) item.tooltip = node.tooltip;
 		return item;
 	}
 
@@ -2068,7 +2230,7 @@ export class AgentStatusTreeProvider
 
 	/** Compute summary icon based on aggregate agent state */
 	private getSummaryIcon(): vscode.ThemeIcon {
-		const tasks = Object.values(this.registry.tasks);
+		const tasks = this.getDisplayLauncherTasks();
 		const discovered = this._discoveredAgents;
 
 		const hasRunning =
@@ -2380,6 +2542,7 @@ export class AgentStatusTreeProvider
 			this._agentRegistry.dispose();
 			this._agentRegistry = null;
 		}
+		this._tmuxSessionHealthCache.clear();
 		for (const d of this.disposables) d.dispose();
 	}
 }

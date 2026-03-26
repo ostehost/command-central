@@ -146,6 +146,11 @@ export class AgentDashboardPanel implements vscode.Disposable {
 			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-yellow)">${counts.stopped}</div><div class="summary-label">Stopped</div></div>
 		</div>`
 				: "";
+		const needsAttentionCount = counts.failed + counts.stopped;
+		const attentionHintHtml =
+			needsAttentionCount > 0
+				? `<p class="hint">${needsAttentionCount} ${needsAttentionCount === 1 ? "agent needs" : "agents need"} attention. Use Agent Status tree quick actions to restart or inspect failed/stopped sessions.</p>`
+				: "";
 
 		return `<!DOCTYPE html>
 <html>
@@ -170,6 +175,7 @@ body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); 
 .summary-item { text-align: center; }
 .summary-count { font-size: 24px; font-weight: bold; }
 .summary-label { font-size: 11px; color: var(--vscode-descriptionForeground); }
+.hint { margin: 8px 0 14px; padding: 8px 10px; border-left: 3px solid var(--vscode-charts-yellow); background: var(--vscode-editorWidget-background); font-size: 12px; color: var(--vscode-descriptionForeground); }
 .empty { color: var(--vscode-descriptionForeground); font-style: italic; }
 h1 { font-size: 20px; margin-bottom: 12px; }
 h2 { font-size: 16px; margin: 16px 0 8px; }
@@ -178,6 +184,7 @@ h2 { font-size: 16px; margin: 16px 0 8px; }
 <body>
 <h1>Agent Dashboard</h1>
 ${summaryHtml}
+${attentionHintHtml}
 ${emptyMessage}
 ${running.length > 0 ? `<h2>Running</h2><div class="grid">${running.map((t) => this.renderCard(t)).join("")}</div>` : ""}
 ${completed.length > 0 ? `<h2>Completed</h2><div class="grid">${completed.map((t) => this.renderCard(t)).join("")}</div>` : ""}

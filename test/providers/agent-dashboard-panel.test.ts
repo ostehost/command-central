@@ -138,6 +138,31 @@ describe("AgentDashboardPanel", () => {
 			panel.dispose();
 		});
 
+		test("shows attention hint when failed/stopped tasks exist", () => {
+			const panel = new AgentDashboardPanel();
+			const tasks: Record<string, AgentTask> = {
+				f1: createMockTask({ id: "f1", status: "failed" }),
+				s1: createMockTask({ id: "s1", status: "stopped" }),
+			};
+			const html = panel.getHtml(tasks);
+
+			expect(html).toContain("agents need attention");
+			expect(html).toContain("quick actions to restart or inspect");
+			panel.dispose();
+		});
+
+		test("does not show attention hint when only running/completed tasks exist", () => {
+			const panel = new AgentDashboardPanel();
+			const tasks: Record<string, AgentTask> = {
+				r1: createMockTask({ id: "r1", status: "running" }),
+				c1: createMockTask({ id: "c1", status: "completed" }),
+			};
+			const html = panel.getHtml(tasks);
+
+			expect(html).not.toContain("needs attention");
+			panel.dispose();
+		});
+
 		test("renders cards for each task", () => {
 			const panel = new AgentDashboardPanel();
 			const tasks: Record<string, AgentTask> = {

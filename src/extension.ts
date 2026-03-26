@@ -712,14 +712,14 @@ export async function activate(
 				"commandCentral.openAgentDashboard",
 				() => {
 					agentDashboardPanel.show(
-						agentStatusProvider?.getRegistry().tasks ?? {},
+						agentStatusProvider?.getDisplayRegistryTasks() ?? {},
 					);
 				},
 			),
 		);
 		agentStatusProvider.onDidChangeTreeData(() => {
 			agentDashboardPanel.update(
-				agentStatusProvider?.getRegistry().tasks ?? {},
+				agentStatusProvider?.getDisplayRegistryTasks() ?? {},
 			);
 		});
 

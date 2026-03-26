@@ -8,6 +8,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as fs from "node:fs";
+import type * as vscode from "vscode";
 
 // Mock port-detector to avoid real lsof calls in tree provider tests
 const mockDetectListeningPorts = mock(
@@ -69,6 +70,17 @@ function getFirstTask(children: AgentNode[]): AgentNode {
 	const task = children.find((n) => n.type === "task");
 	if (!task) throw new Error("No task node found in children");
 	return task;
+}
+
+/** Helper: get the summary node from root children */
+function getSummaryNode(
+	children: AgentNode[],
+): Extract<AgentNode, { type: "summary" }> {
+	const summary = children.find(
+		(n): n is Extract<AgentNode, { type: "summary" }> => n.type === "summary",
+	);
+	if (!summary) throw new Error("No summary node found in children");
+	return summary;
 }
 
 // ── formatElapsed tests ──────────────────────────────────────────────
@@ -253,10 +265,99 @@ describe("AgentStatusTreeProvider", () => {
 		provider.reload();
 
 		const children = provider.getChildren();
-		const summary = children.find((n) => n.type === "summary")!;
+		const summary = getSummaryNode(children);
 		const item = provider.getTreeItem(summary);
 		expect(item.contextValue).toBe("agentSummary");
 		expect(item.collapsibleState).toBe(0); // None
+	});
+
+	describe("runtime health overlay for running status", () => {
+		test("downgrades unhealthy running tmux task to stopped for UI status/counts", () => {
+			const task = createMockTask({
+				id: "ghost-running",
+				status: "running",
+				terminal_backend: "tmux",
+				started_at: new Date(Date.now() - 5 * 60 * 60_000).toISOString(),
+			});
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set(task.session_id, {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("stopped");
+
+			const children = provider.getChildren();
+			const summary = children.find((n) => n.type === "summary");
+			expect(summary).toBeDefined();
+			if (summary?.type === "summary") {
+				expect(summary.label).toContain("1 stopped");
+				expect(summary.label).not.toContain("1 running");
+			}
+			const taskNode = getFirstTask(children);
+			const taskItem = provider.getTreeItem(taskNode);
+			expect(taskItem.command?.command).toBe(
+				"commandCentral.agentQuickActions",
+			);
+		});
+
+		test("keeps running when matching discovered session is alive", () => {
+			const task = createMockTask({
+				id: "live-running",
+				status: "running",
+				terminal_backend: "tmux",
+				started_at: new Date(Date.now() - 5 * 60 * 60_000).toISOString(),
+			});
+			(
+				provider as unknown as {
+					_allDiscoveredAgents: Array<{ sessionId?: string }>;
+				}
+			)._allDiscoveredAgents = [{ sessionId: task.session_id }];
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("running");
+		});
+	});
+
+	test("summary includes stuck count and attention tooltip guidance", () => {
+		const stuckRunning = createMockTask({
+			id: "stuck-running",
+			status: "running",
+			terminal_backend: undefined,
+			started_at: new Date(Date.now() - 40 * 60_000).toISOString(),
+		});
+		const failed = createMockTask({ id: "f1", status: "failed" });
+		const stopped = createMockTask({ id: "s1", status: "stopped" });
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[stuckRunning.id]: stuckRunning,
+				[failed.id]: failed,
+				[stopped.id]: stopped,
+			});
+		provider.reload();
+
+		const summary = provider.getChildren().find((n) => n.type === "summary");
+		expect(summary).toBeDefined();
+		if (summary?.type === "summary") {
+			expect(summary.label).toContain("1 running");
+			expect(summary.label).toContain("1 failed");
+			expect(summary.label).toContain("1 stopped");
+			expect(summary.label).toContain("1 stuck");
+		}
+
+		const summaryItem = provider.getTreeItem(summary as AgentNode);
+		expect(String(summaryItem.tooltip ?? "")).toContain(
+			"agents need attention",
+		);
 	});
 
 	test("sorts tasks by started_at descending (newest first)", () => {
@@ -664,7 +765,7 @@ describe("AgentStatusTreeProvider", () => {
 			createMockRegistry({ t1: running, t2: failed });
 		provider.reload();
 
-		const summary = provider.getChildren().find((n) => n.type === "summary")!;
+		const summary = getSummaryNode(provider.getChildren());
 		const item = provider.getTreeItem(summary);
 		const icon = item.iconPath as { id: string; color?: { id: string } };
 		expect(icon.id).toBe("error");
@@ -678,7 +779,7 @@ describe("AgentStatusTreeProvider", () => {
 			createMockRegistry({ t1: running, t2: completed });
 		provider.reload();
 
-		const summary = provider.getChildren().find((n) => n.type === "summary")!;
+		const summary = getSummaryNode(provider.getChildren());
 		const item = provider.getTreeItem(summary);
 		const icon = item.iconPath as { id: string; color?: { id: string } };
 		expect(icon.id).toBe("sync~spin");
@@ -692,7 +793,7 @@ describe("AgentStatusTreeProvider", () => {
 			createMockRegistry({ t1: completed, t2: stale });
 		provider.reload();
 
-		const summary = provider.getChildren().find((n) => n.type === "summary")!;
+		const summary = getSummaryNode(provider.getChildren());
 		const item = provider.getTreeItem(summary);
 		const icon = item.iconPath as { id: string; color?: { id: string } };
 		expect(icon.id).toBe("check-all");
@@ -707,7 +808,7 @@ describe("AgentStatusTreeProvider", () => {
 		provider.readRegistry = () => createMockRegistry({ t1: contractFailure });
 		provider.reload();
 
-		const summary = provider.getChildren().find((n) => n.type === "summary")!;
+		const summary = getSummaryNode(provider.getChildren());
 		const item = provider.getTreeItem(summary);
 		const icon = item.iconPath as { id: string; color?: { id: string } };
 		expect(icon.id).toBe("warning");
@@ -777,7 +878,10 @@ describe("AgentStatusTreeProvider", () => {
 		const children = provider.getChildren(firstTask);
 		const fileNode = children.find((c) => c.type === "fileChange");
 		expect(fileNode).toBeDefined();
-		const item = provider.getTreeItem(fileNode!);
+		if (!fileNode) {
+			throw new Error("No file-change node found");
+		}
+		const item = provider.getTreeItem(fileNode);
 
 		expect(item.label).toBe("agent-status-tree-provider.ts");
 		expect(item.description).toBe("+5 -2");
@@ -804,7 +908,10 @@ describe("AgentStatusTreeProvider", () => {
 		const children = provider.getChildren(firstTask);
 		const fileNode = children.find((c) => c.type === "fileChange");
 		expect(fileNode).toBeDefined();
-		const item = provider.getTreeItem(fileNode!);
+		if (!fileNode) {
+			throw new Error("No file-change node found");
+		}
+		const item = provider.getTreeItem(fileNode);
 		expect(item.description).toBe("binary");
 	});
 
@@ -1316,9 +1423,14 @@ describe("AgentStatusTreeProvider", () => {
 			const root = provider.getChildren();
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
-			const gitItem = provider.getTreeItem(
-				details.find((d) => d.type === "detail" && d.label === "Git")!,
+			const gitDetail = details.find(
+				(d) => d.type === "detail" && d.label === "Git",
 			);
+			expect(gitDetail).toBeDefined();
+			if (!gitDetail) {
+				throw new Error("Git detail not found");
+			}
+			const gitItem = provider.getTreeItem(gitDetail);
 			expect(gitItem.label).toBe("Git: main → def5678");
 		});
 	});
@@ -1372,7 +1484,7 @@ describe("AgentStatusTreeProvider", () => {
 		test("completed notification includes diff summary text and new action buttons", () => {
 			provider.getDiffSummary = () => "3 files · +45 / -12";
 			const reveal = mock(() => Promise.resolve());
-			provider.setTreeView({ reveal } as any);
+			provider.setTreeView({ reveal } as unknown as vscode.TreeView<AgentNode>);
 
 			// Set up running state
 			const runningTask = createMockTask({
