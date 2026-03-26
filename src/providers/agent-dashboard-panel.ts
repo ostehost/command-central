@@ -142,13 +142,12 @@ export class AgentDashboardPanel implements vscode.Disposable {
 			taskList.length > 0
 				? `<div class="summary">
 			<div class="summary-item"><div class="summary-count">${taskList.length}</div><div class="summary-label">Total</div></div>
-			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-blue)">${counts.running}</div><div class="summary-label">Running</div></div>
-			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-green)">${counts.completed}</div><div class="summary-label">Completed</div></div>
-			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-red)">${counts.failed}</div><div class="summary-label">Failed</div></div>
-			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-yellow)">${counts.stopped}</div><div class="summary-label">Stopped</div></div>
+			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-blue)">${counts.working}</div><div class="summary-label">Working</div></div>
+			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-yellow)">${counts.attention}</div><div class="summary-label">Attention</div></div>
+			<div class="summary-item"><div class="summary-count" style="color:var(--vscode-charts-green)">${counts.done}</div><div class="summary-label">Done</div></div>
 		</div>`
 				: "";
-		const needsAttentionCount = counts.failed + counts.stopped;
+		const needsAttentionCount = counts.attention;
 		const attentionHintHtml =
 			needsAttentionCount > 0
 				? `<p class="hint">${needsAttentionCount} ${needsAttentionCount === 1 ? "agent needs" : "agents need"} attention. Use Agent Status tree quick actions to restart or inspect failed/stopped sessions.</p>`

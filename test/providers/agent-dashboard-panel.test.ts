@@ -132,9 +132,9 @@ describe("AgentDashboardPanel", () => {
 			// Should have summary section with total 4
 			expect(html).toContain("summary-count");
 			expect(html).toContain("Total");
-			expect(html).toContain("Running");
-			expect(html).toContain("Completed");
-			expect(html).toContain("Failed");
+			expect(html).toContain("Working");
+			expect(html).toContain("Attention");
+			expect(html).toContain("Done");
 			panel.dispose();
 		});
 

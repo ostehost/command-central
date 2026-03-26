@@ -1,10 +1,9 @@
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
 
 export interface AgentCounts {
-	running: number;
-	completed: number;
-	failed: number;
-	stopped: number;
+	working: number;
+	attention: number;
+	done: number;
 	total: number;
 }
 
@@ -14,10 +13,9 @@ export interface FormatCountSummaryOptions {
 
 export function countAgentStatuses(tasks: AgentTask[]): AgentCounts {
 	const counts: AgentCounts = {
-		running: 0,
-		completed: 0,
-		failed: 0,
-		stopped: 0,
+		working: 0,
+		attention: 0,
+		done: 0,
 		total: 0,
 	};
 
@@ -25,20 +23,18 @@ export function countAgentStatuses(tasks: AgentTask[]): AgentCounts {
 		counts.total++;
 		switch (task.status) {
 			case "running":
-				counts.running++;
+				counts.working++;
 				break;
 			case "completed":
 			case "completed_dirty":
 			case "completed_stale":
-				counts.completed++;
+				counts.done++;
 				break;
 			case "failed":
 			case "killed":
-			case "contract_failure":
-				counts.failed++;
-				break;
 			case "stopped":
-				counts.stopped++;
+			case "contract_failure":
+				counts.attention++;
 				break;
 		}
 	}
@@ -47,7 +43,7 @@ export function countAgentStatuses(tasks: AgentTask[]): AgentCounts {
 }
 
 export function getAttentionCount(counts: AgentCounts): number {
-	return counts.failed + counts.stopped;
+	return counts.attention;
 }
 
 export function formatCountSummary(
@@ -56,12 +52,10 @@ export function formatCountSummary(
 ): string {
 	const parts: string[] = [];
 	const attention = getAttentionCount(counts);
-	if (counts.running > 0) parts.push(`${counts.running} running`);
+	if (counts.working > 0) parts.push(`${counts.working} working`);
 	if (options.includeAttention && attention > 0) {
 		parts.push(`${attention} attention`);
 	}
-	if (counts.completed > 0) parts.push(`${counts.completed} completed`);
-	if (counts.failed > 0) parts.push(`${counts.failed} failed`);
-	if (counts.stopped > 0) parts.push(`${counts.stopped} stopped`);
+	if (counts.done > 0) parts.push(`${counts.done} done`);
 	return parts.join(" · ") || "No agents";
 }

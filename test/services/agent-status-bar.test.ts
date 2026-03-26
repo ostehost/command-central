@@ -65,17 +65,17 @@ describe("AgentStatusBar", () => {
 		expect(mockStatusBarItem.hide).toHaveBeenCalled();
 	});
 
-	test("shows '1 running' with pulse icon for single running task", async () => {
+	test("shows '1 working' with pulse icon for single running task", async () => {
 		const { AgentStatusBar } = await loadModule();
 		const bar = new AgentStatusBar();
 
 		bar.update([createTask({ id: "t1", status: "running" })]);
 
-		expect(mockStatusBarItem.text).toBe("$(pulse) 1 running");
+		expect(mockStatusBarItem.text).toBe("$(pulse) 1 working");
 		expect(mockStatusBarItem.show).toHaveBeenCalled();
 	});
 
-	test("shows '2 running' for two running tasks", async () => {
+	test("shows '2 working' for two running tasks", async () => {
 		const { AgentStatusBar } = await loadModule();
 		const bar = new AgentStatusBar();
 
@@ -84,7 +84,7 @@ describe("AgentStatusBar", () => {
 			createTask({ id: "t2", status: "running" }),
 		]);
 
-		expect(mockStatusBarItem.text).toBe("$(pulse) 2 running");
+		expect(mockStatusBarItem.text).toBe("$(pulse) 2 working");
 	});
 
 	test("shows mixed running + completed with separator", async () => {
@@ -96,7 +96,7 @@ describe("AgentStatusBar", () => {
 			createTask({ id: "t2", status: "completed" }),
 		]);
 
-		expect(mockStatusBarItem.text).toBe("$(pulse) 1 running · 1 completed");
+		expect(mockStatusBarItem.text).toBe("$(pulse) 1 working · 1 done");
 	});
 
 	test("uses warning background when tasks are running", async () => {
@@ -111,7 +111,7 @@ describe("AgentStatusBar", () => {
 		);
 	});
 
-	test("shows all completed with check icon and no background", async () => {
+	test("shows all done with check icon and no background", async () => {
 		const { AgentStatusBar } = await loadModule();
 		const bar = new AgentStatusBar();
 
@@ -120,17 +120,17 @@ describe("AgentStatusBar", () => {
 			createTask({ id: "t2", status: "completed" }),
 		]);
 
-		expect(mockStatusBarItem.text).toBe("$(check) 2 completed");
+		expect(mockStatusBarItem.text).toBe("$(check) 2 done");
 		expect(mockStatusBarItem.backgroundColor).toBeUndefined();
 	});
 
-	test("shows single completed count for one completed task", async () => {
+	test("shows single done count for one completed task", async () => {
 		const { AgentStatusBar } = await loadModule();
 		const bar = new AgentStatusBar();
 
 		bar.update([createTask({ id: "t1", status: "completed" })]);
 
-		expect(mockStatusBarItem.text).toBe("$(check) 1 completed");
+		expect(mockStatusBarItem.text).toBe("$(check) 1 done");
 	});
 
 	test("shows failed with warning icon and error background", async () => {
@@ -139,7 +139,7 @@ describe("AgentStatusBar", () => {
 
 		bar.update([createTask({ id: "t1", status: "failed" })]);
 
-		expect(mockStatusBarItem.text).toBe("$(warning) 1 attention · 1 failed");
+		expect(mockStatusBarItem.text).toBe("$(warning) 1 attention");
 		expect((mockStatusBarItem.backgroundColor as { id: string }).id).toBe(
 			"statusBarItem.errorBackground",
 		);
@@ -154,12 +154,10 @@ describe("AgentStatusBar", () => {
 			createTask({ id: "t2", status: "completed" }),
 		]);
 
-		expect(mockStatusBarItem.text).toBe(
-			"$(warning) 1 attention · 1 completed · 1 failed",
-		);
+		expect(mockStatusBarItem.text).toBe("$(warning) 1 attention · 1 done");
 	});
 
-	test("handles stopped and killed tasks with terminal/failed split", async () => {
+	test("handles stopped and killed tasks as attention", async () => {
 		const { AgentStatusBar } = await loadModule();
 		const bar = new AgentStatusBar();
 
@@ -168,9 +166,7 @@ describe("AgentStatusBar", () => {
 			createTask({ id: "t2", status: "killed" }),
 		]);
 
-		expect(mockStatusBarItem.text).toBe(
-			"$(warning) 2 attention · 1 failed · 1 stopped",
-		);
+		expect(mockStatusBarItem.text).toBe("$(warning) 2 attention");
 		expect(mockStatusBarItem.show).toHaveBeenCalled();
 	});
 
@@ -221,7 +217,7 @@ describe("AgentStatusBar", () => {
 		expect(mockStatusBarItem.dispose).toHaveBeenCalled();
 	});
 
-	test("running tasks with failed shows all parts", async () => {
+	test("running tasks with failed shows all three state parts", async () => {
 		const { AgentStatusBar } = await loadModule();
 		const bar = new AgentStatusBar();
 
@@ -232,7 +228,7 @@ describe("AgentStatusBar", () => {
 		]);
 
 		expect(mockStatusBarItem.text).toBe(
-			"$(warning) 1 running · 1 attention · 1 completed · 1 failed",
+			"$(warning) 1 working · 1 attention · 1 done",
 		);
 	});
 

@@ -68,7 +68,7 @@ describe("AgentStatusBar count calculation", () => {
 
 	test("shows running count for a single running launcher task", () => {
 		statusBar.update([makeTask("a", "running")]);
-		expect(mockItem.text).toContain("1 running");
+		expect(mockItem.text).toContain("1 working");
 		expect(mockItem.show).toHaveBeenCalled();
 	});
 
@@ -78,8 +78,8 @@ describe("AgentStatusBar count calculation", () => {
 			makeTask("b", "running"),
 			makeTask("c", "completed"),
 		]);
-		expect(mockItem.text).toContain("2 running");
-		expect(mockItem.text).toContain("1 completed");
+		expect(mockItem.text).toContain("2 working");
+		expect(mockItem.text).toContain("1 done");
 	});
 
 	test("counts synthetic discovered-agent tasks as running", () => {
@@ -89,8 +89,8 @@ describe("AgentStatusBar count calculation", () => {
 		const launcher = makeTask("launcher-task-1", "completed");
 
 		statusBar.update([discovered, launcher]);
-		expect(mockItem.text).toContain("1 running");
-		expect(mockItem.text).toContain("1 completed");
+		expect(mockItem.text).toContain("1 working");
+		expect(mockItem.text).toContain("1 done");
 	});
 
 	test("running count matches sidebar when discovered agents are present", () => {
@@ -105,13 +105,13 @@ describe("AgentStatusBar count calculation", () => {
 		];
 
 		statusBar.update(tasks);
-		expect(mockItem.text).toContain("3 running");
-		expect(mockItem.text).toContain("1 completed");
+		expect(mockItem.text).toContain("3 working");
+		expect(mockItem.text).toContain("1 done");
 	});
 
 	test("shows only completed when all tasks are done", () => {
 		statusBar.update([makeTask("a", "completed"), makeTask("b", "completed")]);
-		expect(mockItem.text).toContain("2 completed");
+		expect(mockItem.text).toContain("2 done");
 		expect(mockItem.show).toHaveBeenCalled();
 	});
 
@@ -119,8 +119,7 @@ describe("AgentStatusBar count calculation", () => {
 		statusBar.update([makeTask("a", "failed"), makeTask("b", "completed")]);
 		expect(mockItem.text).toContain("$(warning)");
 		expect(mockItem.text).toContain("1 attention");
-		expect(mockItem.text).toContain("1 failed");
-		expect(mockItem.text).toContain("1 completed");
+		expect(mockItem.text).toContain("1 done");
 	});
 
 	test("counts completed_dirty/completed_stale as completed and stopped as attention", () => {
@@ -129,16 +128,14 @@ describe("AgentStatusBar count calculation", () => {
 			makeTask("a", "completed_stale"),
 			makeTask("b", "stopped"),
 		]);
-		expect(mockItem.text).toContain("2 completed");
+		expect(mockItem.text).toContain("2 done");
 		expect(mockItem.text).toContain("1 attention");
-		expect(mockItem.text).toContain("1 stopped");
 	});
 
 	test("treats killed as failed", () => {
 		statusBar.update([makeTask("a", "killed"), makeTask("b", "completed")]);
 		expect(mockItem.text).toContain("$(warning)");
 		expect(mockItem.text).toContain("1 attention");
-		expect(mockItem.text).toContain("1 failed");
-		expect(mockItem.text).toContain("1 completed");
+		expect(mockItem.text).toContain("1 done");
 	});
 });

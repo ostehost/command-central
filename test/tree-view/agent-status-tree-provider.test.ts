@@ -257,10 +257,9 @@ describe("AgentStatusTreeProvider", () => {
 		expect(summary).toBeDefined();
 		expect(summary?.type).toBe("summary");
 		if (summary?.type === "summary") {
-			expect(summary.label).toContain("1 running");
-			expect(summary.label).toContain("1 completed");
-			expect(summary.label).toContain("1 failed");
-			expect(summary.label).toContain("1 stopped");
+			expect(summary.label).toContain("1 working");
+			expect(summary.label).toContain("2 attention");
+			expect(summary.label).toContain("1 done");
 		}
 	});
 
@@ -304,8 +303,8 @@ describe("AgentStatusTreeProvider", () => {
 			const summary = children.find((n) => n.type === "summary");
 			expect(summary).toBeDefined();
 			if (summary?.type === "summary") {
-				expect(summary.label).toContain("1 stopped");
-				expect(summary.label).not.toContain("1 running");
+				expect(summary.label).toContain("1 attention");
+				expect(summary.label).not.toContain("1 working");
 			}
 			const taskNode = getFirstTask(children);
 			const taskItem = provider.getTreeItem(taskNode);
@@ -422,9 +421,8 @@ describe("AgentStatusTreeProvider", () => {
 		const summary = provider.getChildren().find((n) => n.type === "summary");
 		expect(summary).toBeDefined();
 		if (summary?.type === "summary") {
-			expect(summary.label).toContain("1 running");
-			expect(summary.label).toContain("1 failed");
-			expect(summary.label).toContain("1 stopped");
+			expect(summary.label).toContain("1 working");
+			expect(summary.label).toContain("2 attention");
 			expect(summary.label).toContain("1 stuck");
 		}
 
@@ -905,7 +903,7 @@ describe("AgentStatusTreeProvider", () => {
 		};
 		const item = provider.getTreeItem(node);
 		expect(item.label).toBe("🧩 Alpha");
-		expect(item.description).toBe("1 running");
+		expect(item.description).toBe("1 working");
 		expect(item.collapsibleState).toBe(2); // Expanded
 		expect(item.iconPath).toBeUndefined();
 		expect(item.contextValue).toBe("projectGroup");
@@ -2074,7 +2072,7 @@ describe("AgentStatusTreeProvider", () => {
 
 				expect(vscodeMock.window.badge).toEqual({
 					value: 2,
-					tooltip: "2 running agents",
+					tooltip: "2 working agents",
 				});
 
 				provider.readRegistry = () =>

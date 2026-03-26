@@ -808,7 +808,7 @@ export class AgentStatusTreeProvider
 				`${stuckCount} running ${stuckCount === 1 ? "agent is" : "agents are"} possibly stuck`,
 			);
 		}
-		const actionableCount = counts.failed + counts.stopped;
+		const actionableCount = counts.attention;
 		if (actionableCount > 0) {
 			hints.push(
 				`${actionableCount} ${actionableCount === 1 ? "agent needs" : "agents need"} attention — use Agent Actions to restart or inspect`,
@@ -1080,7 +1080,7 @@ export class AgentStatusTreeProvider
 			(task) => task.status === "running",
 		).length;
 		const tooltip =
-			runningCount === 1 ? "1 running agent" : `${runningCount} running agents`;
+			runningCount === 1 ? "1 working agent" : `${runningCount} working agents`;
 		const badge: vscode.ViewBadge | undefined =
 			runningCount > 0 ? { value: runningCount, tooltip } : undefined;
 
@@ -2492,12 +2492,12 @@ export class AgentStatusTreeProvider
 		);
 		const discoveredCount = node.discoveredAgents?.length ?? 0;
 		const counts = countAgentStatuses(node.tasks);
-		counts.running += discoveredCount;
+		counts.working += discoveredCount;
 		counts.total += discoveredCount;
 		item.description = formatCountSummary(counts, {
 			includeAttention: true,
 		});
-		const attentionCount = counts.failed + counts.stopped;
+		const attentionCount = counts.attention;
 		if (attentionCount > 0) {
 			item.tooltip = `${attentionCount} ${attentionCount === 1 ? "agent needs" : "agents need"} attention in ${node.projectName}.`;
 		}

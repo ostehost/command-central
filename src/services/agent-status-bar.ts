@@ -2,10 +2,9 @@
  * AgentStatusBar — Shows agent count in the VS Code status bar
  *
  * Displays context-aware status with counts per state:
- * - Running: `$(pulse) 2 agents running`
- * - Mixed: `$(warning) 1 running · 2 attention · 1 completed`
- * - All done: `$(check) 3 completed`
- * - Failed: `$(warning) 3 attention · 1 failed · 2 completed`
+ * - Working: `$(pulse) 2 working`
+ * - Mixed: `$(warning) 1 working · 2 attention · 1 done`
+ * - All done: `$(check) 3 done`
  *
  * Tooltip shows per-task markdown details. Clicking focuses the sidebar.
  */
@@ -53,16 +52,22 @@ export class AgentStatusBar implements vscode.Disposable {
 		const counts = countAgentStatuses(tasks);
 		const summary = formatCountSummary(counts, { includeAttention: true });
 		const attentionCount = getAttentionCount(counts);
+		const hasFailureAttention = tasks.some(
+			(task) =>
+				task.status === "failed" ||
+				task.status === "killed" ||
+				task.status === "contract_failure",
+		);
 
 		// Determine icon and text
 		if (attentionCount > 0) {
 			this.statusBarItem.text = `$(warning) ${summary}`;
 			this.statusBarItem.backgroundColor = new vscode.ThemeColor(
-				counts.failed > 0
+				hasFailureAttention
 					? "statusBarItem.errorBackground"
 					: "statusBarItem.warningBackground",
 			);
-		} else if (counts.running > 0) {
+		} else if (counts.working > 0) {
 			this.statusBarItem.text = `$(pulse) ${summary}`;
 			this.statusBarItem.backgroundColor = new vscode.ThemeColor(
 				"statusBarItem.warningBackground",

@@ -36,20 +36,18 @@ describe("countAgentStatuses", () => {
 		];
 
 		expect(countAgentStatuses(tasks)).toEqual({
-			running: 2,
-			completed: 3,
-			failed: 3,
-			stopped: 1,
+			working: 2,
+			attention: 4,
+			done: 3,
 			total: 9,
 		});
 	});
 
 	test("returns zeros for an empty task list", () => {
 		expect(countAgentStatuses([])).toEqual({
-			running: 0,
-			completed: 0,
-			failed: 0,
-			stopped: 0,
+			working: 0,
+			attention: 0,
+			done: 0,
 			total: 0,
 		});
 	});
@@ -58,36 +56,31 @@ describe("countAgentStatuses", () => {
 describe("formatCountSummary", () => {
 	test("formats non-zero buckets in stable order", () => {
 		const counts: AgentCounts = {
-			running: 2,
-			completed: 3,
-			failed: 1,
-			stopped: 4,
+			working: 2,
+			attention: 5,
+			done: 3,
 			total: 10,
 		};
 
-		expect(formatCountSummary(counts)).toBe(
-			"2 running · 3 completed · 1 failed · 4 stopped",
-		);
+		expect(formatCountSummary(counts)).toBe("2 working · 3 done");
 	});
 
 	test("omits zero buckets", () => {
 		const counts: AgentCounts = {
-			running: 0,
-			completed: 5,
-			failed: 0,
-			stopped: 1,
+			working: 0,
+			attention: 0,
+			done: 5,
 			total: 6,
 		};
 
-		expect(formatCountSummary(counts)).toBe("5 completed · 1 stopped");
+		expect(formatCountSummary(counts)).toBe("5 done");
 	});
 
 	test("returns fallback text when all buckets are zero", () => {
 		const counts: AgentCounts = {
-			running: 0,
-			completed: 0,
-			failed: 0,
-			stopped: 0,
+			working: 0,
+			attention: 0,
+			done: 0,
 			total: 0,
 		};
 
@@ -96,15 +89,14 @@ describe("formatCountSummary", () => {
 
 	test("can include attention rollup in formatted summary", () => {
 		const counts: AgentCounts = {
-			running: 2,
-			completed: 1,
-			failed: 3,
-			stopped: 4,
+			working: 2,
+			attention: 7,
+			done: 1,
 			total: 10,
 		};
 
 		expect(formatCountSummary(counts, { includeAttention: true })).toBe(
-			"2 running · 7 attention · 1 completed · 3 failed · 4 stopped",
+			"2 working · 7 attention · 1 done",
 		);
 	});
 });
