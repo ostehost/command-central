@@ -1748,7 +1748,7 @@ export class AgentStatusTreeProvider
 			folderGroups.entries(),
 		)
 			.map(([groupKey, entry]) => ({
-				type: "folderGroup",
+				type: "folderGroup" as const,
 				groupKey,
 				groupName: entry.groupName,
 				projectCount: entry.projectCount,
