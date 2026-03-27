@@ -35,6 +35,7 @@ import {
 	isValidSessionId,
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
+import { AgentStatusBar } from "../../src/services/agent-status-bar.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 // ── Mock data ────────────────────────────────────────────────────────
@@ -62,6 +63,17 @@ function createMockRegistry(
 	tasks: Record<string, AgentTask> = {},
 ): TaskRegistry {
 	return { version: 2, tasks };
+}
+
+function loadAgentStatusFixture(fileName: string): TaskRegistry {
+	const fixturePath = path.join(
+		process.cwd(),
+		"test",
+		"fixtures",
+		"agent-status",
+		fileName,
+	);
+	return JSON.parse(fs.readFileSync(fixturePath, "utf-8")) as TaskRegistry;
 }
 
 /** Helper: extract only task nodes from root children (skips summary node) */
@@ -404,6 +416,186 @@ describe("AgentStatusTreeProvider", () => {
 			);
 			expect(displayStatuses.get("fresh-running")).toBe("running");
 			expect(displayStatuses.get("stale-running")).toBe("stopped");
+		});
+	});
+
+	describe("visibility contract + launcher icon integration", () => {
+		test("screenshot fixture: stale running task is excluded from working count + dock badge", () => {
+			/**
+			 * Repro steps from screenshot scenario:
+			 * 1. Launcher still reports one task as `running`.
+			 * 2. The backing session is dead (stale).
+			 * 3. UI must not show that stale task as working anywhere.
+			 */
+			const fixture = loadAgentStatusFixture("screenshot-stale-running.json");
+			const stale = fixture.tasks["cc-screenshot-stale-running"] as
+				| AgentTask
+				| undefined;
+			if (!stale) throw new Error("missing stale fixture task");
+
+			const originalPlatform = Object.getOwnPropertyDescriptor(
+				process,
+				"platform",
+			);
+			Object.defineProperty(process, "platform", {
+				value: "darwin",
+				configurable: true,
+			});
+			try {
+				(
+					provider as unknown as {
+						_tmuxSessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					}
+				)._tmuxSessionHealthCache.set(stale.session_id, {
+					alive: false,
+					checkedAt: Date.now(),
+				});
+				provider.readRegistry = () => fixture;
+				provider.reload();
+
+				const summary = provider
+					.getChildren()
+					.find((n) => n.type === "summary");
+				expect(summary).toBeDefined();
+				if (summary?.type === "summary") {
+					expect(summary.label).not.toContain("1 working");
+					expect(summary.label).toContain("1 attention");
+					expect(summary.label).toContain("1 done");
+				}
+
+				expect(vscodeMock.window.badge).toBeUndefined();
+				const statusTasks = provider.getTasks();
+				const staleTask = statusTasks.find(
+					(task) => task.id === "cc-screenshot-stale-running",
+				);
+				expect(staleTask?.status).toBe("stopped");
+				const statusBarItem = {
+					text: "",
+					tooltip: "",
+					command: "",
+					backgroundColor: undefined,
+					show: mock(),
+					hide: mock(),
+					dispose: mock(),
+				};
+				vscodeMock.window.createStatusBarItem = mock(() => statusBarItem);
+				const statusBar = new AgentStatusBar();
+				statusBar.update(statusTasks);
+				expect(statusBarItem.text).toContain("1 attention");
+				expect(statusBarItem.text).toContain("1 done");
+				expect(statusBarItem.text).not.toContain("working");
+				statusBar.dispose();
+			} finally {
+				if (originalPlatform) {
+					Object.defineProperty(process, "platform", originalPlatform);
+				}
+			}
+		});
+
+		test("reload re-merges discovery against latest launcher state (restart/reconnect)", () => {
+			const discovered = {
+				pid: 424242,
+				projectDir: "/Users/test/projects/command-central",
+				command: "claude --resume abc123",
+				startTime: new Date("2026-03-27T12:00:00.000Z"),
+				sessionId: "agent-shared-visibility",
+				source: "session-file",
+			};
+			(
+				provider as unknown as {
+					_agentRegistry: {
+						getAllDiscovered: () => Array<typeof discovered>;
+						getDiscoveredAgents: (
+							tasks: AgentTask[],
+						) => Array<typeof discovered>;
+					};
+				}
+			)._agentRegistry = {
+				getAllDiscovered: () => [discovered],
+				getDiscoveredAgents: (tasks: AgentTask[]) =>
+					tasks.some(
+						(task) =>
+							task.status === "running" &&
+							task.session_id === discovered.sessionId,
+					)
+						? []
+						: [discovered],
+			};
+
+			const launcherRunning = createMockTask({
+				id: "launcher-shared-running",
+				status: "running",
+				session_id: "agent-shared-visibility",
+			});
+			provider.readRegistry = () =>
+				createMockRegistry({ [launcherRunning.id]: launcherRunning });
+			provider.reload();
+			expect(
+				provider.getTasks().some((task) => task.id === "discovered-424242"),
+			).toBe(false);
+
+			const launcherStopped = createMockTask({
+				id: "launcher-shared-running",
+				status: "completed_stale",
+				session_id: "agent-shared-visibility",
+			});
+			provider.readRegistry = () =>
+				createMockRegistry({ [launcherStopped.id]: launcherStopped });
+			provider.reload();
+
+			const discoveredTask = provider
+				.getTasks()
+				.find((task) => task.id === "discovered-424242");
+			expect(discoveredTask?.status).toBe("running");
+
+			const summary = provider.getChildren().find((n) => n.type === "summary");
+			expect(summary).toBeDefined();
+			if (summary?.type === "summary") {
+				expect(summary.label).toContain("1 working");
+				expect(summary.label).toContain("1 done");
+			}
+		});
+
+		test("launcher-provided project_icon is used for task + project group labels", () => {
+			vscodeMock.workspace.getConfiguration = mock(() => ({
+				update: mock(),
+				get: mock((_key: string, defaultValue?: unknown) => {
+					if (_key === "agentStatus.groupByProject") return true;
+					return defaultValue;
+				}),
+			}));
+
+			const launcherTask = createMockTask({
+				id: "launcher-icon-task",
+				project_name: "Command Central",
+				project_dir: "/Users/test/projects/command-central",
+				project_icon: "🚀",
+			});
+			provider.readRegistry = () =>
+				createMockRegistry({ [launcherTask.id]: launcherTask });
+			provider.reload();
+
+			const root = provider.getChildren();
+			const groupNode = root.find(
+				(node): node is Extract<AgentNode, { type: "projectGroup" }> =>
+					node.type === "projectGroup",
+			);
+			if (!groupNode) throw new Error("expected project group");
+			const groupItem = provider.getTreeItem(groupNode);
+			expect(groupItem.label).toBe("🚀 Command Central");
+
+			const children = provider.getChildren(groupNode);
+			const taskNode = children.find(
+				(node): node is Extract<AgentNode, { type: "task" }> =>
+					node.type === "task",
+			);
+			if (!taskNode) throw new Error("expected task node");
+			const taskItem = provider.getTreeItem(taskNode);
+			expect(taskItem.label).toContain("🚀");
+			expect(taskItem.label).toContain("launcher-icon-task");
 		});
 	});
 

@@ -1,0 +1,37 @@
+{
+	"version": 2,
+	"tasks": {
+		"cc-screenshot-stale-running": {
+			"id": "cc-screenshot-stale-running",
+			"status": "running",
+			"project_dir": "/Users/test/projects/command-central",
+			"project_name": "Command Central",
+			"session_id": "agent-command-central-stale",
+			"tmux_session": "agent-command-central-stale",
+			"bundle_path": "/Applications/Projects/command-central.app",
+			"ghostty_bundle_id": "dev.partnerai.ghostty.command-central",
+			"prompt_file": "/tmp/cc-screenshot-stale-running.md",
+			"started_at": "2026-03-20T10:00:00.000Z",
+			"attempts": 1,
+			"max_attempts": 3,
+			"terminal_backend": "persist"
+		},
+		"cc-screenshot-completed": {
+			"id": "cc-screenshot-completed",
+			"status": "completed",
+			"project_dir": "/Users/test/projects/ghostty-launcher",
+			"project_name": "Ghostty Launcher",
+			"session_id": "agent-ghostty-launcher-done",
+			"tmux_session": "agent-ghostty-launcher-done",
+			"bundle_path": "/Applications/Projects/ghostty-launcher.app",
+			"ghostty_bundle_id": "dev.partnerai.ghostty.ghostty-launcher",
+			"prompt_file": "/tmp/cc-screenshot-completed.md",
+			"started_at": "2026-03-20T09:00:00.000Z",
+			"attempts": 1,
+			"max_attempts": 3,
+			"terminal_backend": "persist",
+			"completed_at": "2026-03-20T09:30:00.000Z",
+			"exit_code": 0
+		}
+	}
+}

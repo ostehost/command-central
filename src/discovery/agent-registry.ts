@@ -89,7 +89,15 @@ export class AgentRegistry implements vscode.Disposable {
 		const launcherSessionIds = new Set<string>();
 
 		for (const task of launcherTasks) {
-			if (task.session_id) launcherSessionIds.add(task.session_id);
+			const maybePid = (task as AgentTask & { pid?: unknown }).pid;
+			if (typeof maybePid === "number" && Number.isFinite(maybePid)) {
+				launcherPids.add(maybePid);
+			}
+			// Only hide discovered sessions that are actively running in launcher data.
+			// Non-running launcher entries should not mask a live discovered agent.
+			if (task.status === "running" && task.session_id) {
+				launcherSessionIds.add(task.session_id);
+			}
 		}
 
 		// Merge session-watcher + process-scanner, dedup by PID

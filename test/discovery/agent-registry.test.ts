@@ -159,6 +159,30 @@ describe("AgentRegistry", () => {
 			expect(discovered).toHaveLength(0);
 		});
 
+		test("does not filter discovered agent when launcher task is non-running", () => {
+			sessionFiles["601.json"] = JSON.stringify({
+				pid: 601,
+				sessionId: "shared-sess-stopped",
+				cwd: "/shared-project-stopped",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["601.json"];
+			alivePids.add(601);
+
+			registry.start();
+
+			const launcherTasks = [
+				createMockTask({
+					session_id: "shared-sess-stopped",
+					status: "completed_stale",
+				}),
+			];
+			const discovered = registry.getDiscoveredAgents(launcherTasks);
+
+			expect(discovered).toHaveLength(1);
+			expect(discovered[0]?.pid).toBe(601);
+		});
+
 		test("returns empty when no discovered agents", () => {
 			dirContents = [];
 			registry.start();

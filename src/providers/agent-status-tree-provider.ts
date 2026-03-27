@@ -74,6 +74,7 @@ export interface AgentTask {
 	role?: AgentRole | null;
 	terminal_backend?: "tmux" | "persist" | "applescript";
 	ghostty_bundle_id?: string | null;
+	project_icon?: string | null;
 	exit_code?: number | null;
 	error_message?: string | null;
 	completed_at?: string | null;
@@ -432,6 +433,7 @@ function normalizeTask(
 				? raw["terminal_backend"]
 				: undefined,
 		ghostty_bundle_id: asString(raw["ghostty_bundle_id"]) ?? null,
+		project_icon: asString(raw["project_icon"]) ?? null,
 		exit_code: asNullableNumber(raw["exit_code"]) ?? null,
 		error_message: asString(raw["error_message"]) ?? null,
 		completed_at: asString(raw["completed_at"]) ?? null,
@@ -860,6 +862,12 @@ export class AgentStatusTreeProvider
 		if (generation !== this._reloadGeneration) return;
 		this.registry = nextRegistry;
 		this._initialReadInProgress = false;
+		this._allDiscoveredAgents = this._agentRegistry
+			? this._agentRegistry.getAllDiscovered()
+			: [];
+		this._discoveredAgents = this._agentRegistry
+			? this._agentRegistry.getDiscoveredAgents(this.getLauncherTasks())
+			: [];
 		this._diffSummaryCache.clear();
 		this._diffSummaryDetecting.clear();
 		this.checkCompletionNotifications();
@@ -2479,7 +2487,12 @@ export class AgentStatusTreeProvider
 		return match?.emoji ?? null;
 	}
 
-	private getProjectIcon(projectDir: string): string {
+	private getProjectIcon(
+		projectDir: string,
+		options?: { launcherIcon?: string | null },
+	): string {
+		const launcherIcon = options?.launcherIcon?.trim();
+		if (launcherIcon) return launcherIcon;
 		if (!projectDir || !path.isAbsolute(projectDir)) {
 			return this.getLegacyProjectEmoji(projectDir) ?? "📁";
 		}
@@ -2507,7 +2520,9 @@ export class AgentStatusTreeProvider
 	private createProjectGroupItem(node: ProjectGroupNode): vscode.TreeItem {
 		const projectDir =
 			node.projectDir || node.tasks[0]?.project_dir || node.projectName;
-		const icon = this.getProjectIcon(projectDir);
+		const launcherIcon =
+			node.tasks.find((task) => task.project_icon)?.project_icon ?? null;
+		const icon = this.getProjectIcon(projectDir, { launcherIcon });
 		const item = new vscode.TreeItem(
 			`${icon} ${node.projectName}`,
 			vscode.TreeItemCollapsibleState.Expanded,
@@ -2673,7 +2688,9 @@ export class AgentStatusTreeProvider
 	private createTaskItem(task: AgentTask): vscode.TreeItem {
 		const roleIcon = task.role ? ROLE_ICONS[task.role] : null;
 		const elapsedDesc = this.formatElapsedDescription(task);
-		const projectIcon = this.getProjectIcon(task.project_dir);
+		const projectIcon = this.getProjectIcon(task.project_dir, {
+			launcherIcon: task.project_icon,
+		});
 		const labelParts = [projectIcon, roleIcon, task.id].filter(Boolean);
 		const label = labelParts.join(" ");
 		const isStuck = this.isAgentStuck(task);
