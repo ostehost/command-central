@@ -208,6 +208,30 @@ describe("AgentRegistry", () => {
 			expect(discovered[0]?.pid).toBe(602);
 		});
 
+		test("filters discovered agent when launcher PID is running", () => {
+			sessionFiles["603.json"] = JSON.stringify({
+				pid: 603,
+				sessionId: "pid-only-match",
+				cwd: "/shared-project-pid-running",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["603.json"];
+			alivePids.add(603);
+
+			registry.start();
+
+			const launcherTasks = [
+				createMockTask({
+					session_id: "different-session",
+					status: "running",
+					pid: 603,
+				}),
+			];
+			const discovered = registry.getDiscoveredAgents(launcherTasks);
+
+			expect(discovered).toHaveLength(0);
+		});
+
 		test("returns empty when no discovered agents", () => {
 			dirContents = [];
 			registry.start();

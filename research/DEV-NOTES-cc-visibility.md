@@ -39,3 +39,8 @@ Implemented stale-session governance and visibility-contract hardening in Comman
 ## Follow-ups
 1. Current launcher/process discovery still centers on Claude-oriented process scanning; if Codex/Gemini process-level discovery parity is required, extend `ProcessScanner` source detection.
 2. If launcher starts emitting icon metadata for discovered-process correlation, propagate that to discovered-only rows (currently launcher icon passthrough is task-driven).
+
+## Update (2026-03-27)
+- Added positive PID-mask test in `test/discovery/agent-registry.test.ts`: `filters discovered agent when launcher PID is running`.
+- Ran `bun test test/discovery/agent-registry.test.ts`.
+- Result: PASS (21 passed, 0 failed).
