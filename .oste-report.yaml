@@ -1,8 +1,7 @@
-task_id: "cc-visibility-review"
+task_id: "cc-review-v2"
 status: "success"
-summary: "Reviewed stale-session visibility, reload/reconnect merge behavior, and launcher icon passthrough; documented one PID-gating warning."
+summary: "Reviewed PID/session running-state masking fix and delivered findings with one warning on missing running-PID positive test coverage"
 files_changed:
-  - "research/REVIEW-cc-visibility.md"
-  - ".oste-report.yaml"
+  - "research/REVIEW-cc-visibility-v2.md"
 tests_passing: true
-next_steps: "Apply running-state gating to PID masking in agent-registry and add a non-running PID regression test."
+next_steps: "Add a running-PID masking positive test in test/discovery/agent-registry.test.ts to lock in expected behavior."
