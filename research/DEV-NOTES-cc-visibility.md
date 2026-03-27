@@ -10,6 +10,18 @@ Implemented stale-session governance and visibility-contract hardening in Comman
 - `test/tree-view/agent-status-tree-provider.test.ts`
 - `test/fixtures/agent-status/screenshot-stale-running.json`
 
+## Scope Cleanup (cc-cleanup-v2)
+- Kept in scope:
+  - `src/discovery/agent-registry.ts`
+  - `src/providers/agent-status-tree-provider.ts`
+  - `test/discovery/agent-registry.test.ts`
+  - `test/tree-view/agent-status-tree-provider.test.ts`
+  - `test/fixtures/agent-status/screenshot-stale-running.json`
+  - `research/DEV-NOTES-cc-visibility.md`
+- Removed out-of-scope working-tree changes:
+  - Restored accidental deletion of `.oste-report.yaml`.
+  - No other out-of-scope working-tree modifications remained.
+
 ## Behavior Changes
 1. Stale/non-running launcher tasks no longer suppress discovered running agents with the same session id.
 2. Provider `reload()` now rehydrates discovery merge state immediately from latest `tasks.json` + discovery sources.
