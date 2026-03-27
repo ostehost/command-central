@@ -298,6 +298,19 @@ export function getStatusThemeIcon(
 	}
 }
 
+function getStatusDisplayLabel(status: AgentTaskStatus): string {
+	switch (status) {
+		case "completed_dirty":
+			return "completed (dirty)";
+		case "completed_stale":
+			return "completed (stale)";
+		case "contract_failure":
+			return "contract failure";
+		default:
+			return status;
+	}
+}
+
 const ROLE_ICONS: Record<AgentRole, string> = {
 	planner: "🔬",
 	developer: "🔨",
@@ -960,7 +973,9 @@ export class AgentStatusTreeProvider
 						projectDir: task.project_dir,
 					});
 				} else if (task.status === "stopped" && onCompletion) {
-					const msg = `⏹️ ${task.id} stopped (${elapsed}) [${backend}]`;
+					let msg = `⏹️ ${task.id} stopped (${elapsed}) [${backend}]`;
+					const stopReason = this.truncateErrorMessage(task.error_message);
+					if (stopReason) msg += ` — ${stopReason}`;
 					this.revealTaskInSidebar(task.id);
 					this.showInfoNotification(msg, messageOptions, "Show Output").then(
 						(action) => {
@@ -1239,7 +1254,14 @@ export class AgentStatusTreeProvider
 						},
 					];
 				}
-				return [];
+				return [
+					{
+						type: "state",
+						label: "No agents tracked yet",
+						description: "Start an agent task to populate this view.",
+						icon: "info",
+					},
+				];
 			}
 
 			const runningOnly = this.isRunningOnlyFilterEnabled();
@@ -2674,7 +2696,7 @@ export class AgentStatusTreeProvider
 		item.description = description;
 		item.tooltip = new vscode.MarkdownString(
 			[
-				`**${task.id}** — ${task.status}`,
+				`**${task.id}** — ${getStatusDisplayLabel(task.status)}`,
 				task.role ? `Role: ${task.role}` : null,
 				`Project: ${task.project_name}`,
 				`Dir: \`${task.project_dir}\``,

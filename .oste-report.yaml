@@ -1,8 +1,8 @@
-task_id: "cc-polish-16b"
+task_id: "cc-hardening-16"
 status: "success"
-summary: "Polished dashboard status presentation with clearer labels and consistent killed-state coloring."
+summary: "Hardened Agent Status tree UX with explicit empty state, clearer status text, and richer stopped-state notifications."
 files_changed:
-  - "src/providers/agent-dashboard-panel.ts"
-  - "test/providers/agent-dashboard-panel.test.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
 tests_passing: true
-next_steps: "Optional: quick manual smoke check of the Agent Dashboard webview in the extension host."
+next_steps: "Optional: run full `just test` for end-to-end confidence before release."

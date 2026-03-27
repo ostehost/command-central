@@ -226,9 +226,15 @@ describe("AgentStatusTreeProvider", () => {
 		provider.reload();
 	});
 
-	test("returns empty array when no tasks", () => {
+	test("shows explicit empty state when no tasks", () => {
 		const children = provider.getChildren();
-		expect(children).toEqual([]);
+		expect(children).toHaveLength(1);
+		expect(children[0]).toEqual({
+			type: "state",
+			label: "No agents tracked yet",
+			description: "Start an agent task to populate this view.",
+			icon: "info",
+		});
 	});
 
 	test("returns task nodes at root level", () => {
@@ -1223,6 +1229,17 @@ describe("AgentStatusTreeProvider", () => {
 		expect((item.tooltip as { value: string }).value).toContain("Exit code: 1");
 	});
 
+	test("uses human-readable status label in tooltip", () => {
+		const task = createMockTask({ status: "completed_stale" });
+		const item = provider.getTreeItem({ type: "task", task });
+		expect((item.tooltip as { value: string }).value).toContain(
+			"completed (stale)",
+		);
+		expect((item.tooltip as { value: string }).value).not.toContain(
+			"completed_stale",
+		);
+	});
+
 	test("shows Error detail node first for failed tasks with exit code", () => {
 		const task = createMockTask({
 			status: "failed",
@@ -1847,6 +1864,40 @@ describe("AgentStatusTreeProvider", () => {
 			expect(callArgs?.[1]).toBe("Show Output");
 			expect(callArgs?.[2]).toBe("View Diff");
 			expect(callArgs?.[3]).toBe("Restart");
+		});
+
+		test("stopped notification includes stop reason when available", () => {
+			const runningTask = createMockTask({
+				id: "stop-1",
+				status: "running",
+				agent_backend: "claude",
+			});
+			provider.readRegistry = () =>
+				createMockRegistry({ "stop-1": runningTask });
+			provider.reload();
+
+			const stoppedTask = createMockTask({
+				id: "stop-1",
+				status: "stopped",
+				agent_backend: "claude",
+				error_message:
+					"Session no longer appears active. Showing as stopped due to stale health state.",
+			});
+			provider.readRegistry = () =>
+				createMockRegistry({ "stop-1": stoppedTask });
+			provider.reload();
+
+			const infoCalls = (
+				vscodeMock.window.showInformationMessage as ReturnType<typeof mock>
+			).mock.calls as unknown[][];
+			const stoppedMessage = infoCalls.find(
+				(call) =>
+					typeof call[0] === "string" &&
+					String(call[0]).includes("⏹️ stop-1 stopped"),
+			)?.[0];
+			expect(String(stoppedMessage)).toContain(
+				"Session no longer appears active.",
+			);
 		});
 
 		test("no notification on completed→completed (no transition)", () => {
