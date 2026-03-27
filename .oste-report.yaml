@@ -1,7 +1,8 @@
-task_id: "cc-cleanup-v2"
+task_id: "cc-visibility-review"
 status: "success"
-summary: "Scoped cleanup kept only allowed CC visibility artifacts and documented verification in DEV-NOTES."
+summary: "Reviewed stale-session visibility, reload/reconnect merge behavior, and launcher icon passthrough; documented one PID-gating warning."
 files_changed:
-  - "research/DEV-NOTES-cc-visibility.md"
+  - "research/REVIEW-cc-visibility.md"
+  - ".oste-report.yaml"
 tests_passing: true
-next_steps: "No additional cleanup required; scope is tight and verified."
+next_steps: "Apply running-state gating to PID masking in agent-registry and add a non-running PID regression test."
