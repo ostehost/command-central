@@ -1,8 +1,12 @@
-task_id: "cc-hardening-16"
+task_id: "cc-visibility-contract"
 status: "success"
-summary: "Hardened Agent Status tree UX with explicit empty state, clearer status text, and richer stopped-state notifications."
+summary: "Hardened stale-session visibility accounting and launcher icon propagation with fixture-backed reload/reconnect tests."
 files_changed:
+  - "src/discovery/agent-registry.ts"
   - "src/providers/agent-status-tree-provider.ts"
+  - "test/discovery/agent-registry.test.ts"
   - "test/tree-view/agent-status-tree-provider.test.ts"
+  - "test/fixtures/agent-status/screenshot-stale-running.json"
+  - "research/DEV-NOTES-cc-visibility.md"
 tests_passing: true
-next_steps: "Optional: run full `just test` for end-to-end confidence before release."
+next_steps: "Optional: extend process discovery parity for non-Claude CLIs if Codex/Gemini process-level visibility is required."
