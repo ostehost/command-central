@@ -1,7 +1,8 @@
-task_id: "cc-review-v2"
+task_id: "cc-pidmask-test"
 status: "success"
-summary: "Reviewed PID/session running-state masking fix and delivered findings with one warning on missing running-PID positive test coverage"
+summary: "Added running-PID masking regression test and verified agent-registry test suite passes"
 files_changed:
-  - "research/REVIEW-cc-visibility-v2.md"
+  - "test/discovery/agent-registry.test.ts"
+  - "research/DEV-NOTES-cc-visibility.md"
 tests_passing: true
-next_steps: "Add a running-PID masking positive test in test/discovery/agent-registry.test.ts to lock in expected behavior."
+next_steps: "None"
