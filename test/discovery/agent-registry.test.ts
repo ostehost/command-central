@@ -90,6 +90,8 @@ process.kill = ((pid: number, signal?: number) => {
 
 import { AgentRegistry } from "../../src/discovery/agent-registry.js";
 
+// TODO(oste): add completed_stale launcher PID masking regression test.
+
 // Helper to create a mock AgentTask (launcher source)
 function createMockTask(overrides: Record<string, unknown> = {}) {
 	return {
@@ -225,6 +227,30 @@ describe("AgentRegistry", () => {
 					session_id: "different-session",
 					status: "running",
 					pid: 603,
+				}),
+			];
+			const discovered = registry.getDiscoveredAgents(launcherTasks);
+
+			expect(discovered).toHaveLength(0);
+		});
+
+		test("filters discovered agent when launcher PID is running without sessionId", () => {
+			sessionFiles["604.json"] = JSON.stringify({
+				pid: 604,
+				sessionId: "pid-match-no-session-id",
+				cwd: "/shared-project-pid-running-no-session",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["604.json"];
+			alivePids.add(604);
+
+			registry.start();
+
+			const launcherTasks = [
+				createMockTask({
+					session_id: "",
+					status: "running",
+					pid: 604,
 				}),
 			];
 			const discovered = registry.getDiscoveredAgents(launcherTasks);
