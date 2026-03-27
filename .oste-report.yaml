@@ -1,12 +1,7 @@
-task_id: "cc-visibility-contract"
+task_id: "cc-cleanup-v2"
 status: "success"
-summary: "Hardened stale-session visibility accounting and launcher icon propagation with fixture-backed reload/reconnect tests."
+summary: "Scoped cleanup kept only allowed CC visibility artifacts and documented verification in DEV-NOTES."
 files_changed:
-  - "src/discovery/agent-registry.ts"
-  - "src/providers/agent-status-tree-provider.ts"
-  - "test/discovery/agent-registry.test.ts"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
-  - "test/fixtures/agent-status/screenshot-stale-running.json"
   - "research/DEV-NOTES-cc-visibility.md"
 tests_passing: true
-next_steps: "Optional: extend process discovery parity for non-Claude CLIs if Codex/Gemini process-level visibility is required."
+next_steps: "No additional cleanup required; scope is tight and verified."
