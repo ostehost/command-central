@@ -68,6 +68,18 @@ describe("ProcessScanner", () => {
 			expect(results).toHaveLength(0);
 		});
 
+		test("filters out non-agent processes with codex/gemini in path", () => {
+			const psOutput = [
+				"  PID   STARTED                       COMMAND",
+				"44441 Mon Jan  6 14:00:00 2025 /usr/bin/node /projects/codex/server.js",
+				"44442 Mon Jan  6 14:00:00 2025 /usr/bin/python /srv/gemini/app.py",
+				"44443 Mon Jan  6 14:00:00 2025 /usr/bin/node /tmp/gemini-cli-helper/index.js",
+			].join("\n");
+
+			const results = scanner.parsePsOutput(psOutput);
+			expect(results).toHaveLength(0);
+		});
+
 		test("filters out electron helpers and renderers", () => {
 			const psOutput = [
 				"  PID   STARTED                       COMMAND",
