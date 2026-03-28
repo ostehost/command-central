@@ -6,6 +6,7 @@
  */
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { LoggerService } from "../services/logger-service.js";
@@ -56,8 +57,14 @@ export class LauncherValidationError extends Error {
 	}
 }
 
-/** Default fallback paths to check when launcher is not in PATH */
-const LAUNCHER_FALLBACK_PATHS: string[] = [];
+/**
+ * Default fallback paths to check when launcher is not in PATH.
+ * Includes common local dev checkout locations.
+ */
+const LAUNCHER_FALLBACK_PATHS: string[] = [
+	path.join(os.homedir(), "projects", "ghostty-launcher", "launcher"),
+	path.join(os.homedir(), "ghostty-launcher", "launcher"),
+];
 
 /** Timeout in milliseconds for launcher subprocess calls */
 const LAUNCHER_TIMEOUT_MS = 10_000;
@@ -90,7 +97,7 @@ export class TerminalManager {
 	 * Checks (in order):
 	 *   1. commandCentral.ghostty.launcherPath setting
 	 *   2. `launcher` on PATH
-	 *   3. ~/projects/ghostty-launcher/launcher
+	 *   3. Common local fallback paths (for example ~/projects/ghostty-launcher/launcher)
 	 */
 	getLauncherPath(): string {
 		const config = vscode.workspace.getConfiguration("commandCentral");

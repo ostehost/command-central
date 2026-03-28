@@ -8,16 +8,29 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realChildProcess from "node:child_process";
 import * as realFs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 // ── VS Code mock must be set up before importing the module under test ──
 
 // Minimal vscode mock needed by TerminalManager (uses getConfiguration)
 const mockConfigGet = mock((_key: string, _default?: unknown) => _default);
 const mockGetConfiguration = mock(() => ({ get: mockConfigGet }));
+const mockTerminalSendText = mock((_text: string) => {});
+const mockTerminalShow = mock(() => {});
+const mockCreateTerminal = mock((_options?: unknown) => ({
+	sendText: mockTerminalSendText,
+	show: mockTerminalShow,
+	hide: mock(),
+	dispose: mock(),
+}));
 
 mock.module("vscode", () => ({
 	workspace: {
 		getConfiguration: mockGetConfiguration,
+	},
+	window: {
+		createTerminal: mockCreateTerminal,
 	},
 }));
 
@@ -84,6 +97,7 @@ describe("TerminalManager.getLauncherPath", () => {
 		mock.restore();
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
+			window: { createTerminal: mockCreateTerminal },
 		}));
 		mock.module("node:child_process", () => ({
 			...realChildProcess,
@@ -135,6 +149,7 @@ describe("TerminalManager.isLauncherInstalled", () => {
 		mock.restore();
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
+			window: { createTerminal: mockCreateTerminal },
 		}));
 		mock.module("node:child_process", () => ({
 			...realChildProcess,
@@ -212,6 +227,42 @@ describe("TerminalManager.isLauncherInstalled", () => {
 		const mgr = new TerminalManager(createMockLogger() as never);
 		expect(await mgr.isLauncherInstalled()).toBe(true);
 	});
+
+	test("checks common local fallback launcher path", async () => {
+		const fallbackPath = path.join(
+			os.homedir(),
+			"projects",
+			"ghostty-launcher",
+			"launcher",
+		);
+		const calls: Array<{ file: string; args: string[] }> = [];
+
+		execFileMock.mockImplementation(
+			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				calls.push({ file: f, args: a });
+				if (f === "launcher" && a.includes("--help")) {
+					const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+					cb(err, { stdout: "", stderr: "" });
+					return;
+				}
+				if (f === fallbackPath && a.includes("--version")) {
+					cb(null, { stdout: "ghostty-launcher version 1.2.3", stderr: "" });
+					return;
+				}
+				const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+				cb(err, { stdout: "", stderr: "" });
+			},
+		);
+		fsExistsSyncMock.mockImplementation((p: string) => p === fallbackPath);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		expect(await mgr.isLauncherInstalled()).toBe(true);
+		expect(
+			calls.some(
+				(call) => call.file === fallbackPath && call.args.includes("--version"),
+			),
+		).toBe(true);
+	});
 });
 
 describe("TerminalManager.createProjectTerminal", () => {
@@ -221,6 +272,7 @@ describe("TerminalManager.createProjectTerminal", () => {
 		mock.restore();
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
+			window: { createTerminal: mockCreateTerminal },
 		}));
 		mock.module("node:child_process", () => ({
 			...realChildProcess,
@@ -318,6 +370,7 @@ describe("TerminalManager icon persistence before create-bundle", () => {
 		mock.restore();
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
+			window: { createTerminal: mockCreateTerminal },
 		}));
 		mock.module("node:child_process", () => ({
 			...realChildProcess,
@@ -405,6 +458,7 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 		mock.restore();
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
+			window: { createTerminal: mockCreateTerminal },
 		}));
 		mock.module("node:child_process", () => ({
 			...realChildProcess,
@@ -417,6 +471,30 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
+	});
+
+	test("falls back to VS Code integrated terminal when launcher is unavailable", async () => {
+		execFileMock.mockImplementation(
+			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--help")) {
+					const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+					cb(err, { stdout: "", stderr: "" });
+					return;
+				}
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+		fsExistsSyncMock.mockImplementation(() => false);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await mgr.runInProjectTerminal("/Users/test/my-project", "echo hi");
+
+		expect(mockCreateTerminal).toHaveBeenCalledWith({
+			name: "Terminal: my-project",
+			cwd: "/Users/test/my-project",
+		});
+		expect(mockTerminalSendText).toHaveBeenCalledWith("echo hi");
+		expect(mockTerminalShow).toHaveBeenCalled();
 	});
 
 	test("opens existing project bundle when session exists and no command provided", async () => {
@@ -523,6 +601,7 @@ describe("TerminalManager.getTerminalInfo", () => {
 		mock.restore();
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
+			window: { createTerminal: mockCreateTerminal },
 		}));
 		mock.module("node:child_process", () => ({
 			...realChildProcess,
@@ -608,6 +687,7 @@ describe("TerminalManager.validateLauncherBinary (Fix 2)", () => {
 		mock.restore();
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
+			window: { createTerminal: mockCreateTerminal },
 		}));
 		mock.module("node:child_process", () => ({
 			...realChildProcess,
@@ -708,6 +788,7 @@ describe("TerminalManager error handling (Fix 3)", () => {
 		mock.restore();
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
+			window: { createTerminal: mockCreateTerminal },
 		}));
 		mock.module("node:child_process", () => ({
 			...realChildProcess,
@@ -873,6 +954,7 @@ describe("Multi-root workspace command support (Fix 1 - integration)", () => {
 		mock.restore();
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
+			window: { createTerminal: mockCreateTerminal },
 		}));
 		mock.module("node:child_process", () => ({
 			...realChildProcess,

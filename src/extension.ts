@@ -2117,27 +2117,18 @@ export async function activate(
 						selectedFolder = folders[0] as vscode.WorkspaceFolder;
 					}
 
-					const installed = await terminalManager?.isLauncherInstalled();
-					if (!installed) {
-						vscode.window.showErrorMessage(
-							"Command Central: ghostty-launcher not found. " +
-								"Set commandCentral.ghostty.launcherPath or install launcher to PATH.",
-						);
-						return;
-					}
-
 					try {
-						await terminalManager?.createProjectTerminal(
+						await terminalManager?.runInProjectTerminal(
 							selectedFolder.uri.fsPath,
 						);
 						vscode.window.showInformationMessage(
-							`Command Central: Project terminal created for ${selectedFolder.name}.`,
+							`Command Central: Project terminal opened for ${selectedFolder.name}.`,
 						);
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err);
-						mainLogger.error("Failed to create project terminal", err as Error);
+						mainLogger.error("Failed to open project terminal", err as Error);
 						vscode.window.showErrorMessage(
-							`Command Central: Failed to create terminal — ${msg}`,
+							`Command Central: Failed to open terminal — ${msg}`,
 						);
 					}
 				},
