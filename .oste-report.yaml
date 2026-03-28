@@ -1,7 +1,10 @@
-task_id: "cc-processscanner-review"
+task_id: "cc-processscanner-tighten"
 status: "success"
-summary: "Reviewed ProcessScanner Codex/Gemini parity and documented NO-GO findings"
+summary: "Tightened Codex/Gemini process-scanner regexes and added near-miss negative tests to prevent false positives"
 files_changed:
-  - "research/REVIEW-cc-processscanner-parity.md"
+  - "src/discovery/process-scanner.ts"
+  - "test/discovery/process-scanner.test.ts"
+  - "research/DEV-NOTES-cc-visibility.md"
+  - ".oste-report.yaml"
 tests_passing: true
-next_steps: "Narrow Codex/Gemini regex path hints and add Codex/Gemini near-miss false-positive tests."
+next_steps: "Optional: extend parity tests to include npx/pnpm wrapper invocations for Codex/Gemini CLI entrypoints."

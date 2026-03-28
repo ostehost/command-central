@@ -54,3 +54,15 @@ Implemented stale-session governance and visibility-contract hardening in Comman
 ### Tests Run
 1. `bun test test/discovery/process-scanner.test.ts test/discovery/agent-registry.test.ts`
    - Result: PASS (44 passed, 0 failed)
+
+## Update (2026-03-27 — cc-processscanner-tighten)
+- Tightened `CODEX_CLI_HINT_RE` and `GEMINI_CLI_HINT_RE` in `src/discovery/process-scanner.ts` to match real CLI invocations:
+  - direct executable tokens (`codex`/`codex-cli`, `gemini`/`gemini-cli`, including path-qualified binaries),
+  - known package-path invocations (`node_modules/@openai/codex`, `node_modules/@google/gemini-cli`),
+  - package-name tokens used by wrappers (`@openai/codex`, `@google/gemini-cli`).
+- Removed broad path-segment matching that could classify arbitrary `/codex/` or `/gemini/` directories as agent CLIs.
+- Added near-miss negative coverage in `test/discovery/process-scanner.test.ts` for commands containing `/codex/` or `/gemini/` path segments and package-like decoys that should not be detected as agents.
+
+### Tests Run
+1. `bun test test/discovery/process-scanner.test.ts`
+   - Result: PASS (24 passed, 0 failed)

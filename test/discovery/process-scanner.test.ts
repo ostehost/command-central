@@ -80,6 +80,19 @@ describe("ProcessScanner", () => {
 			expect(results).toHaveLength(0);
 		});
 
+		test("ignores near-miss codex/gemini path segments that are not CLI invocations", () => {
+			const psOutput = [
+				"  PID   STARTED                       COMMAND",
+				"44451 Mon Jan  6 14:00:00 2025 /usr/bin/node /workspace/services/codex/runner.js --task build",
+				"44452 Mon Jan  6 14:00:00 2025 /usr/bin/node /workspace/tools/gemini/sync.js --env prod",
+				"44453 Mon Jan  6 14:00:00 2025 /usr/bin/node /tmp/node_modules/@acme/codex-cli/dist/index.js --help",
+				"44454 Mon Jan  6 14:00:00 2025 /usr/bin/node /tmp/node_modules/@google/gemini-cli-helper/dist/index.js --version",
+			].join("\n");
+
+			const results = scanner.parsePsOutput(psOutput);
+			expect(results).toHaveLength(0);
+		});
+
 		test("filters out electron helpers and renderers", () => {
 			const psOutput = [
 				"  PID   STARTED                       COMMAND",

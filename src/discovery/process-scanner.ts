@@ -26,10 +26,30 @@ const CMD_TIMEOUT = 5_000;
  */
 const CLAUDE_CLI_HINT_RE =
 	/(?:^|\/)claude(?:\.js)?(?:\s|$)|\/claude-code\/|@anthropic-ai\/claude-code/i;
-const CODEX_CLI_HINT_RE =
-	/(?:^|\/)codex(?:\.js)?(?:\s|$)|\/codex(?:-cli)?\/|@openai\/codex/i;
-const GEMINI_CLI_HINT_RE =
-	/(?:^|\/)gemini(?:\.js)?(?:\s|$)|\/gemini(?:-cli)?\/|@google\/gemini-cli/i;
+const CLI_TOKEN_PREFIX = String.raw`(?:^|[\s"'])`;
+const CLI_TOKEN_SUFFIX = String.raw`(?=$|[\s"'])`;
+const CODEX_CLI_HINT_RE = new RegExp(
+	[
+		// Direct executable token (for example: codex, /usr/local/bin/codex, codex-cli)
+		`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*codex(?:-cli)?(?:\\.js)?${CLI_TOKEN_SUFFIX}`,
+		// Known npm package path invocations
+		`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*node_modules/@openai/codex(?:/[^\\s"']+)*${CLI_TOKEN_SUFFIX}`,
+		// npx/pnpm dlx package-name token
+		`${CLI_TOKEN_PREFIX}@openai/codex${CLI_TOKEN_SUFFIX}`,
+	].join("|"),
+	"i",
+);
+const GEMINI_CLI_HINT_RE = new RegExp(
+	[
+		// Direct executable token (for example: gemini, /usr/local/bin/gemini, gemini-cli)
+		`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*gemini(?:-cli)?(?:\\.js)?${CLI_TOKEN_SUFFIX}`,
+		// Known npm package path invocations
+		`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*node_modules/@google/gemini-cli(?:/[^\\s"']+)*${CLI_TOKEN_SUFFIX}`,
+		// npx/pnpm dlx package-name token
+		`${CLI_TOKEN_PREFIX}@google/gemini-cli${CLI_TOKEN_SUFFIX}`,
+	].join("|"),
+	"i",
+);
 const AGENT_CLI_RE = new RegExp(
 	[
 		CLAUDE_CLI_HINT_RE.source,
