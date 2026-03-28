@@ -8,11 +8,12 @@ Use this checklist before running `just dist`.
 - [ ] `just test` passes (all 624+ tests)
 - [ ] `just test-quality` passes (no type assertions, no skipped tests)
 - [ ] No console warnings or errors in Extension Host
+- [ ] `just prerelease-gate` passes and writes `research/prerelease-gate/latest.json`
 
 ## Launcher Sync
 
 - [ ] `just sync-launcher` run (syncs from development repo)
-- [ ] `diff resources/bin/ghostty-launcher ~/ghostty-dock-launcher-v1/ghostty` shows no differences
+- [ ] `diff resources/bin/ghostty-launcher ~/projects/ghostty-launcher/launcher` shows no differences
 - [ ] `.launcher-version` file updated
 
 ## Documentation
@@ -61,6 +62,12 @@ just sync-launcher
 
 # Preview release
 just dist --dry-run
+
+# Run hard gate only
+just prerelease-gate
+
+# Build prerelease after gate
+just prerelease
 
 # Build release
 just dist            # patch (default)

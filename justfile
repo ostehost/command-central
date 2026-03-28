@@ -16,6 +16,7 @@ default:
     @echo "  just dev         Start development with hot reload"
     @echo "  just pre-commit  Developer workflow (fix + verify) - recommended!"
     @echo "  just dist        Build distribution (smart version-aware builds)"
+    @echo "  just prerelease  Run prerelease gate + build prerelease artifact"
     @echo ""
     @echo "Code Quality (Cross-Project Pattern):"
     @echo "  just check       Comprehensive validation (Biome CI + tsc + knip)"
@@ -107,7 +108,9 @@ info *package:
 # Create/update Ghostty dock launcher for this project
 # Transparently creates a dock-launchable terminal that opens in this project
 ghostty:
-    @if [ -x "$HOME/ghostty-dock-launcher-v1/ghostty" ]; then \
+    @if [ -x "$HOME/projects/ghostty-launcher/launcher" ]; then \
+        "$HOME/projects/ghostty-launcher/launcher" "$(pwd)" 2>/dev/null || true; \
+    elif [ -x "$HOME/ghostty-dock-launcher-v1/ghostty" ]; then \
         "$HOME/ghostty-dock-launcher-v1/ghostty" "$(pwd)" 2>/dev/null || true; \
     elif command -v ghostty-launcher >/dev/null 2>&1; then \
         ghostty-launcher "$(pwd)" 2>/dev/null || true; \
@@ -455,8 +458,8 @@ sync-all: sync-launcher sync-terminal
 
 # Check if launcher needs sync (internal, called before dist)
 _check-launcher-sync:
-    @if [ -f ~/ghostty-dock-launcher-v1/ghostty ]; then \
-        if ! diff -q resources/bin/ghostty-launcher ~/ghostty-dock-launcher-v1/ghostty >/dev/null 2>&1; then \
+    @if [ -f ~/projects/ghostty-launcher/launcher ]; then \
+        if ! diff -q resources/bin/ghostty-launcher ~/projects/ghostty-launcher/launcher >/dev/null 2>&1; then \
             echo ""; \
             echo "⚠️  WARNING: Bundled launcher differs from source!"; \
             echo "   Run 'just sync-launcher' before distribution."; \
@@ -498,6 +501,21 @@ dist *args="--patch": _check-launcher-sync _check-terminal-sync
     fi
     @echo ""
     bun run scripts-v2/dist-simple.ts {{args}}
+
+# Hard-fail prerelease integration gate (cross-repo)
+prerelease-gate *args="":
+    @echo "🚧 Running prerelease gate..."
+    @echo "   • Command Central validation (just verify)"
+    @echo "   • Ghostty Launcher validation (just check)"
+    @echo "   • Cross-repo launcher contract checks"
+    @echo "   • Provenance artifact (CC + launcher SHAs)"
+    @echo ""
+    bun run scripts-v2/prerelease-gate.ts {{args}}
+
+# Build prerelease artifact only after gate passes
+prerelease *args="--prerelease":
+    @just prerelease-gate
+    @just dist "{{args}}"
 
 # Clean build artifacts
 clean:

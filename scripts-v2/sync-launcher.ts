@@ -3,7 +3,7 @@
  * Syncs the launcher script from the external development repo.
  * Run: bun run scripts-v2/sync-launcher.ts
  *
- * The ghostty-dock-launcher-v1 repo is the canonical source for the launcher script.
+ * The ghostty-launcher repo is the canonical source for the launcher script.
  * This script copies the latest version to the extension's resources/bin directory
  * for bundling with the VSIX package.
  */
@@ -13,8 +13,8 @@ import * as path from "node:path";
 
 const SOURCE_REPO =
 	process.env.LAUNCHER_SOURCE ||
-	path.join(process.env.HOME!, "ghostty-dock-launcher-v1");
-const SOURCE_SCRIPT = path.join(SOURCE_REPO, "ghostty");
+	path.join(process.env.HOME!, "projects", "ghostty-launcher");
+const SOURCE_SCRIPT = path.join(SOURCE_REPO, "launcher");
 const DEST_SCRIPT = "resources/bin/ghostty-launcher";
 const VERSION_FILE = "resources/bin/.launcher-version";
 
@@ -42,7 +42,7 @@ Options:
   --help      Show this help message
 
 Environment:
-  LAUNCHER_SOURCE   Override source repo path (default: ~/ghostty-dock-launcher-v1)
+  LAUNCHER_SOURCE   Override source repo path (default: ~/projects/ghostty-launcher)
 
 Examples:
   bun run scripts-v2/sync-launcher.ts           # Sync launcher
@@ -56,7 +56,7 @@ Examples:
 	if (!fs.existsSync(SOURCE_SCRIPT)) {
 		console.error(`Source not found: ${SOURCE_SCRIPT}`);
 		console.error(
-			"\nThe launcher source repo is expected at ~/ghostty-dock-launcher-v1",
+			"\nThe launcher source repo is expected at ~/projects/ghostty-launcher",
 		);
 		console.error("Set LAUNCHER_SOURCE environment variable to override.");
 		process.exit(1);

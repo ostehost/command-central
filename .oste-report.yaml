@@ -1,9 +1,13 @@
-task_id: "cc-launcher-session-contract"
+task_id: "cc-prerelease-gate-v1"
 status: "success"
-summary: "Aligned TerminalManager session lookup with ghostty-launcher --session-id contract and locked it with regression tests"
+summary: "Added a cross-repo prerelease gate workflow with launcher contract checks, provenance artifacts, focused tests, and release-doc sync updates"
 files_changed:
-  - "src/ghostty/TerminalManager.ts"
-  - "test/ghostty/terminal-manager.test.ts"
-  - "research/DEV-NOTES-launcher-session-contract.md"
-tests_passing: true
-next_steps: "Optional: add a shared cross-repo launcher CLI contract fixture to catch future flag drift earlier."
+  - "scripts-v2/prerelease-gate.ts"
+  - "test/scripts-v2/prerelease-gate.test.ts"
+  - "justfile"
+  - "scripts-v2/sync-launcher.ts"
+  - "docs/releasing/PROCESS.md"
+  - "docs/releasing/CHECKLIST.md"
+  - "research/DEV-NOTES-prerelease-gate-v1.md"
+tests_passing: false
+next_steps: "Stabilize/fix the upstream ghostty-launcher `just check` codesign-ordering failure so full strict `just prerelease-gate` can pass without skip flags."

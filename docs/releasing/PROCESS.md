@@ -18,6 +18,9 @@ This document describes the release workflow for Command Central VS Code extensi
 # Standard patch release (most common)
 just dist
 
+# Partner prerelease (runs hard gate before build)
+just prerelease
+
 # With version bump options
 just dist --minor      # Bump minor version
 just dist --major      # Bump major version
@@ -33,6 +36,7 @@ Before running `just dist`:
 ```bash
 just check              # Lint, typecheck, dead code detection
 just test               # Full test suite (624 tests)
+just prerelease-gate    # Cross-repo hard gate + provenance artifact
 ```
 
 ### 2. Launcher Sync
@@ -71,17 +75,29 @@ just verify
 # Build with patch version bump (default)
 just dist
 
+# Build prerelease only after gate passes
+just prerelease
+
 # Or specify version type
 just dist --minor
 ```
 
 The dist command:
 1. Checks launcher sync status (warns if needed)
-2. Runs validation (check + test)
-3. Bumps version via npm version
-4. Builds production VSIX
-5. Installs in VS Code for testing
-6. Archives release
+2. Bumps version via npm version
+3. Builds production VSIX
+4. Installs in VS Code for testing
+5. Archives release
+
+`just prerelease-gate` hard-fails on:
+- `just verify` in Command Central
+- `just check` in `~/projects/ghostty-launcher`
+- launcher CLI contract drift (`--session-id` and required flags)
+- provenance artifact generation
+
+Gate artifact output:
+- `research/prerelease-gate/latest.json`
+- `research/prerelease-gate/prerelease-gate-<timestamp>.json`
 
 ### Step 3: Test Installation
 
