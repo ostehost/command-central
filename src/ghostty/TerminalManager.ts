@@ -9,6 +9,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { LoggerService } from "../services/logger-service.js";
+import { ProjectIconManager } from "../services/project-icon-manager.js";
 
 /** Custom error types for better error handling */
 export class LauncherNotFoundError extends Error {
@@ -67,12 +68,21 @@ export interface TerminalInfo {
 	tmuxSession: string;
 }
 
+export interface ProjectIconEnsurer {
+	ensureProjectIconPersisted(projectDir: string): Promise<string>;
+}
+
 export class TerminalManager {
 	private readonly logger: LoggerService;
+	private readonly projectIconEnsurer: ProjectIconEnsurer;
 	private launcherValidationCache = new Map<string, boolean>();
 
-	constructor(logger: LoggerService) {
+	constructor(
+		logger: LoggerService,
+		projectIconEnsurer: ProjectIconEnsurer = new ProjectIconManager(),
+	) {
 		this.logger = logger;
+		this.projectIconEnsurer = projectIconEnsurer;
 	}
 
 	/**
@@ -127,6 +137,7 @@ export class TerminalManager {
 			`Creating project terminal for: ${workspaceRoot}`,
 			"TerminalManager",
 		);
+		await this.projectIconEnsurer.ensureProjectIconPersisted(workspaceRoot);
 
 		const launcher = await this.resolvedLauncherPath();
 

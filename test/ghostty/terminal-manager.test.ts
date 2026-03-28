@@ -53,6 +53,7 @@ const fsExistsSyncMock = mock((_p: string) => false);
 
 mock.module("node:fs", () => ({
 	...realFs,
+	promises: realFs.promises,
 	existsSync: fsExistsSyncMock,
 }));
 
@@ -88,7 +89,11 @@ describe("TerminalManager.getLauncherPath", () => {
 			...realChildProcess,
 			execFile: execFileMock,
 		}));
-		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+		}));
 	});
 
 	test("returns configured path when set", () => {
@@ -135,7 +140,11 @@ describe("TerminalManager.isLauncherInstalled", () => {
 			...realChildProcess,
 			execFile: execFileMock,
 		}));
-		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+		}));
 		// Default: configured path is "launcher"
 		mockConfigGet.mockImplementation(() => undefined);
 	});
@@ -217,7 +226,11 @@ describe("TerminalManager.createProjectTerminal", () => {
 			...realChildProcess,
 			execFile: execFileMock,
 		}));
-		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
 	});
@@ -300,6 +313,90 @@ describe("TerminalManager.createProjectTerminal", () => {
 	});
 });
 
+describe("TerminalManager icon persistence before create-bundle", () => {
+	beforeEach(() => {
+		mock.restore();
+		mock.module("vscode", () => ({
+			workspace: { getConfiguration: mockGetConfiguration },
+		}));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+		}));
+		mockConfigGet.mockImplementation(() => undefined);
+		fsExistsSyncMock.mockImplementation(() => false);
+	});
+
+	test("ensures icon before direct createProjectTerminal bundle creation", async () => {
+		const events: string[] = [];
+		const iconEnsurer = {
+			ensureProjectIconPersisted: mock(async () => {
+				events.push("ensure-icon");
+				return "🧪";
+			}),
+		};
+
+		execFileMock.mockImplementation(
+			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--version")) {
+					cb(null, { stdout: "launcher version 1.0.0", stderr: "" });
+				} else if (a.includes("--create-bundle")) {
+					events.push("create-bundle");
+					cb(null, { stdout: "Bundle created", stderr: "" });
+				} else {
+					cb(null, { stdout: "", stderr: "" });
+				}
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never, iconEnsurer);
+		await mgr.createProjectTerminal("/Users/test/my-project");
+
+		expect(events).toEqual(["ensure-icon", "create-bundle"]);
+		expect(iconEnsurer.ensureProjectIconPersisted).toHaveBeenCalledTimes(1);
+	});
+
+	test("ensures icon before runInProjectTerminal path creates a bundle", async () => {
+		const events: string[] = [];
+		const iconEnsurer = {
+			ensureProjectIconPersisted: mock(async () => {
+				events.push("ensure-icon");
+				return "📦";
+			}),
+		};
+
+		execFileMock.mockImplementation(
+			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--version")) {
+					cb(null, { stdout: "launcher version 1.0.0", stderr: "" });
+				} else if (a.includes("--parse-name")) {
+					cb(null, { stdout: "my-project\n", stderr: "" });
+				} else if (a.includes("--parse-icon")) {
+					cb(null, { stdout: "📦\n", stderr: "" });
+				} else if (a.includes("--tmux-session")) {
+					cb(null, { stdout: "\n", stderr: "" });
+				} else if (a.includes("--create-bundle")) {
+					events.push("create-bundle");
+					cb(null, { stdout: "Bundle created", stderr: "" });
+				} else {
+					cb(null, { stdout: "", stderr: "" });
+				}
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never, iconEnsurer);
+		await mgr.runInProjectTerminal("/Users/test/my-project");
+
+		expect(events).toEqual(["ensure-icon", "create-bundle"]);
+		expect(iconEnsurer.ensureProjectIconPersisted).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("TerminalManager.getTerminalInfo", () => {
 	const workspaceRoot = "/Users/test/my-project";
 
@@ -312,7 +409,11 @@ describe("TerminalManager.getTerminalInfo", () => {
 			...realChildProcess,
 			execFile: execFileMock,
 		}));
-		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
 	});
@@ -393,7 +494,11 @@ describe("TerminalManager.validateLauncherBinary (Fix 2)", () => {
 			...realChildProcess,
 			execFile: execFileMock,
 		}));
-		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
 	});
@@ -489,7 +594,11 @@ describe("TerminalManager error handling (Fix 3)", () => {
 			...realChildProcess,
 			execFile: execFileMock,
 		}));
-		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
 	});
@@ -650,7 +759,11 @@ describe("Multi-root workspace command support (Fix 1 - integration)", () => {
 			...realChildProcess,
 			execFile: execFileMock,
 		}));
-		mock.module("node:fs", () => ({ ...realFs, existsSync: fsExistsSyncMock }));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
 	});

@@ -1,10 +1,11 @@
-task_id: "cc-processscanner-tighten"
+task_id: "cc-dock-icon-launch-wiring"
 status: "success"
-summary: "Tightened Codex/Gemini process-scanner regexes and added near-miss negative tests to prevent false positives"
+summary: "Guaranteed project icon persistence before Ghostty bundle creation and added focused launch-path tests."
 files_changed:
-  - "src/discovery/process-scanner.ts"
-  - "test/discovery/process-scanner.test.ts"
-  - "research/DEV-NOTES-cc-visibility.md"
-  - ".oste-report.yaml"
+  - "src/services/project-icon-manager.ts"
+  - "src/ghostty/TerminalManager.ts"
+  - "test/services/project-icon-manager.test.ts"
+  - "test/ghostty/terminal-manager.test.ts"
+  - "research/DEV-NOTES-dock-icon-launch-wiring.md"
 tests_passing: true
-next_steps: "Optional: extend parity tests to include npx/pnpm wrapper invocations for Codex/Gemini CLI entrypoints."
+next_steps: "Optional: add an extension-command-level test around commandCentral.ghostty.createTerminal to assert end-to-end wiring via command registration."

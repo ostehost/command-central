@@ -73,6 +73,23 @@ export class ProjectIconManager {
 	private iconCache = new Map<string, string>();
 	private writeQueue = new Map<string, Promise<void>>();
 
+	async ensureProjectIconPersisted(projectDir: string): Promise<string> {
+		if (!projectDir) return DEFAULT_ICON;
+
+		const configured = this.readConfiguredIcon(projectDir);
+		if (configured) {
+			this.iconCache.set(projectDir, configured);
+			return configured;
+		}
+
+		const icon =
+			this.iconCache.get(projectDir) ??
+			this.generateDeterministicIcon(projectDir);
+		this.iconCache.set(projectDir, icon);
+		await this.queueWrite(projectDir, icon);
+		return icon;
+	}
+
 	getIconForProject(projectDir: string): string {
 		if (!projectDir) return DEFAULT_ICON;
 

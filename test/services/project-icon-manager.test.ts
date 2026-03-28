@@ -104,4 +104,50 @@ describe("ProjectIconManager", () => {
 		>;
 		expect(parsed["commandCentral.project.icon"]).toBe("AI");
 	});
+
+	test("ensureProjectIconPersisted writes deterministic fallback immediately", async () => {
+		const projectDir = path.join(tmpDir, "first-launch-app");
+		fs.mkdirSync(projectDir, { recursive: true });
+		const settingsPath = path.join(projectDir, ".vscode", "settings.json");
+
+		const manager = new ProjectIconManager();
+		const icon = await manager.ensureProjectIconPersisted(projectDir);
+
+		expect(fs.existsSync(settingsPath)).toBe(true);
+		const parsed = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<
+			string,
+			unknown
+		>;
+		expect(parsed["commandCentral.project.icon"]).toBe(icon);
+	});
+
+	test("ensureProjectIconPersisted respects configured icon without rewriting", async () => {
+		const projectDir = path.join(tmpDir, "configured-icon-app");
+		const vscodeDir = path.join(projectDir, ".vscode");
+		const settingsPath = path.join(vscodeDir, "settings.json");
+		fs.mkdirSync(vscodeDir, { recursive: true });
+		const raw =
+			'{\n\t"commandCentral.project.icon": "🧭",\n\t"editor.tabSize": 2\n}\n';
+		fs.writeFileSync(settingsPath, raw, "utf-8");
+
+		const manager = new ProjectIconManager();
+		const icon = await manager.ensureProjectIconPersisted(projectDir);
+
+		expect(icon).toBe("🧭");
+		expect(fs.readFileSync(settingsPath, "utf-8")).toBe(raw);
+	});
+
+	test("ensureProjectIconPersisted does not clobber malformed settings", async () => {
+		const projectDir = path.join(tmpDir, "malformed-settings-app");
+		const vscodeDir = path.join(projectDir, ".vscode");
+		const settingsPath = path.join(vscodeDir, "settings.json");
+		fs.mkdirSync(vscodeDir, { recursive: true });
+		const malformed = '{\n  "editor.tabSize": 2,\n';
+		fs.writeFileSync(settingsPath, malformed, "utf-8");
+
+		const manager = new ProjectIconManager();
+		await manager.ensureProjectIconPersisted(projectDir);
+
+		expect(fs.readFileSync(settingsPath, "utf-8")).toBe(malformed);
+	});
 });
