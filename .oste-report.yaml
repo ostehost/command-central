@@ -1,10 +1,11 @@
-task_id: "cc-dock-icon-refresh-on-change"
+task_id: "cc-dock-icon-launch-surface"
 status: "success"
-summary: "Persist project icon changes and best-effort refresh the Ghostty bundle icon with safe failure handling and focused tests."
+summary: "Routed agent launch and no-session terminal flow through project bundle launch surface to preserve per-project Dock identity."
 files_changed:
+  - "src/ghostty/TerminalManager.ts"
   - "src/extension.ts"
-  - "src/ghostty/project-icon-bundle-refresh.ts"
-  - "test/ghostty/project-icon-bundle-refresh.test.ts"
-  - "research/DEV-NOTES-dock-icon-refresh-on-change.md"
+  - "test/ghostty/terminal-manager.test.ts"
+  - "test/commands/launch-agent.test.ts"
+  - "research/DEV-NOTES-dock-icon-launch-surface.md"
 tests_passing: true
-next_steps: "Optional: add a non-warning success toast/status message after a successful bundle refresh."
+next_steps: "Optional: harden shell-escaping for quoted project paths in launch command construction."

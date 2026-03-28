@@ -160,6 +160,29 @@ export class TerminalManager {
 	}
 
 	/**
+	 * Opens/activates the project's Ghostty bundle launch surface.
+	 * Runs: launcher <dir>
+	 */
+	private async openProjectTerminal(workspaceRoot: string): Promise<void> {
+		this.logger.info(
+			`Opening project terminal for: ${workspaceRoot}`,
+			"TerminalManager",
+		);
+
+		const launcher = await this.resolvedLauncherPath();
+		const { stdout, stderr } = await this.execLauncher(launcher, [
+			workspaceRoot,
+		]);
+
+		if (stdout.trim()) {
+			this.logger.debug(`launcher output: ${stdout.trim()}`, "TerminalManager");
+		}
+		if (stderr.trim()) {
+			this.logger.warn(`launcher stderr: ${stderr.trim()}`, "TerminalManager");
+		}
+	}
+
+	/**
 	 * Retrieves terminal info (name, icon, tmux session) for the given workspace root.
 	 * Runs --parse-name, --parse-icon, and --tmux-session in parallel.
 	 */
@@ -423,8 +446,15 @@ export class TerminalManager {
 			}
 		}
 
-		// No existing session or no command to send — create a new project terminal
+		if (info.tmuxSession && !command) {
+			// Existing session, no command: surface the project bundle terminal.
+			await this.openProjectTerminal(projectDir);
+			return;
+		}
+
+		// No session: rebuild bundle identity, then open/activate launch surface.
 		await this.createProjectTerminal(projectDir);
+		await this.openProjectTerminal(projectDir);
 
 		// If we just created a terminal and have a command, wait briefly then steer
 		if (command) {

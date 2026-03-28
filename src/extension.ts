@@ -2024,28 +2024,12 @@ export async function activate(
 					const path = await import("node:path");
 					const dirName = path.basename(projectDir);
 					const taskId = `cc-${dirName}-${timestamp}`;
-
-					const { execFile } = await import("node:child_process");
-					const { promisify } = await import("node:util");
-					const execFileAsync = promisify(execFile);
 					const backend = getConfiguredAgentBackend();
 
 					try {
-						await execFileAsync(
-							"oste-spawn.sh",
-							[
-								projectDir,
-								promptFile,
-								"--task-id",
-								taskId,
-								"--role",
-								"developer",
-								"--no-bundle",
-								"--agent",
-								backend,
-								"--json",
-							],
-							{ timeout: 15000 },
+						await terminalManager?.runInProjectTerminal(
+							projectDir,
+							`oste-spawn.sh "${projectDir}" "${promptFile}" --task-id "${taskId}" --role "developer" --agent "${backend}"`,
 						);
 
 						telemetry.track("cc_agent_launched");

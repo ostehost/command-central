@@ -6,34 +6,8 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import * as realChildProcess from "node:child_process";
 import * as realFs from "node:fs";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
-
-// Mock child_process execFile for promisify compatibility
-const mockExecFile = mock((..._args: unknown[]) =>
-	Promise.resolve({ stdout: "{}", stderr: "" }),
-);
-mock.module("node:child_process", () => ({
-	...realChildProcess,
-	execFile: (
-		cmd: string,
-		args: string[],
-		opts: Record<string, unknown>,
-		cb?: (
-			err: Error | null,
-			result: { stdout: string; stderr: string },
-		) => void,
-	) => {
-		const result = mockExecFile(cmd, args, opts);
-		if (cb) {
-			result
-				.then((r: { stdout: string; stderr: string }) => cb(null, r))
-				.catch((e: Error) => cb(e, { stdout: "", stderr: "" }));
-		}
-		return { on: () => ({}) };
-	},
-}));
 
 // Capture real writeFileSync before mock.module overwrites it
 const originalWriteFileSync = realFs.writeFileSync.bind(realFs);
@@ -52,12 +26,15 @@ mock.module("node:fs", () => ({
 describe("launchAgent command", () => {
 	let vscodeMock: ReturnType<typeof setupVSCodeMock>;
 	let commandHandler: () => Promise<void>;
+	const mockRunInProjectTerminal = mock(
+		(_projectDir: string, _command: string) => Promise.resolve(),
+	);
 
 	beforeEach(() => {
 		mock.restore();
 		vscodeMock = setupVSCodeMock();
-		mockExecFile.mockClear();
 		mockWriteFileSync.mockClear();
+		mockRunInProjectTerminal.mockClear();
 
 		// Add missing mock methods
 		vscodeMock.window.showInputBox = mock(() => Promise.resolve("Test task"));
@@ -84,6 +61,7 @@ describe("launchAgent command", () => {
 		// Simulate what extension.ts does
 		const vscode = vscodeMock;
 		const agentStatusProvider = { reload: mock() };
+		const terminalManager = { runInProjectTerminal: mockRunInProjectTerminal };
 
 		vscode.commands.registerCommand("commandCentral.launchAgent", async () => {
 			let projectDir: string;
@@ -119,30 +97,15 @@ describe("launchAgent command", () => {
 			const dirName = path.basename(projectDir);
 			const taskId = `cc-${dirName}-${timestamp}`;
 
-			const { execFile } = await import("node:child_process");
-			const { promisify } = await import("node:util");
-			const execFileAsync = promisify(execFile);
 			const configuredBackend = vscode.workspace
 				.getConfiguration("commandCentral.agentStatus")
 				.get("defaultBackend", "codex");
 			const backend = configuredBackend === "gemini" ? "gemini" : "codex";
 
 			try {
-				await execFileAsync(
-					"oste-spawn.sh",
-					[
-						projectDir,
-						promptFile,
-						"--task-id",
-						taskId,
-						"--role",
-						"developer",
-						"--no-bundle",
-						"--agent",
-						backend,
-						"--json",
-					],
-					{ timeout: 15000 },
+				await terminalManager.runInProjectTerminal(
+					projectDir,
+					`oste-spawn.sh "${projectDir}" "${promptFile}" --task-id "${taskId}" --role "developer" --agent "${backend}"`,
 				);
 
 				vscode.window.showInformationMessage(`Agent launched for ${dirName}`);
@@ -156,7 +119,7 @@ describe("launchAgent command", () => {
 			}, 2000);
 		});
 
-		return { agentStatusProvider };
+		return { agentStatusProvider, terminalManager };
 	}
 
 	test("single workspace folder: uses it directly without QuickPick", async () => {
@@ -202,7 +165,7 @@ describe("launchAgent command", () => {
 		await commandHandler();
 
 		expect(vscodeMock.window.showInputBox).not.toHaveBeenCalled();
-		expect(mockExecFile).not.toHaveBeenCalled();
+		expect(mockRunInProjectTerminal).not.toHaveBeenCalled();
 	});
 
 	test("InputBox cancelled: returns without spawning", async () => {
@@ -213,7 +176,7 @@ describe("launchAgent command", () => {
 		registerCommand();
 		await commandHandler();
 
-		expect(mockExecFile).not.toHaveBeenCalled();
+		expect(mockRunInProjectTerminal).not.toHaveBeenCalled();
 	});
 
 	test("prompt file is written to /tmp with correct content", async () => {
@@ -258,16 +221,16 @@ describe("launchAgent command", () => {
 		registerCommand();
 		await commandHandler();
 
-		const [, args] = mockExecFile.mock.calls[0] as unknown as [
+		const [, command] = mockRunInProjectTerminal.mock.calls[0] as [
 			string,
-			string[],
-			Record<string, unknown>,
+			string,
 		];
-		const taskIdIdx = args.indexOf("--task-id");
-		const taskId = args[taskIdIdx + 1];
+		const taskIdMatch = command.match(/--task-id "([^"]+)"/);
+		expect(taskIdMatch).toBeDefined();
+		const taskId = taskIdMatch?.[1] ?? "";
 		expect(taskId).toStartWith("cc-my-app-");
 		// The rest should be a valid base36 string
-		const base36Part = (taskId as string).replace("cc-my-app-", "");
+		const base36Part = taskId.replace("cc-my-app-", "");
 		expect(base36Part).toMatch(/^[0-9a-z]+$/);
 	});
 
@@ -291,7 +254,7 @@ describe("launchAgent command", () => {
 		vscodeMock.workspace.workspaceFolders = [
 			{ uri: { fsPath: "/projects/my-app" }, name: "my-app", index: 0 },
 		];
-		mockExecFile.mockImplementation(() =>
+		mockRunInProjectTerminal.mockImplementation(() =>
 			Promise.reject(new Error("spawn oste-spawn.sh ENOENT")),
 		);
 		registerCommand();
@@ -314,33 +277,27 @@ describe("launchAgent command", () => {
 		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
 			"No workspace folder open.",
 		);
-		expect(mockExecFile).not.toHaveBeenCalled();
+		expect(mockRunInProjectTerminal).not.toHaveBeenCalled();
 	});
 
-	test("oste-spawn.sh called with correct args", async () => {
+	test("routes launch through project terminal with bundle-aware command", async () => {
 		vscodeMock.workspace.workspaceFolders = [
 			{ uri: { fsPath: "/projects/my-app" }, name: "my-app", index: 0 },
 		];
 		registerCommand();
 		await commandHandler();
 
-		expect(mockExecFile).toHaveBeenCalled();
-		const [cmd, args, opts] = mockExecFile.mock.calls[0] as unknown as [
+		expect(mockRunInProjectTerminal).toHaveBeenCalled();
+		const [projectDir, command] = mockRunInProjectTerminal.mock.calls[0] as [
 			string,
-			string[],
-			Record<string, unknown>,
+			string,
 		];
-		expect(cmd).toBe("oste-spawn.sh");
-		expect(args[0]).toBe("/projects/my-app");
-		expect(args[1]).toStartWith("/tmp/cc-launch-");
-		expect(args).toContain("--task-id");
-		expect(args).toContain("--role");
-		expect(args).toContain("developer");
-		expect(args).toContain("--no-bundle");
-		expect(args).toContain("--agent");
-		expect(args).toContain("codex");
-		expect(args).toContain("--json");
-		expect(opts["timeout"]).toBe(15000);
+		expect(projectDir).toBe("/projects/my-app");
+		expect(command).toContain('oste-spawn.sh "/projects/my-app"');
+		expect(command).toContain('--task-id "cc-my-app-');
+		expect(command).toContain('--role "developer"');
+		expect(command).toContain('--agent "codex"');
+		expect(command).not.toContain("--no-bundle");
 	});
 
 	test("uses configured gemini backend when set", async () => {
@@ -363,14 +320,11 @@ describe("launchAgent command", () => {
 		registerCommand();
 		await commandHandler();
 
-		const [, args] = mockExecFile.mock.calls[0] as unknown as [
+		const [, command] = mockRunInProjectTerminal.mock.calls[0] as [
 			string,
-			string[],
-			Record<string, unknown>,
+			string,
 		];
-		const agentArgIndex = args.indexOf("--agent");
-		expect(agentArgIndex).toBeGreaterThan(-1);
-		expect(args[agentArgIndex + 1]).toBe("gemini");
+		expect(command).toContain('--agent "gemini"');
 	});
 
 	test("reload() is scheduled after spawn via setTimeout", async () => {

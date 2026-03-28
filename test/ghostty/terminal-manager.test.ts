@@ -383,6 +383,9 @@ describe("TerminalManager icon persistence before create-bundle", () => {
 				} else if (a.includes("--create-bundle")) {
 					events.push("create-bundle");
 					cb(null, { stdout: "Bundle created", stderr: "" });
+				} else if (a.length === 1 && a[0] === "/Users/test/my-project") {
+					events.push("open-bundle");
+					cb(null, { stdout: "Bundle opened", stderr: "" });
 				} else {
 					cb(null, { stdout: "", stderr: "" });
 				}
@@ -392,8 +395,124 @@ describe("TerminalManager icon persistence before create-bundle", () => {
 		const mgr = new TerminalManager(createMockLogger() as never, iconEnsurer);
 		await mgr.runInProjectTerminal("/Users/test/my-project");
 
-		expect(events).toEqual(["ensure-icon", "create-bundle"]);
+		expect(events).toEqual(["ensure-icon", "create-bundle", "open-bundle"]);
 		expect(iconEnsurer.ensureProjectIconPersisted).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("TerminalManager.runInProjectTerminal launch surface", () => {
+	beforeEach(() => {
+		mock.restore();
+		mock.module("vscode", () => ({
+			workspace: { getConfiguration: mockGetConfiguration },
+		}));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+		}));
+		mockConfigGet.mockImplementation(() => undefined);
+		fsExistsSyncMock.mockImplementation(() => false);
+	});
+
+	test("opens existing project bundle when session exists and no command provided", async () => {
+		const calls: Array<{ file: string; args: string[] }> = [];
+		execFileMock.mockImplementation(
+			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				calls.push({ file: f, args: a });
+				if (a.includes("--version"))
+					return cb(null, { stdout: "launcher version 1.0.0\n", stderr: "" });
+				if (a.includes("--parse-name"))
+					return cb(null, { stdout: "My Project\n", stderr: "" });
+				if (a.includes("--parse-icon"))
+					return cb(null, { stdout: "🚀\n", stderr: "" });
+				if (a.includes("--tmux-session"))
+					return cb(null, { stdout: "agent-my-project\n", stderr: "" });
+				if (a.length === 1 && a[0] === "/Users/test/my-project")
+					return cb(null, { stdout: "Bundle opened\n", stderr: "" });
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await mgr.runInProjectTerminal("/Users/test/my-project");
+
+		expect(
+			calls.some(
+				(c) =>
+					c.file === "launcher" &&
+					c.args.length === 1 &&
+					c.args[0] === "/Users/test/my-project",
+			),
+		).toBe(true);
+		expect(calls.some((c) => c.args.includes("--create-bundle"))).toBe(false);
+		expect(calls.some((c) => c.file === "oste-steer.sh")).toBe(false);
+	});
+
+	test("creates then opens bundle before steering command when session is initially missing", async () => {
+		const events: string[] = [];
+		let tmuxLookupCount = 0;
+		const originalSetTimeout = globalThis.setTimeout;
+		globalThis.setTimeout = ((fn: () => void) => {
+			fn();
+			return 0 as unknown as NodeJS.Timeout;
+		}) as typeof globalThis.setTimeout;
+
+		execFileMock.mockImplementation(
+			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--version")) {
+					cb(null, { stdout: "launcher version 1.0.0", stderr: "" });
+					return;
+				}
+				if (a.includes("--parse-name")) {
+					cb(null, { stdout: "my-project\n", stderr: "" });
+					return;
+				}
+				if (a.includes("--parse-icon")) {
+					cb(null, { stdout: "📦\n", stderr: "" });
+					return;
+				}
+				if (a.includes("--tmux-session")) {
+					tmuxLookupCount++;
+					const session = tmuxLookupCount === 1 ? "\n" : "agent-my-project\n";
+					cb(null, { stdout: session, stderr: "" });
+					return;
+				}
+				if (a.includes("--create-bundle")) {
+					events.push("create-bundle");
+					cb(null, { stdout: "Bundle created", stderr: "" });
+					return;
+				}
+				if (
+					f === "launcher" &&
+					a.length === 1 &&
+					a[0] === "/Users/test/my-project"
+				) {
+					events.push("open-bundle");
+					cb(null, { stdout: "Bundle opened", stderr: "" });
+					return;
+				}
+				if (f === "oste-steer.sh") {
+					events.push("steer");
+					cb(null, { stdout: "", stderr: "" });
+					return;
+				}
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		try {
+			const mgr = new TerminalManager(createMockLogger() as never);
+			await mgr.runInProjectTerminal("/Users/test/my-project", 'echo "hello"');
+		} finally {
+			globalThis.setTimeout = originalSetTimeout;
+		}
+
+		expect(events).toEqual(["create-bundle", "open-bundle", "steer"]);
 	});
 });
 
