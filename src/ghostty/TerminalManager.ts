@@ -191,7 +191,7 @@ export class TerminalManager {
 
 	/**
 	 * Retrieves terminal info (name, icon, tmux session) for the given workspace root.
-	 * Runs --parse-name, --parse-icon, and --tmux-session in parallel.
+	 * Runs --parse-name, --parse-icon, and --session-id in parallel.
 	 */
 	async getTerminalInfo(workspaceRoot: string): Promise<TerminalInfo> {
 		this.logger.debug(
@@ -204,7 +204,7 @@ export class TerminalManager {
 		const [nameResult, iconResult, tmuxResult] = await Promise.allSettled([
 			this.execLauncher(launcher, ["--parse-name", workspaceRoot]),
 			this.execLauncher(launcher, ["--parse-icon", workspaceRoot]),
-			this.execLauncher(launcher, ["--tmux-session", workspaceRoot]),
+			this.execLauncher(launcher, ["--session-id", workspaceRoot]),
 		]);
 
 		const name =
@@ -229,7 +229,7 @@ export class TerminalManager {
 		}
 		if (tmuxResult.status === "rejected") {
 			const error = tmuxResult.reason;
-			this.logCommandFailure("--tmux-session", error);
+			this.logCommandFailure("--session-id", error);
 		}
 
 		return { name, icon, tmuxSession };

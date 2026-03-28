@@ -431,7 +431,7 @@ describe("TerminalManager icon persistence before create-bundle", () => {
 					cb(null, { stdout: "my-project\n", stderr: "" });
 				} else if (a.includes("--parse-icon")) {
 					cb(null, { stdout: "📦\n", stderr: "" });
-				} else if (a.includes("--tmux-session")) {
+				} else if (a.includes("--session-id")) {
 					cb(null, { stdout: "\n", stderr: "" });
 				} else if (a.includes("--create-bundle")) {
 					events.push("create-bundle");
@@ -508,7 +508,7 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 					return cb(null, { stdout: "My Project\n", stderr: "" });
 				if (a.includes("--parse-icon"))
 					return cb(null, { stdout: "🚀\n", stderr: "" });
-				if (a.includes("--tmux-session"))
+				if (a.includes("--session-id"))
 					return cb(null, { stdout: "agent-my-project\n", stderr: "" });
 				if (a.length === 1 && a[0] === "/Users/test/my-project")
 					return cb(null, { stdout: "Bundle opened\n", stderr: "" });
@@ -554,7 +554,7 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 					cb(null, { stdout: "📦\n", stderr: "" });
 					return;
 				}
-				if (a.includes("--tmux-session")) {
+				if (a.includes("--session-id")) {
 					tmuxLookupCount++;
 					const session = tmuxLookupCount === 1 ? "\n" : "agent-my-project\n";
 					cb(null, { stdout: session, stderr: "" });
@@ -592,6 +592,59 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 
 		expect(events).toEqual(["create-bundle", "open-bundle", "steer"]);
 	});
+
+	test("uses launcher --session-id contract for session lookup before steering", async () => {
+		const calls: Array<{ file: string; args: string[] }> = [];
+
+		execFileMock.mockImplementation(
+			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				calls.push({ file: f, args: a });
+				if (a.includes("--version")) {
+					cb(null, { stdout: "launcher version 1.0.0", stderr: "" });
+					return;
+				}
+				if (a.includes("--parse-name")) {
+					cb(null, { stdout: "my-project\n", stderr: "" });
+					return;
+				}
+				if (a.includes("--parse-icon")) {
+					cb(null, { stdout: "📦\n", stderr: "" });
+					return;
+				}
+				if (a.includes("--session-id")) {
+					cb(null, { stdout: "agent-contract-session\n", stderr: "" });
+					return;
+				}
+				if (f === "oste-steer.sh") {
+					cb(null, { stdout: "", stderr: "" });
+					return;
+				}
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await mgr.runInProjectTerminal("/Users/test/my-project", "echo contract");
+
+		expect(
+			calls.some(
+				(c) => c.file === "launcher" && c.args.includes("--session-id"),
+			),
+		).toBe(true);
+		expect(
+			calls.some(
+				(c) => c.file === "launcher" && c.args.includes("--tmux-session"),
+			),
+		).toBe(false);
+		expect(
+			calls.some(
+				(c) =>
+					c.file === "oste-steer.sh" &&
+					c.args[0] === "--session" &&
+					c.args[1] === "agent-contract-session",
+			),
+		).toBe(true);
+	});
 });
 
 describe("TerminalManager.getTerminalInfo", () => {
@@ -625,7 +678,7 @@ describe("TerminalManager.getTerminalInfo", () => {
 					return cb(null, { stdout: "My Project\n", stderr: "" });
 				if (a.includes("--parse-icon"))
 					return cb(null, { stdout: "🚀\n", stderr: "" });
-				if (a.includes("--tmux-session"))
+				if (a.includes("--session-id"))
 					return cb(null, { stdout: "agent-my-project\n", stderr: "" });
 				cb(null, { stdout: "", stderr: "" });
 			},
@@ -648,7 +701,7 @@ describe("TerminalManager.getTerminalInfo", () => {
 					return cb(new Error("failed"), { stdout: "", stderr: "" });
 				if (a.includes("--parse-icon"))
 					return cb(null, { stdout: "📦\n", stderr: "" });
-				if (a.includes("--tmux-session"))
+				if (a.includes("--session-id"))
 					return cb(null, { stdout: "s1\n", stderr: "" });
 				cb(null, { stdout: "", stderr: "" });
 			},
@@ -1005,7 +1058,7 @@ describe("Multi-root workspace command support (Fix 1 - integration)", () => {
 					cb(null, { stdout: "Test Project\n", stderr: "" });
 				} else if (a.includes("--parse-icon")) {
 					cb(null, { stdout: "🚀\n", stderr: "" });
-				} else if (a.includes("--tmux-session")) {
+				} else if (a.includes("--session-id")) {
 					cb(null, { stdout: "test-session\n", stderr: "" });
 				} else {
 					cb(null, { stdout: "", stderr: "" });
