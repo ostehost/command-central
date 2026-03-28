@@ -1,10 +1,7 @@
-task_id: "cc-processscanner-parity"
+task_id: "cc-processscanner-review"
 status: "success"
-summary: "Added Codex/Gemini ProcessScanner detection parity with backend/model metadata hints and focused scanner tests"
+summary: "Reviewed ProcessScanner Codex/Gemini parity and documented NO-GO findings"
 files_changed:
-  - "src/discovery/process-scanner.ts"
-  - "src/discovery/types.ts"
-  - "test/discovery/process-scanner.test.ts"
-  - "research/DEV-NOTES-cc-visibility.md"
+  - "research/REVIEW-cc-processscanner-parity.md"
 tests_passing: true
-next_steps: "None"
+next_steps: "Narrow Codex/Gemini regex path hints and add Codex/Gemini near-miss false-positive tests."
