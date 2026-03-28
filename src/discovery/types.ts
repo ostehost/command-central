@@ -20,6 +20,8 @@ export interface DiscoveredAgent {
 	command: string;
 	/** CLI name if known (for example: claude, codex, gemini) */
 	cli_name?: string;
+	/** Normalized backend hint for UI type detection */
+	agent_backend?: "claude" | "codex" | "gemini";
 	/** When the process started */
 	startTime: Date;
 	/** Model flag parsed from --model arg, if present */

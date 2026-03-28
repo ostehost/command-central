@@ -1,7 +1,7 @@
 /**
  * ProcessScanner tests
  *
- * Validates detection of running Claude Code instances via ps/lsof.
+ * Validates detection of running supported agent CLIs via ps/lsof.
  * All system calls are mocked via constructor injection — no real processes are inspected.
  */
 
@@ -38,21 +38,25 @@ describe("ProcessScanner", () => {
 	// ── parsePsOutput ────────────────────────────────────────────────
 
 	describe("parsePsOutput", () => {
-		test("parses Claude Code processes from ps output", () => {
+		test("parses supported agent CLI processes from ps output", () => {
 			const psOutput = [
 				"  PID   STARTED                       COMMAND",
 				"12345 Mon Jan  6 14:03:22 2025 /usr/local/bin/claude --model opus --print hello",
 				"12346 Mon Jan  6 14:05:00 2025 /usr/bin/node /path/to/claude-code/cli.js --session-id abc123",
+				"12347 Mon Jan  6 14:05:30 2025 /opt/homebrew/bin/codex --model gpt-5 --print hello",
+				"12348 Mon Jan  6 14:06:10 2025 node /tmp/node_modules/@google/gemini-cli/dist/index.js --model gemini-2.5-pro --prompt hi",
 			].join("\n");
 
 			const results = scanner.parsePsOutput(psOutput);
-			expect(results).toHaveLength(2);
+			expect(results).toHaveLength(4);
 			expect(results[0]?.pid).toBe(12345);
 			expect(results[0]?.command).toContain("claude");
 			expect(results[1]?.pid).toBe(12346);
+			expect(results[2]?.pid).toBe(12347);
+			expect(results[3]?.pid).toBe(12348);
 		});
 
-		test("filters out non-Claude processes", () => {
+		test("filters out non-agent processes", () => {
 			const psOutput = [
 				"  PID   STARTED                       COMMAND",
 				"11111 Mon Jan  6 14:00:00 2025 /usr/bin/vim test.ts",
@@ -106,6 +110,27 @@ describe("ProcessScanner", () => {
 			expect(result.model).toBe("opus");
 		});
 
+		test("extracts codex and gemini backend hints from command", () => {
+			const codexResult = scanner.parseClaudeArgs(
+				"/opt/homebrew/bin/codex --model gpt-5 --print hello",
+			);
+			expect(codexResult.agent_backend).toBe("codex");
+			expect(codexResult.cli_name).toBe("codex");
+			expect(codexResult.model).toBe("gpt-5");
+
+			const geminiResult = scanner.parseClaudeArgs(
+				"node /tmp/node_modules/@google/gemini-cli/dist/index.js --model gemini-2.5-pro --prompt hi",
+			);
+			expect(geminiResult.agent_backend).toBe("gemini");
+			expect(geminiResult.cli_name).toBe("gemini");
+			expect(geminiResult.model).toBe("gemini-2.5-pro");
+		});
+
+		test("extracts model from short -m flag", () => {
+			const result = scanner.parseClaudeArgs("/usr/local/bin/codex -m gpt-5");
+			expect(result.model).toBe("gpt-5");
+		});
+
 		test("extracts sessionId from --session-id flag", () => {
 			const result = scanner.parseClaudeArgs(
 				"claude --session-id abc-123 --print test",
@@ -132,6 +157,14 @@ describe("ProcessScanner", () => {
 				"claude --session-id primary --resume fallback",
 			);
 			expect(result.sessionId).toBe("primary");
+		});
+
+		test("supports equals-form args for model and sessionId", () => {
+			const result = scanner.parseClaudeArgs(
+				"claude --model=opus --session-id=sess-eq",
+			);
+			expect(result.model).toBe("opus");
+			expect(result.sessionId).toBe("sess-eq");
 		});
 
 		test("returns empty object when no flags present", () => {

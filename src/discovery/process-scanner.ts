@@ -1,11 +1,11 @@
 /**
- * ProcessScanner — Detect running Claude Code instances via `ps` + `lsof`.
+ * ProcessScanner — Detect running CLI agent instances via `ps` + `lsof`.
  *
  * Scanning approach:
- *   1. `ps -eo pid,lstart,command` → find processes whose command contains "claude"
- *   2. Filter to actual Claude Code CLIs (skip electron helpers, node children, etc.)
+ *   1. `ps -eo pid,lstart,command` → find processes whose command hints at claude/codex/gemini
+ *   2. Filter to actual CLI processes (skip electron helpers, renderer/gpu processes, etc.)
  *   3. `lsof -p PID -d cwd -Fn` → resolve working directory
- *   4. Parse command args for --model, --session-id, etc.
+ *   4. Parse command args for backend/model/session metadata used in UI detection
  */
 
 import { execFile } from "node:child_process";
@@ -19,15 +19,25 @@ const defaultExecFileAsync = promisify(execFile);
 const CMD_TIMEOUT = 5_000;
 
 /**
- * Regex to identify a genuine Claude Code CLI process.
- * Matches lines like:
- *   /usr/local/bin/claude --print ...
- *   claude --permission-mode ...
- *   node /path/to/claude ...  (when run via npx/bunx)
+ * Regex hints used to identify supported agent CLIs.
  *
- * Rejects electron/helper/renderer processes.
+ * These cover direct binaries as well as common package-path invocations
+ * (for example node/bun wrappers running package entrypoints).
  */
-const CLAUDE_CLI_RE = /(?:^|\/)claude(?:\.js)?\s|\/claude-code\//i;
+const CLAUDE_CLI_HINT_RE =
+	/(?:^|\/)claude(?:\.js)?(?:\s|$)|\/claude-code\/|@anthropic-ai\/claude-code/i;
+const CODEX_CLI_HINT_RE =
+	/(?:^|\/)codex(?:\.js)?(?:\s|$)|\/codex(?:-cli)?\/|@openai\/codex/i;
+const GEMINI_CLI_HINT_RE =
+	/(?:^|\/)gemini(?:\.js)?(?:\s|$)|\/gemini(?:-cli)?\/|@google\/gemini-cli/i;
+const AGENT_CLI_RE = new RegExp(
+	[
+		CLAUDE_CLI_HINT_RE.source,
+		CODEX_CLI_HINT_RE.source,
+		GEMINI_CLI_HINT_RE.source,
+	].join("|"),
+	"i",
+);
 
 const NOISE_RE = /electron|helper|renderer|gpu-process|crashpad|--type=/i;
 
@@ -44,7 +54,7 @@ export class ProcessScanner {
 	}
 
 	/**
-	 * Scan the process table for Claude Code instances.
+	 * Scan the process table for supported CLI agent instances.
 	 * Returns one DiscoveredAgent per unique PID.
 	 */
 	async scan(): Promise<DiscoveredAgent[]> {
@@ -125,8 +135,8 @@ export class ProcessScanner {
 
 			const startTime = new Date(startTimeStr);
 
-			// Filter: must look like Claude Code, must not be noise
-			if (!CLAUDE_CLI_RE.test(command)) continue;
+			// Filter: must look like a supported CLI agent command and not be noise
+			if (!AGENT_CLI_RE.test(command)) continue;
 			if (NOISE_RE.test(command)) continue;
 
 			results.push({ pid, startTime, command });
@@ -159,31 +169,50 @@ export class ProcessScanner {
 	}
 
 	/**
-	 * Extract metadata from Claude Code command-line arguments.
+	 * Extract metadata from agent command-line arguments.
 	 */
 	parseClaudeArgs(
 		command: string,
-	): Pick<DiscoveredAgent, "model" | "sessionId" | "cli_name"> {
-		const result: Pick<DiscoveredAgent, "model" | "sessionId" | "cli_name"> =
-			{};
+	): Pick<
+		DiscoveredAgent,
+		"agent_backend" | "model" | "sessionId" | "cli_name"
+	> {
+		const result: Pick<
+			DiscoveredAgent,
+			"agent_backend" | "model" | "sessionId" | "cli_name"
+		> = {};
 
-		const cliMatch = command.match(/\b(claude|codex|gemini)\b/i);
-		if (cliMatch) {
-			result.cli_name = cliMatch[1]?.toLowerCase();
+		const backend = this.detectBackend(command);
+		if (backend) {
+			result.agent_backend = backend;
+			result.cli_name = backend;
 		}
 
-		const modelMatch = command.match(/--model\s+(\S+)/);
-		if (modelMatch) result.model = modelMatch[1];
+		const modelMatch = command.match(
+			/(?:--model(?:=|\s+)|\s-m\s+)([^\s"']+|"[^"]+"|'[^']+')/,
+		);
+		if (modelMatch?.[1]) {
+			result.model = modelMatch[1].replace(/^['"]|['"]$/g, "");
+		}
 
-		const sessionMatch = command.match(/--session[_-]id\s+(\S+)/);
-		if (sessionMatch) result.sessionId = sessionMatch[1];
+		const sessionMatch = command.match(/--session[_-]id(?:=|\s+)(\S+)/);
+		if (sessionMatch?.[1]) result.sessionId = sessionMatch[1];
 
 		// Also try --resume which takes a session id
 		if (!result.sessionId) {
-			const resumeMatch = command.match(/--resume\s+(\S+)/);
-			if (resumeMatch) result.sessionId = resumeMatch[1];
+			const resumeMatch = command.match(/--resume(?:=|\s+)(\S+)/);
+			if (resumeMatch?.[1]) result.sessionId = resumeMatch[1];
 		}
 
 		return result;
+	}
+
+	private detectBackend(
+		command: string,
+	): DiscoveredAgent["agent_backend"] | undefined {
+		if (CLAUDE_CLI_HINT_RE.test(command)) return "claude";
+		if (CODEX_CLI_HINT_RE.test(command)) return "codex";
+		if (GEMINI_CLI_HINT_RE.test(command)) return "gemini";
+		return undefined;
 	}
 }

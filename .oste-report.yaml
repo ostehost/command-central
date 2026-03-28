@@ -1,8 +1,10 @@
-task_id: "cc-pidmask-test"
+task_id: "cc-processscanner-parity"
 status: "success"
-summary: "Added running-PID masking regression test and verified agent-registry test suite passes"
+summary: "Added Codex/Gemini ProcessScanner detection parity with backend/model metadata hints and focused scanner tests"
 files_changed:
-  - "test/discovery/agent-registry.test.ts"
+  - "src/discovery/process-scanner.ts"
+  - "src/discovery/types.ts"
+  - "test/discovery/process-scanner.test.ts"
   - "research/DEV-NOTES-cc-visibility.md"
 tests_passing: true
 next_steps: "None"

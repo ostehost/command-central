@@ -44,3 +44,13 @@ Implemented stale-session governance and visibility-contract hardening in Comman
 - Added positive PID-mask test in `test/discovery/agent-registry.test.ts`: `filters discovered agent when launcher PID is running`.
 - Ran `bun test test/discovery/agent-registry.test.ts`.
 - Result: PASS (21 passed, 0 failed).
+
+## Update (2026-03-27 — cc-processscanner-parity)
+- Extended `ProcessScanner` CLI detection beyond Claude to include Codex and Gemini process signatures (direct binaries and common package-path invocations).
+- Added explicit `agent_backend` metadata to `DiscoveredAgent` so discovered rows carry backend hints (`claude|codex|gemini`) used by UI type/icon detection, while still exposing parsed `model` and raw `command` hints.
+- Kept noise filtering in place (electron/helper/renderer/gpu/crashpad) to avoid false positives from non-agent helper processes.
+- Added focused scanner tests to prove Codex/Gemini process lines are recognized and backend/model hints are parsed from command args.
+
+### Tests Run
+1. `bun test test/discovery/process-scanner.test.ts test/discovery/agent-registry.test.ts`
+   - Result: PASS (44 passed, 0 failed)
