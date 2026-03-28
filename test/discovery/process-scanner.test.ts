@@ -68,6 +68,19 @@ describe("ProcessScanner", () => {
 			expect(results).toHaveLength(0);
 		});
 
+		test("detects npx/pnpm dlx invocations for codex and gemini", () => {
+			const psOutput = [
+				"  PID   STARTED                       COMMAND",
+				"55551 Mon Jan  6 14:07:10 2025 npx @openai/codex --model gpt-5 --print hello",
+				"55552 Mon Jan  6 14:07:40 2025 pnpm dlx @google/gemini-cli --model gemini-2.5-pro --prompt hi",
+			].join("\n");
+
+			const results = scanner.parsePsOutput(psOutput);
+			expect(results).toHaveLength(2);
+			expect(results[0]?.pid).toBe(55551);
+			expect(results[1]?.pid).toBe(55552);
+		});
+
 		test("filters out non-agent processes with codex/gemini in path", () => {
 			const psOutput = [
 				"  PID   STARTED                       COMMAND",
