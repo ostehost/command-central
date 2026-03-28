@@ -1,11 +1,10 @@
-task_id: "cc-dock-icon-launch-wiring"
+task_id: "cc-dock-icon-refresh-on-change"
 status: "success"
-summary: "Guaranteed project icon persistence before Ghostty bundle creation and added focused launch-path tests."
+summary: "Persist project icon changes and best-effort refresh the Ghostty bundle icon with safe failure handling and focused tests."
 files_changed:
-  - "src/services/project-icon-manager.ts"
-  - "src/ghostty/TerminalManager.ts"
-  - "test/services/project-icon-manager.test.ts"
-  - "test/ghostty/terminal-manager.test.ts"
-  - "research/DEV-NOTES-dock-icon-launch-wiring.md"
+  - "src/extension.ts"
+  - "src/ghostty/project-icon-bundle-refresh.ts"
+  - "test/ghostty/project-icon-bundle-refresh.test.ts"
+  - "research/DEV-NOTES-dock-icon-refresh-on-change.md"
 tests_passing: true
-next_steps: "Optional: add an extension-command-level test around commandCentral.ghostty.createTerminal to assert end-to-end wiring via command registration."
+next_steps: "Optional: add a non-warning success toast/status message after a successful bundle refresh."

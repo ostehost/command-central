@@ -22,6 +22,7 @@ import {
 import { resolveClaudeSessionId } from "./discovery/session-resolver.js";
 import { parseWorktreeListPorcelain } from "./discovery/worktree-list.js";
 import { BinaryManager } from "./ghostty/BinaryManager.js";
+import { refreshGhosttyBundleAfterProjectIconChange } from "./ghostty/project-icon-bundle-refresh.js";
 import { TerminalManager } from "./ghostty/TerminalManager.js";
 import { focusGhosttyWindow } from "./ghostty/window-focus.js";
 import { GitSorter } from "./git-sort/scm-sorter.js";
@@ -1084,6 +1085,12 @@ export async function activate(
 					}
 
 					await projectIconManagerForAgents.setCustomIcon(projectDir, nextIcon);
+					await refreshGhosttyBundleAfterProjectIconChange(projectDir, {
+						terminalManager,
+						logger: mainLogger,
+						showWarningMessage: (message) =>
+							vscode.window.showWarningMessage(message),
+					});
 					await agentStatusProvider?.reload();
 				},
 			),
