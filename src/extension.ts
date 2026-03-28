@@ -48,6 +48,7 @@ import { SessionStore } from "./services/session-store.js";
 import { TelemetryService } from "./services/telemetry-service.js";
 import type { GitChangeItem } from "./types/tree-element.js";
 import { GroupingViewManager } from "./ui/grouping-view-manager.js";
+import { buildOsteSpawnCommand } from "./utils/shell-command.js";
 
 let gitSorter: GitSorter | undefined;
 let projectViewManager: ProjectViewManager | undefined;
@@ -1969,9 +1970,15 @@ export async function activate(
 							task.agent_backend === "codex" || task.agent_backend === "gemini"
 								? task.agent_backend
 								: getConfiguredAgentBackend();
+						const command = buildOsteSpawnCommand({
+							projectDir: task.project_dir,
+							promptFile: task.prompt_file,
+							taskId: task.id,
+							backend,
+						});
 						await terminalManager?.runInProjectTerminal(
 							task.project_dir,
-							`oste-spawn.sh "${task.project_dir}" "${task.prompt_file}" --task-id "${task.id}" --agent "${backend}"`,
+							command,
 						);
 						agentStatusProvider?.reload();
 					} else {
@@ -2027,10 +2034,14 @@ export async function activate(
 					const backend = getConfiguredAgentBackend();
 
 					try {
-						await terminalManager?.runInProjectTerminal(
+						const command = buildOsteSpawnCommand({
 							projectDir,
-							`oste-spawn.sh "${projectDir}" "${promptFile}" --task-id "${taskId}" --role "developer" --agent "${backend}"`,
-						);
+							promptFile,
+							taskId,
+							backend,
+							role: "developer",
+						});
+						await terminalManager?.runInProjectTerminal(projectDir, command);
 
 						telemetry.track("cc_agent_launched");
 						vscode.window.showInformationMessage(

@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realFs from "node:fs";
+import { buildOsteSpawnCommand } from "../../src/utils/shell-command.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 // Capture real writeFileSync before mock.module overwrites it
@@ -103,10 +104,14 @@ describe("launchAgent command", () => {
 			const backend = configuredBackend === "gemini" ? "gemini" : "codex";
 
 			try {
-				await terminalManager.runInProjectTerminal(
+				const command = buildOsteSpawnCommand({
 					projectDir,
-					`oste-spawn.sh "${projectDir}" "${promptFile}" --task-id "${taskId}" --role "developer" --agent "${backend}"`,
-				);
+					promptFile,
+					taskId,
+					backend,
+					role: "developer",
+				});
+				await terminalManager.runInProjectTerminal(projectDir, command);
 
 				vscode.window.showInformationMessage(`Agent launched for ${dirName}`);
 			} catch (err: unknown) {
@@ -225,7 +230,7 @@ describe("launchAgent command", () => {
 			string,
 			string,
 		];
-		const taskIdMatch = command.match(/--task-id "([^"]+)"/);
+		const taskIdMatch = command.match(/'--task-id' '([^']+)'/);
 		expect(taskIdMatch).toBeDefined();
 		const taskId = taskIdMatch?.[1] ?? "";
 		expect(taskId).toStartWith("cc-my-app-");
@@ -293,10 +298,10 @@ describe("launchAgent command", () => {
 			string,
 		];
 		expect(projectDir).toBe("/projects/my-app");
-		expect(command).toContain('oste-spawn.sh "/projects/my-app"');
-		expect(command).toContain('--task-id "cc-my-app-');
-		expect(command).toContain('--role "developer"');
-		expect(command).toContain('--agent "codex"');
+		expect(command).toContain("'oste-spawn.sh' '/projects/my-app'");
+		expect(command).toContain("'--task-id' 'cc-my-app-");
+		expect(command).toContain("'--role' 'developer'");
+		expect(command).toContain("'--agent' 'codex'");
 		expect(command).not.toContain("--no-bundle");
 	});
 
@@ -324,7 +329,27 @@ describe("launchAgent command", () => {
 			string,
 			string,
 		];
-		expect(command).toContain('--agent "gemini"');
+		expect(command).toContain("'--agent' 'gemini'");
+	});
+
+	test("escapes workspace-derived values containing spaces and double quotes", async () => {
+		vscodeMock.workspace.workspaceFolders = [
+			{
+				uri: { fsPath: '/projects/My "Odd" App' },
+				name: 'My "Odd" App',
+				index: 0,
+			},
+		];
+		registerCommand();
+		await commandHandler();
+
+		const [projectDir, command] = mockRunInProjectTerminal.mock.calls[0] as [
+			string,
+			string,
+		];
+		expect(projectDir).toBe('/projects/My "Odd" App');
+		expect(command).toContain(`'/projects/My "Odd" App'`);
+		expect(command).toContain(`'--task-id' 'cc-My "Odd" App-`);
 	});
 
 	test("reload() is scheduled after spawn via setTimeout", async () => {

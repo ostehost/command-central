@@ -1,11 +1,12 @@
-task_id: "cc-dock-icon-launch-surface"
+task_id: "cc-dock-icon-shell-escaping"
 status: "success"
-summary: "Routed agent launch and no-session terminal flow through project bundle launch surface to preserve per-project Dock identity."
+summary: "Hardened Dock launch command construction with safe shell escaping and regression tests for odd paths/quotes."
 files_changed:
-  - "src/ghostty/TerminalManager.ts"
   - "src/extension.ts"
-  - "test/ghostty/terminal-manager.test.ts"
+  - "src/utils/shell-command.ts"
   - "test/commands/launch-agent.test.ts"
-  - "research/DEV-NOTES-dock-icon-launch-surface.md"
+  - "test/utils/shell-command.test.ts"
+  - "research/DEV-NOTES-dock-icon-shell-escaping.md"
+  - ".oste-report.yaml"
 tests_passing: true
-next_steps: "Optional: harden shell-escaping for quoted project paths in launch command construction."
+next_steps: "Optionally migrate other dynamic runInProjectTerminal shell command builders to the shared helper."
