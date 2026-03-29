@@ -217,6 +217,7 @@ describe("AgentStatusTreeProvider", () => {
 			update: mock(),
 			get: mock((_key: string, defaultValue?: unknown) => {
 				if (_key === "agentStatus.groupByProject") return false;
+				if (_key === "discovery.enabled") return false;
 				return defaultValue;
 			}),
 		}));
@@ -2162,6 +2163,7 @@ describe("AgentStatusTreeProvider", () => {
 					if (_key === "onFailure") return true;
 					if (_key === "sound") return false;
 					if (_key === "agentStatus.groupByProject") return false;
+					if (_key === "discovery.enabled") return false;
 					return defaultValue;
 				}),
 			}));
@@ -2687,6 +2689,14 @@ describe("AgentStatusTreeProvider", () => {
 			mockDetectListeningPorts.mockReturnValue([]);
 
 			vscodeMock = setupVSCodeMock();
+			vscodeMock.workspace.getConfiguration = mock(() => ({
+				update: mock(),
+				get: mock((_key: string, defaultValue?: unknown) => {
+					if (_key === "agentStatus.groupByProject") return false;
+					if (_key === "discovery.enabled") return false;
+					return defaultValue;
+				}),
+			}));
 			vscodeMock.window.showInformationMessage = mock(() =>
 				Promise.resolve(undefined),
 			);
