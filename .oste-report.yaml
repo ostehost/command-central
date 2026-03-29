@@ -1,8 +1,7 @@
-task_id: "SPEC-agent-status-sorting-roadmap"
+task_id: "agent-status-sorting-roadmap"
 status: "success"
-summary: "Created sorting/grouping redesign spec and added M3.5 milestone to ROADMAP.md"
+summary: "Reviewed Agent Status sorting/grouping redesign spec with 3 blockers, 5 warnings, 4 nits"
 files_changed:
-  - "research/SPEC-agent-status-sorting-roadmap.md"
-  - "ROADMAP.md"
+  - "research/REVIEW-agent-status-sorting-roadmap.md"
 tests_passing: true
-next_steps: "Implement M3.5-1: recency-first sort mode + flat list default in agent-status-tree-provider.ts"
+next_steps: "Address BLOCKER-1 (audit completed_at field), BLOCKER-2 (define status-recency pinning boundary), BLOCKER-3 (make sort indicator P0), then implement"
