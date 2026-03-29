@@ -160,6 +160,10 @@ export interface StateNode {
 	icon?: string;
 }
 
+type SortableAgentNode =
+	| { type: "task"; task: AgentTask }
+	| { type: "discovered"; agent: DiscoveredAgent };
+
 // ── Agent type detection for discovered agents ───────────────────────
 
 export type AgentType = "claude" | "codex" | "gemini" | "unknown";
@@ -1288,28 +1292,28 @@ export class AgentStatusTreeProvider
 			}
 
 			const groupedByProject = this.isProjectGroupingEnabled();
-
-			// Launcher-managed tasks
-			const taskNodes: AgentNode[] = this.sortTasks(tasks).map((task) => ({
-				type: "task" as const,
-				task,
-			}));
 			const groupedNodes: AgentNode[] = groupedByProject
 				? this.buildGroupedRootNodes(tasks, discovered)
 				: [];
-
-			// Discovered agents second, sorted by start time descending
-			const discoveredNodes: AgentNode[] = [...discovered]
-				.sort(
-					(a, b) =>
-						new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
-				)
-				.map((agent) => ({ type: "discovered" as const, agent }));
+			const flatNodes: AgentNode[] = this.sortAgentNodes([
+				...tasks.map(
+					(task) =>
+						({ type: "task" as const, task }) satisfies SortableAgentNode,
+				),
+				...discovered.map(
+					(agent) =>
+						({
+							type: "discovered" as const,
+							agent,
+						}) satisfies SortableAgentNode,
+				),
+			]);
 
 			const allEffectiveTasks = this.getTasks();
 			const counts = countAgentStatuses(allEffectiveTasks);
 			const stuckCount = this.getStuckRunningCount(allTasks);
 			const summaryLabel = [
+				this.getSortModeIndicatorLabel(),
 				formatCountSummary(counts, { includeAttention: true }),
 				...(stuckCount > 0 ? [`${stuckCount} stuck`] : []),
 			].join(" · ");
@@ -1321,8 +1325,7 @@ export class AgentStatusTreeProvider
 					label: summaryLabel,
 					tooltip: summaryTooltip || undefined,
 				},
-				...(groupedByProject ? groupedNodes : taskNodes),
-				...(groupedByProject ? [] : discoveredNodes),
+				...(groupedByProject ? groupedNodes : flatNodes),
 			];
 		}
 
@@ -1331,17 +1334,19 @@ export class AgentStatusTreeProvider
 		}
 
 		if (element.type === "projectGroup") {
-			const taskNodes = this.sortTasks(element.tasks).map((task) => ({
-				type: "task" as const,
-				task,
-			}));
-			const discoveredNodes = [...(element.discoveredAgents ?? [])]
-				.sort(
-					(a, b) =>
-						new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
-				)
-				.map((agent) => ({ type: "discovered" as const, agent }));
-			return [...taskNodes, ...discoveredNodes];
+			return this.sortAgentNodes([
+				...element.tasks.map(
+					(task) =>
+						({ type: "task" as const, task }) satisfies SortableAgentNode,
+				),
+				...(element.discoveredAgents ?? []).map(
+					(agent) =>
+						({
+							type: "discovered" as const,
+							agent,
+						}) satisfies SortableAgentNode,
+				),
+			]);
 		}
 
 		if (element.type === "task") {
@@ -1557,21 +1562,148 @@ export class AgentStatusTreeProvider
 
 	private isStatusPrioritySortEnabled(): boolean {
 		const config = vscode.workspace.getConfiguration("commandCentral");
-		return config.get<boolean>("agentStatus.sortByStatus", true);
+		return config.get<boolean>("agentStatus.sortByStatus", false);
+	}
+
+	private getSortModeIndicatorLabel(): string {
+		return this.isStatusPrioritySortEnabled() ? "Status" : "Recent";
+	}
+
+	private getTaskActivityTimeMs(task: AgentTask): number {
+		const activityTimestamp = task.completed_at ?? task.started_at;
+		const activityTimeMs = new Date(activityTimestamp).getTime();
+		if (Number.isFinite(activityTimeMs)) {
+			return activityTimeMs;
+		}
+		const startedAtMs = new Date(task.started_at).getTime();
+		return Number.isFinite(startedAtMs) ? startedAtMs : 0;
+	}
+
+	private getDiscoveredActivityTimeMs(agent: DiscoveredAgent): number {
+		const startedAtMs = agent.startTime.getTime();
+		return Number.isFinite(startedAtMs) ? startedAtMs : 0;
+	}
+
+	private getNodeActivityTimeMs(node: SortableAgentNode): number {
+		return node.type === "task"
+			? this.getTaskActivityTimeMs(node.task)
+			: this.getDiscoveredActivityTimeMs(node.agent);
+	}
+
+	private getNodeStatus(node: SortableAgentNode): AgentTaskStatus {
+		return node.type === "task" ? node.task.status : "running";
+	}
+
+	private compareActivityTimeDesc(
+		leftActivityTimeMs: number,
+		rightActivityTimeMs: number,
+	): number {
+		return rightActivityTimeMs - leftActivityTimeMs;
+	}
+
+	private compareTaskNames(left: string, right: string): number {
+		return left.localeCompare(right);
+	}
+
+	private compareSortableAgentNodes(
+		left: SortableAgentNode,
+		right: SortableAgentNode,
+	): number {
+		if (this.isStatusPrioritySortEnabled()) {
+			const priorityDiff =
+				TASK_STATUS_PRIORITY[this.getNodeStatus(left)] -
+				TASK_STATUS_PRIORITY[this.getNodeStatus(right)];
+			if (priorityDiff !== 0) {
+				return priorityDiff;
+			}
+		}
+
+		const activityDiff = this.compareActivityTimeDesc(
+			this.getNodeActivityTimeMs(left),
+			this.getNodeActivityTimeMs(right),
+		);
+		if (activityDiff !== 0) {
+			return activityDiff;
+		}
+
+		if (left.type === "task" && right.type === "task") {
+			return this.compareTaskNames(left.task.id, right.task.id);
+		}
+		if (left.type === "discovered" && right.type === "discovered") {
+			return right.agent.pid - left.agent.pid;
+		}
+		return left.type === "task" ? -1 : 1;
+	}
+
+	private sortAgentNodes(nodes: SortableAgentNode[]): SortableAgentNode[] {
+		return [...nodes].sort((left, right) =>
+			this.compareSortableAgentNodes(left, right),
+		);
+	}
+
+	private getProjectGroupFreshestActivityMs(group: {
+		tasks: AgentTask[];
+		discoveredAgents?: DiscoveredAgent[];
+	}): number {
+		const activityTimes = [
+			...group.tasks.map((task) => this.getTaskActivityTimeMs(task)),
+			...(group.discoveredAgents ?? []).map((agent) =>
+				this.getDiscoveredActivityTimeMs(agent),
+			),
+		];
+		return activityTimes.length > 0 ? Math.max(...activityTimes) : 0;
+	}
+
+	private compareProjectGroups(
+		left: ProjectGroupNode,
+		right: ProjectGroupNode,
+	): number {
+		const activityDiff = this.compareActivityTimeDesc(
+			this.getProjectGroupFreshestActivityMs(left),
+			this.getProjectGroupFreshestActivityMs(right),
+		);
+		if (activityDiff !== 0) {
+			return activityDiff;
+		}
+		return this.compareTaskNames(left.projectName, right.projectName);
+	}
+
+	private getFolderGroupFreshestActivityMs(group: {
+		projects: ProjectGroupNode[];
+	}): number {
+		const activityTimes = group.projects.map((project) =>
+			this.getProjectGroupFreshestActivityMs(project),
+		);
+		return activityTimes.length > 0 ? Math.max(...activityTimes) : 0;
+	}
+
+	private compareGroupedRoots(
+		left: ProjectGroupNode | FolderGroupNode,
+		right: ProjectGroupNode | FolderGroupNode,
+	): number {
+		const activityDiff = this.compareActivityTimeDesc(
+			left.type === "folderGroup"
+				? this.getFolderGroupFreshestActivityMs(left)
+				: this.getProjectGroupFreshestActivityMs(left),
+			right.type === "folderGroup"
+				? this.getFolderGroupFreshestActivityMs(right)
+				: this.getProjectGroupFreshestActivityMs(right),
+		);
+		if (activityDiff !== 0) {
+			return activityDiff;
+		}
+		const leftLabel =
+			left.type === "folderGroup" ? left.groupName : left.projectName;
+		const rightLabel =
+			right.type === "folderGroup" ? right.groupName : right.projectName;
+		return this.compareTaskNames(leftLabel, rightLabel);
 	}
 
 	private sortTasks(tasks: AgentTask[]): AgentTask[] {
-		const sortByStatus = this.isStatusPrioritySortEnabled();
 		return [...tasks].sort((a, b) => {
-			if (sortByStatus) {
-				const priorityDiff =
-					TASK_STATUS_PRIORITY[a.status] - TASK_STATUS_PRIORITY[b.status];
-				if (priorityDiff !== 0) {
-					return priorityDiff;
-				}
-			}
-			return (
-				new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+			return this.compareSortableAgentNodes(
+				{ type: "task", task: a },
+				{ type: "task", task: b },
 			);
 		});
 	}
@@ -1626,17 +1758,19 @@ export class AgentStatusTreeProvider
 		}
 
 		return Array.from(grouped.values())
-			.sort((a, b) => a.projectName.localeCompare(b.projectName))
 			.map((group) => ({
 				type: "projectGroup" as const,
 				projectName: group.projectName,
 				projectDir: group.projectDir,
 				tasks: this.sortTasks(group.tasks),
-				discoveredAgents: [...group.discoveredAgents].sort(
-					(a, b) =>
-						new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
+				discoveredAgents: [...group.discoveredAgents].sort((a, b) =>
+					this.compareSortableAgentNodes(
+						{ type: "discovered", agent: a },
+						{ type: "discovered", agent: b },
+					),
 				),
-			}));
+			}))
+			.sort((a, b) => this.compareProjectGroups(a, b));
 	}
 
 	private getWorkspaceParentGroups(): Map<
@@ -1783,19 +1917,17 @@ export class AgentStatusTreeProvider
 				groupName: entry.groupName,
 				projectCount: entry.projectCount,
 				projects: [...entry.projects].sort((a, b) =>
-					a.projectName.localeCompare(b.projectName),
+					this.compareProjectGroups(a, b),
 				),
 			}))
-			.sort((a, b) => a.groupName.localeCompare(b.groupName));
+			.sort((a, b) => this.compareGroupedRoots(a, b));
 
 		const sortedDirectProjects = [...directProjects].sort((a, b) =>
-			a.projectName.localeCompare(b.projectName),
+			this.compareProjectGroups(a, b),
 		);
-		return [...folderGroupNodes, ...sortedDirectProjects].sort((a, b) => {
-			const left = a.type === "folderGroup" ? a.groupName : a.projectName;
-			const right = b.type === "folderGroup" ? b.groupName : b.projectName;
-			return left.localeCompare(right);
-		});
+		return [...folderGroupNodes, ...sortedDirectProjects].sort((a, b) =>
+			this.compareGroupedRoots(a, b),
+		);
 	}
 
 	private getCompactChildren(t: AgentTask): DetailNode[] {

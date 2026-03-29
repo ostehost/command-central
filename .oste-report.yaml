@@ -1,8 +1,11 @@
-task_id: "cc-contract-validation-claude"
+task_id: "cc-agent-status-recency-p0"
 status: "success"
-summary: "Structured review of integrated launcher-contract branch — APPROVE for merge, 0 blockers, 3 warnings, 3 nits"
+summary: "Shipped recency-first Agent Status sorting with unified launcher/discovered ordering and freshest-project grouping."
 files_changed:
-  - "research/REVIEW-contract-integration.md"
-  - ".oste-report.yaml"
+  - "package.json"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/package-json/agent-menu-contributions.test.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - "research/DEV-NOTES-agent-status-recency-p0.md"
 tests_passing: true
-next_steps: "Run full un-skipped prerelease gate during cross-repo smoke validation"
+next_steps: "Follow with the next sorting slice: current-project-only scoping and any remaining UX polish after product review."

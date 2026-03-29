@@ -275,6 +275,7 @@ describe("AgentStatusTreeProvider", () => {
 		expect(summary).toBeDefined();
 		expect(summary?.type).toBe("summary");
 		if (summary?.type === "summary") {
+			expect(summary.label).toContain("Recent");
 			expect(summary.label).toContain("1 working");
 			expect(summary.label).toContain("2 attention");
 			expect(summary.label).toContain("1 done");
@@ -656,6 +657,15 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	test("sorts by status priority before started_at when enabled", () => {
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return false;
+				if (_key === "agentStatus.sortByStatus") return true;
+				return defaultValue;
+			}),
+		}));
+
 		const runningNewest = createMockTask({
 			id: "running-new",
 			status: "running",
@@ -693,7 +703,7 @@ describe("AgentStatusTreeProvider", () => {
 		);
 	});
 
-	test("uses chronological sorting when status sort is disabled", () => {
+	test("uses latest activity sorting when status sort is disabled", () => {
 		vscodeMock.workspace.getConfiguration = mock(() => ({
 			update: mock(),
 			get: mock((_key: string, defaultValue?: unknown) => {
@@ -703,26 +713,28 @@ describe("AgentStatusTreeProvider", () => {
 			}),
 		}));
 
-		const runningNewest = createMockTask({
-			id: "running-new",
-			status: "running",
+		const completedLate = createMockTask({
+			id: "completed-late",
+			status: "completed",
+			started_at: "2026-02-25T06:00:00Z",
+			completed_at: "2026-02-25T10:00:00Z",
+		});
+		const failedFallback = createMockTask({
+			id: "failed-fallback",
+			status: "failed",
 			started_at: "2026-02-25T09:00:00Z",
 		});
-		const failedOlder = createMockTask({
-			id: "failed-old",
-			status: "failed",
-			started_at: "2026-02-25T06:00:00Z",
-		});
-		const failedNewer = createMockTask({
-			id: "failed-new",
-			status: "failed",
-			started_at: "2026-02-25T08:00:00Z",
+		const completedEarlier = createMockTask({
+			id: "completed-earlier",
+			status: "completed",
+			started_at: "2026-02-25T05:00:00Z",
+			completed_at: "2026-02-25T08:00:00Z",
 		});
 		provider.readRegistry = () =>
 			createMockRegistry({
-				"running-new": runningNewest,
-				"failed-old": failedOlder,
-				"failed-new": failedNewer,
+				"completed-late": completedLate,
+				"failed-fallback": failedFallback,
+				"completed-earlier": completedEarlier,
 			});
 		provider.reload();
 
@@ -730,21 +742,87 @@ describe("AgentStatusTreeProvider", () => {
 		const taskNodes = getTaskNodes(children);
 		expect(taskNodes).toHaveLength(3);
 		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"running-new",
+			"completed-late",
 		);
 		expect((taskNodes[1] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"failed-new",
+			"failed-fallback",
 		);
 		expect((taskNodes[2] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"failed-old",
+			"completed-earlier",
 		);
 	});
 
-	test("groups root tasks by project name alphabetically when enabled", () => {
+	test("interleaves launcher and discovered agents by the same recency sort", () => {
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return false;
+				if (_key === "agentStatus.sortByStatus") return false;
+				return defaultValue;
+			}),
+		}));
+
+		const launcherCompleted = createMockTask({
+			id: "launcher-completed",
+			status: "completed",
+			started_at: "2026-02-25T06:00:00Z",
+			completed_at: "2026-02-25T09:30:00Z",
+		});
+		const launcherOlder = createMockTask({
+			id: "launcher-older",
+			status: "failed",
+			started_at: "2026-02-25T08:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[launcherCompleted.id]: launcherCompleted,
+				[launcherOlder.id]: launcherOlder,
+			});
+		provider.reload();
+		(
+			provider as unknown as {
+				_discoveredAgents: Array<{
+					pid: number;
+					projectDir: string;
+					command: string;
+					startTime: Date;
+					source: "process";
+				}>;
+			}
+		)._discoveredAgents = [
+			{
+				pid: 4242,
+				projectDir: "/Users/test/projects/discovered-app",
+				command: "codex",
+				startTime: new Date("2026-02-25T09:00:00Z"),
+				source: "process",
+			},
+		];
+
+		const children = provider
+			.getChildren()
+			.filter((node) => node.type === "task" || node.type === "discovered");
+		expect(children).toHaveLength(3);
+		expect(children[0]?.type).toBe("task");
+		if (children[0]?.type === "task") {
+			expect(children[0].task.id).toBe("launcher-completed");
+		}
+		expect(children[1]?.type).toBe("discovered");
+		if (children[1]?.type === "discovered") {
+			expect(children[1].agent.pid).toBe(4242);
+		}
+		expect(children[2]?.type).toBe("task");
+		if (children[2]?.type === "task") {
+			expect(children[2].task.id).toBe("launcher-older");
+		}
+	});
+
+	test("groups root tasks by freshest child activity when enabled", () => {
 		vscodeMock.workspace.getConfiguration = mock(() => ({
 			update: mock(),
 			get: mock((_key: string, defaultValue?: unknown) => {
 				if (_key === "agentStatus.groupByProject") return true;
+				if (_key === "agentStatus.sortByStatus") return false;
 				return defaultValue;
 			}),
 		}));
@@ -753,13 +831,14 @@ describe("AgentStatusTreeProvider", () => {
 			id: "zeta-1",
 			project_dir: "/Users/test/projects/zeta",
 			project_name: "Zeta",
-			started_at: "2026-02-25T06:00:00Z",
+			started_at: "2026-02-25T10:00:00Z",
 		});
 		const alphaTask = createMockTask({
 			id: "alpha-1",
 			project_dir: "/Users/test/projects/alpha",
 			project_name: "Alpha",
-			started_at: "2026-02-25T07:00:00Z",
+			started_at: "2026-02-25T06:00:00Z",
+			completed_at: "2026-02-25T09:00:00Z",
 		});
 		provider.readRegistry = () =>
 			createMockRegistry({ "zeta-1": zetaTask, "alpha-1": alphaTask });
@@ -771,11 +850,11 @@ describe("AgentStatusTreeProvider", () => {
 		expect(
 			(projectGroups[0] as { type: "projectGroup"; projectName: string })
 				.projectName,
-		).toBe("Alpha");
+		).toBe("Zeta");
 		expect(
 			(projectGroups[1] as { type: "projectGroup"; projectName: string })
 				.projectName,
-		).toBe("Zeta");
+		).toBe("Alpha");
 	});
 
 	test("auto-groups projects by workspace parent when 2+ siblings exist", () => {
@@ -897,28 +976,54 @@ describe("AgentStatusTreeProvider", () => {
 		expect(nestedProjects[0]?.type).toBe("projectGroup");
 	});
 
-	test("returns grouped project children as task nodes sorted chronologically", () => {
+	test("returns grouped project children interleaved by recency", () => {
 		vscodeMock.workspace.getConfiguration = mock(() => ({
 			update: mock(),
 			get: mock((_key: string, defaultValue?: unknown) => {
 				if (_key === "agentStatus.groupByProject") return true;
+				if (_key === "agentStatus.sortByStatus") return false;
 				return defaultValue;
 			}),
 		}));
 
 		const older = createMockTask({
 			id: "alpha-old",
+			status: "failed",
 			project_name: "Alpha",
 			started_at: "2026-02-25T06:00:00Z",
 		});
-		const newer = createMockTask({
-			id: "alpha-new",
+		const completedLatest = createMockTask({
+			id: "alpha-completed-latest",
 			project_name: "Alpha",
-			started_at: "2026-02-25T09:00:00Z",
+			status: "completed",
+			started_at: "2026-02-25T05:00:00Z",
+			completed_at: "2026-02-25T10:00:00Z",
 		});
 		provider.readRegistry = () =>
-			createMockRegistry({ "alpha-old": older, "alpha-new": newer });
+			createMockRegistry({
+				"alpha-old": older,
+				"alpha-completed-latest": completedLatest,
+			});
 		provider.reload();
+		(
+			provider as unknown as {
+				_discoveredAgents: Array<{
+					pid: number;
+					projectDir: string;
+					command: string;
+					startTime: Date;
+					source: "process";
+				}>;
+			}
+		)._discoveredAgents = [
+			{
+				pid: 5151,
+				projectDir: "/Users/test/projects/my-app",
+				command: "codex",
+				startTime: new Date("2026-02-25T09:00:00Z"),
+				source: "process",
+			},
+		];
 
 		const rootChildren = provider.getChildren();
 		const groupNode = rootChildren.find(
@@ -927,13 +1032,19 @@ describe("AgentStatusTreeProvider", () => {
 		expect(groupNode.projectName).toBe("Alpha");
 
 		const groupChildren = provider.getChildren(groupNode);
-		expect(groupChildren).toHaveLength(2);
-		expect(
-			(groupChildren[0] as { type: "task"; task: AgentTask }).task.id,
-		).toBe("alpha-new");
-		expect(
-			(groupChildren[1] as { type: "task"; task: AgentTask }).task.id,
-		).toBe("alpha-old");
+		expect(groupChildren).toHaveLength(3);
+		expect(groupChildren[0]?.type).toBe("task");
+		if (groupChildren[0]?.type === "task") {
+			expect(groupChildren[0].task.id).toBe("alpha-completed-latest");
+		}
+		expect(groupChildren[1]?.type).toBe("discovered");
+		if (groupChildren[1]?.type === "discovered") {
+			expect(groupChildren[1].agent.pid).toBe(5151);
+		}
+		expect(groupChildren[2]?.type).toBe("task");
+		if (groupChildren[2]?.type === "task") {
+			expect(groupChildren[2].task.id).toBe("alpha-old");
+		}
 	});
 
 	test("applies status-priority sort within project group children", () => {
@@ -941,6 +1052,7 @@ describe("AgentStatusTreeProvider", () => {
 			update: mock(),
 			get: mock((_key: string, defaultValue?: unknown) => {
 				if (_key === "agentStatus.groupByProject") return true;
+				if (_key === "agentStatus.sortByStatus") return true;
 				return defaultValue;
 			}),
 		}));

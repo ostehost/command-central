@@ -227,8 +227,8 @@
         },
         "commandCentral.agentStatus.sortByStatus": {
           "type": "boolean",
-          "default": true,
-          "description": "Sort agents by status priority before start time (failed first)",
+          "default": false,
+          "description": "Sort agents by status priority before recency. When disabled, Agent Status sorts by latest activity using completed_at when available, otherwise started_at.",
           "scope": "window"
         },
         "commandCentral.agentStatus.notifications": {

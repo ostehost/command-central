@@ -117,11 +117,11 @@ describe("package.json agent menu contributions", () => {
 		expect(setting?.enum).toEqual(["codex", "gemini"]);
 	});
 
-	test("defines status-priority sort config enabled by default", async () => {
+	test("defines recency sort config disabled by default", async () => {
 		const properties = await getConfigProperties();
 		const setting = properties["commandCentral.agentStatus.sortByStatus"];
 		expect(setting).toBeDefined();
-		expect(setting?.default).toBe(true);
+		expect(setting?.default).toBe(false);
 		expect(setting?.description).toContain("status priority");
 	});
 
