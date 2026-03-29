@@ -640,10 +640,16 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 			calls.some(
 				(c) =>
 					c.file === "oste-steer.sh" &&
-					c.args[0] === "--session" &&
-					c.args[1] === "agent-contract-session",
+					c.args[0] === "agent-contract-session" &&
+					c.args[1] === "--raw" &&
+					c.args[2] === "echo contract",
 			),
 		).toBe(true);
+		expect(
+			calls.some(
+				(c) => c.file === "oste-steer.sh" && c.args.includes("--session"),
+			),
+		).toBe(false);
 	});
 });
 

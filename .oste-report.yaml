@@ -1,7 +1,12 @@
-task_id: "agent-status-sorting-roadmap"
-status: "success"
-summary: "Reviewed Agent Status sorting/grouping redesign spec with 3 blockers, 5 warnings, 4 nits"
+task_id: "cc-steer-contract-fix-retry1"
+status: "failure"
+summary: "Updated the Ghostty steer contract and prerelease gate checks, but git commit/staging was blocked by sandboxed worktree metadata permissions."
 files_changed:
-  - "research/REVIEW-agent-status-sorting-roadmap.md"
+  - ".gitignore"
+  - "research/DEV-NOTES-steer-contract-fix.md"
+  - "scripts-v2/prerelease-gate.ts"
+  - "src/ghostty/TerminalManager.ts"
+  - "test/ghostty/terminal-manager.test.ts"
+  - "test/scripts-v2/prerelease-gate.test.ts"
 tests_passing: true
-next_steps: "Address BLOCKER-1 (audit completed_at field), BLOCKER-2 (define status-recency pinning boundary), BLOCKER-3 (make sort indicator P0), then implement"
+next_steps: "In an environment with writable worktree git metadata, run just fix or equivalent formatting, rerun the targeted validations, then git add/commit and confirm git status --porcelain is empty."

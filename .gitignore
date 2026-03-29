@@ -57,6 +57,7 @@ test.BACKUP-*/
 *-tmp/
 .temp/
 .tmp/
+.ghostty-launcher/
 
 # Bundled terminal app (synced at build time, ~50MB)
 # Only .terminal-version is committed for tracking

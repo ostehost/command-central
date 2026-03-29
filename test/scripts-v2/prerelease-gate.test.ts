@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
 	extractFlagsFromHelp,
 	extractSessionFlagsFromTerminalManager,
+	extractSteerInvocationContract,
 	validateLauncherContract,
+	validateSteerContract,
 } from "../../scripts-v2/prerelease-gate.ts";
 
 describe("extractFlagsFromHelp", () => {
@@ -80,5 +82,90 @@ this.execLauncher(launcher, ["--tmux-session", workspaceRoot]);
 `;
 		const issues = validateLauncherContract(regressedSource, validHelp);
 		expect(issues.some((issue) => issue.includes("--tmux-session"))).toBe(true);
+	});
+});
+
+describe("extractSteerInvocationContract", () => {
+	test("detects positional session steering with raw mode", () => {
+		const source = `
+this.execCommand("oste-steer.sh", [
+	info.tmuxSession,
+	"--raw",
+	command,
+]);
+`;
+		expect(extractSteerInvocationContract(source)).toEqual({
+			usesLegacySessionFlag: false,
+			usesRawMode: true,
+			usesPositionalSession: true,
+		});
+	});
+
+	test("detects unsupported --session steering", () => {
+		const source = `
+this.execCommand("oste-steer.sh", [
+	"--session",
+	info.tmuxSession,
+	"--raw",
+	command,
+]);
+`;
+		expect(extractSteerInvocationContract(source)).toEqual({
+			usesLegacySessionFlag: true,
+			usesRawMode: true,
+			usesPositionalSession: false,
+		});
+	});
+});
+
+describe("validateSteerContract", () => {
+	const validTerminalManagerSource = `
+this.execCommand("oste-steer.sh", [
+	info.tmuxSession,
+	"--raw",
+	command,
+]);
+`;
+
+	const validSteerHelp = `
+Usage:
+  oste-steer.sh <session-name> <text>
+  oste-steer.sh <session-name> --ctrl-c
+  oste-steer.sh --by-task-id <id> <text>
+
+Options:
+  --ctrl-c
+  --no-enter
+  --raw
+  --help
+`;
+
+	test("returns no issues when steer contract is aligned", () => {
+		expect(
+			validateSteerContract(validTerminalManagerSource, validSteerHelp),
+		).toEqual([]);
+	});
+
+	test("fails when oste-steer help is missing required flags", () => {
+		const issues = validateSteerContract(
+			validTerminalManagerSource,
+			"Usage:\n  oste-steer.sh <session-name> <text>\n",
+		);
+		expect(issues.some((issue) => issue.includes("--raw"))).toBe(true);
+		expect(issues.some((issue) => issue.includes("--by-task-id"))).toBe(true);
+	});
+
+	test("fails when Command Central regresses to unsupported --session", () => {
+		const regressedSource = `
+this.execCommand("oste-steer.sh", [
+	"--session",
+	info.tmuxSession,
+	"--raw",
+	command,
+]);
+`;
+		const issues = validateSteerContract(regressedSource, validSteerHelp);
+		expect(issues.some((issue) => issue.includes("unsupported"))).toBe(true);
+		expect(issues.some((issue) => issue.includes("positionally"))).toBe(true);
 	});
 });

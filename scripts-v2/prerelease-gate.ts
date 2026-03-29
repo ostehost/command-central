@@ -60,6 +60,8 @@ const REQUIRED_LAUNCHER_FLAGS = [
 	"--session-id",
 ];
 
+const REQUIRED_STEER_FLAGS = ["--raw", "--by-task-id"];
+
 const args = process.argv.slice(2);
 
 function getArgValue(flag: string): string | undefined {
@@ -149,6 +151,53 @@ function extractSessionFlagsFromTerminalManager(source: string): Set<string> {
 	return found;
 }
 
+type SteerInvocationContract = {
+	usesLegacySessionFlag: boolean;
+	usesRawMode: boolean;
+	usesPositionalSession: boolean;
+};
+
+function extractSteerInvocationContract(
+	terminalManagerSource: string,
+): SteerInvocationContract {
+	let usesLegacySessionFlag = false;
+	let usesRawMode = false;
+	let usesPositionalSession = false;
+
+	for (const match of terminalManagerSource.matchAll(
+		/execCommand\("oste-steer\.sh",\s*\[([\s\S]*?)\]\)/g,
+	)) {
+		const argsBlock = match[1];
+		if (!argsBlock) {
+			continue;
+		}
+
+		if (/"--session"/.test(argsBlock)) {
+			usesLegacySessionFlag = true;
+		}
+
+		if (/"--raw"/.test(argsBlock)) {
+			usesRawMode = true;
+		}
+
+		const [firstArg = ""] = argsBlock.split(",", 1);
+		const trimmedFirstArg = firstArg.trim();
+		if (
+			trimmedFirstArg.length > 0 &&
+			!trimmedFirstArg.startsWith('"--') &&
+			!trimmedFirstArg.startsWith("'--")
+		) {
+			usesPositionalSession = true;
+		}
+	}
+
+	return {
+		usesLegacySessionFlag,
+		usesRawMode,
+		usesPositionalSession,
+	};
+}
+
 function validateLauncherContract(
 	terminalManagerSource: string,
 	launcherHelpText: string,
@@ -171,6 +220,43 @@ function validateLauncherContract(
 
 	if (sessionFlags.has("--tmux-session")) {
 		issues.push("Command Central still references legacy --tmux-session.");
+	}
+
+	return issues;
+}
+
+function validateSteerContract(
+	terminalManagerSource: string,
+	steerHelpText: string,
+): string[] {
+	const issues: string[] = [];
+	const helpFlags = extractFlagsFromHelp(steerHelpText);
+	const steerContract = extractSteerInvocationContract(terminalManagerSource);
+
+	for (const flag of REQUIRED_STEER_FLAGS) {
+		if (!helpFlags.has(flag)) {
+			issues.push(`oste-steer help is missing required flag ${flag}`);
+		}
+	}
+
+	if (!/oste-steer\.sh <session-name> <text>/.test(steerHelpText)) {
+		issues.push(
+			"oste-steer help is missing the positional <session-name> usage contract.",
+		);
+	}
+
+	if (steerContract.usesLegacySessionFlag) {
+		issues.push("Command Central still references unsupported oste-steer.sh --session.");
+	}
+
+	if (!steerContract.usesRawMode) {
+		issues.push("Command Central does not pass --raw to oste-steer.sh.");
+	}
+
+	if (!steerContract.usesPositionalSession) {
+		issues.push(
+			"Command Central does not pass the launcher session ID positionally to oste-steer.sh.",
+		);
 	}
 
 	return issues;
@@ -280,12 +366,18 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 
 	const contractStart = Date.now();
 	try {
-		const [terminalManagerSource, launcherHelp] = await Promise.all([
+		const steerScript = path.join(
+			config.ghosttyLauncherRepo,
+			"scripts",
+			"oste-steer.sh",
+		);
+		const [terminalManagerSource, launcherHelp, steerHelp] = await Promise.all([
 			fs.readFile(
 				path.join(config.commandCentralRepo, "src/ghostty/TerminalManager.ts"),
 				"utf8",
 			),
 			runCommand([config.launcherBinary, "--help"], config.ghosttyLauncherRepo),
+			runCommand([steerScript, "--help"], config.ghosttyLauncherRepo),
 		]);
 
 		if (launcherHelp.exitCode !== 0) {
@@ -293,11 +385,16 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 				`launcher --help failed (${launcherHelp.exitCode}): ${launcherHelp.output}`,
 			);
 		}
+		if (steerHelp.exitCode !== 0) {
+			throw new Error(
+				`oste-steer.sh --help failed (${steerHelp.exitCode}): ${steerHelp.output}`,
+			);
+		}
 
-		const contractIssues = validateLauncherContract(
-			terminalManagerSource,
-			launcherHelp.output,
-		);
+		const contractIssues = [
+			...validateLauncherContract(terminalManagerSource, launcherHelp.output),
+			...validateSteerContract(terminalManagerSource, steerHelp.output),
+		];
 		if (contractIssues.length > 0) {
 			throw new Error(contractIssues.join("\n"));
 		}
@@ -366,7 +463,9 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 export {
 	extractFlagsFromHelp,
 	extractSessionFlagsFromTerminalManager,
+	extractSteerInvocationContract,
 	validateLauncherContract,
+	validateSteerContract,
 };
 
 if (import.meta.main) {

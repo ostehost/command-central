@@ -396,7 +396,7 @@ export class TerminalManager {
 	/**
 	 * Routes a command through the project's Ghostty terminal.
 	 *
-	 * 1. If launcher is installed: gets tmux session, sends command via oste-steer.sh
+	 * 1. If launcher is installed: gets launcher session ID, sends command via oste-steer.sh
 	 *    or creates a new project terminal if no session exists.
 	 * 2. If launcher is NOT installed: falls back to vscode.window.createTerminal().
 	 *
@@ -427,27 +427,26 @@ export class TerminalManager {
 			return;
 		}
 
-		// Try to find existing tmux session for the project
+		// Try to find existing launcher session for the project
 		const info = await this.getTerminalInfo(projectDir);
 
 		if (info.tmuxSession && command) {
-			// Send command to existing tmux session via oste-steer.sh
+			// Send command to existing launcher session via oste-steer.sh
 			try {
 				await this.execCommand("oste-steer.sh", [
-					"--session",
 					info.tmuxSession,
 					"--raw",
 					command,
 				]);
 				this.logger.info(
-					`Sent command to tmux session ${info.tmuxSession}`,
+					`Sent command to launcher session ${info.tmuxSession}`,
 					"TerminalManager",
 				);
 				return;
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				this.logger.warn(
-					`Failed to steer tmux session: ${message} — creating new terminal`,
+					`Failed to steer launcher session: ${message} — creating new terminal`,
 					"TerminalManager",
 				);
 			}
@@ -471,7 +470,6 @@ export class TerminalManager {
 				const newInfo = await this.getTerminalInfo(projectDir);
 				if (newInfo.tmuxSession) {
 					await this.execCommand("oste-steer.sh", [
-						"--session",
 						newInfo.tmuxSession,
 						"--raw",
 						command,
