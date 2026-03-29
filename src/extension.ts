@@ -1187,12 +1187,19 @@ export async function activate(
 					}
 					try {
 						const { execFileSync } = await import("node:child_process");
-						const scriptPath = path.join(
-							path.dirname(tasksFilePath),
-							"oste-capture.sh",
-						);
+						if (!terminalManager) {
+							throw new Error("Terminal manager is not initialized.");
+						}
+						const scriptPath =
+							await terminalManager.resolveLauncherHelperScriptPath(
+								"oste-capture.sh",
+							);
 						const output = execFileSync("bash", [scriptPath, sessionId], {
 							encoding: "utf-8",
+							env: {
+								...process.env,
+								TASKS_FILE: tasksFilePath,
+							},
 							timeout: 10000,
 						});
 						agentOutputChannel.clear();
@@ -1265,12 +1272,19 @@ export async function activate(
 					if (confirm !== "Kill") return;
 					try {
 						const { execFileSync } = await import("node:child_process");
-						const scriptPath = path.join(
-							path.dirname(tasksFilePath),
-							"oste-kill.sh",
-						);
+						if (!terminalManager) {
+							throw new Error("Terminal manager is not initialized.");
+						}
+						const scriptPath =
+							await terminalManager.resolveLauncherHelperScriptPath(
+								"oste-kill.sh",
+							);
 						execFileSync("bash", [scriptPath, task.session_id], {
 							encoding: "utf-8",
+							env: {
+								...process.env,
+								TASKS_FILE: tasksFilePath,
+							},
 							timeout: 10000,
 						});
 						agentStatusProvider?.reload();

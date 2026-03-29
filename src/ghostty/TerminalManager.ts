@@ -235,6 +235,27 @@ export class TerminalManager {
 		return { name, icon, tmuxSession };
 	}
 
+	async resolveLauncherHelperScriptPath(scriptName: string): Promise<string> {
+		if (!/^[a-z0-9][a-z0-9.-]*\.sh$/i.test(scriptName)) {
+			throw new Error(`Invalid launcher helper script name: ${scriptName}`);
+		}
+
+		const launcherPath = await this.resolvedLauncherPath();
+		const scriptPath = path.join(
+			path.dirname(launcherPath),
+			"scripts",
+			scriptName,
+		);
+
+		if (!fs.existsSync(scriptPath)) {
+			throw new Error(
+				`Launcher helper script not found: ${scriptPath}. Check your launcher installation.`,
+			);
+		}
+
+		return scriptPath;
+	}
+
 	/**
 	 * Logs command failures with appropriate detail based on error type.
 	 */
@@ -338,20 +359,22 @@ export class TerminalManager {
 	 */
 	private async resolvedLauncherPath(): Promise<string> {
 		const primary = this.getLauncherPath();
-		const searchedPaths: string[] = [primary];
+		const primaryCandidate = this.resolveBinaryPath(primary) ?? primary;
+		const searchedPaths: string[] =
+			primaryCandidate === primary ? [primary] : [primary, primaryCandidate];
 
 		// Check if configured/PATH launcher is accessible
-		const primaryAccessible = await this.isBinaryAccessible(primary);
+		const primaryAccessible = await this.isBinaryAccessible(primaryCandidate);
 
 		if (primaryAccessible) {
 			// Binary exists, now validate it's the correct one
-			if (await this.validateLauncherBinary(primary)) {
-				return primary;
+			if (await this.validateLauncherBinary(primaryCandidate)) {
+				return primaryCandidate;
 			} else {
 				throw new LauncherValidationError(
-					`Binary at '${primary}' is not the ghostty-launcher executable. ` +
+					`Binary at '${primaryCandidate}' is not the ghostty-launcher executable. ` +
 						"Please check your commandCentral.ghostty.launcherPath setting or install the correct launcher binary.",
-					primary,
+					primaryCandidate,
 				);
 			}
 		}
@@ -391,6 +414,34 @@ export class TerminalManager {
 			`Ghostty Launcher not found. Searched paths: ${searchedPaths.join(", ")}. ${installInstructions}`,
 			searchedPaths,
 		);
+	}
+
+	private resolveBinaryPath(binary: string): string | null {
+		if (!binary) {
+			return null;
+		}
+
+		if (path.isAbsolute(binary) || binary.includes(path.sep)) {
+			const candidate = path.resolve(binary);
+			return fs.existsSync(candidate) ? candidate : null;
+		}
+
+		const pathEnv = process.env["PATH"];
+		if (!pathEnv) {
+			return null;
+		}
+
+		for (const entry of pathEnv.split(path.delimiter)) {
+			if (!entry) {
+				continue;
+			}
+			const candidate = path.join(entry, binary);
+			if (fs.existsSync(candidate)) {
+				return candidate;
+			}
+		}
+
+		return null;
 	}
 
 	/**

@@ -59,6 +59,7 @@ const REQUIRED_LAUNCHER_FLAGS = [
 	"--parse-icon",
 	"--session-id",
 ];
+const REQUIRED_LAUNCHER_HELPERS = ["oste-capture.sh", "oste-kill.sh"];
 
 const REQUIRED_STEER_FLAGS = ["--raw", "--by-task-id"];
 
@@ -198,9 +199,34 @@ function extractSteerInvocationContract(
 	};
 }
 
+function extractLauncherHelperCallsFromExtension(source: string): Set<string> {
+	const found = new Set<string>();
+	for (const match of source.matchAll(
+		/resolveLauncherHelperScriptPath\s*\(\s*"([^"]+)"/g,
+	)) {
+		const helper = match[1];
+		if (helper) {
+			found.add(helper);
+		}
+	}
+	return found;
+}
+
+function hasLegacyTasksDirHelperResolution(source: string): boolean {
+	return /path\.dirname\(tasksFilePath\)[\s\S]{0,240}oste-(capture|kill)\.sh/.test(
+		source,
+	);
+}
+
+function anchorsHelperScriptsToLauncher(source: string): boolean {
+	return /resolveLauncherHelperScriptPath[\s\S]*path\.join\(\s*path\.dirname\(launcherPath\),\s*"scripts",\s*scriptName/s.test(
+		source,
+	);
+}
 function validateLauncherContract(
 	terminalManagerSource: string,
 	launcherHelpText: string,
+	extensionSource = "",
 ): string[] {
 	const issues: string[] = [];
 	const helpFlags = extractFlagsFromHelp(launcherHelpText);
@@ -220,6 +246,29 @@ function validateLauncherContract(
 
 	if (sessionFlags.has("--tmux-session")) {
 		issues.push("Command Central still references legacy --tmux-session.");
+	}
+
+	if (extensionSource) {
+		const helperCalls = extractLauncherHelperCallsFromExtension(extensionSource);
+		for (const helper of REQUIRED_LAUNCHER_HELPERS) {
+			if (!helperCalls.has(helper)) {
+				issues.push(
+					`Command Central is missing launcher helper resolution for ${helper}.`,
+				);
+			}
+		}
+
+		if (hasLegacyTasksDirHelperResolution(extensionSource)) {
+			issues.push(
+				"Command Central still resolves launcher helper scripts relative to tasks.json.",
+			);
+		}
+	}
+
+	if (!anchorsHelperScriptsToLauncher(terminalManagerSource)) {
+		issues.push(
+			"Command Central does not anchor launcher helper scripts to the resolved launcher binary.",
+		);
 	}
 
 	return issues;
@@ -371,14 +420,22 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 			"scripts",
 			"oste-steer.sh",
 		);
-		const [terminalManagerSource, launcherHelp, steerHelp] = await Promise.all([
-			fs.readFile(
-				path.join(config.commandCentralRepo, "src/ghostty/TerminalManager.ts"),
-				"utf8",
-			),
-			runCommand([config.launcherBinary, "--help"], config.ghosttyLauncherRepo),
-			runCommand([steerScript, "--help"], config.ghosttyLauncherRepo),
-		]);
+		const [extensionSource, terminalManagerSource, launcherHelp, steerHelp] =
+			await Promise.all([
+				fs.readFile(
+					path.join(config.commandCentralRepo, "src/extension.ts"),
+					"utf8",
+				),
+				fs.readFile(
+					path.join(config.commandCentralRepo, "src/ghostty/TerminalManager.ts"),
+					"utf8",
+				),
+				runCommand(
+					[config.launcherBinary, "--help"],
+					config.ghosttyLauncherRepo,
+				),
+				runCommand([steerScript, "--help"], config.ghosttyLauncherRepo),
+			]);
 
 		if (launcherHelp.exitCode !== 0) {
 			throw new Error(
@@ -392,7 +449,11 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 		}
 
 		const contractIssues = [
-			...validateLauncherContract(terminalManagerSource, launcherHelp.output),
+			...validateLauncherContract(
+				terminalManagerSource,
+				launcherHelp.output,
+				extensionSource,
+			),
 			...validateSteerContract(terminalManagerSource, steerHelp.output),
 		];
 		if (contractIssues.length > 0) {

@@ -46,6 +46,14 @@ this.execLauncher(launcher, ["--create-bundle", workspaceRoot]);
 this.execLauncher(launcher, ["--parse-name", workspaceRoot]);
 this.execLauncher(launcher, ["--parse-icon", workspaceRoot]);
 this.execLauncher(launcher, ["--session-id", workspaceRoot]);
+async resolveLauncherHelperScriptPath(scriptName: string): Promise<string> {
+	const launcherPath = await this.resolvedLauncherPath();
+	return path.join(path.dirname(launcherPath), "scripts", scriptName);
+}
+`;
+	const validExtensionSource = `
+const capture = await terminalManager.resolveLauncherHelperScriptPath("oste-capture.sh");
+const kill = await terminalManager.resolveLauncherHelperScriptPath("oste-kill.sh");
 `;
 
 	const validHelp = `
@@ -58,7 +66,11 @@ Options:
 
 	test("returns no issues when contract is aligned", () => {
 		expect(
-			validateLauncherContract(validTerminalManagerSource, validHelp),
+			validateLauncherContract(
+				validTerminalManagerSource,
+				validHelp,
+				validExtensionSource,
+			),
 		).toEqual([]);
 	});
 
@@ -72,6 +84,7 @@ Options:
 		const issues = validateLauncherContract(
 			validTerminalManagerSource,
 			helpMissingSession,
+			validExtensionSource,
 		);
 		expect(issues.some((issue) => issue.includes("--session-id"))).toBe(true);
 	});
@@ -80,8 +93,60 @@ Options:
 		const regressedSource = `
 this.execLauncher(launcher, ["--tmux-session", workspaceRoot]);
 `;
-		const issues = validateLauncherContract(regressedSource, validHelp);
+		const issues = validateLauncherContract(
+			regressedSource,
+			validHelp,
+			validExtensionSource,
+		);
 		expect(issues.some((issue) => issue.includes("--tmux-session"))).toBe(true);
+	});
+
+	test("fails when extension still resolves helpers from tasks.json directory", () => {
+		const legacyExtensionSource = `
+const scriptPath = path.join(path.dirname(tasksFilePath), "oste-capture.sh");
+`;
+		const issues = validateLauncherContract(
+			validTerminalManagerSource,
+			validHelp,
+			legacyExtensionSource,
+		);
+		expect(
+			issues.some((issue) => issue.includes("relative to tasks.json")),
+		).toBe(true);
+	});
+
+	test("fails when helper resolution is missing for launcher-managed actions", () => {
+		const partialExtensionSource = `
+const capture = await terminalManager.resolveLauncherHelperScriptPath("oste-capture.sh");
+`;
+		const issues = validateLauncherContract(
+			validTerminalManagerSource,
+			validHelp,
+			partialExtensionSource,
+		);
+		expect(
+			issues.some((issue) => issue.includes("oste-kill.sh")),
+		).toBe(true);
+	});
+
+	test("accepts multiline helper resolution calls from extension formatting", () => {
+		const multilineExtensionSource = `
+const capture =
+	await terminalManager.resolveLauncherHelperScriptPath(
+		"oste-capture.sh",
+	);
+const kill =
+	await terminalManager.resolveLauncherHelperScriptPath(
+		"oste-kill.sh",
+	);
+`;
+		expect(
+			validateLauncherContract(
+				validTerminalManagerSource,
+				validHelp,
+				multilineExtensionSource,
+			),
+		).toEqual([]);
 	});
 });
 

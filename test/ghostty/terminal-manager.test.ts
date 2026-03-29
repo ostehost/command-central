@@ -144,6 +144,96 @@ describe("TerminalManager.getLauncherPath", () => {
 	});
 });
 
+describe("TerminalManager.resolveLauncherHelperScriptPath", () => {
+	beforeEach(() => {
+		mock.restore();
+		mock.module("vscode", () => ({
+			workspace: { getConfiguration: mockGetConfiguration },
+			window: { createTerminal: mockCreateTerminal },
+		}));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+		}));
+	});
+
+	test("anchors helper scripts to configured launcher binary", async () => {
+		const launcherPath = "/Users/test/projects/ghostty-launcher/launcher";
+		const helperPath =
+			"/Users/test/projects/ghostty-launcher/scripts/oste-capture.sh";
+
+		mockConfigGet.mockImplementation((_key: string, _def?: unknown) => {
+			if (_key === "ghostty.launcherPath") return launcherPath;
+			return _def;
+		});
+		fsExistsSyncMock.mockImplementation(
+			(p: string) => p === launcherPath || p === helperPath,
+		);
+		execFileMock.mockImplementation(
+			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (f === launcherPath && a.includes("--help")) {
+					cb(null, { stdout: "Usage: launcher", stderr: "" });
+					return;
+				}
+				if (f === launcherPath && a.includes("--version")) {
+					cb(null, { stdout: "ghostty-launcher version 1.2.3", stderr: "" });
+					return;
+				}
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await expect(
+			mgr.resolveLauncherHelperScriptPath("oste-capture.sh"),
+		).resolves.toBe(helperPath);
+	});
+
+	test("resolves PATH launcher before anchoring helper scripts", async () => {
+		const originalPath = process.env["PATH"];
+		const launcherDir = "/Users/test/projects/ghostty-launcher";
+		const launcherPath = `${launcherDir}/launcher`;
+		const helperPath = `${launcherDir}/scripts/oste-kill.sh`;
+
+		try {
+			process.env["PATH"] = `${launcherDir}:/usr/bin`;
+			mockConfigGet.mockImplementation((_key: string, _def?: unknown) => {
+				if (_key === "ghostty.launcherPath") return "";
+				return _def;
+			});
+			fsExistsSyncMock.mockImplementation(
+				(p: string) => p === launcherPath || p === helperPath,
+			);
+			execFileMock.mockImplementation(
+				(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+					if (f === launcherPath && a.includes("--help")) {
+						cb(null, { stdout: "Usage: launcher", stderr: "" });
+						return;
+					}
+					if (f === launcherPath && a.includes("--version")) {
+						cb(null, { stdout: "ghostty-launcher version 1.2.3", stderr: "" });
+						return;
+					}
+					const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+					cb(err, { stdout: "", stderr: "" });
+				},
+			);
+
+			const mgr = new TerminalManager(createMockLogger() as never);
+			await expect(
+				mgr.resolveLauncherHelperScriptPath("oste-kill.sh"),
+			).resolves.toBe(helperPath);
+		} finally {
+			process.env["PATH"] = originalPath;
+		}
+	});
+});
+
 describe("TerminalManager.isLauncherInstalled", () => {
 	beforeEach(() => {
 		mock.restore();
