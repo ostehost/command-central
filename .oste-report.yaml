@@ -1,13 +1,9 @@
-task_id: "cc-prerelease-gate-v1"
+task_id: "cc-marketing-site-update"
 status: "success"
-summary: "Added a cross-repo prerelease gate workflow with launcher contract checks, provenance artifacts, focused tests, and release-doc sync updates"
+summary: "Updated the marketing site copy for M4 launch messaging around Dock icon identity, cross-terminal auto-discovery, and sidebar agent controls"
 files_changed:
-  - "scripts-v2/prerelease-gate.ts"
-  - "test/scripts-v2/prerelease-gate.test.ts"
-  - "justfile"
-  - "scripts-v2/sync-launcher.ts"
-  - "docs/releasing/PROCESS.md"
-  - "docs/releasing/CHECKLIST.md"
-  - "research/DEV-NOTES-prerelease-gate-v1.md"
-tests_passing: false
-next_steps: "Stabilize/fix the upstream ghostty-launcher `just check` codesign-ordering failure so full strict `just prerelease-gate` can pass without skip flags."
+  - "site/index.html"
+  - "research/DEV-NOTES-marketing-site-update.md"
+  - ".oste-report.yaml"
+tests_passing: true
+next_steps: "Optional: take a fresh screenshot pass for marketplace/social assets that matches the updated M4 copy."
