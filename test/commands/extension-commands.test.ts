@@ -815,6 +815,88 @@ describe("toggleRunningFilter command", () => {
 	});
 });
 
+describe("agent scope toggle commands", () => {
+	test("sets current-project scope in workspace config and reloads tree", async () => {
+		const update = mock((_section: string, _value: unknown, _target: unknown) =>
+			Promise.resolve(),
+		);
+		const config = {
+			get: mock((_key: string, defaultValue?: unknown) => defaultValue),
+			update,
+		};
+		vscodeMock.workspace.getConfiguration = mock(
+			(_section?: string) =>
+				config as unknown as ReturnType<
+					typeof vscodeMock.workspace.getConfiguration
+				>,
+		);
+
+		const agentStatusProvider = { reload: mock() };
+		const syncAgentStatusViewContexts = mock(() => Promise.resolve());
+		const handler = async () => {
+			const resolvedConfig =
+				vscodeMock.workspace.getConfiguration("commandCentral");
+			await resolvedConfig.update(
+				"agentStatus.scope",
+				"currentProject",
+				vscodeMock.ConfigurationTarget.Workspace,
+			);
+			await syncAgentStatusViewContexts();
+			agentStatusProvider.reload();
+		};
+
+		await handler();
+
+		expect(update).toHaveBeenCalledWith(
+			"agentStatus.scope",
+			"currentProject",
+			vscodeMock.ConfigurationTarget.Workspace,
+		);
+		expect(syncAgentStatusViewContexts).toHaveBeenCalled();
+		expect(agentStatusProvider.reload).toHaveBeenCalled();
+	});
+
+	test("sets all-agents scope in workspace config and reloads tree", async () => {
+		const update = mock((_section: string, _value: unknown, _target: unknown) =>
+			Promise.resolve(),
+		);
+		const config = {
+			get: mock((_key: string, defaultValue?: unknown) => defaultValue),
+			update,
+		};
+		vscodeMock.workspace.getConfiguration = mock(
+			(_section?: string) =>
+				config as unknown as ReturnType<
+					typeof vscodeMock.workspace.getConfiguration
+				>,
+		);
+
+		const agentStatusProvider = { reload: mock() };
+		const syncAgentStatusViewContexts = mock(() => Promise.resolve());
+		const handler = async () => {
+			const resolvedConfig =
+				vscodeMock.workspace.getConfiguration("commandCentral");
+			await resolvedConfig.update(
+				"agentStatus.scope",
+				"all",
+				vscodeMock.ConfigurationTarget.Workspace,
+			);
+			await syncAgentStatusViewContexts();
+			agentStatusProvider.reload();
+		};
+
+		await handler();
+
+		expect(update).toHaveBeenCalledWith(
+			"agentStatus.scope",
+			"all",
+			vscodeMock.ConfigurationTarget.Workspace,
+		);
+		expect(syncAgentStatusViewContexts).toHaveBeenCalled();
+		expect(agentStatusProvider.reload).toHaveBeenCalled();
+	});
+});
+
 describe("changeProjectIcon command", () => {
 	test("accepts emoji input", () => {
 		const value = "🚀";

@@ -54,6 +54,7 @@ export type AgentTaskStatus =
 	| "contract_failure";
 
 export type AgentRole = "developer" | "planner" | "reviewer" | "test";
+export type AgentStatusScope = "all" | "currentProject";
 
 export interface AgentTask {
 	id: string;
@@ -523,6 +524,7 @@ export class AgentStatusTreeProvider
 					e.affectsConfiguration(
 						"commandCentral.agentStatus.showOnlyRunning",
 					) ||
+					e.affectsConfiguration("commandCentral.agentStatus.scope") ||
 					e.affectsConfiguration("commandCentral.agentStatus.groupByProject") ||
 					e.affectsConfiguration("commandCentral.agentStatus.sortByStatus") ||
 					e.affectsConfiguration("commandCentral.project.group") ||
@@ -531,6 +533,10 @@ export class AgentStatusTreeProvider
 				) {
 					this._onDidChangeTreeData.fire(undefined);
 				}
+			}),
+			vscode.workspace.onDidChangeWorkspaceFolders(() => {
+				this.setupFileWatch();
+				void this.reload();
 			}),
 		);
 		this.setupFileWatch();
@@ -606,8 +612,8 @@ export class AgentStatusTreeProvider
 		const task = this.getDisplayTaskById(taskId);
 		if (!task) return undefined;
 		const visibleTasks = this.isRunningOnlyFilterEnabled()
-			? this.getDisplayLauncherTasks().filter((t) => t.status === "running")
-			: this.getDisplayLauncherTasks();
+			? this.getScopedLauncherTasks().filter((t) => t.status === "running")
+			: this.getScopedLauncherTasks();
 		if (!visibleTasks.some((t) => t.id === taskId)) return undefined;
 		return { type: "task", task };
 	}
@@ -812,6 +818,90 @@ export class AgentStatusTreeProvider
 
 	private getDisplayTaskById(taskId: string): AgentTask | undefined {
 		return this.getDisplayLauncherTasks().find((task) => task.id === taskId);
+	}
+
+	private getAgentStatusScope(): AgentStatusScope {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		return config.get<AgentStatusScope>("agentStatus.scope", "all");
+	}
+
+	private getOpenWorkspaceFolders(): readonly vscode.WorkspaceFolder[] {
+		return vscode.workspace.workspaceFolders ?? [];
+	}
+
+	private matchesCurrentWorkspaceFolder(projectDir: string): boolean {
+		if (this.getAgentStatusScope() !== "currentProject") {
+			return true;
+		}
+		if (!projectDir || !path.isAbsolute(projectDir)) {
+			return false;
+		}
+
+		const normalizedProjectDir = path.resolve(projectDir);
+		return this.getOpenWorkspaceFolders().some(
+			(folder) => path.resolve(folder.uri.fsPath) === normalizedProjectDir,
+		);
+	}
+
+	private getScopedLauncherTasks(
+		tasks = this.getDisplayLauncherTasks(),
+	): AgentTask[] {
+		if (this.getAgentStatusScope() === "all") {
+			return tasks;
+		}
+		return tasks.filter((task) =>
+			this.matchesCurrentWorkspaceFolder(task.project_dir),
+		);
+	}
+
+	private getScopedDiscoveredAgents(
+		agents = this._discoveredAgents,
+	): DiscoveredAgent[] {
+		if (this.getAgentStatusScope() === "all") {
+			return agents;
+		}
+		return agents.filter((agent) =>
+			this.matchesCurrentWorkspaceFolder(agent.projectDir),
+		);
+	}
+
+	private getScopedTasksForSummary(
+		tasks = this.getScopedLauncherTasks(),
+		discovered = this.getScopedDiscoveredAgents(),
+	): AgentTask[] {
+		const syntheticDiscovered: AgentTask[] = discovered.map((agent) => ({
+			id: `discovered-${agent.pid}`,
+			status: "running" as const,
+			project_dir: agent.projectDir,
+			project_name: path.basename(agent.projectDir) || agent.projectDir,
+			session_id: agent.sessionId ?? `pid-${agent.pid}`,
+			bundle_path: "",
+			prompt_file: "",
+			started_at: agent.startTime.toISOString(),
+			attempts: 0,
+			max_attempts: 0,
+		}));
+		return [...tasks, ...syntheticDiscovered];
+	}
+
+	private getScopeIndicatorLabel(): string {
+		if (this.getAgentStatusScope() === "all") {
+			return "All";
+		}
+
+		const workspaceFolders = this.getOpenWorkspaceFolders();
+		if (workspaceFolders.length === 0) {
+			return "Current Project";
+		}
+		if (workspaceFolders.length === 1) {
+			const [folder] = workspaceFolders;
+			return folder?.name?.trim() || path.basename(folder?.uri.fsPath ?? "");
+		}
+		return `${workspaceFolders.length} projects`;
+	}
+
+	private formatScopedAgentCount(total: number): string {
+		return total === 1 ? "1 agent" : `${total} agents`;
 	}
 
 	private getStuckRunningCount(tasks: AgentTask[]): number {
@@ -1242,8 +1332,8 @@ export class AgentStatusTreeProvider
 
 	getChildren(element?: AgentNode): AgentNode[] {
 		if (!element) {
-			const allTasks = this.getDisplayLauncherTasks();
-			const discovered = this._discoveredAgents;
+			const allTasks = this.getScopedLauncherTasks();
+			const discovered = this.getScopedDiscoveredAgents();
 			const hasAnyAgents = allTasks.length > 0 || discovered.length > 0;
 			if (!hasAnyAgents) {
 				if (this._initialReadInProgress && this._filePath) {
@@ -1265,6 +1355,32 @@ export class AgentStatusTreeProvider
 							icon: "warning",
 						},
 					];
+				}
+				if (this.getAgentStatusScope() === "currentProject") {
+					const hasAnyTrackedAgents =
+						this.getDisplayLauncherTasks().length > 0 ||
+						this._discoveredAgents.length > 0;
+					if (this.getOpenWorkspaceFolders().length === 0) {
+						return [
+							{
+								type: "state",
+								label: "No workspace folders open",
+								description: "Open a folder or switch scope to All Agents.",
+								icon: "folder-opened",
+							},
+						];
+					}
+					if (hasAnyTrackedAgents) {
+						return [
+							{
+								type: "state",
+								label: "No agents in current project",
+								description:
+									"Switch scope to All Agents to see cross-project tasks.",
+								icon: "project",
+							},
+						];
+					}
 				}
 				return [
 					{
@@ -1309,14 +1425,22 @@ export class AgentStatusTreeProvider
 				),
 			]);
 
-			const allEffectiveTasks = this.getTasks();
-			const counts = countAgentStatuses(allEffectiveTasks);
+			const counts = countAgentStatuses(
+				this.getScopedTasksForSummary(
+					runningOnly ? tasks : allTasks,
+					discovered,
+				),
+			);
 			const stuckCount = this.getStuckRunningCount(allTasks);
 			const summaryLabel = [
-				this.getSortModeIndicatorLabel(),
+				this.getScopeIndicatorLabel(),
+				this.formatScopedAgentCount(counts.total),
 				formatCountSummary(counts, { includeAttention: true }),
+				this.getSortModeIndicatorLabel(),
 				...(stuckCount > 0 ? [`${stuckCount} stuck`] : []),
-			].join(" · ");
+			]
+				.filter((part) => part.length > 0)
+				.join(" · ");
 			const summaryTooltip = this.getSummaryTooltip(counts, stuckCount);
 
 			return [
@@ -2450,13 +2574,13 @@ export class AgentStatusTreeProvider
 
 	getParent(element: AgentNode): AgentNode | undefined {
 		if (this.isProjectGroupingEnabled()) {
-			const allTasks = this.getDisplayLauncherTasks();
+			const allTasks = this.getScopedLauncherTasks();
 			const visibleTasks = this.isRunningOnlyFilterEnabled()
 				? allTasks.filter((task) => task.status === "running")
 				: allTasks;
 			const groupedRoots = this.buildGroupedRootNodes(
 				visibleTasks,
-				this._discoveredAgents,
+				this.getScopedDiscoveredAgents(),
 			);
 
 			const findProjectParent = (
@@ -2685,8 +2809,8 @@ export class AgentStatusTreeProvider
 
 	/** Compute summary icon based on aggregate agent state */
 	private getSummaryIcon(): vscode.ThemeIcon {
-		const tasks = this.getDisplayLauncherTasks();
-		const discovered = this._discoveredAgents;
+		const tasks = this.getScopedLauncherTasks();
+		const discovered = this.getScopedDiscoveredAgents();
 
 		const hasRunning =
 			tasks.some((t) => t.status === "running") || discovered.length > 0;

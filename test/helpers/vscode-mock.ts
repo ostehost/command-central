@@ -92,6 +92,7 @@ export function createVSCodeMock() {
 				),
 			})),
 			onDidChangeConfiguration: mock(() => ({ dispose: mock() })),
+			onDidChangeWorkspaceFolders: mock(() => ({ dispose: mock() })),
 			showWorkspaceFolderPick: mock((_options?: unknown) =>
 				Promise.resolve(undefined as unknown),
 			),

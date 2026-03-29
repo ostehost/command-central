@@ -1137,6 +1137,89 @@ describe("AgentStatusTreeProvider", () => {
 		}
 	});
 
+	test("filters tasks to current workspace scope and shows project summary label", () => {
+		const frontend = createMockTask({
+			id: "frontend-agent",
+			project_dir: "/Users/test/projects/frontend",
+			project_name: "frontend",
+		});
+		const backend = createMockTask({
+			id: "backend-agent",
+			project_dir: "/Users/test/projects/backend",
+			project_name: "backend",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				"frontend-agent": frontend,
+				"backend-agent": backend,
+			});
+		provider.reload();
+
+		vscodeMock.workspace.workspaceFolders = [
+			{
+				uri: { fsPath: "/Users/test/projects/frontend" },
+				name: "frontend",
+				index: 0,
+			},
+		];
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.scope") return "currentProject";
+				if (_key === "agentStatus.groupByProject") return false;
+				return defaultValue;
+			}),
+		}));
+
+		const children = provider.getChildren();
+		const summary = getSummaryNode(children);
+		const taskNodes = getTaskNodes(children);
+
+		expect(summary.label).toContain("frontend");
+		expect(summary.label).toContain("1 agent");
+		expect(taskNodes).toHaveLength(1);
+		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"frontend-agent",
+		);
+	});
+
+	test("shows empty current-project state when scoped workspace has no matching agents", () => {
+		const backend = createMockTask({
+			id: "backend-agent",
+			project_dir: "/Users/test/projects/backend",
+			project_name: "backend",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				"backend-agent": backend,
+			});
+		provider.reload();
+
+		vscodeMock.workspace.workspaceFolders = [
+			{
+				uri: { fsPath: "/Users/test/projects/frontend" },
+				name: "frontend",
+				index: 0,
+			},
+		];
+		vscodeMock.workspace.getConfiguration = mock(() => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.scope") return "currentProject";
+				if (_key === "agentStatus.groupByProject") return false;
+				return defaultValue;
+			}),
+		}));
+
+		const children = provider.getChildren();
+
+		expect(children).toHaveLength(1);
+		expect(children[0]?.type).toBe("state");
+		if (children[0]?.type === "state") {
+			expect(children[0].label).toBe("No agents in current project");
+		}
+	});
+
 	test("returns detail nodes for task children", () => {
 		// Use completed status to avoid async port detection adding "detecting..." node
 		const task = createMockTask({ status: "completed", exit_code: 0 });

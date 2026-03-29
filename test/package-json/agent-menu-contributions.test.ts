@@ -153,6 +153,15 @@ describe("package.json agent menu contributions", () => {
 		expect(setting?.description).toContain("Dock icon");
 	});
 
+	test("defines agent scope config with all/currentProject and all as default", async () => {
+		const properties = await getConfigProperties();
+		const setting = properties["commandCentral.agentStatus.scope"];
+		expect(setting).toBeDefined();
+		expect(setting?.default).toBe("all");
+		expect(setting?.enum).toEqual(["all", "currentProject"]);
+		expect(setting?.description).toContain("current workspace folders");
+	});
+
 	test("has inline restart action for failed launcher-managed tasks", async () => {
 		const menu = await getViewItemContextMenu();
 		const inlineRestart = menu.find(
@@ -211,12 +220,35 @@ describe("package.json agent menu contributions", () => {
 		const clearAction = menu.find(
 			(item) =>
 				item.command === "commandCentral.clearTerminalTasks" &&
-				item.group === "navigation@5",
+				item.group === "navigation@6",
 		);
 		expect(clearAction).toBeDefined();
 		expect(clearAction?.when).toContain("view == commandCentral.agentStatus");
 		expect(clearAction?.when).toContain(
 			"commandCentral.agentStatus.hasTerminalTasks",
+		);
+	});
+
+	test("adds paired view-title scope toggle actions for all vs current project", async () => {
+		const menu = await getViewTitleMenu();
+		const currentProjectAction = menu.find(
+			(item) =>
+				item.command === "commandCentral.toggleAgentScopeCurrentProject" &&
+				item.group === "navigation@4",
+		);
+		const allAgentsAction = menu.find(
+			(item) =>
+				item.command === "commandCentral.toggleAgentScopeAll" &&
+				item.group === "navigation@4",
+		);
+
+		expect(currentProjectAction).toBeDefined();
+		expect(currentProjectAction?.when).toContain(
+			"!commandCentral.agentStatus.scopeCurrentProject",
+		);
+		expect(allAgentsAction).toBeDefined();
+		expect(allAgentsAction?.when).toContain(
+			"commandCentral.agentStatus.scopeCurrentProject",
 		);
 	});
 });

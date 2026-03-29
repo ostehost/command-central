@@ -636,6 +636,10 @@ export async function activate(
 				"agentStatus.showOnlyRunning",
 				false,
 			);
+			const scope = config.get<"all" | "currentProject">(
+				"agentStatus.scope",
+				"all",
+			);
 			const groupByProject = config.get<boolean>(
 				"agentStatus.groupByProject",
 				true,
@@ -644,6 +648,11 @@ export async function activate(
 				"setContext",
 				"commandCentral.agentStatus.showOnlyRunning",
 				showOnlyRunning,
+			);
+			await vscode.commands.executeCommand(
+				"setContext",
+				"commandCentral.agentStatus.scopeCurrentProject",
+				scope === "currentProject",
 			);
 			await vscode.commands.executeCommand(
 				"setContext",
@@ -660,6 +669,7 @@ export async function activate(
 					e.affectsConfiguration(
 						"commandCentral.agentStatus.showOnlyRunning",
 					) ||
+					e.affectsConfiguration("commandCentral.agentStatus.scope") ||
 					e.affectsConfiguration("commandCentral.agentStatus.groupByProject")
 				) {
 					void syncAgentStatusViewContexts();
@@ -1162,6 +1172,32 @@ export async function activate(
 					await vscode.commands.executeCommand(
 						"commandCentral.toggleProjectGrouping",
 					);
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.toggleAgentScopeCurrentProject",
+				async () => {
+					const config = vscode.workspace.getConfiguration("commandCentral");
+					await config.update(
+						"agentStatus.scope",
+						"currentProject",
+						vscode.ConfigurationTarget.Workspace,
+					);
+					await syncAgentStatusViewContexts();
+					agentStatusProvider?.reload();
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.toggleAgentScopeAll",
+				async () => {
+					const config = vscode.workspace.getConfiguration("commandCentral");
+					await config.update(
+						"agentStatus.scope",
+						"all",
+						vscode.ConfigurationTarget.Workspace,
+					);
+					await syncAgentStatusViewContexts();
+					agentStatusProvider?.reload();
 				},
 			),
 			vscode.commands.registerCommand(

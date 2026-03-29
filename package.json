@@ -219,6 +219,16 @@
           "description": "Show only running agents in the Agent Status tree",
           "scope": "window"
         },
+        "commandCentral.agentStatus.scope": {
+          "type": "string",
+          "enum": [
+            "all",
+            "currentProject"
+          ],
+          "default": "all",
+          "description": "Scope Agent Status to all tracked agents or only the current workspace folders.",
+          "scope": "window"
+        },
         "commandCentral.agentStatus.groupByProject": {
           "type": "boolean",
           "default": true,
@@ -765,6 +775,18 @@
         "title": "Show All Agents",
         "category": "Command Central",
         "icon": "$(filter-filled)"
+      },
+      {
+        "command": "commandCentral.toggleAgentScopeCurrentProject",
+        "title": "Show Current Project Agents",
+        "category": "Command Central",
+        "icon": "$(project)"
+      },
+      {
+        "command": "commandCentral.toggleAgentScopeAll",
+        "title": "Show All Agents",
+        "category": "Command Central",
+        "icon": "$(globe)"
       },
       {
         "command": "commandCentral.toggleProjectGrouping",
@@ -1601,19 +1623,29 @@
           "group": "navigation@3"
         },
         {
+          "command": "commandCentral.toggleAgentScopeCurrentProject",
+          "when": "view == commandCentral.agentStatus && !commandCentral.agentStatus.scopeCurrentProject",
+          "group": "navigation@4"
+        },
+        {
+          "command": "commandCentral.toggleAgentScopeAll",
+          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.scopeCurrentProject",
+          "group": "navigation@4"
+        },
+        {
           "command": "commandCentral.toggleProjectGrouping",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.groupByProject",
-          "group": "navigation@4"
+          "group": "navigation@5"
         },
         {
           "command": "commandCentral.toggleProjectGroupingFlat",
           "when": "view == commandCentral.agentStatus && !commandCentral.agentStatus.groupByProject",
-          "group": "navigation@4"
+          "group": "navigation@5"
         },
         {
           "command": "commandCentral.clearTerminalTasks",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.hasTerminalTasks",
-          "group": "navigation@5"
+          "group": "navigation@6"
         }
       ]
     },
