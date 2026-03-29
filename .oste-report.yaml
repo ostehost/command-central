@@ -1,13 +1,14 @@
-task_id: "cc-agent-history-cap"
+task_id: "cc-sort-mode-cycle"
 status: "success"
-summary: "Added an Agent Status history cap with expandable older-runs nodes and coverage for flat, grouped, and running-agent cases"
+summary: "Implemented Agent Status sort-mode cycling, migration, toolbar state, summary indicator, and test coverage"
 files_changed:
   - "package.json"
   - "src/extension.ts"
   - "src/providers/agent-status-tree-provider.ts"
   - "test/commands/extension-commands.test.ts"
+  - "test/integration/cross-repo-smoke.test.ts"
   - "test/package-json/agent-menu-contributions.test.ts"
   - "test/tree-view/agent-status-tree-provider.test.ts"
-  - "research/DEV-NOTES-agent-history-cap.md"
+  - "research/DEV-NOTES-sort-mode-cycle.md"
 tests_passing: true
-next_steps: "Investigate the existing TypeScript errors in extension sort-mode command code and unrelated pre-existing test/typecheck failures on this branch."
+next_steps: "Optional: add the Cmd+Shift+S focused-view keybinding from the roadmap if the UX wants parity with the spec's keyboard section."
