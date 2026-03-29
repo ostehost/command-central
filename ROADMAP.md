@@ -1,8 +1,8 @@
 # Command Central — Product Roadmap
 
-> v1.3 — 2026-03-24. Living document. Updated as priorities shift.
+> v1.4 — 2026-03-29. Living document. Updated as priorities shift.
 > Strategy basis: `research/STRATEGY-SYNTHESIS-2026-03-22.md`, `research/PMF-ANALYSIS-2026-03-22.md`, `research/RESEARCH-sidebar-ux-2026-03-24.md`, `research/DISSERTATION-cmdtab-platform-2026-03-24.md`
-> **Critical path:** M0 ✅ → M1 ✅ → M2 ✅ → M2.5 ✅ (core) → **M4 (LAUNCH)** — ship now, polish post-launch
+> **Critical path:** M0 ✅ → M1 ✅ → M2 ✅ → M2.5 ✅ (core) → **M4 (LAUNCH)** → M3.5 (sort/group UX) → M3 → M5
 
 ## Vision
 
@@ -96,6 +96,20 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M4-5 | Track installs, activations, feature usage (PostHog) | ✅ DONE | P0 | `telemetry-service.ts` — 6 events, opt-in, batch flush |
 | M4-6 | Fix stale persist socket cleanup in `oste-spawn.sh` | TODO | P2 | Non-blocking. Three staleness sources (tasks.json, persist sockets, tmux) — reaper only cleans tasks.json. `cleanup_stale_persist_socket` runs after the base-name exists check, not before. See `memory/projects/launcher-bugs.md`. |
 
+### M3.5: Agent Status Sort/Group Redesign — POST-LAUNCH UX
+**Goal:** Make the newest agent runs instantly findable. Recency-first by default, optional grouping, modeled after Git Changes UX. Spec: `research/SPEC-agent-status-sorting-roadmap.md`.
+
+| ID | Item | Status | Priority | Notes |
+|----|------|--------|----------|-------|
+| M3.5-1 | Recency-first sort mode + flat list default | TODO | P0 | New `sortMode` enum replaces `sortByStatus` boolean. Unify launcher + discovered agent sorting. |
+| M3.5-2 | Toolbar sort-mode cycle button | TODO | P0 | `cycleSortMode` command, icon swaps per mode: recency/status/status-recency |
+| M3.5-3 | Recency-sorted project groups | TODO | P1 | When grouped, sort groups by most-recent child activity, not alphabetically |
+| M3.5-4 | Group label relative timestamps | TODO | P1 | Show "2s ago" / "10m ago" on project group labels |
+| M3.5-5 | Summary node sort-mode indicator | TODO | P1 | Prefix summary with mode icon/label for immediate visual feedback |
+| M3.5-6 | `sortByStatus` deprecation migration | TODO | P1 | Auto-migrate boolean to enum on activation, remove in next major |
+| M3.5-7 | Sort/group telemetry events | TODO | P1 | Track mode changes to validate recency-first hypothesis |
+| M3.5-8 | "What's New" notification for default change | TODO | P2 | One-time notice explaining new sort behavior |
+
 ### M3: Competitive Parity (v0.8.0) — POST-LAUNCH
 **Goal:** Match dmux/cmux/FleetCode on table-stakes features. Prioritize based on real user feedback from M4 launch.
 
@@ -158,6 +172,7 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 
 ## References
 
+- Sort/Group Redesign Spec: `research/SPEC-agent-status-sorting-roadmap.md`
 - Strategy Synthesis: `research/STRATEGY-SYNTHESIS-2026-03-22.md`
 - PMF Analysis: `research/PMF-ANALYSIS-2026-03-22.md`
 - Competitive Analysis: `research/ROADMAP-REVIEW-2026-03-22.md`
