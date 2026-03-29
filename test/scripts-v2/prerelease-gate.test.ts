@@ -124,9 +124,7 @@ const capture = await terminalManager.resolveLauncherHelperScriptPath("oste-capt
 			validHelp,
 			partialExtensionSource,
 		);
-		expect(
-			issues.some((issue) => issue.includes("oste-kill.sh")),
-		).toBe(true);
+		expect(issues.some((issue) => issue.includes("oste-kill.sh"))).toBe(true);
 	});
 
 	test("accepts multiline helper resolution calls from extension formatting", () => {
