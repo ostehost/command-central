@@ -1,8 +1,8 @@
 task_id: "cc-contract-validation-claude"
 status: "success"
-summary: "Validated integrated steer-contract + helper-resolution fixes: tsc clean, 972/973 tests pass (1 pre-existing flaky), build OK, Biome clean after minor format fix."
+summary: "Structured review of integrated launcher-contract branch — APPROVE for merge, 0 blockers, 3 warnings, 3 nits"
 files_changed:
-  - "test/scripts-v2/prerelease-gate.test.ts"
-  - "research/DEV-NOTES-contract-integration-claude.md"
+  - "research/REVIEW-contract-integration.md"
+  - ".oste-report.yaml"
 tests_passing: true
-next_steps: "Branch is merge-ready. The single test failure is a pre-existing flaky timing test unrelated to contract changes."
+next_steps: "Run full un-skipped prerelease gate during cross-repo smoke validation"
