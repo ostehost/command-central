@@ -1,0 +1,7 @@
+task_id: "fix-agent-status-tree-tests"
+status: "success"
+summary: "Fixed 16 failing tests by mocking discovery.enabled=false in 3 beforeEach blocks to prevent real AgentRegistry process scanning from leaking discovered agents into isolated tests"
+files_changed:
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+tests_passing: true
+next_steps: "None — all 145 tests pass with 0 failures"
