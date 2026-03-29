@@ -81,3 +81,6 @@ RETRO_2026-02-18.md
 RELEASE_AUDIT*.md
 logo-concepts/
 prompts/
+
+# Orchestrator report artifacts
+.oste-report.yaml
