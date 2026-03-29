@@ -1,7 +1,8 @@
-task_id: "fix-agent-status-tree-tests"
+task_id: "cross-repo-smoke"
 status: "success"
-summary: "Fixed 16 failing tests by mocking discovery.enabled=false in 3 beforeEach blocks to prevent real AgentRegistry process scanning from leaking discovered agents into isolated tests"
+summary: "Built 31-test cross-repo smoke suite validating all 6 CC<->Launcher control surface paths"
 files_changed:
-  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - "test/integration/cross-repo-smoke.test.ts"
+  - "research/DEV-NOTES-cross-repo-smoke.md"
 tests_passing: true
-next_steps: "None — all 145 tests pass with 0 failures"
+next_steps: "Fix pre-existing Biome lint errors in extension-commands.test.ts to unblock prerelease gate"
