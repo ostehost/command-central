@@ -30,10 +30,13 @@ import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provide
 import { AgentDashboardPanel } from "./providers/agent-dashboard-panel.js";
 import { AgentDecorationProvider } from "./providers/agent-decoration-provider.js";
 import {
+	type AgentStatusSortMode,
 	AgentStatusTreeProvider,
 	type AgentTask,
+	getNextAgentStatusSortMode,
 	isValidSessionId,
 	type ProjectGroupNode,
+	resolveAgentStatusSortMode,
 } from "./providers/agent-status-tree-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
 import { AgentBackendSwitcher } from "./services/agent-backend-switcher.js";
@@ -642,8 +645,9 @@ export async function activate(
 			);
 			const groupByProject = config.get<boolean>(
 				"agentStatus.groupByProject",
-				true,
+				false,
 			);
+			const sortMode = resolveAgentStatusSortMode(config);
 			await vscode.commands.executeCommand(
 				"setContext",
 				"commandCentral.agentStatus.showOnlyRunning",
@@ -659,6 +663,20 @@ export async function activate(
 				"commandCentral.agentStatus.groupByProject",
 				groupByProject,
 			);
+			await vscode.commands.executeCommand(
+				"setContext",
+				"commandCentral.agentStatus.sortMode",
+				sortMode,
+			);
+		};
+		const setAgentStatusSortMode = async (
+			sortMode: AgentStatusSortMode,
+			target = vscode.ConfigurationTarget.Global,
+		): Promise<void> => {
+			const config = vscode.workspace.getConfiguration("commandCentral");
+			await config.update("agentStatus.sortMode", sortMode, target);
+			await syncAgentStatusViewContexts();
+			agentStatusProvider?.reload();
 		};
 		await syncAgentStatusViewContexts();
 		context.subscriptions.push(agentStatusView);
@@ -670,7 +688,9 @@ export async function activate(
 						"commandCentral.agentStatus.showOnlyRunning",
 					) ||
 					e.affectsConfiguration("commandCentral.agentStatus.scope") ||
-					e.affectsConfiguration("commandCentral.agentStatus.groupByProject")
+					e.affectsConfiguration("commandCentral.agentStatus.groupByProject") ||
+					e.affectsConfiguration("commandCentral.agentStatus.sortMode") ||
+					e.affectsConfiguration("commandCentral.agentStatus.sortByStatus")
 				) {
 					void syncAgentStatusViewContexts();
 				}
@@ -1056,6 +1076,63 @@ export async function activate(
 				},
 			),
 			vscode.commands.registerCommand(
+				"commandCentral.cycleSortMode",
+				async () => {
+					const config = vscode.workspace.getConfiguration("commandCentral");
+					const currentSortMode = resolveAgentStatusSortMode(config);
+					const nextSortMode = getNextAgentStatusSortMode(currentSortMode);
+					await setAgentStatusSortMode(nextSortMode);
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.setSortMode",
+				async () => {
+					const config = vscode.workspace.getConfiguration("commandCentral");
+					const currentSortMode = resolveAgentStatusSortMode(config);
+					type SortModeQuickPickItem = vscode.QuickPickItem & {
+						sortMode: AgentStatusSortMode;
+					};
+					const baseSortModeItems: Array<
+						Omit<SortModeQuickPickItem, "detail">
+					> = [
+						{
+							label: "Recent",
+							description: "Newest activity first",
+							sortMode: "recency",
+						},
+						{
+							label: "Status",
+							description: "Attention first",
+							sortMode: "status",
+						},
+						{
+							label: "Active",
+							description: "Running pinned first",
+							sortMode: "status-recency",
+						},
+					];
+					const sortModeItems: SortModeQuickPickItem[] = baseSortModeItems.map(
+						(item): SortModeQuickPickItem => ({
+							...item,
+							detail:
+								item.sortMode === currentSortMode ? "Current mode" : undefined,
+						}),
+					);
+					const selection =
+						await vscode.window.showQuickPick<SortModeQuickPickItem>(
+							sortModeItems,
+							{
+								placeHolder: "Select Agent Status sort mode",
+							},
+						);
+					if (!selection || selection.sortMode === currentSortMode) {
+						return;
+					}
+
+					await setAgentStatusSortMode(selection.sortMode);
+				},
+			),
+			vscode.commands.registerCommand(
 				"commandCentral.changeProjectIcon",
 				async (node?: ProjectGroupNode) => {
 					if (!node) {
@@ -1155,7 +1232,7 @@ export async function activate(
 					const config = vscode.workspace.getConfiguration("commandCentral");
 					const current = config.get<boolean>(
 						"agentStatus.groupByProject",
-						true,
+						false,
 					);
 					await config.update(
 						"agentStatus.groupByProject",

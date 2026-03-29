@@ -55,6 +55,7 @@ export type AgentTaskStatus =
 
 export type AgentRole = "developer" | "planner" | "reviewer" | "test";
 export type AgentStatusScope = "all" | "currentProject";
+export type AgentStatusSortMode = "recency" | "status" | "status-recency";
 
 export interface AgentTask {
 	id: string;
@@ -89,6 +90,7 @@ export type AgentNode =
 	| DetailNode
 	| FileChangeNode
 	| DiscoveredNode
+	| OlderRunsNode
 	| StateNode;
 
 export interface SummaryNode {
@@ -152,6 +154,15 @@ export interface FileChangeNode {
 export interface DiscoveredNode {
 	type: "discovered";
 	agent: DiscoveredAgent;
+}
+
+export interface OlderRunsNode {
+	type: "olderRuns";
+	label: string;
+	hiddenNodes: SortableAgentNode[];
+	parentProjectName?: string;
+	parentProjectDir?: string;
+	parentGroupKey?: string;
 }
 
 export interface StateNode {
@@ -364,6 +375,69 @@ const TASK_STATUS_PRIORITY: Record<AgentTaskStatus, number> = {
 	completed_stale: 7,
 };
 
+const AGENT_STATUS_SORT_MODES: AgentStatusSortMode[] = [
+	"recency",
+	"status",
+	"status-recency",
+];
+
+const SORT_MODE_INDICATOR_LABELS: Record<AgentStatusSortMode, string> = {
+	recency: "↓ Recent",
+	status: "⚠ Status",
+	"status-recency": "▶ Active",
+};
+
+type SortModeConfig = Pick<vscode.WorkspaceConfiguration, "get"> & {
+	inspect?: vscode.WorkspaceConfiguration["inspect"];
+};
+
+function isAgentStatusSortMode(value: unknown): value is AgentStatusSortMode {
+	return (
+		typeof value === "string" &&
+		AGENT_STATUS_SORT_MODES.includes(value as AgentStatusSortMode)
+	);
+}
+
+function getExplicitSortMode(
+	config: SortModeConfig,
+): AgentStatusSortMode | undefined {
+	if (typeof config.inspect === "function") {
+		const inspected = config.inspect("agentStatus.sortMode");
+		const explicitValue =
+			inspected?.workspaceFolderValue ??
+			inspected?.workspaceValue ??
+			inspected?.globalValue;
+		return isAgentStatusSortMode(explicitValue) ? explicitValue : undefined;
+	}
+
+	const rawValue = config.get<unknown>("agentStatus.sortMode");
+	return isAgentStatusSortMode(rawValue) ? rawValue : undefined;
+}
+
+export function resolveAgentStatusSortMode(
+	config: SortModeConfig,
+): AgentStatusSortMode {
+	const explicitSortMode = getExplicitSortMode(config);
+	if (explicitSortMode) {
+		return explicitSortMode;
+	}
+
+	return config.get<boolean>("agentStatus.sortByStatus", false)
+		? "status"
+		: "recency";
+}
+
+export function getNextAgentStatusSortMode(
+	currentMode: AgentStatusSortMode,
+): AgentStatusSortMode {
+	const currentIndex = AGENT_STATUS_SORT_MODES.indexOf(currentMode);
+	const nextIndex =
+		currentIndex === -1
+			? 0
+			: (currentIndex + 1) % AGENT_STATUS_SORT_MODES.length;
+	return AGENT_STATUS_SORT_MODES[nextIndex] ?? "recency";
+}
+
 function asString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0
 		? value.trim()
@@ -459,6 +533,9 @@ export class AgentStatusTreeProvider
 	private static readonly STUCK_THRESHOLD_DEFAULT_MINUTES = 15;
 	private static readonly STUCK_THRESHOLD_MIN_MINUTES = 5;
 	private static readonly STUCK_THRESHOLD_MAX_MINUTES = 60;
+	private static readonly MAX_VISIBLE_AGENTS_DEFAULT = 50;
+	private static readonly MAX_VISIBLE_AGENTS_MIN = 10;
+	private static readonly MAX_VISIBLE_AGENTS_MAX = 500;
 	private static readonly STREAM_BACKEND_PREFIXES = [
 		"claude",
 		"codex",
@@ -526,6 +603,10 @@ export class AgentStatusTreeProvider
 					) ||
 					e.affectsConfiguration("commandCentral.agentStatus.scope") ||
 					e.affectsConfiguration("commandCentral.agentStatus.groupByProject") ||
+					e.affectsConfiguration("commandCentral.agentStatus.sortMode") ||
+					e.affectsConfiguration(
+						"commandCentral.agentStatus.maxVisibleAgents",
+					) ||
 					e.affectsConfiguration("commandCentral.agentStatus.sortByStatus") ||
 					e.affectsConfiguration("commandCentral.project.group") ||
 					e.affectsConfiguration("commandCentral.project.icon") ||
@@ -611,10 +692,10 @@ export class AgentStatusTreeProvider
 	findTaskElement(taskId: string): TreeElement | undefined {
 		const task = this.getDisplayTaskById(taskId);
 		if (!task) return undefined;
-		const visibleTasks = this.isRunningOnlyFilterEnabled()
+		const scopedTasks = this.isRunningOnlyFilterEnabled()
 			? this.getScopedLauncherTasks().filter((t) => t.status === "running")
 			: this.getScopedLauncherTasks();
-		if (!visibleTasks.some((t) => t.id === taskId)) return undefined;
+		if (!scopedTasks.some((t) => t.id === taskId)) return undefined;
 		return { type: "task", task };
 	}
 
@@ -1324,6 +1405,9 @@ export class AgentStatusTreeProvider
 		if (element.type === "discovered") {
 			return this.createDiscoveredItem(element);
 		}
+		if (element.type === "olderRuns") {
+			return this.createOlderRunsItem(element);
+		}
 		if (element.type === "state") {
 			return this.createStateItem(element);
 		}
@@ -1411,19 +1495,21 @@ export class AgentStatusTreeProvider
 			const groupedNodes: AgentNode[] = groupedByProject
 				? this.buildGroupedRootNodes(tasks, discovered)
 				: [];
-			const flatNodes: AgentNode[] = this.sortAgentNodes([
-				...tasks.map(
-					(task) =>
-						({ type: "task" as const, task }) satisfies SortableAgentNode,
-				),
-				...discovered.map(
-					(agent) =>
-						({
-							type: "discovered" as const,
-							agent,
-						}) satisfies SortableAgentNode,
-				),
-			]);
+			const flatNodes: AgentNode[] = this.applyAgentVisibilityCap(
+				this.sortAgentNodes([
+					...tasks.map(
+						(task) =>
+							({ type: "task" as const, task }) satisfies SortableAgentNode,
+					),
+					...discovered.map(
+						(agent) =>
+							({
+								type: "discovered" as const,
+								agent,
+							}) satisfies SortableAgentNode,
+					),
+				]),
+			);
 
 			const counts = countAgentStatuses(
 				this.getScopedTasksForSummary(
@@ -1433,10 +1519,10 @@ export class AgentStatusTreeProvider
 			);
 			const stuckCount = this.getStuckRunningCount(allTasks);
 			const summaryLabel = [
+				this.getSortModeIndicatorLabel(),
 				this.getScopeIndicatorLabel(),
 				this.formatScopedAgentCount(counts.total),
-				formatCountSummary(counts, { includeAttention: true }),
-				this.getSortModeIndicatorLabel(),
+				this.formatSummaryCounts(counts),
 				...(stuckCount > 0 ? [`${stuckCount} stuck`] : []),
 			]
 				.filter((part) => part.length > 0)
@@ -1458,19 +1544,30 @@ export class AgentStatusTreeProvider
 		}
 
 		if (element.type === "projectGroup") {
-			return this.sortAgentNodes([
-				...element.tasks.map(
-					(task) =>
-						({ type: "task" as const, task }) satisfies SortableAgentNode,
-				),
-				...(element.discoveredAgents ?? []).map(
-					(agent) =>
-						({
-							type: "discovered" as const,
-							agent,
-						}) satisfies SortableAgentNode,
-				),
-			]);
+			return this.applyAgentVisibilityCap(
+				this.sortAgentNodes([
+					...element.tasks.map(
+						(task) =>
+							({ type: "task" as const, task }) satisfies SortableAgentNode,
+					),
+					...(element.discoveredAgents ?? []).map(
+						(agent) =>
+							({
+								type: "discovered" as const,
+								agent,
+							}) satisfies SortableAgentNode,
+					),
+				]),
+				{
+					parentProjectName: element.projectName,
+					parentProjectDir: element.projectDir,
+					parentGroupKey: element.parentGroupKey,
+				},
+			);
+		}
+
+		if (element.type === "olderRuns") {
+			return element.hiddenNodes.map((node) => this.toAgentNode(node));
 		}
 
 		if (element.type === "task") {
@@ -1681,16 +1778,52 @@ export class AgentStatusTreeProvider
 
 	private isProjectGroupingEnabled(): boolean {
 		const config = vscode.workspace.getConfiguration("commandCentral");
-		return config.get<boolean>("agentStatus.groupByProject", true);
+		return config.get<boolean>("agentStatus.groupByProject", false);
 	}
 
-	private isStatusPrioritySortEnabled(): boolean {
+	private getSortMode(): AgentStatusSortMode {
 		const config = vscode.workspace.getConfiguration("commandCentral");
-		return config.get<boolean>("agentStatus.sortByStatus", false);
+		return resolveAgentStatusSortMode(config);
+	}
+
+	private getMaxVisibleAgents(): number {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		const raw = config.get<number>(
+			"agentStatus.maxVisibleAgents",
+			AgentStatusTreeProvider.MAX_VISIBLE_AGENTS_DEFAULT,
+		);
+		const numeric = Number.isFinite(raw)
+			? raw
+			: AgentStatusTreeProvider.MAX_VISIBLE_AGENTS_DEFAULT;
+		return Math.max(
+			AgentStatusTreeProvider.MAX_VISIBLE_AGENTS_MIN,
+			Math.min(AgentStatusTreeProvider.MAX_VISIBLE_AGENTS_MAX, numeric),
+		);
 	}
 
 	private getSortModeIndicatorLabel(): string {
-		return this.isStatusPrioritySortEnabled() ? "Status" : "Recent";
+		return SORT_MODE_INDICATOR_LABELS[this.getSortMode()];
+	}
+
+	private formatSummaryCounts(counts: AgentCounts): string {
+		const sortMode = this.getSortMode();
+		const parts =
+			sortMode === "status"
+				? [
+						counts.attention > 0 ? `${counts.attention} attention` : null,
+						counts.working > 0 ? `${counts.working} working` : null,
+						counts.done > 0 ? `${counts.done} done` : null,
+					]
+				: [
+						counts.working > 0 ? `${counts.working} working` : null,
+						counts.done > 0 ? `${counts.done} done` : null,
+						counts.attention > 0 ? `${counts.attention} attention` : null,
+					];
+
+		return (
+			parts.filter((part): part is string => Boolean(part)).join(" · ") ||
+			"No agents"
+		);
 	}
 
 	private getTaskActivityTimeMs(task: AgentTask): number {
@@ -1733,12 +1866,21 @@ export class AgentStatusTreeProvider
 		left: SortableAgentNode,
 		right: SortableAgentNode,
 	): number {
-		if (this.isStatusPrioritySortEnabled()) {
+		const sortMode = this.getSortMode();
+		if (sortMode === "status") {
 			const priorityDiff =
 				TASK_STATUS_PRIORITY[this.getNodeStatus(left)] -
 				TASK_STATUS_PRIORITY[this.getNodeStatus(right)];
 			if (priorityDiff !== 0) {
 				return priorityDiff;
+			}
+		}
+
+		if (sortMode === "status-recency") {
+			const leftRunning = this.getNodeStatus(left) === "running";
+			const rightRunning = this.getNodeStatus(right) === "running";
+			if (leftRunning !== rightRunning) {
+				return leftRunning ? -1 : 1;
 			}
 		}
 
@@ -1765,6 +1907,89 @@ export class AgentStatusTreeProvider
 		);
 	}
 
+	private toAgentNode(node: SortableAgentNode): AgentNode {
+		return node.type === "task"
+			? { type: "task", task: node.task }
+			: { type: "discovered", agent: node.agent };
+	}
+
+	private isAlwaysVisibleAgentNode(node: SortableAgentNode): boolean {
+		return this.getNodeStatus(node) === "running";
+	}
+
+	private matchesSortableNode(
+		left: SortableAgentNode,
+		right: SortableAgentNode,
+	): boolean {
+		if (left.type !== right.type) return false;
+		if (left.type === "task") {
+			const rightTask = right as Extract<SortableAgentNode, { type: "task" }>;
+			return left.task.id === rightTask.task.id;
+		}
+		if (left.type === "discovered") {
+			const rightAgent = right as Extract<
+				SortableAgentNode,
+				{ type: "discovered" }
+			>;
+			return left.agent.pid === rightAgent.agent.pid;
+		}
+		return false;
+	}
+
+	private olderRunsContainsNode(
+		node: OlderRunsNode,
+		target: SortableAgentNode,
+	): boolean {
+		return node.hiddenNodes.some((hidden) =>
+			this.matchesSortableNode(hidden, target),
+		);
+	}
+
+	private applyAgentVisibilityCap(
+		nodes: SortableAgentNode[],
+		options?: {
+			parentProjectName?: string;
+			parentProjectDir?: string;
+			parentGroupKey?: string;
+		},
+	): AgentNode[] {
+		const cap = this.getMaxVisibleAgents();
+		if (nodes.length <= cap) {
+			return nodes.map((node) => this.toAgentNode(node));
+		}
+
+		const visibleNodes: AgentNode[] = [];
+		const hiddenNodes: SortableAgentNode[] = [];
+
+		for (const [index, node] of nodes.entries()) {
+			if (index < cap || this.isAlwaysVisibleAgentNode(node)) {
+				visibleNodes.push(this.toAgentNode(node));
+				continue;
+			}
+			hiddenNodes.push(node);
+		}
+
+		if (hiddenNodes.length === 0) {
+			return visibleNodes;
+		}
+
+		const label =
+			hiddenNodes.length === 1
+				? "Show 1 older run..."
+				: `Show ${hiddenNodes.length} older runs...`;
+		return [
+			...visibleNodes,
+			{
+				type: "olderRuns",
+				label,
+				hiddenNodes,
+				parentProjectName: options?.parentProjectName,
+				parentProjectDir: options?.parentProjectDir,
+				parentGroupKey: options?.parentGroupKey,
+			},
+		];
+	}
+
 	private getProjectGroupFreshestActivityMs(group: {
 		tasks: AgentTask[];
 		discoveredAgents?: DiscoveredAgent[];
@@ -1782,6 +2007,18 @@ export class AgentStatusTreeProvider
 		left: ProjectGroupNode,
 		right: ProjectGroupNode,
 	): number {
+		const sortMode = this.getSortMode();
+		if (sortMode === "status") {
+			return this.compareTaskNames(left.projectName, right.projectName);
+		}
+		if (sortMode === "status-recency") {
+			const leftHasRunning = this.projectGroupHasRunning(left);
+			const rightHasRunning = this.projectGroupHasRunning(right);
+			if (leftHasRunning !== rightHasRunning) {
+				return leftHasRunning ? -1 : 1;
+			}
+		}
+
 		const activityDiff = this.compareActivityTimeDesc(
 			this.getProjectGroupFreshestActivityMs(left),
 			this.getProjectGroupFreshestActivityMs(right),
@@ -1805,6 +2042,32 @@ export class AgentStatusTreeProvider
 		left: ProjectGroupNode | FolderGroupNode,
 		right: ProjectGroupNode | FolderGroupNode,
 	): number {
+		const sortMode = this.getSortMode();
+		const leftLabel =
+			left.type === "folderGroup" ? left.groupName : left.projectName;
+		const rightLabel =
+			right.type === "folderGroup" ? right.groupName : right.projectName;
+		if (sortMode === "status") {
+			return this.compareTaskNames(leftLabel, rightLabel);
+		}
+		if (sortMode === "status-recency") {
+			const leftHasRunning =
+				left.type === "folderGroup"
+					? left.projects.some((project) =>
+							this.projectGroupHasRunning(project),
+						)
+					: this.projectGroupHasRunning(left);
+			const rightHasRunning =
+				right.type === "folderGroup"
+					? right.projects.some((project) =>
+							this.projectGroupHasRunning(project),
+						)
+					: this.projectGroupHasRunning(right);
+			if (leftHasRunning !== rightHasRunning) {
+				return leftHasRunning ? -1 : 1;
+			}
+		}
+
 		const activityDiff = this.compareActivityTimeDesc(
 			left.type === "folderGroup"
 				? this.getFolderGroupFreshestActivityMs(left)
@@ -1816,11 +2079,14 @@ export class AgentStatusTreeProvider
 		if (activityDiff !== 0) {
 			return activityDiff;
 		}
-		const leftLabel =
-			left.type === "folderGroup" ? left.groupName : left.projectName;
-		const rightLabel =
-			right.type === "folderGroup" ? right.groupName : right.projectName;
 		return this.compareTaskNames(leftLabel, rightLabel);
+	}
+
+	private projectGroupHasRunning(group: ProjectGroupNode): boolean {
+		return (
+			group.tasks.some((task) => task.status === "running") ||
+			(group.discoveredAgents?.length ?? 0) > 0
+		);
 	}
 
 	private sortTasks(tasks: AgentTask[]): AgentTask[] {
@@ -2598,17 +2864,61 @@ export class AgentStatusTreeProvider
 			};
 
 			if (element.type === "task") {
+				const sortableNode = { type: "task" as const, task: element.task };
+				for (const root of groupedRoots) {
+					const projects =
+						root.type === "projectGroup" ? [root] : root.projects;
+					for (const project of projects) {
+						const olderRuns = this.getChildren(project).find(
+							(node): node is OlderRunsNode => node.type === "olderRuns",
+						);
+						if (
+							olderRuns &&
+							this.olderRunsContainsNode(olderRuns, sortableNode)
+						) {
+							return olderRuns;
+						}
+					}
+				}
 				return findProjectParent((project) =>
 					project.tasks.some((task) => task.id === element.task.id),
 				);
 			}
 
 			if (element.type === "discovered") {
+				const sortableNode = {
+					type: "discovered" as const,
+					agent: element.agent,
+				};
+				for (const root of groupedRoots) {
+					const projects =
+						root.type === "projectGroup" ? [root] : root.projects;
+					for (const project of projects) {
+						const olderRuns = this.getChildren(project).find(
+							(node): node is OlderRunsNode => node.type === "olderRuns",
+						);
+						if (
+							olderRuns &&
+							this.olderRunsContainsNode(olderRuns, sortableNode)
+						) {
+							return olderRuns;
+						}
+					}
+				}
 				return findProjectParent((project) =>
 					(project.discoveredAgents ?? []).some(
 						(agent) => agent.pid === element.agent.pid,
 					),
 				);
+			}
+
+			if (element.type === "olderRuns") {
+				return findProjectParent((project) => {
+					const sameDir =
+						(project.projectDir ?? "") === (element.parentProjectDir ?? "");
+					if (sameDir && element.parentProjectDir) return true;
+					return project.projectName === element.parentProjectName;
+				});
 			}
 
 			if (element.type === "projectGroup") {
@@ -2629,6 +2939,46 @@ export class AgentStatusTreeProvider
 						return project.projectName === element.projectName;
 					});
 					if (match) return root;
+				}
+			}
+		} else {
+			const allTasks = this.getScopedLauncherTasks();
+			const visibleTasks = this.isRunningOnlyFilterEnabled()
+				? allTasks.filter((task) => task.status === "running")
+				: allTasks;
+			const flatRootNodes = this.applyAgentVisibilityCap(
+				this.sortAgentNodes([
+					...visibleTasks.map(
+						(task) =>
+							({ type: "task" as const, task }) satisfies SortableAgentNode,
+					),
+					...this.getScopedDiscoveredAgents().map(
+						(agent) =>
+							({
+								type: "discovered" as const,
+								agent,
+							}) satisfies SortableAgentNode,
+					),
+				]),
+			);
+			const olderRuns = flatRootNodes.find(
+				(node): node is OlderRunsNode => node.type === "olderRuns",
+			);
+
+			if (olderRuns && element.type === "task") {
+				const sortableNode = { type: "task" as const, task: element.task };
+				if (this.olderRunsContainsNode(olderRuns, sortableNode)) {
+					return olderRuns;
+				}
+			}
+
+			if (olderRuns && element.type === "discovered") {
+				const sortableNode = {
+					type: "discovered" as const,
+					agent: element.agent,
+				};
+				if (this.olderRunsContainsNode(olderRuns, sortableNode)) {
+					return olderRuns;
 				}
 			}
 		}
@@ -3006,6 +3356,16 @@ export class AgentStatusTreeProvider
 		item.contextValue = "agentState";
 		if (node.description) item.description = node.description;
 		if (node.icon) item.iconPath = new vscode.ThemeIcon(node.icon);
+		return item;
+	}
+
+	private createOlderRunsItem(node: OlderRunsNode): vscode.TreeItem {
+		const item = new vscode.TreeItem(
+			node.label,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.contextValue = "olderRuns";
+		item.iconPath = new vscode.ThemeIcon("history");
 		return item;
 	}
 

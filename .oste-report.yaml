@@ -1,8 +1,13 @@
-task_id: "cross-repo-smoke"
+task_id: "cc-agent-history-cap"
 status: "success"
-summary: "Built 31-test cross-repo smoke suite validating all 6 CC<->Launcher control surface paths"
+summary: "Added an Agent Status history cap with expandable older-runs nodes and coverage for flat, grouped, and running-agent cases"
 files_changed:
-  - "test/integration/cross-repo-smoke.test.ts"
-  - "research/DEV-NOTES-cross-repo-smoke.md"
+  - "package.json"
+  - "src/extension.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/commands/extension-commands.test.ts"
+  - "test/package-json/agent-menu-contributions.test.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - "research/DEV-NOTES-agent-history-cap.md"
 tests_passing: true
-next_steps: "Fix pre-existing Biome lint errors in extension-commands.test.ts to unblock prerelease gate"
+next_steps: "Investigate the existing TypeScript errors in extension sort-mode command code and unrelated pre-existing test/typecheck failures on this branch."

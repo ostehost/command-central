@@ -231,14 +231,39 @@
         },
         "commandCentral.agentStatus.groupByProject": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Group agents by project in the Agent Status tree",
+          "scope": "window"
+        },
+        "commandCentral.agentStatus.sortMode": {
+          "type": "string",
+          "enum": [
+            "recency",
+            "status",
+            "status-recency"
+          ],
+          "default": "recency",
+          "enumDescriptions": [
+            "Sort all agents by most recent activity first",
+            "Sort by attention status first, then by recency within each status bucket",
+            "Pin active agents first, then sort everything else by recency"
+          ],
+          "markdownDescription": "Controls how agents are sorted in the Agent Status tree. `recency` shows the latest work first. `status` groups by attention needed. `status-recency` keeps active agents pinned while preserving recency below.",
+          "scope": "window"
+        },
+        "commandCentral.agentStatus.maxVisibleAgents": {
+          "type": "number",
+          "default": 50,
+          "minimum": 10,
+          "maximum": 500,
+          "description": "Maximum number of non-expanded agent runs shown before Agent Status moves older runs behind a Show older runs node. Running agents stay visible regardless of this cap.",
           "scope": "window"
         },
         "commandCentral.agentStatus.sortByStatus": {
           "type": "boolean",
           "default": false,
-          "description": "Sort agents by status priority before recency. When disabled, Agent Status sorts by latest activity using completed_at when available, otherwise started_at.",
+          "description": "Deprecated migration alias for the previous status-priority sort toggle. Use commandCentral.agentStatus.sortMode instead.",
+          "deprecationMessage": "Deprecated. Use commandCentral.agentStatus.sortMode instead.",
           "scope": "window"
         },
         "commandCentral.agentStatus.notifications": {
@@ -763,6 +788,17 @@
         "title": "Refresh Agent Status",
         "category": "Command Central",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "commandCentral.cycleSortMode",
+        "title": "Agent Status: Cycle Sort Mode",
+        "category": "Command Central",
+        "icon": "$(history)"
+      },
+      {
+        "command": "commandCentral.setSortMode",
+        "title": "Agent Status: Set Sort Mode",
+        "category": "Command Central"
       },
       {
         "command": "commandCentral.toggleRunningFilter",
@@ -1621,6 +1657,24 @@
           "command": "commandCentral.toggleRunningFilterActive",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.showOnlyRunning",
           "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.cycleSortMode",
+          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.sortMode == 'recency'",
+          "group": "navigation@3.5",
+          "icon": "$(history)"
+        },
+        {
+          "command": "commandCentral.cycleSortMode",
+          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.sortMode == 'status'",
+          "group": "navigation@3.5",
+          "icon": "$(warning)"
+        },
+        {
+          "command": "commandCentral.cycleSortMode",
+          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.sortMode == 'status-recency'",
+          "group": "navigation@3.5",
+          "icon": "$(pin)"
         },
         {
           "command": "commandCentral.toggleAgentScopeCurrentProject",

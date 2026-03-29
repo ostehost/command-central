@@ -9,7 +9,12 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AgentTask } from "../../src/providers/agent-status-tree-provider.js";
+import {
+	type AgentStatusSortMode,
+	type AgentTask,
+	getNextAgentStatusSortMode,
+	resolveAgentStatusSortMode,
+} from "../../src/providers/agent-status-tree-provider.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 let vscodeMock: ReturnType<typeof setupVSCodeMock>;
@@ -767,7 +772,7 @@ describe("toggleRunningFilter command", () => {
 			if (_key === "agentStatus.showOnlyRunning") return false;
 			return defaultValue;
 		});
-		const update = mock((_section: string, _value: any, _target: any) =>
+		const update = mock((_section: string, _value: unknown, _target: unknown) =>
 			Promise.resolve(),
 		);
 		vscodeMock.workspace.getConfiguration = mock(
@@ -775,7 +780,9 @@ describe("toggleRunningFilter command", () => {
 				({
 					get,
 					update,
-				}) as any,
+				}) as unknown as ReturnType<
+					typeof vscodeMock.workspace.getConfiguration
+				>,
 		);
 
 		const agentStatusProvider = { reload: mock() };
@@ -812,6 +819,124 @@ describe("toggleRunningFilter command", () => {
 		expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
 			"commandCentral.toggleRunningFilter",
 		);
+	});
+});
+
+describe("agent sort mode commands", () => {
+	test("cycleSortMode advances to the next mode and reloads", async () => {
+		const update = mock((_section: string, _value: unknown, _target: unknown) =>
+			Promise.resolve(),
+		);
+		const config = {
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.sortMode") return "status";
+				return defaultValue;
+			}),
+			inspect: mock((_key: string) =>
+				_key === "agentStatus.sortMode"
+					? { defaultValue: "recency", globalValue: "status" }
+					: undefined,
+			),
+			update,
+		};
+		vscodeMock.workspace.getConfiguration = mock(
+			(_section?: string) =>
+				config as unknown as ReturnType<
+					typeof vscodeMock.workspace.getConfiguration
+				>,
+		);
+
+		const agentStatusProvider = { reload: mock() };
+		const syncAgentStatusViewContexts = mock(() => Promise.resolve());
+		const handler = async () => {
+			const resolvedConfig =
+				vscodeMock.workspace.getConfiguration("commandCentral");
+			const currentSortMode = resolveAgentStatusSortMode(resolvedConfig);
+			const nextSortMode = getNextAgentStatusSortMode(currentSortMode);
+			await resolvedConfig.update(
+				"agentStatus.sortMode",
+				nextSortMode,
+				vscodeMock.ConfigurationTarget.Global,
+			);
+			await syncAgentStatusViewContexts();
+			agentStatusProvider.reload();
+		};
+
+		await handler();
+
+		expect(update).toHaveBeenCalledWith(
+			"agentStatus.sortMode",
+			"status-recency",
+			vscodeMock.ConfigurationTarget.Global,
+		);
+		expect(syncAgentStatusViewContexts).toHaveBeenCalled();
+		expect(agentStatusProvider.reload).toHaveBeenCalled();
+	});
+
+	test("setSortMode writes the selected mode and reloads", async () => {
+		const update = mock((_section: string, _value: unknown, _target: unknown) =>
+			Promise.resolve(),
+		);
+		const config = {
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.sortMode") return "recency";
+				return defaultValue;
+			}),
+			inspect: mock((_key: string) =>
+				_key === "agentStatus.sortMode"
+					? { defaultValue: "recency", globalValue: "recency" }
+					: undefined,
+			),
+			update,
+		};
+		vscodeMock.workspace.getConfiguration = mock(
+			(_section?: string) =>
+				config as unknown as ReturnType<
+					typeof vscodeMock.workspace.getConfiguration
+				>,
+		);
+		type SortModeQuickPickItem = {
+			label: string;
+			description: string;
+			sortMode: AgentStatusSortMode;
+			detail?: string;
+		};
+		const selected: SortModeQuickPickItem = {
+			label: "Active",
+			description: "Running pinned first",
+			sortMode: "status-recency",
+		};
+		const showSortModeQuickPick = mock(() => Promise.resolve(selected));
+
+		const agentStatusProvider = { reload: mock() };
+		const syncAgentStatusViewContexts = mock(() => Promise.resolve());
+		const handler = async () => {
+			const resolvedConfig =
+				vscodeMock.workspace.getConfiguration("commandCentral");
+			const currentSortMode = resolveAgentStatusSortMode(resolvedConfig);
+			const selection = await showSortModeQuickPick();
+			if (!selection || selection.sortMode === currentSortMode) {
+				return;
+			}
+
+			await resolvedConfig.update(
+				"agentStatus.sortMode",
+				selection.sortMode,
+				vscodeMock.ConfigurationTarget.Global,
+			);
+			await syncAgentStatusViewContexts();
+			agentStatusProvider.reload();
+		};
+
+		await handler();
+
+		expect(update).toHaveBeenCalledWith(
+			"agentStatus.sortMode",
+			"status-recency",
+			vscodeMock.ConfigurationTarget.Global,
+		);
+		expect(syncAgentStatusViewContexts).toHaveBeenCalled();
+		expect(agentStatusProvider.reload).toHaveBeenCalled();
 	});
 });
 

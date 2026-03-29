@@ -25,14 +25,17 @@ mock.module("../../src/utils/port-detector.js", () => ({
 import {
 	type AgentNode,
 	type AgentRole,
+	type AgentStatusSortMode,
 	AgentStatusTreeProvider,
 	type AgentTask,
 	detectAgentType,
 	formatElapsed,
 	type GitInfo,
 	getAgentTypeIcon,
+	getNextAgentStatusSortMode,
 	getStatusThemeIcon,
 	isValidSessionId,
+	resolveAgentStatusSortMode,
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
 import { AgentStatusBar } from "../../src/services/agent-status-bar.js";
@@ -97,6 +100,71 @@ function getSummaryNode(
 	);
 	if (!summary) throw new Error("No summary node found in children");
 	return summary;
+}
+
+function setAgentStatusConfig(
+	vscodeMock: ReturnType<typeof setupVSCodeMock>,
+	options: {
+		groupByProject?: boolean;
+		sortMode?: AgentStatusSortMode;
+		sortByStatus?: boolean;
+		maxVisibleAgents?: number;
+		showOnlyRunning?: boolean;
+		scope?: "all" | "currentProject";
+		projectGroup?: string;
+		discoveryEnabled?: boolean;
+	},
+): void {
+	vscodeMock.workspace.getConfiguration = mock((_section?: string) => ({
+		update: mock(),
+		get: mock((_key: string, defaultValue?: unknown) => {
+			if (_key === "agentStatus.groupByProject") {
+				return options.groupByProject ?? false;
+			}
+			if (_key === "agentStatus.sortMode") {
+				return options.sortMode ?? defaultValue;
+			}
+			if (_key === "agentStatus.sortByStatus") {
+				return options.sortByStatus ?? defaultValue;
+			}
+			if (_key === "agentStatus.maxVisibleAgents") {
+				return options.maxVisibleAgents ?? defaultValue;
+			}
+			if (_key === "agentStatus.showOnlyRunning") {
+				return options.showOnlyRunning ?? defaultValue;
+			}
+			if (_key === "agentStatus.scope") {
+				return options.scope ?? defaultValue;
+			}
+			if (_key === "project.group") {
+				return options.projectGroup ?? defaultValue;
+			}
+			if (_key === "discovery.enabled") {
+				return options.discoveryEnabled ?? false;
+			}
+			return defaultValue;
+		}),
+		inspect: mock((_key: string) => {
+			if (_key === "agentStatus.sortMode") {
+				return {
+					defaultValue: "recency",
+					globalValue: options.sortMode,
+				};
+			}
+			return undefined;
+		}),
+	}));
+}
+
+function getOlderRunsNode(
+	children: AgentNode[],
+): Extract<AgentNode, { type: "olderRuns" }> {
+	const olderRuns = children.find(
+		(node): node is Extract<AgentNode, { type: "olderRuns" }> =>
+			node.type === "olderRuns",
+	);
+	if (!olderRuns) throw new Error("No older runs node found in children");
+	return olderRuns;
 }
 
 // ── formatElapsed tests ──────────────────────────────────────────────
@@ -213,14 +281,7 @@ describe("AgentStatusTreeProvider", () => {
 			getIconForProject: mock(() => "🧩"),
 			setCustomIcon: mock(() => Promise.resolve()),
 		};
-		vscodeMock.workspace.getConfiguration = mock(() => ({
-			update: mock(),
-			get: mock((_key: string, defaultValue?: unknown) => {
-				if (_key === "agentStatus.groupByProject") return false;
-				if (_key === "discovery.enabled") return false;
-				return defaultValue;
-			}),
-		}));
+		setAgentStatusConfig(vscodeMock, {});
 		// Ensure show*Message mocks return promises (needed for notification .then())
 		vscodeMock.window.showInformationMessage = mock(() =>
 			Promise.resolve(undefined),
@@ -633,6 +694,8 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	test("sorts tasks by started_at descending (newest first)", () => {
+		setAgentStatusConfig(vscodeMock, { sortMode: "recency" });
+
 		const older = createMockTask({
 			id: "old",
 			started_at: "2026-02-25T06:00:00Z",
@@ -655,17 +718,106 @@ describe("AgentStatusTreeProvider", () => {
 		expect((taskNodes[1] as { type: "task"; task: AgentTask }).task.id).toBe(
 			"old",
 		);
+		expect(getSummaryNode(children).label).toContain("↓ Recent");
+	});
+
+	test("caps flat history and exposes older runs behind an expandable node", () => {
+		setAgentStatusConfig(vscodeMock, {
+			groupByProject: false,
+			sortMode: "recency",
+			maxVisibleAgents: 10,
+			discoveryEnabled: false,
+		});
+
+		const tasks = Array.from({ length: 11 }, (_, index) =>
+			createMockTask({
+				id: `task-${index + 1}`,
+				status: "completed",
+				started_at: `2026-02-25T${String(20 - index).padStart(2, "0")}:00:00Z`,
+			}),
+		);
+		provider.readRegistry = () =>
+			createMockRegistry(
+				Object.fromEntries(tasks.map((task) => [task.id, task])),
+			);
+		provider.reload();
+
+		const children = provider.getChildren();
+		const taskNodes = getTaskNodes(children);
+		expect(taskNodes).toHaveLength(10);
+		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"task-1",
+		);
+		expect((taskNodes[9] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"task-10",
+		);
+
+		const olderRuns = getOlderRunsNode(children);
+		expect(olderRuns.label).toBe("Show 1 older run...");
+		const olderRunsItem = provider.getTreeItem(olderRuns);
+		expect(olderRunsItem.collapsibleState).toBe(1);
+
+		const expandedChildren = provider.getChildren(olderRuns);
+		expect(expandedChildren).toHaveLength(1);
+		expect(expandedChildren[0]?.type).toBe("task");
+		if (expandedChildren[0]?.type === "task") {
+			expect(expandedChildren[0].task.id).toBe("task-11");
+		}
+	});
+
+	test("keeps running agents visible even when they fall past the cap", () => {
+		setAgentStatusConfig(vscodeMock, {
+			groupByProject: false,
+			sortMode: "recency",
+			maxVisibleAgents: 10,
+			discoveryEnabled: false,
+		});
+
+		const now = Date.now();
+		const midFailed = createMockTask({
+			id: "failed-hidden",
+			status: "failed",
+			started_at: new Date(now - 11 * 60_000).toISOString(),
+		});
+		const oldestRunning = createMockTask({
+			id: "running-oldest",
+			status: "running",
+			started_at: new Date(now - 12 * 60_000).toISOString(),
+		});
+		const recentCompleted = Array.from({ length: 10 }, (_, index) =>
+			createMockTask({
+				id: `done-${index + 1}`,
+				status: "completed",
+				started_at: new Date(now - (index + 1) * 60_000).toISOString(),
+			}),
+		);
+		const tasks = [...recentCompleted, midFailed, oldestRunning];
+		provider.readRegistry = () =>
+			createMockRegistry(
+				Object.fromEntries(tasks.map((task) => [task.id, task])),
+			);
+		provider.reload();
+
+		const children = provider.getChildren();
+		const taskIds = getTaskNodes(children).map(
+			(node) => (node as { type: "task"; task: AgentTask }).task.id,
+		);
+		expect(taskIds).toHaveLength(11);
+		expect(taskIds).toContain("done-1");
+		expect(taskIds).toContain("done-10");
+		expect(taskIds).toContain("running-oldest");
+		expect(taskIds).not.toContain("failed-hidden");
+
+		const olderRuns = getOlderRunsNode(children);
+		const expandedChildren = provider.getChildren(olderRuns);
+		expect(expandedChildren).toHaveLength(1);
+		if (expandedChildren[0]?.type === "task") {
+			expect(expandedChildren[0].task.id).toBe("failed-hidden");
+		}
 	});
 
 	test("sorts by status priority before started_at when enabled", () => {
-		vscodeMock.workspace.getConfiguration = mock(() => ({
-			update: mock(),
-			get: mock((_key: string, defaultValue?: unknown) => {
-				if (_key === "agentStatus.groupByProject") return false;
-				if (_key === "agentStatus.sortByStatus") return true;
-				return defaultValue;
-			}),
-		}));
+		setAgentStatusConfig(vscodeMock, { sortMode: "status" });
 
 		const runningNewest = createMockTask({
 			id: "running-new",
@@ -702,17 +854,53 @@ describe("AgentStatusTreeProvider", () => {
 		expect((taskNodes[2] as { type: "task"; task: AgentTask }).task.id).toBe(
 			"running-new",
 		);
+		expect(getSummaryNode(children).label).toContain("⚠ Status");
 	});
 
-	test("uses latest activity sorting when status sort is disabled", () => {
-		vscodeMock.workspace.getConfiguration = mock(() => ({
-			update: mock(),
-			get: mock((_key: string, defaultValue?: unknown) => {
-				if (_key === "agentStatus.groupByProject") return false;
-				if (_key === "agentStatus.sortByStatus") return false;
-				return defaultValue;
-			}),
-		}));
+	test("pins running agents first in status-recency mode", () => {
+		setAgentStatusConfig(vscodeMock, { sortMode: "status-recency" });
+
+		const runningOlder = createMockTask({
+			id: "running-older",
+			status: "running",
+			started_at: "2026-02-25T06:00:00Z",
+		});
+		const completedLatest = createMockTask({
+			id: "completed-latest",
+			status: "completed",
+			started_at: "2026-02-25T05:00:00Z",
+			completed_at: "2026-02-25T10:00:00Z",
+		});
+		const failedMiddle = createMockTask({
+			id: "failed-middle",
+			status: "failed",
+			started_at: "2026-02-25T09:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[runningOlder.id]: runningOlder,
+				[completedLatest.id]: completedLatest,
+				[failedMiddle.id]: failedMiddle,
+			});
+		provider.reload();
+
+		const children = provider.getChildren();
+		const taskNodes = getTaskNodes(children);
+		expect(taskNodes).toHaveLength(3);
+		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"running-older",
+		);
+		expect((taskNodes[1] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"completed-latest",
+		);
+		expect((taskNodes[2] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"failed-middle",
+		);
+		expect(getSummaryNode(children).label).toContain("▶ Active");
+	});
+
+	test("uses latest activity sorting in recency mode", () => {
+		setAgentStatusConfig(vscodeMock, { sortMode: "recency" });
 
 		const completedLate = createMockTask({
 			id: "completed-late",
@@ -754,14 +942,7 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	test("interleaves launcher and discovered agents by the same recency sort", () => {
-		vscodeMock.workspace.getConfiguration = mock(() => ({
-			update: mock(),
-			get: mock((_key: string, defaultValue?: unknown) => {
-				if (_key === "agentStatus.groupByProject") return false;
-				if (_key === "agentStatus.sortByStatus") return false;
-				return defaultValue;
-			}),
-		}));
+		setAgentStatusConfig(vscodeMock, { sortMode: "recency" });
 
 		const launcherCompleted = createMockTask({
 			id: "launcher-completed",
@@ -819,14 +1000,10 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	test("groups root tasks by freshest child activity when enabled", () => {
-		vscodeMock.workspace.getConfiguration = mock(() => ({
-			update: mock(),
-			get: mock((_key: string, defaultValue?: unknown) => {
-				if (_key === "agentStatus.groupByProject") return true;
-				if (_key === "agentStatus.sortByStatus") return false;
-				return defaultValue;
-			}),
-		}));
+		setAgentStatusConfig(vscodeMock, {
+			groupByProject: true,
+			sortMode: "recency",
+		});
 
 		const zetaTask = createMockTask({
 			id: "zeta-1",
@@ -856,6 +1033,118 @@ describe("AgentStatusTreeProvider", () => {
 			(projectGroups[1] as { type: "projectGroup"; projectName: string })
 				.projectName,
 		).toBe("Alpha");
+	});
+
+	test("falls back to legacy sortByStatus when sortMode is unset", () => {
+		setAgentStatusConfig(vscodeMock, { sortByStatus: true });
+
+		const config = vscodeMock.workspace.getConfiguration("commandCentral");
+		expect(resolveAgentStatusSortMode(config)).toBe("status");
+
+		const runningNewest = createMockTask({
+			id: "legacy-running",
+			status: "running",
+			started_at: "2026-02-25T09:00:00Z",
+		});
+		const failedOlder = createMockTask({
+			id: "legacy-failed",
+			status: "failed",
+			started_at: "2026-02-25T08:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[runningNewest.id]: runningNewest,
+				[failedOlder.id]: failedOlder,
+			});
+		provider.reload();
+
+		const children = provider.getChildren();
+		const taskNodes = getTaskNodes(children);
+		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"legacy-failed",
+		);
+		expect(getSummaryNode(children).label).toContain("⚠ Status");
+	});
+
+	test("cycles sort modes in the expected order", () => {
+		expect(getNextAgentStatusSortMode("recency")).toBe("status");
+		expect(getNextAgentStatusSortMode("status")).toBe("status-recency");
+		expect(getNextAgentStatusSortMode("status-recency")).toBe("recency");
+	});
+
+	test("applies the history cap per project group", () => {
+		setAgentStatusConfig(vscodeMock, {
+			groupByProject: true,
+			sortMode: "recency",
+			maxVisibleAgents: 10,
+			discoveryEnabled: false,
+		});
+
+		const alphaTasks = Array.from({ length: 11 }, (_, index) =>
+			createMockTask({
+				id: `alpha-${index + 1}`,
+				project_dir: "/Users/test/projects/alpha",
+				project_name: "Alpha",
+				status: "completed",
+				started_at: `2026-02-25T${String(20 - index).padStart(2, "0")}:00:00Z`,
+			}),
+		);
+		const betaOnly = createMockTask({
+			id: "beta-only",
+			project_dir: "/Users/test/projects/beta",
+			project_name: "Beta",
+			status: "completed",
+			started_at: "2026-02-25T10:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				...Object.fromEntries(alphaTasks.map((task) => [task.id, task])),
+				[betaOnly.id]: betaOnly,
+			});
+		provider.reload();
+
+		const rootChildren = provider.getChildren();
+		const alphaGroup = rootChildren.find(
+			(node): node is Extract<AgentNode, { type: "projectGroup" }> =>
+				node.type === "projectGroup" && node.projectName === "Alpha",
+		);
+		const betaGroup = rootChildren.find(
+			(node): node is Extract<AgentNode, { type: "projectGroup" }> =>
+				node.type === "projectGroup" && node.projectName === "Beta",
+		);
+		if (!alphaGroup || !betaGroup) {
+			throw new Error("Expected Alpha and Beta project groups");
+		}
+
+		const alphaChildren = provider.getChildren(alphaGroup);
+		expect(getTaskNodes(alphaChildren)).toHaveLength(10);
+		const alphaOlderRuns = getOlderRunsNode(alphaChildren);
+		expect(
+			(
+				alphaChildren.find(
+					(node): node is Extract<AgentNode, { type: "task" }> =>
+						node.type === "task",
+				) as { type: "task"; task: AgentTask }
+			).task.id,
+		).toBe("alpha-1");
+		const alphaOlderChildren = provider.getChildren(alphaOlderRuns);
+		expect(alphaOlderChildren).toHaveLength(1);
+		const [firstAlphaOlderChild] = alphaOlderChildren;
+		expect(firstAlphaOlderChild?.type).toBe("task");
+		if (firstAlphaOlderChild?.type === "task") {
+			expect(firstAlphaOlderChild.task.id).toBe("alpha-11");
+		}
+
+		const betaChildren = provider.getChildren(betaGroup);
+		expect(betaChildren.some((node) => node.type === "olderRuns")).toBe(false);
+		expect(
+			(
+				betaChildren.find(
+					(node): node is Extract<AgentNode, { type: "task" }> =>
+						node.type === "task",
+				) as { type: "task"; task: AgentTask }
+			).task.id,
+		).toBe("beta-only");
 	});
 
 	test("auto-groups projects by workspace parent when 2+ siblings exist", () => {
@@ -978,14 +1267,10 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	test("returns grouped project children interleaved by recency", () => {
-		vscodeMock.workspace.getConfiguration = mock(() => ({
-			update: mock(),
-			get: mock((_key: string, defaultValue?: unknown) => {
-				if (_key === "agentStatus.groupByProject") return true;
-				if (_key === "agentStatus.sortByStatus") return false;
-				return defaultValue;
-			}),
-		}));
+		setAgentStatusConfig(vscodeMock, {
+			groupByProject: true,
+			sortMode: "recency",
+		});
 
 		const older = createMockTask({
 			id: "alpha-old",
@@ -1049,14 +1334,10 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	test("applies status-priority sort within project group children", () => {
-		vscodeMock.workspace.getConfiguration = mock(() => ({
-			update: mock(),
-			get: mock((_key: string, defaultValue?: unknown) => {
-				if (_key === "agentStatus.groupByProject") return true;
-				if (_key === "agentStatus.sortByStatus") return true;
-				return defaultValue;
-			}),
-		}));
+		setAgentStatusConfig(vscodeMock, {
+			groupByProject: true,
+			sortMode: "status",
+		});
 
 		const runningNewest = createMockTask({
 			id: "alpha-running-new",
@@ -1090,6 +1371,86 @@ describe("AgentStatusTreeProvider", () => {
 		expect(
 			(groupChildren[1] as { type: "task"; task: AgentTask }).task.id,
 		).toBe("alpha-running-new");
+	});
+
+	test("sorts grouped roots alphabetically in status mode", () => {
+		setAgentStatusConfig(vscodeMock, {
+			groupByProject: true,
+			sortMode: "status",
+		});
+
+		const zetaTask = createMockTask({
+			id: "zeta-running",
+			project_dir: "/Users/test/projects/zeta",
+			project_name: "Zeta",
+			status: "running",
+			started_at: "2026-02-25T10:00:00Z",
+		});
+		const alphaTask = createMockTask({
+			id: "alpha-completed",
+			project_dir: "/Users/test/projects/alpha",
+			project_name: "Alpha",
+			status: "completed",
+			started_at: "2026-02-25T06:00:00Z",
+			completed_at: "2026-02-25T11:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[zetaTask.id]: zetaTask,
+				[alphaTask.id]: alphaTask,
+			});
+		provider.reload();
+
+		const projectGroups = provider
+			.getChildren()
+			.filter((node) => node.type === "projectGroup");
+		expect(projectGroups).toHaveLength(2);
+		expect(
+			(projectGroups[0] as { type: "projectGroup"; projectName: string })
+				.projectName,
+		).toBe("Alpha");
+		expect(
+			(projectGroups[1] as { type: "projectGroup"; projectName: string })
+				.projectName,
+		).toBe("Zeta");
+	});
+
+	test("pushes grouped projects with running agents to the top in status-recency mode", () => {
+		setAgentStatusConfig(vscodeMock, {
+			groupByProject: true,
+			sortMode: "status-recency",
+		});
+
+		const alphaDone = createMockTask({
+			id: "alpha-done",
+			project_dir: "/Users/test/projects/alpha",
+			project_name: "Alpha",
+			status: "completed",
+			started_at: "2026-02-25T06:00:00Z",
+			completed_at: "2026-02-25T11:00:00Z",
+		});
+		const betaRunning = createMockTask({
+			id: "beta-running",
+			project_dir: "/Users/test/projects/beta",
+			project_name: "Beta",
+			status: "running",
+			started_at: "2026-02-25T08:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[alphaDone.id]: alphaDone,
+				[betaRunning.id]: betaRunning,
+			});
+		provider.reload();
+
+		const projectGroups = provider
+			.getChildren()
+			.filter((node) => node.type === "projectGroup");
+		expect(projectGroups).toHaveLength(2);
+		expect(
+			(projectGroups[0] as { type: "projectGroup"; projectName: string })
+				.projectName,
+		).toBe("Beta");
 	});
 
 	test("filters root tasks to running only when config is enabled", () => {

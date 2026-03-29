@@ -17,6 +17,7 @@ type PackageJsonShape = {
 					enum?: string[];
 					default?: string | boolean | number;
 					description?: string;
+					markdownDescription?: string;
 				}
 			>;
 		};
@@ -58,6 +59,7 @@ async function getConfigProperties(): Promise<
 			enum?: string[];
 			default?: string | boolean | number;
 			description?: string;
+			markdownDescription?: string;
 		}
 	>
 > {
@@ -117,12 +119,28 @@ describe("package.json agent menu contributions", () => {
 		expect(setting?.enum).toEqual(["codex", "gemini"]);
 	});
 
-	test("defines recency sort config disabled by default", async () => {
+	test("defines sort mode config with expected options and default", async () => {
+		const properties = await getConfigProperties();
+		const setting = properties["commandCentral.agentStatus.sortMode"] as
+			| {
+					default?: string;
+					enum?: string[];
+					markdownDescription?: string;
+			  }
+			| undefined;
+
+		expect(setting).toBeDefined();
+		expect(setting?.default).toBe("recency");
+		expect(setting?.enum).toEqual(["recency", "status", "status-recency"]);
+		expect(setting?.markdownDescription).toContain("latest work first");
+	});
+
+	test("keeps legacy sortByStatus config as a deprecated migration alias", async () => {
 		const properties = await getConfigProperties();
 		const setting = properties["commandCentral.agentStatus.sortByStatus"];
 		expect(setting).toBeDefined();
 		expect(setting?.default).toBe(false);
-		expect(setting?.description).toContain("status priority");
+		expect(setting?.description).toContain("Deprecated");
 	});
 
 	test("defines stuck threshold config with expected bounds", async () => {
@@ -143,6 +161,24 @@ describe("package.json agent menu contributions", () => {
 		expect(setting?.minimum).toBe(5);
 		expect(setting?.maximum).toBe(60);
 		expect(setting?.description).toContain("potentially stuck");
+	});
+
+	test("defines max visible agents config with expected bounds", async () => {
+		const properties = await getConfigProperties();
+		const setting = properties["commandCentral.agentStatus.maxVisibleAgents"] as
+			| {
+					default?: number;
+					minimum?: number;
+					maximum?: number;
+					description?: string;
+			  }
+			| undefined;
+
+		expect(setting).toBeDefined();
+		expect(setting?.default).toBe(50);
+		expect(setting?.minimum).toBe(10);
+		expect(setting?.maximum).toBe(500);
+		expect(setting?.description).toContain("Show older runs");
 	});
 
 	test("defines dock bounce config enabled by default", async () => {
@@ -227,6 +263,39 @@ describe("package.json agent menu contributions", () => {
 		expect(clearAction?.when).toContain(
 			"commandCentral.agentStatus.hasTerminalTasks",
 		);
+	});
+
+	test("registers cycleSortMode and setSortMode commands", async () => {
+		const commands = await getCommands();
+		expect(
+			commands.some((item) => item.command === "commandCentral.cycleSortMode"),
+		).toBe(true);
+		expect(
+			commands.some((item) => item.command === "commandCentral.setSortMode"),
+		).toBe(true);
+	});
+
+	test("adds mode-specific sort toolbar entries", async () => {
+		const menu = await getViewTitleMenu();
+		const sortEntries = menu.filter(
+			(item) =>
+				item.command === "commandCentral.cycleSortMode" &&
+				item.group === "navigation@3.5",
+		);
+
+		expect(sortEntries).toHaveLength(3);
+		expect(
+			sortEntries.some((item) => item.when?.includes("== 'recency'")),
+		).toBe(true);
+		expect(sortEntries.some((item) => item.when?.includes("== 'status'"))).toBe(
+			true,
+		);
+		expect(
+			sortEntries.some((item) => item.when?.includes("== 'status-recency'")),
+		).toBe(true);
+		expect(sortEntries.some((item) => item.icon === "$(history)")).toBe(true);
+		expect(sortEntries.some((item) => item.icon === "$(warning)")).toBe(true);
+		expect(sortEntries.some((item) => item.icon === "$(pin)")).toBe(true);
 	});
 
 	test("adds paired view-title scope toggle actions for all vs current project", async () => {
