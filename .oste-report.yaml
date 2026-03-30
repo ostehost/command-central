@@ -1,11 +1,6 @@
-task_id: "cc-discovery-v3"
+task_id: "smoke-test"
 status: "success"
-summary: "Filtered idle interactive CLIs and stale processes from agent discovery using launcher task and stream liveness."
-files_changed:
-  - "src/discovery/agent-registry.ts"
-  - "src/discovery/process-scanner.ts"
-  - "src/providers/agent-status-tree-provider.ts"
-  - "test/discovery/process-scanner.test.ts"
-  - "research/DEV-NOTES-discovery-v3.md"
+summary: "Integration smoke test passed — just check clean, 163/163 tests pass (440 expects), git history consistent"
+files_changed: []
 tests_passing: true
-next_steps: "Optional: align the prompt contract with the repo's actual formatter command (`just fix` rather than `just format`)."
+next_steps: "Knip reports minor unused exports — consider cleanup in a future task"
