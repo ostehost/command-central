@@ -63,12 +63,15 @@ export interface AgentTask {
 	project_dir: string;
 	project_name: string;
 	session_id: string;
+	stream_file?: string | null;
 	agent_backend?: string | null;
 	cli_name?: string | null;
 	tmux_session?: string;
 	bundle_path: string;
 	prompt_file: string;
 	started_at: string;
+	start_sha?: string | null;
+	start_commit?: string | null;
 	attempts: number;
 	max_attempts: number;
 	pr_number?: number | null;
@@ -483,12 +486,15 @@ function normalizeTask(
 		project_dir: projectDir,
 		project_name: projectName,
 		session_id: sessionId,
+		stream_file: asString(raw["stream_file"]) ?? null,
 		agent_backend: asString(raw["agent_backend"]) ?? null,
 		cli_name: asString(raw["cli_name"]) ?? null,
 		tmux_session: asString(raw["tmux_session"]),
 		bundle_path: bundlePath,
 		prompt_file: promptFile,
 		started_at: asString(raw["started_at"]) ?? new Date().toISOString(),
+		start_sha: asString(raw["start_sha"]) ?? null,
+		start_commit: asString(raw["start_commit"]) ?? null,
 		attempts: Math.max(0, asNumber(raw["attempts"], 0)),
 		max_attempts: Math.max(0, asNumber(raw["max_attempts"], 0)),
 		pr_number: asNullableNumber(raw["pr_number"]) ?? null,
@@ -823,28 +829,107 @@ export class AgentStatusTreeProvider
 		return !looksStale;
 	}
 
-	private getEffectiveTaskStatus(task: AgentTask): AgentTaskStatus {
-		if (task.status !== "running") return task.status;
-		return this.isRunningTaskHealthy(task) ? "running" : "stopped";
-	}
-
 	private toDisplayTask(task: AgentTask): AgentTask {
-		const effectiveStatus = this.getEffectiveTaskStatus(task);
-		if (effectiveStatus === task.status) return task;
+		if (task.status !== "running") return task;
 
-		return this.markTaskStopped(
-			task,
-			"Session no longer appears active. Showing as stopped.",
-		);
+		const streamTerminalState = this.getStreamTerminalState(task);
+		if (streamTerminalState) {
+			return this.applyRuntimeStatusOverlay(task, streamTerminalState);
+		}
+
+		if (this.isRunningTaskHealthy(task)) return task;
+		return this.applyRuntimeStatusOverlay(task, {
+			status: "stopped",
+			reason: "Session no longer appears active. Showing as stopped.",
+		});
 	}
 
-	private markTaskStopped(task: AgentTask, reason: string): AgentTask {
+	private applyRuntimeStatusOverlay(
+		task: AgentTask,
+		overlay: {
+			status: AgentTaskStatus;
+			reason?: string;
+			completedAt?: string;
+			exitCode?: number | null;
+		},
+	): AgentTask {
 		return {
 			...task,
-			status: "stopped",
-			completed_at: task.completed_at ?? new Date().toISOString(),
-			error_message: task.error_message ?? reason,
+			status: overlay.status,
+			completed_at:
+				overlay.completedAt ?? task.completed_at ?? new Date().toISOString(),
+			exit_code:
+				overlay.exitCode === undefined
+					? overlay.status === "completed"
+						? (task.exit_code ?? 0)
+						: task.exit_code
+					: overlay.exitCode,
+			error_message:
+				overlay.status === "stopped" || overlay.status === "failed"
+					? (task.error_message ?? overlay.reason ?? null)
+					: task.error_message,
 		};
+	}
+
+	private getStreamTerminalState(task: AgentTask): {
+		status: "completed" | "failed";
+		reason?: string;
+		completedAt?: string;
+		exitCode?: number | null;
+	} | null {
+		const streamFile = this.resolveStreamFilePath(task);
+		if (!streamFile) return null;
+
+		try {
+			const lastEventLine = fs
+				.readFileSync(streamFile, "utf-8")
+				.split("\n")
+				.map((line) => line.trim())
+				.filter((line) => line.length > 0)
+				.at(-1);
+			if (!lastEventLine) return null;
+
+			const event = JSON.parse(lastEventLine) as Record<string, unknown>;
+			const eventType = asString(event["type"]);
+			if (!eventType) return null;
+
+			const completedAt = new Date(
+				fs.statSync(streamFile).mtimeMs,
+			).toISOString();
+			if (eventType === "turn.completed") {
+				return { status: "completed", completedAt, exitCode: 0 };
+			}
+			if (eventType === "turn.failed") {
+				const reason =
+					event["error"] && typeof event["error"] === "object"
+						? asString((event["error"] as Record<string, unknown>)["message"])
+						: undefined;
+				return {
+					status: "failed",
+					completedAt,
+					reason: reason ?? "Stream ended with a failed turn.",
+				};
+			}
+			if (eventType !== "result") return null;
+
+			const resultStatus = asString(event["status"]);
+			if (resultStatus === "success" || event["is_error"] === false) {
+				return { status: "completed", completedAt, exitCode: 0 };
+			}
+			if (resultStatus || event["is_error"] === true) {
+				return {
+					status: "failed",
+					completedAt,
+					reason: resultStatus
+						? `Stream ended with result status ${resultStatus}.`
+						: "Stream ended with an error result.",
+				};
+			}
+		} catch {
+			// Ignore malformed or unreadable stream output and fall back to health checks.
+		}
+
+		return null;
 	}
 
 	private getTaskStartedAtMs(task: AgentTask): number {
@@ -882,10 +967,11 @@ export class AgentStatusTreeProvider
 
 		return tasks.map((task) =>
 			staleTaskIds.has(task.id)
-				? this.markTaskStopped(
-						task,
-						"Superseded by a newer task on the same session. Showing as stopped.",
-					)
+				? this.applyRuntimeStatusOverlay(task, {
+						status: "stopped",
+						reason:
+							"Superseded by a newer task on the same session. Showing as stopped.",
+					})
 				: task,
 		);
 	}
@@ -1661,38 +1747,68 @@ export class AgentStatusTreeProvider
 		);
 	}
 
-	private parseDiffSummary(output: string): string | null {
-		const trimmed = output.trim();
-		if (!trimmed) return null;
+	private formatPerFileDiffSummary(fileDiffs: PerFileDiff[]): string | null {
+		if (fileDiffs.length === 0) return null;
 
-		const summaryLine = trimmed.split("\n").pop() ?? "";
-		const filesMatch = summaryLine.match(/(\d+)\s+files?\s+changed/);
-		const insertMatch = summaryLine.match(/(\d+)\s+insertions?\(\+\)/);
-		const deleteMatch = summaryLine.match(/(\d+)\s+deletions?\(-\)/);
-		if (!filesMatch) return null;
-
-		const files = filesMatch[1];
-		const fileLabel = files === "1" ? "1 file" : `${files} files`;
-		const insertions = insertMatch?.[1] ?? "0";
-		const deletions = deleteMatch?.[1] ?? "0";
-		return `${fileLabel} · +${insertions} / -${deletions}`;
+		const additions = fileDiffs.reduce(
+			(total, diff) => total + Math.max(diff.additions, 0),
+			0,
+		);
+		const deletions = fileDiffs.reduce(
+			(total, diff) => total + Math.max(diff.deletions, 0),
+			0,
+		);
+		const fileLabel =
+			fileDiffs.length === 1 ? "1 file" : `${fileDiffs.length} files`;
+		return `${fileLabel} · +${additions} / -${deletions}`;
 	}
 
 	private async computeDiffSummaryAsync(
 		projectDir: string,
 		task: AgentTask,
 	): Promise<string | null> {
-		try {
-			const args =
-				task.status === "running"
-					? ["-C", projectDir, "diff", "--stat"]
-					: ["-C", projectDir, "diff", "--stat", "HEAD~1"];
-			const execFileAsync = promisify(execFile);
+		const execFileAsync = promisify(execFile);
+		const runNumstat = async (args: string[]): Promise<string> => {
 			const { stdout } = await execFileAsync("git", args, {
 				encoding: "utf-8",
 				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
 			});
-			return this.parseDiffSummary(stdout);
+			return stdout.trim();
+		};
+
+		try {
+			const startCommit = this.getTaskDiffStartCommit(task);
+			const primaryArgs = startCommit
+				? ["-C", projectDir, "diff", "--numstat", `${startCommit}..HEAD`]
+				: ["-C", projectDir, "diff", "--numstat"];
+
+			let output = "";
+			try {
+				output = await runNumstat(primaryArgs);
+			} catch {
+				if (!startCommit) return null;
+				output = await runNumstat([
+					"-C",
+					projectDir,
+					"diff",
+					"--numstat",
+					"HEAD~1..HEAD",
+				]);
+			}
+
+			if (!output && startCommit) {
+				output = await runNumstat([
+					"-C",
+					projectDir,
+					"diff",
+					"--numstat",
+					"HEAD~1..HEAD",
+				]);
+			}
+
+			return this.formatPerFileDiffSummary(
+				this.parsePerFileDiffsFromNumstat(output),
+			);
 		} catch {
 			return null;
 		}
@@ -2356,7 +2472,7 @@ export class AgentStatusTreeProvider
 		if (rawStatus === "running" && t.status === "stopped") {
 			details.push({
 				type: "detail",
-				label: "⚠️ Session appears inactive",
+				label: "Session appears inactive",
 				value: "Counted as stopped for health-aware summary",
 				taskId: t.id,
 				icon: "alert",
@@ -2368,7 +2484,7 @@ export class AgentStatusTreeProvider
 			const thresholdMinutes = this.getStuckThresholdMinutes();
 			details.push({
 				type: "detail",
-				label: `⚠️ No activity for ${thresholdMinutes} minutes`,
+				label: `No activity for ${thresholdMinutes} minutes`,
 				value: "",
 				taskId: t.id,
 				icon: "alert",
@@ -2489,10 +2605,12 @@ export class AgentStatusTreeProvider
 	private getTaskDiffStartCommit(t: AgentTask): string | undefined {
 		if (t.status === "running") return undefined;
 
-		const explicitStartCommit = (
-			t as AgentTask & { start_commit?: string | null }
-		).start_commit;
-		if (explicitStartCommit) return explicitStartCommit;
+		if (t.start_commit && t.start_commit !== "unknown") {
+			return t.start_commit;
+		}
+		if (t.start_sha && t.start_sha !== "unknown") {
+			return t.start_sha;
+		}
 
 		if (t.started_at) {
 			try {
@@ -2575,6 +2693,67 @@ export class AgentStatusTreeProvider
 		}
 	}
 
+	private truncatePromptSummary(value: string): string {
+		return value.length > 80 ? `${value.substring(0, 80)}…` : value;
+	}
+
+	private normalizePromptSummaryLine(line: string): string | null {
+		const normalized = line
+			.trim()
+			.replace(/^[-*+]\s+/, "")
+			.replace(/^\d+\.\s+/, "")
+			.replace(/^>\s+/, "")
+			.replace(/\s+/g, " ")
+			.trim();
+		return normalized.length > 0 ? normalized : null;
+	}
+
+	private isPromptBoilerplateLine(line: string): boolean {
+		return [
+			/^At the START of your work/i,
+			/^Use the task system/i,
+			/^As you work/i,
+			/^When ALL work is complete/i,
+			/^The TaskCompleted hook/i,
+			/^This is critical/i,
+			/^\d+\.\s+\*\*Commit all changes/i,
+			/^\d+\.\s+\*\*Verify clean working tree/i,
+			/^\d+\.\s+\*\*Do not exit with uncommitted work/i,
+			/^\d+\.\s+\*\*Fix hooks, never bypass them/i,
+			/^\d+\.\s+\*\*Write the handoff file/i,
+			/^\d+\.\s+\*\*Completion is automatic/i,
+			/^You MUST write a completion report/i,
+			/^This file is checked by the orchestrator/i,
+		].some((pattern) => pattern.test(line));
+	}
+
+	private getPromptSummaryFromPreferredSection(lines: string[]): string | null {
+		const preferredSectionPatterns = [
+			/^#{1,6}\s+Task\b/i,
+			/^#{1,6}\s+Goal\b/i,
+			/^#{1,6}\s+Objective\b/i,
+		];
+
+		for (const headingPattern of preferredSectionPatterns) {
+			let inSection = false;
+			for (const line of lines) {
+				const trimmed = line.trim();
+				if (headingPattern.test(trimmed)) {
+					inSection = true;
+					continue;
+				}
+				if (!inSection) continue;
+				if (/^#{1,6}\s+/.test(trimmed)) break;
+
+				const candidate = this.normalizePromptSummaryLine(line);
+				if (!candidate || this.isPromptBoilerplateLine(candidate)) continue;
+				return this.truncatePromptSummary(candidate);
+			}
+		}
+
+		return null;
+	}
+
 	/** Read the first meaningful line from a prompt file as a summary */
 	readPromptSummary(promptFile: string): string {
 		const cached = this._promptCache.get(promptFile);
@@ -2583,6 +2762,13 @@ export class AgentStatusTreeProvider
 		try {
 			const content = fs.readFileSync(promptFile, "utf-8");
 			const lines = content.split("\n");
+
+			const preferredSectionSummary =
+				this.getPromptSummaryFromPreferredSection(lines);
+			if (preferredSectionSummary) {
+				this._promptCache.set(promptFile, preferredSectionSummary);
+				return preferredSectionSummary;
+			}
 
 			// Look for ## Goal section first
 			let inGoalSection = false;
@@ -2595,8 +2781,7 @@ export class AgentStatusTreeProvider
 					const trimmed = line.trim();
 					if (trimmed.length === 0) continue;
 					if (trimmed.startsWith("#")) break; // next section
-					const result =
-						trimmed.length > 80 ? `${trimmed.substring(0, 80)}…` : trimmed;
+					const result = this.truncatePromptSummary(trimmed);
 					this._promptCache.set(promptFile, result);
 					return result;
 				}
@@ -2604,17 +2789,24 @@ export class AgentStatusTreeProvider
 
 			// Fallback: first non-empty, non-heading, non-frontmatter line
 			let inFrontmatter = false;
+			let inCodeFence = false;
 			for (const line of lines) {
 				const trimmed = line.trim();
 				if (trimmed === "---") {
 					inFrontmatter = !inFrontmatter;
 					continue;
 				}
-				if (inFrontmatter) continue;
+				if (trimmed.startsWith("```")) {
+					inCodeFence = !inCodeFence;
+					continue;
+				}
+				if (inFrontmatter || inCodeFence) continue;
 				if (trimmed.length === 0) continue;
 				if (trimmed.startsWith("#")) continue;
-				const result =
-					trimmed.length > 80 ? `${trimmed.substring(0, 80)}…` : trimmed;
+
+				const candidate = this.normalizePromptSummaryLine(line);
+				if (!candidate || this.isPromptBoilerplateLine(candidate)) continue;
+				const result = this.truncatePromptSummary(candidate);
 				this._promptCache.set(promptFile, result);
 				return result;
 			}
@@ -2727,21 +2919,34 @@ export class AgentStatusTreeProvider
 
 	/** Get a formatted diff summary for an agent's working directory */
 	getDiffSummary(projectDir: string, task: AgentTask): string | null {
-		try {
-			// For completed/failed/stopped tasks, diff HEAD~1; for running, diff working tree
-			const args =
-				task.status === "running"
-					? ["-C", projectDir, "diff", "--stat"]
-					: ["-C", projectDir, "diff", "--stat", "HEAD~1"];
+		return this.formatPerFileDiffSummary(
+			this.getPerFileDiffs(projectDir, this.getTaskDiffStartCommit(task)),
+		);
+	}
 
-			const output = execFileSync("git", args, {
-				encoding: "utf-8",
-				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
-			});
-			return this.parseDiffSummary(output);
-		} catch {
-			return null;
+	private parsePerFileDiffsFromNumstat(output: string): PerFileDiff[] {
+		if (!output.trim()) return [];
+
+		const diffs: PerFileDiff[] = [];
+		for (const line of output.split("\n")) {
+			if (!line.trim()) continue;
+			const [additionsRaw, deletionsRaw, ...fileParts] = line.split("\t");
+			if (!additionsRaw || !deletionsRaw || fileParts.length === 0) continue;
+			const filePath = fileParts.join("\t").trim();
+			if (!filePath) continue;
+
+			const isBinary = additionsRaw === "-" || deletionsRaw === "-";
+			const additions = isBinary ? -1 : Number.parseInt(additionsRaw, 10);
+			const deletions = isBinary ? -1 : Number.parseInt(deletionsRaw, 10);
+
+			if (!isBinary && (Number.isNaN(additions) || Number.isNaN(deletions))) {
+				continue;
+			}
+
+			diffs.push({ filePath, additions, deletions });
 		}
+
+		return diffs;
 	}
 
 	/**
@@ -2785,26 +2990,7 @@ export class AgentStatusTreeProvider
 			}
 			if (!output) return [];
 
-			const diffs: PerFileDiff[] = [];
-			for (const line of output.split("\n")) {
-				if (!line.trim()) continue;
-				const [additionsRaw, deletionsRaw, ...fileParts] = line.split("\t");
-				if (!additionsRaw || !deletionsRaw || fileParts.length === 0) continue;
-				const filePath = fileParts.join("\t").trim();
-				if (!filePath) continue;
-
-				const isBinary = additionsRaw === "-" || deletionsRaw === "-";
-				const additions = isBinary ? -1 : Number.parseInt(additionsRaw, 10);
-				const deletions = isBinary ? -1 : Number.parseInt(deletionsRaw, 10);
-
-				if (!isBinary && (Number.isNaN(additions) || Number.isNaN(deletions))) {
-					continue;
-				}
-
-				diffs.push({ filePath, additions, deletions });
-			}
-
-			return diffs;
+			return this.parsePerFileDiffsFromNumstat(output);
 		} catch {
 			return [];
 		}

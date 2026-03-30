@@ -412,6 +412,57 @@ describe("AgentStatusTreeProvider", () => {
 			expect(provider.getTasks()[0]?.status).toBe("stopped");
 		});
 
+		test("uses terminal stream completion instead of stopped when session already finished", () => {
+			const streamFile = path.join(
+				"/tmp",
+				`agent-status-completed-${Date.now()}.jsonl`,
+			);
+			const task = createMockTask({
+				id: "stream-completed",
+				status: "running",
+				terminal_backend: "tmux",
+				stream_file: streamFile,
+				started_at: new Date(Date.now() - 5 * 60 * 60_000).toISOString(),
+			});
+			fs.writeFileSync(
+				streamFile,
+				`${JSON.stringify({ type: "turn.completed" })}\n`,
+			);
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set(task.session_id, {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+
+			try {
+				provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+				provider.reload();
+
+				const displayTask = provider
+					.getTasks()
+					.find((candidate) => candidate.id === task.id);
+				expect(displayTask?.status).toBe("completed");
+
+				const taskNode = getFirstTask(provider.getChildren());
+				const details = provider.getChildren(taskNode);
+				expect(
+					details.some(
+						(child) =>
+							child.type === "detail" &&
+							child.label === "Session appears inactive",
+					),
+				).toBe(false);
+			} finally {
+				if (fs.existsSync(streamFile)) fs.unlinkSync(streamFile);
+			}
+		});
+
 		test("downgrades unhealthy running persist task to stopped", () => {
 			const task = createMockTask({
 				id: "persist-running",
@@ -2275,6 +2326,9 @@ describe("AgentStatusTreeProvider", () => {
 					child.label.includes("No activity for 15 minutes"),
 			);
 			expect(warningDetail).toBeDefined();
+			if (warningDetail?.type === "detail") {
+				expect(warningDetail.label.startsWith("⚠️")).toBe(false);
+			}
 		});
 	});
 
@@ -3263,6 +3317,35 @@ describe("AgentStatusTreeProvider", () => {
 			const second = provider.readPromptSummary("/no/such/file/task.md");
 			expect(first).toBe(second);
 			expect(second).toBe("task.md");
+		});
+
+		test("prefers the Task section over orchestration boilerplate", () => {
+			const p = provider as unknown as { _promptCache: Map<string, string> };
+			p._promptCache.clear();
+			const promptFile = path.join(
+				"/tmp",
+				`agent-status-prompt-${Date.now()}.md`,
+			);
+			fs.writeFileSync(
+				promptFile,
+				[
+					"## Task Tracking",
+					"At the START of your work, create a task to track it:",
+					"- Use the task system to create a task with the subject matching your task_id",
+					"",
+					"# Task",
+					"",
+					"Fix Agent Status display bugs observed in the cc-agent-history-cap entry.",
+				].join("\n"),
+			);
+
+			try {
+				expect(provider.readPromptSummary(promptFile)).toBe(
+					"Fix Agent Status display bugs observed in the cc-agent-history-cap entry.",
+				);
+			} finally {
+				if (fs.existsSync(promptFile)) fs.unlinkSync(promptFile);
+			}
 		});
 
 		test("getDetailChildren shows prompt summary not raw file path", () => {

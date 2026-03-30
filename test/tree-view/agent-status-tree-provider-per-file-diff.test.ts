@@ -21,7 +21,10 @@ mock.module("../../src/utils/port-detector.js", () => ({
 	detectListeningPortsAsync: mockDetectListeningPorts,
 }));
 
-import { AgentStatusTreeProvider } from "../../src/providers/agent-status-tree-provider.js";
+import {
+	AgentStatusTreeProvider,
+	type AgentTask,
+} from "../../src/providers/agent-status-tree-provider.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
@@ -30,6 +33,11 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		execOutput = "";
 		execError = null;
 		lastExecArgs = [];
+		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+			lastExecArgs = args;
+			if (execError) throw execError;
+			return execOutput;
+		});
 	});
 
 	test("parses running-agent numstat output from working tree", () => {
@@ -112,6 +120,28 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		expect(result).toEqual([
 			{ filePath: "src/fallback.ts", additions: 3, deletions: 1 },
 		]);
+		provider.dispose();
+	});
+
+	test("getDiffSummary uses start_sha so header matches per-file diff range", () => {
+		execOutput = "10\t2\tsrc/a.ts\n5\t0\tREADME.md\n";
+		const provider = new AgentStatusTreeProvider();
+		const task = {
+			status: "completed",
+			project_dir: "/tmp/project",
+			start_sha: "abc123",
+		} as AgentTask;
+
+		const result = provider.getDiffSummary("/tmp/project", task);
+
+		expect(lastExecArgs).toEqual([
+			"-C",
+			"/tmp/project",
+			"diff",
+			"--numstat",
+			"abc123..HEAD",
+		]);
+		expect(result).toBe("2 files · +15 / -2");
 		provider.dispose();
 	});
 });
