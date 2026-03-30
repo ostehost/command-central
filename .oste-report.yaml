@@ -1,7 +1,7 @@
-task_id: "cc-prompt-persist"
+task_id: "prompt-summary-persist"
 status: "success"
-summary: "Added prompt_summary fallback in tree provider for when temp prompt files are deleted"
+summary: "Persist prompt_summary in tasks.json at registration and use as fallback in tree provider"
 files_changed:
   - "src/providers/agent-status-tree-provider.ts"
 tests_passing: true
-next_steps: "Launcher side (oste-spawn.sh) already persists prompt_summary at registration time — no changes needed there"
+next_steps: "Launcher change already committed in ghostty-launcher (f8a5ef0). Both repos in sync."
