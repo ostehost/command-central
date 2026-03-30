@@ -1,6 +1,7 @@
-task_id: "smoke-test"
+task_id: "cc-codex-smoke-v1"
 status: "success"
-summary: "Integration smoke test passed — just check clean, 163/163 tests pass (440 expects), git history consistent"
-files_changed: []
+summary: "Smoke checks passed: just check clean, discovery tests 82/82 passing, and latest 3 commits look correct"
+files_changed:
+  - ".oste-report.yaml"
 tests_passing: true
-next_steps: "Knip reports minor unused exports — consider cleanup in a future task"
+next_steps: "None"
