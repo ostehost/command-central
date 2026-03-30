@@ -20,9 +20,7 @@ import * as path from "node:path";
 
 // ── Module-level mocks (must be set up before importing sources) ────
 
-// Track fs.watch callbacks for SessionWatcher
-let watchCallback: ((event: string, filename: string | null) => void) | null =
-	null;
+// Track fs.watch callbacks for SessionWatcher (assigned inside mock, not read in tests)
 const mockWatcher = {
 	close: mock(() => {}),
 	on: mock(() => {}),
@@ -61,7 +59,8 @@ mock.module("node:fs", () => ({
 		_dir: string,
 		cb: (event: string, filename: string | null) => void,
 	) => {
-		watchCallback = cb;
+		// cb captured by SessionWatcher internally; not needed in these tests
+		void cb;
 		return mockWatcher;
 	},
 	statSync: realFs.statSync,
@@ -123,12 +122,13 @@ describe("Agent Discovery E2E Pipeline", () => {
 		dirContents = [];
 		pidCommands = {};
 		alivePids = new Set();
-		watchCallback = null;
 		mockWatcher.close.mockClear();
 		mockWatcher.on.mockClear();
 
 		scanner = new ProcessScanner(
-			mockExecFile as unknown as Parameters<typeof ProcessScanner>[0],
+			mockExecFile as unknown as ConstructorParameters<
+				typeof ProcessScanner
+			>[0],
 			// Skip worktree resolution in integration tests
 			async () => null,
 			{
