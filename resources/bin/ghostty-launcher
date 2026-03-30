@@ -1,0 +1,670 @@
+#!/bin/bash
+#
+# Ghostty Launcher v0.1.0 — Per-project dock terminals
+#
+# Usage: launcher [OPTIONS] <project-dir>
+#
+set -euo pipefail
+
+readonly VERSION="0.1.0"
+# Ghostty binary lookup chain: explicit env var → stock Ghostty
+if [[ -n "${GHOSTTY_BINARY_PATH:-}" ]] && [[ -d "$GHOSTTY_BINARY_PATH" ]]; then
+	readonly GHOSTTY_APP="$GHOSTTY_BINARY_PATH"
+	readonly GHOSTTY_SOURCE="GHOSTTY_BINARY_PATH"
+else
+	readonly GHOSTTY_APP="/Applications/Ghostty.app"
+	readonly GHOSTTY_SOURCE="stock"
+fi
+
+# Validate GHOSTTY_APP is actually a Ghostty bundle by checking CFBundleIdentifier.
+# Warns but does not hard-fail — a legitimately modified bundle should still work.
+_ghostty_plist="${GHOSTTY_APP}/Contents/Info.plist"
+if [[ ! -f "$_ghostty_plist" ]]; then
+	echo "Warning: Ghostty bundle validation failed: Info.plist not found in ${GHOSTTY_APP}" >&2
+else
+	_ghostty_bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$_ghostty_plist" 2>/dev/null || true)
+	_ghostty_bid_lower=$(echo "$_ghostty_bid" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+	if [[ "$_ghostty_bid_lower" != *ghostty* ]]; then
+		echo "Warning: Bundle at ${GHOSTTY_APP} may not be Ghostty (CFBundleIdentifier: '${_ghostty_bid}')" >&2
+	fi
+	unset _ghostty_bid _ghostty_bid_lower
+fi
+unset _ghostty_plist
+
+readonly PROJECTS_DIR="/Applications/Projects"
+
+# ── Settings parsing ──────────────────────────────────────────────────
+
+# Parse commandCentral.project.icon from .vscode/settings.json
+parse_icon() {
+	local dir="$1"
+	local settings="$dir/.vscode/settings.json"
+	if [[ -f "$settings" ]]; then
+		jq -r '."commandCentral.project.icon" // empty' "$settings" 2>/dev/null || true
+	fi
+}
+
+# Parse commandCentral.terminal.backgroundImage.enabled from .vscode/settings.json
+parse_background() {
+	local dir="$1"
+	local settings="$dir/.vscode/settings.json"
+	if [[ -f "$settings" ]]; then
+		jq -r '."commandCentral.terminal.backgroundImage.enabled" // empty' "$settings" 2>/dev/null || true
+	fi
+}
+
+# Parse commandCentral.terminal.backgroundImage.opacity from .vscode/settings.json
+parse_background_opacity() {
+	local dir="$1"
+	local settings="$dir/.vscode/settings.json"
+	if [[ -f "$settings" ]]; then
+		jq -r '."commandCentral.terminal.backgroundImage.opacity" // empty' "$settings" 2>/dev/null || true
+	fi
+}
+
+# Parse commandCentral.terminal.backgroundImage.position from .vscode/settings.json
+parse_background_position() {
+	local dir="$1"
+	local settings="$dir/.vscode/settings.json"
+	if [[ -f "$settings" ]]; then
+		jq -r '."commandCentral.terminal.backgroundImage.position" // empty' "$settings" 2>/dev/null || true
+	fi
+}
+
+# Parse commandCentral.terminal.backgroundImage.fit from .vscode/settings.json
+parse_background_fit() {
+	local dir="$1"
+	local settings="$dir/.vscode/settings.json"
+	if [[ -f "$settings" ]]; then
+		jq -r '."commandCentral.terminal.backgroundImage.fit" // empty' "$settings" 2>/dev/null || true
+	fi
+}
+
+# Parse commandCentral.project.name from .vscode/settings.json
+# Falls back to directory basename
+parse_name() {
+	local dir="$1"
+	local settings="$dir/.vscode/settings.json"
+	local name=""
+	if [[ -f "$settings" ]]; then
+		name=$(jq -r '."commandCentral.project.name" // empty' "$settings" 2>/dev/null || true)
+	fi
+	if [[ -z "$name" ]]; then
+		name=$(basename "$dir")
+	fi
+	echo "$name"
+}
+
+# ── Sanitization ─────────────────────────────────────────────────────
+
+# Sanitize name for bundle ID (lowercase, alphanum + hyphens only)
+sanitize_for_bundle() {
+	local name="$1"
+	local result
+	# Single pipeline: lowercase, spaces/slashes→hyphens, strip non-alnum, collapse hyphens, trim
+	# Force C locale so [:alnum:] matches only ASCII a-z, A-Z, 0-9 regardless of system locale
+	result=$(echo "$name" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C sed 's/[[:space:]\/]/-/g' | LC_ALL=C tr -cd '[:alnum:]-' | LC_ALL=C sed -E 's/-+/-/g; s/^-+//; s/-+$//')
+	# Ensure result doesn't start with a digit (bundle IDs must begin with a letter)
+	if [[ "$result" =~ ^[0-9] ]]; then
+		result="project-${result}"
+	fi
+	echo "$result"
+}
+
+# Generate emoji background PNG for terminal watermark
+# Uses the same sips + Canvas approach as icon generation but at larger size
+generate_emoji_background() {
+	local emoji="$1"
+	local output_path="$2"
+	local max_width="${3:-300}"
+	local temp_dir
+	temp_dir=$(mktemp -d)
+
+	local escaped_emoji
+	# shellcheck disable=SC1003
+	escaped_emoji=$(printf '%s' "$emoji" | sed 's/\\/\\\\/g; s/'"'"'/\\'"'"'/g; s/"/\\"/g')
+
+	cat >"$temp_dir/render_bg.js" <<EOF
+const canvas = new Canvas(${max_width}, ${max_width})
+const ctx = canvas.getContext('2d')
+ctx.fillStyle = 'rgba(0, 0, 0, 0)'
+ctx.fillRect(0, 0, ${max_width}, ${max_width})
+const targetFill = ${max_width} * 0.75
+const baseGlyphSize = 16
+const scale = targetFill / baseGlyphSize
+ctx.save()
+ctx.fillStyle = 'black'
+ctx.translate(${max_width} / 2, ${max_width} / 2)
+ctx.scale(scale, scale)
+ctx.textAlign = 'center'
+ctx.textBaseline = 'middle'
+ctx.fillText('${escaped_emoji}', 0, -1.5)
+ctx.restore()
+const output = new Output(canvas, sips.outputPath)
+output.addToQueue()
+EOF
+
+	if ! sips -j "$temp_dir/render_bg.js" -o "$output_path" >/dev/null 2>&1; then
+		echo "Warning: Could not generate background PNG for $emoji" >&2
+		rm -rf "$temp_dir"
+		return 1
+	fi
+
+	rm -rf "$temp_dir"
+	return 0
+}
+
+# ── PATH detection ──────────────────────────────────────────────────
+# (Removed: detect_homebrew_path / build_tool_path)
+# PATH is no longer baked at bundle creation time. The generated
+# launch-persist.sh starts $SHELL -l, which rebuilds PATH from
+# /etc/paths, /etc/paths.d/*, and user init files at launch time.
+
+# ── Validation ───────────────────────────────────────────────────────
+
+# Reject paths containing shell-dangerous characters
+validate_path_safe() {
+	local path="$1"
+	case "$path" in
+		*';'* | *'&'* | *'|'* | *'`'* | *'$'*)
+			echo "Error: Project path contains shell-unsafe characters" >&2
+			return 1
+			;;
+	esac
+}
+
+# ── Icon generation ──────────────────────────────────────────────────
+
+# Check if input is an emoji
+is_emoji() {
+	local input="$1"
+	echo "$input" | perl -CS -ne 'print if /[\x{2190}-\x{21FF}]|[\x{2300}-\x{27BF}]|[\x{2B00}-\x{2BFF}]|[\x{1F300}-\x{1F9FF}]|[\x{1F680}-\x{1F6FF}]|[\x{1F900}-\x{1F9FF}]/' | perl -CS -pe 's/[\x{FE0E}\x{FE0F}]//g'
+}
+
+# Generate .icns from emoji using sips + iconutil
+generate_emoji_icns() {
+	local emoji="$1"
+	local output_path="$2"
+	local temp_dir
+	temp_dir=$(mktemp -d)
+
+	local iconset_dir="$temp_dir/icon.iconset"
+	mkdir -p "$iconset_dir"
+
+	# Apple requires exactly these 10 sizes for a complete .iconset
+	local sizes=(
+		"16:icon_16x16.png"
+		"32:icon_32x32.png"
+		"64:icon_32x32@2x.png"
+		"32:icon_16x16@2x.png"
+		"128:icon_128x128.png"
+		"256:icon_256x256.png"
+		"256:icon_128x128@2x.png"
+		"512:icon_512x512.png"
+		"512:icon_256x256@2x.png"
+		"1024:icon_512x512@2x.png"
+	)
+
+	local escaped_emoji
+	# shellcheck disable=SC1003
+	escaped_emoji=$(printf '%s' "$emoji" | sed 's/\\/\\\\/g; s/'"'"'/\\'"'"'/g; s/"/\\"/g')
+
+	for size_spec in "${sizes[@]}"; do
+		IFS=':' read -r pixels filename <<<"$size_spec"
+
+		cat >"$temp_dir/render_${pixels}.js" <<EOF
+const canvas = new Canvas(${pixels}, ${pixels})
+const ctx = canvas.getContext('2d')
+ctx.fillStyle = 'rgba(0, 0, 0, 0)'
+ctx.fillRect(0, 0, ${pixels}, ${pixels})
+const targetFill = ${pixels} * 0.8
+const baseGlyphSize = 16
+const scale = targetFill / baseGlyphSize
+ctx.save()
+ctx.fillStyle = 'black'
+ctx.translate(${pixels} / 2, ${pixels} / 2)
+ctx.scale(scale, scale)
+ctx.textAlign = 'center'
+ctx.textBaseline = 'middle'
+ctx.fillText('${escaped_emoji}', 0, -1.5)
+ctx.restore()
+const output = new Output(canvas, sips.outputPath)
+output.addToQueue()
+EOF
+
+		if ! sips -j "$temp_dir/render_${pixels}.js" -o "$iconset_dir/$filename" >/dev/null 2>&1; then
+			rm -rf "$temp_dir"
+			return 1
+		fi
+	done
+
+	if ! iconutil -c icns "$iconset_dir" -o "$output_path" 2>/dev/null; then
+		rm -rf "$temp_dir"
+		return 1
+	fi
+
+	rm -rf "$temp_dir"
+	return 0
+}
+
+# Generate icon — emoji if available, else system fallback
+generate_icon() {
+	local emoji="$1"
+	local output_path="$2"
+
+	if [[ -n "$emoji" ]] && [[ -n "$(is_emoji "$emoji")" ]]; then
+		if generate_emoji_icns "$emoji" "$output_path"; then
+			return 0
+		fi
+	fi
+
+	# Fallback: copy Ghostty's own icon
+	if ! cp "${GHOSTTY_APP}/Contents/Resources/Ghostty.icns" "$output_path" 2>/dev/null; then
+		echo "Error: Failed to generate icon and fallback copy failed" >&2
+		return 1
+	fi
+}
+
+# ── Bundle creation ──────────────────────────────────────────────────
+
+# Create a clean .app bundle with only Ghostty binary and custom icon
+create_bundle() {
+	local project_dir="$1"
+	local name="$2"
+	local icon="$3"
+	local output_dir="${4:-$PROJECTS_DIR}"
+
+	# Validate inputs
+	if [[ ! -d "$project_dir" ]]; then
+		echo "Error: Project directory does not exist: $project_dir" >&2
+		return 1
+	fi
+
+	local project_path_length=${#project_dir}
+	if [[ $project_path_length -ge 1000 ]]; then
+		echo "Error: Project path too long ($project_path_length chars, max 999)" >&2
+		return 1
+	fi
+
+	# Reject paths with shell-dangerous characters
+	if ! validate_path_safe "$project_dir"; then
+		return 1
+	fi
+
+	if [[ -z "$name" ]]; then
+		echo "Error: Project name cannot be empty" >&2
+		return 1
+	fi
+
+	local safe_name
+	safe_name=$(sanitize_for_bundle "$name")
+
+	if [[ -z "$safe_name" ]]; then
+		echo "Error: Project name produces empty bundle identifier" >&2
+		return 1
+	fi
+
+	local bundle_id="dev.partnerai.ghostty.${safe_name}"
+	# Use safe_name (dashed) for filesystem path — spaces break Ghostty's command= parser
+	# The display name (CFBundleName/CFBundleDisplayName) stays human-readable
+	local app_path="${output_dir}/${safe_name}.app"
+	local contents="${app_path}/Contents"
+
+	# Path traversal prevention: verify bundle stays within output_dir
+	if [[ "$app_path" == *../* ]]; then
+		echo "Error: Bundle path escapes output directory" >&2
+		return 1
+	fi
+
+	# File locking: prevent concurrent runs for same project (using mkdir for atomicity)
+	local lock_dir="/tmp/.ghostty-launcher-${safe_name}.lock"
+
+	# Stale lock detection: remove locks older than 1 hour
+	if [[ -d "$lock_dir" ]]; then
+		local lock_age
+		lock_age=$(($(date +%s) - $(stat -f %m "$lock_dir")))
+		if [[ $lock_age -gt 3600 ]]; then
+			echo "Warning: Removing stale lock for project '$name' (${lock_age}s old)" >&2
+			rmdir "$lock_dir" 2>/dev/null || true
+		else
+			echo "Error: Another launcher is already running for project: $name" >&2
+			return 1
+		fi
+	fi
+
+	if ! mkdir "$lock_dir" 2>/dev/null; then
+		echo "Error: Another launcher is already running for project: $name" >&2
+		return 1
+	fi
+
+	# Single compound cleanup — set once, variables updated as resources are acquired
+	_launcher_lock_dir="$lock_dir"
+	_launcher_temp_dir=""
+	cleanup_launcher() {
+		[[ -n "$_launcher_temp_dir" ]] && rm -rf "$_launcher_temp_dir"
+		[[ -n "$_launcher_lock_dir" ]] && rmdir "$_launcher_lock_dir" 2>/dev/null || true
+	}
+	trap cleanup_launcher EXIT
+
+	# Check if source Ghostty binary exists
+	local ghostty_binary="${GHOSTTY_APP}/Contents/MacOS/ghostty"
+	if [[ ! -f "$ghostty_binary" ]]; then
+		echo "Error: Ghostty binary not found at $ghostty_binary" >&2
+		return 1
+	fi
+
+	# Build persist binary if needed
+	local persist_dir
+	persist_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/persist"
+	local persist_binary="${persist_dir}/persist"
+	if [[ ! -x "$persist_binary" ]]; then
+		if [[ ! -f "${persist_dir}/persist.c" ]]; then
+			echo "Error: persist source not found at ${persist_dir}/persist.c" >&2
+			return 1
+		fi
+		if ! make -C "$persist_dir" build >/dev/null 2>&1; then
+			echo "Error: Failed to build persist binary" >&2
+			return 1
+		fi
+	fi
+
+	echo "Creating project bundle ${name}.app..." >&2
+	echo "  Ghostty source: ${GHOSTTY_APP} (${GHOSTTY_SOURCE})" >&2
+
+	# Atomic bundle creation: build in temp directory, rename on success
+	local temp_dir
+	temp_dir=$(mktemp -d)
+	_launcher_temp_dir="$temp_dir"
+
+	# Keep the temp bundle path aligned with the sanitized final path so
+	# display names containing traversal characters cannot escape temp_dir.
+	local temp_app_path="${temp_dir}/${safe_name}.app"
+	local temp_contents="${temp_app_path}/Contents"
+	local temp_resources="${temp_contents}/Resources"
+
+	# Use ditto to copy Ghostty.app (APFS clone — nearly free on same volume)
+	if ! ditto "$GHOSTTY_APP" "$temp_app_path"; then
+		echo "Error: Failed to copy Ghostty.app bundle" >&2
+		return 1
+	fi
+
+	# Remove Asset Catalog (contains Ghostty's icon, overrides our .icns)
+	rm -f "${temp_resources}/Assets.car"
+
+	# Replace icon with project emoji icon
+	rm -f "${temp_resources}/Ghostty.icns"
+	if ! generate_icon "$icon" "${temp_resources}/icon.icns"; then
+		echo "Error: Failed to generate icon for project" >&2
+		return 1
+	fi
+
+	# Create per-project Ghostty config directory
+	# This gives each project its own config, preventing window merging
+	local config_dir="${temp_contents}/Resources/ghostty-config/ghostty"
+	mkdir -p "$config_dir"
+
+	local session_id="agent-${safe_name}"
+
+	# Copy user's base config, stripping shell/command settings that conflict with persist
+	if [[ -f "${HOME}/.config/ghostty/config" ]]; then
+		grep -v -E '^(command|shell-integration)\s*=' "${HOME}/.config/ghostty/config" >"$config_dir/config" || true
+	else
+		touch "$config_dir/config"
+	fi
+
+	# Copy persist binary into bundle
+	cp "$persist_binary" "${temp_contents}/MacOS/persist"
+	chmod +x "${temp_contents}/MacOS/persist"
+
+	# Create persist launch script inside the bundle
+	local sock_dir="\${HOME}/.local/share/cc/sockets"
+	cat >"${config_dir}/launch-persist.sh" <<LAUNCH
+#!/bin/bash
+# Minimal PATH for this script's own commands (mkdir).
+# NOT exported — the login shell (-l) rebuilds PATH from /etc/paths,
+# /etc/paths.d/*, and user init files (~/.zprofile, ~/.bash_profile,
+# Fish conf.d/), giving full parity with a regular Ghostty terminal.
+# Tools installed after bundle creation are visible without rebuild.
+PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+
+# Validate project directory exists
+PROJECT_DIR="${project_dir}"
+if [[ ! -d "\$PROJECT_DIR" ]]; then
+  echo "Error: Project directory no longer exists: \$PROJECT_DIR" >&2
+  echo "The directory may have been moved or deleted after bundle creation." >&2
+  echo "Please recreate the bundle if the directory has moved to a new location." >&2
+  exit 1
+fi
+
+PERSIST="${contents}/MacOS/persist"
+SOCK_DIR="${sock_dir}"
+SOCKET="\${SOCK_DIR}/${session_id}.sock"
+
+# Create socket directory if needed
+mkdir -p "\$SOCK_DIR"
+
+# If session already exists, attach to it
+if "\$PERSIST" -s "\$SOCKET" >/dev/null 2>&1; then
+  exec "\$PERSIST" -a "\$SOCKET"
+fi
+
+# Start new persist session with user's login shell.
+# Login-shell semantics (-l) ensure full init-file processing so PATH
+# includes tools installed after bundle creation (Homebrew, npm, etc.).
+"\$PERSIST" -n "\$SOCKET" "\${SHELL:-/bin/zsh}" -l
+exec "\$PERSIST" -a "\$SOCKET"
+LAUNCH
+	chmod +x "${config_dir}/launch-persist.sh"
+
+	# Append project-specific settings
+	cat >>"$config_dir/config" <<CONF
+
+# --- Project: ${name} ---
+working-directory = ${project_dir}
+title = ${name}
+command = ${contents}/Resources/ghostty-config/ghostty/launch-persist.sh
+
+# --- Notifications ---
+# Bell triggers Dock bounce + badge + macOS notification
+# Agents use BEL + OSC 9 on completion for clickable notifications
+desktop-notifications = true
+CONF
+
+	# Background image: render the project emoji as a scaled-up terminal watermark
+	# Reads optional settings from .vscode/settings.json
+	local bg_enabled bg_opacity bg_position bg_fit bg_max_width
+	bg_enabled=$(parse_background "$project_dir")
+	bg_opacity=$(parse_background_opacity "$project_dir")
+	bg_position=$(parse_background_position "$project_dir")
+	bg_fit=$(parse_background_fit "$project_dir")
+
+	# Default: enabled unless explicitly set to "false"
+	bg_enabled="${bg_enabled:-true}"
+	bg_opacity="${bg_opacity:-0.07}"
+	bg_position="${bg_position:-top-right}"
+	bg_fit="${bg_fit:-none}"
+	bg_max_width="300"
+
+	if [[ "$bg_enabled" != "false" ]] && [[ -n "$icon" ]] && [[ -n "$(is_emoji "$icon")" ]]; then
+		local bg_dest="${config_dir}/background.png"
+		if generate_emoji_background "$icon" "$bg_dest" "$bg_max_width"; then
+			cat >>"$config_dir/config" <<BG_CONF
+
+# --- Background Image (emoji watermark) ---
+background-image = ${contents}/Resources/ghostty-config/ghostty/background.png
+background-image-opacity = ${bg_opacity}
+background-image-position = ${bg_position}
+background-image-fit = ${bg_fit}
+BG_CONF
+			echo "  Background: $icon (${bg_max_width}px, opacity ${bg_opacity}, ${bg_position})" >&2
+		fi
+	fi
+
+	# Modify Info.plist — change identity, icon, add env vars
+	local plist="${temp_contents}/Info.plist"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${bundle_id}" "$plist"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleName ${name}" "$plist"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${name}" "$plist"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleIconFile icon.icns" "$plist"
+	# Remove CFBundleIconName — prevents Asset Catalog from overriding our .icns
+	/usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$plist" 2>/dev/null || true
+	# Add env vars via LSEnvironment (inherited by Ghostty's shell)
+	# XDG_CONFIG_HOME points to per-project config to isolate each instance
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment dict" "$plist" 2>/dev/null || true
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_PROJECT_ID string ${safe_name}" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_PROJECT_ID ${safe_name}" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_PROJECT_PATH string ${project_dir}" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_PROJECT_PATH ${project_dir}" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:XDG_CONFIG_HOME string ${contents}/Resources/ghostty-config" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:XDG_CONFIG_HOME ${contents}/Resources/ghostty-config" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_SESSION_ID string ${session_id}" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_SESSION_ID ${session_id}" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_USE_TERMINAL_NOTIFIER string 1" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_USE_TERMINAL_NOTIFIER 1" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_APP_NAME string ${name}" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_APP_NAME ${name}" "$plist"
+
+	# Register project-specific URL scheme for notification routing
+	local url_scheme="commandcentral-${safe_name}"
+	# Pass pre-computed URL scheme to Ghostty so it doesn't re-derive (avoids sanitization mismatch)
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_URL_SCHEME string ${url_scheme}" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_URL_SCHEME ${url_scheme}" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$plist" 2>/dev/null || true
+	/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string ${url_scheme}" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string ${url_scheme}" "$plist"
+
+	# Ad-hoc code sign the bundle BEFORE fileicon (order matters)
+	if ! codesign --force --deep --sign - "$temp_app_path" 2>/dev/null; then
+		echo "Warning: Code signing failed" >&2
+	fi
+
+	# Verify codesign worked
+	if ! codesign --verify "$temp_app_path" 2>/dev/null; then
+		echo "Error: Bundle codesign verification failed" >&2
+		return 1
+	fi
+
+	# Set custom icon on the .app folder via fileicon (Finder-level override)
+	# This modifies the .app directory's resource fork, not bundle contents
+	if command -v fileicon >/dev/null 2>&1; then
+		fileicon set "$temp_app_path" "${temp_resources}/icon.icns" >/dev/null 2>&1 || true
+	fi
+
+	# Clear Gatekeeper quarantine (allows opening despite fileicon modification)
+	xattr -dr com.apple.quarantine "$temp_app_path" 2>/dev/null || true
+
+	# Verify icon was set
+	if [[ ! -f "${temp_resources}/icon.icns" ]]; then
+		echo "Warning: icon.icns missing from bundle" >&2
+	fi
+
+	# Atomic move: remove existing and move temp to final location
+	mkdir -p "$output_dir"
+	# Ensure parent directory of app_path exists (in case name has slashes)
+	mkdir -p "$(dirname "$app_path")"
+	if [[ -d "$app_path" ]]; then
+		trash "$app_path" 2>/dev/null || rm -rf "$app_path"
+	fi
+
+	if ! mv "$temp_app_path" "$app_path"; then
+		echo "Error: Failed to move bundle to final location" >&2
+		return 1
+	fi
+
+	# Register with Launch Services. This is best-effort: macOS can emit
+	# Spotlight/LaunchServices scan errors for freshly created bundles even
+	# when the app itself is valid and already on disk.
+	local lsregister_err
+	lsregister_err=$(mktemp)
+	if ! /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app_path" \
+		2>"$lsregister_err"; then
+		echo "Warning: Launch Services registration failed for ${app_path}" >&2
+		cat "$lsregister_err" >&2
+	fi
+	rm -f "$lsregister_err"
+
+	# Refresh Dock to show custom icon immediately
+	# Note: killall Dock would refresh icons but disrupts Cmd+Tab and user workflow.
+	# The lsregister call above is sufficient — icons update on next Dock restart or login.
+	# Users can run 'killall Dock' manually if they need immediate icon refresh.
+
+	echo "$app_path"
+}
+
+# ── Main ─────────────────────────────────────────────────────────────
+
+main() {
+	case "${1:-}" in
+		--parse-icon)
+			[[ -z "${2:-}" ]] && exit 1
+			parse_icon "$2"
+			;;
+		--parse-name)
+			[[ -z "${2:-}" ]] && exit 1
+			parse_name "$2"
+			;;
+		--generate-icon)
+			# --generate-icon EMOJI OUTPUT_PATH
+			[[ -z "${2:-}" ]] && exit 1
+			[[ -z "${3:-}" ]] && exit 1
+			generate_emoji_icns "$2" "$3"
+			;;
+		--create-bundle)
+			# --create-bundle DIR [--output OUTPUT_DIR]
+			[[ -z "${2:-}" ]] && exit 1
+			local dir="$2"
+			dir="$(cd "$dir" && pwd)"
+			local output_dir="$PROJECTS_DIR"
+			if [[ "${3:-}" == "--output" ]] && [[ -n "${4:-}" ]]; then
+				output_dir="$4"
+			fi
+			mkdir -p "$output_dir"
+			local icon name
+			icon=$(parse_icon "$dir")
+			name=$(parse_name "$dir")
+			create_bundle "$dir" "$name" "$icon" "$output_dir"
+			;;
+		--session-id)
+			# Print the session ID for a project
+			[[ -z "${2:-}" ]] && exit 1
+			local dir="$2"
+			dir="$(cd "$dir" && pwd)"
+			local name
+			name=$(parse_name "$dir")
+			local safe
+			safe=$(sanitize_for_bundle "$name")
+			echo "agent-${safe}"
+			;;
+		--version | -v)
+			echo "v${VERSION}"
+			;;
+		--help | -h)
+			echo "Ghostty Launcher v${VERSION}"
+			echo "Usage: launcher [OPTIONS] <project-dir>"
+			echo ""
+			echo "Options:"
+			echo "  --parse-icon DIR       Print emoji icon from settings"
+			echo "  --parse-name DIR       Print project name from settings"
+			echo "  --create-bundle DIR    Create .app bundle for DIR"
+			echo "  --session-id DIR       Print session ID for DIR"
+			echo "  --version              Print version"
+			echo "  --help                 Show this help"
+			;;
+		*)
+			local dir="${1:-$(pwd)}"
+			dir="$(cd "$dir" && pwd)"
+
+			mkdir -p "$PROJECTS_DIR"
+
+			local icon name
+			icon=$(parse_icon "$dir")
+			name=$(parse_name "$dir")
+
+			create_bundle "$dir" "$name" "$icon" "$PROJECTS_DIR"
+			;;
+	esac
+}
+
+main "$@"
