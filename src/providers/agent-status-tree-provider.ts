@@ -2134,9 +2134,6 @@ export class AgentStatusTreeProvider
 		right: ProjectGroupNode,
 	): number {
 		const sortMode = this.getSortMode();
-		if (sortMode === "status") {
-			return this.compareTaskNames(left.projectName, right.projectName);
-		}
 		if (sortMode === "status-recency") {
 			const leftHasRunning = this.projectGroupHasRunning(left);
 			const rightHasRunning = this.projectGroupHasRunning(right);
@@ -2173,9 +2170,6 @@ export class AgentStatusTreeProvider
 			left.type === "folderGroup" ? left.groupName : left.projectName;
 		const rightLabel =
 			right.type === "folderGroup" ? right.groupName : right.projectName;
-		if (sortMode === "status") {
-			return this.compareTaskNames(leftLabel, rightLabel);
-		}
 		if (sortMode === "status-recency") {
 			const leftHasRunning =
 				left.type === "folderGroup"

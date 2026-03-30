@@ -1429,18 +1429,19 @@ describe("AgentStatusTreeProvider", () => {
 		).toBe("alpha-running-new");
 	});
 
-	test("sorts grouped roots alphabetically in status mode", () => {
+	test("sorts grouped roots by freshest activity in status mode", () => {
 		setAgentStatusConfig(vscodeMock, {
 			groupByProject: true,
 			sortMode: "status",
 		});
 
+		// Zeta is alphabetically last but has the freshest activity
 		const zetaTask = createMockTask({
 			id: "zeta-running",
 			project_dir: "/Users/test/projects/zeta",
 			project_name: "Zeta",
 			status: "running",
-			started_at: "2026-02-25T10:00:00Z",
+			started_at: "2026-02-25T12:00:00Z",
 		});
 		const alphaTask = createMockTask({
 			id: "alpha-completed",
@@ -1448,7 +1449,7 @@ describe("AgentStatusTreeProvider", () => {
 			project_name: "Alpha",
 			status: "completed",
 			started_at: "2026-02-25T06:00:00Z",
-			completed_at: "2026-02-25T11:00:00Z",
+			completed_at: "2026-02-25T09:00:00Z",
 		});
 		provider.readRegistry = () =>
 			createMockRegistry({
@@ -1461,14 +1462,15 @@ describe("AgentStatusTreeProvider", () => {
 			.getChildren()
 			.filter((node) => node.type === "projectGroup");
 		expect(projectGroups).toHaveLength(2);
+		// Zeta (12:00) is freshest, Alpha (09:00) is older — activity wins over alphabet
 		expect(
 			(projectGroups[0] as { type: "projectGroup"; projectName: string })
 				.projectName,
-		).toBe("Alpha");
+		).toBe("Zeta");
 		expect(
 			(projectGroups[1] as { type: "projectGroup"; projectName: string })
 				.projectName,
-		).toBe("Zeta");
+		).toBe("Alpha");
 	});
 
 	test("pushes grouped projects with running agents to the top in status-recency mode", () => {

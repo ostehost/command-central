@@ -816,23 +816,23 @@
         "command": "commandCentral.toggleAgentScopeCurrentProject",
         "title": "Show Current Project Agents",
         "category": "Command Central",
-        "icon": "$(project)"
+        "icon": "$(globe)"
       },
       {
         "command": "commandCentral.toggleAgentScopeAll",
         "title": "Show All Agents",
         "category": "Command Central",
-        "icon": "$(globe)"
+        "icon": "$(project)"
       },
       {
         "command": "commandCentral.toggleProjectGrouping",
-        "title": "Toggle Project Grouping",
+        "title": "Show Flat List",
         "category": "Command Central",
         "icon": "$(list-tree)"
       },
       {
         "command": "commandCentral.toggleProjectGroupingFlat",
-        "title": "Toggle Project Grouping",
+        "title": "Group by Project",
         "category": "Command Central",
         "icon": "$(list-flat)"
       },

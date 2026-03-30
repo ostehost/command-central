@@ -1,10 +1,10 @@
-task_id: "cc-time-display-fix"
+task_id: "consistency-polish"
 status: "success"
-summary: "Fixed Agent Status tree time labels to show terminal-state recency instead of task duration."
+summary: "Fixed three display inconsistencies: scope toggle icons (action→state convention), status mode group sorting (alphabetical→freshest activity), and ambiguous grouping command titles"
 files_changed:
+  - "package.json"
   - "src/providers/agent-status-tree-provider.ts"
   - "test/tree-view/agent-status-tree-provider.test.ts"
-  - "research/DEV-NOTES-time-display-fix.md"
-  - ".oste-report.yaml"
+  - "research/DEV-NOTES-consistency-polish.md"
 tests_passing: true
-next_steps: "If the dashboard or other surfaces reuse separate elapsed helpers, align them to the same terminal-state recency wording."
+next_steps: "Consider adding a test that explicitly validates scope toggle icon values in agent-menu-contributions.test.ts"
