@@ -38,7 +38,8 @@ mock.module("node:fs", () => ({
 	readdirSync: () => dirContents,
 	readFileSync: (filePath: string, _enc: string) => {
 		const parts = filePath.split("/");
-		const filename = parts[parts.length - 1]!;
+		const filename = parts.at(-1);
+		if (filename === undefined) throw new Error("ENOENT");
 		const content = sessionFiles[filename];
 		if (content === undefined) throw new Error("ENOENT");
 		return content;
@@ -85,7 +86,9 @@ process.kill = ((pid: number, signal?: number) => {
 		if (!alivePids.has(pid)) throw new Error("ESRCH");
 		return true;
 	}
-	return originalKill.call(process, pid, signal!);
+	return signal === undefined
+		? originalKill.call(process, pid)
+		: originalKill.call(process, pid, signal);
 }) as typeof process.kill;
 
 import { AgentRegistry } from "../../src/discovery/agent-registry.js";

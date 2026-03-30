@@ -81,7 +81,10 @@ describe("SessionStore", () => {
 		const oldDate = new Date(
 			Date.now() - 31 * 24 * 60 * 60 * 1000,
 		).toISOString();
-		all["/Users/test/projects/old-app"]!.lastSeen = oldDate;
+		const oldEntry = all["/Users/test/projects/old-app"];
+		expect(oldEntry).toBeDefined();
+		if (!oldEntry) throw new Error("expected old-app entry to exist");
+		oldEntry.lastSeen = oldDate;
 
 		// Force re-prune by saving and reloading
 		store.save();
@@ -148,7 +151,9 @@ describe("SessionStore", () => {
 			"dev.partnerai.ghostty.my-app-v2",
 		);
 
-		const after = store.getAll()["/Users/test/projects/my-app"]!;
+		const after = store.getAll()["/Users/test/projects/my-app"];
+		expect(after).toBeDefined();
+		if (!after) throw new Error("expected my-app entry to exist");
 		expect(after.bundlePath).toBe("/Applications/Projects/my-app-v2.app");
 		expect(after.bundleId).toBe("dev.partnerai.ghostty.my-app-v2");
 	});

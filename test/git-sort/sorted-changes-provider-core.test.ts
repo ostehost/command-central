@@ -16,6 +16,45 @@ import {
 } from "../helpers/typed-mocks.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
+type MockGitApi = {
+	repositories: unknown[];
+	onDidOpenRepository: () => { dispose: () => void };
+	onDidCloseRepository: () => { dispose: () => void };
+};
+
+type MockGitExtensionApi = {
+	getAPI: () => MockGitApi;
+};
+
+function createMockGitExtension(
+	vscode: typeof import("vscode"),
+	mockGitApi: MockGitApi,
+): import("vscode").Extension<MockGitExtensionApi> {
+	const extensionApi: MockGitExtensionApi = {
+		getAPI: () => mockGitApi,
+	};
+
+	return {
+		id: "vscode.git",
+		extensionUri: vscode.Uri.file("/mock/extension"),
+		extensionPath: "/mock/extension",
+		isActive: true,
+		packageJSON: {},
+		extensionKind: vscode.ExtensionKind.Workspace,
+		activate: async () => extensionApi,
+		exports: extensionApi,
+	};
+}
+
+function createGetExtensionMock(
+	extension: import("vscode").Extension<MockGitExtensionApi> | undefined,
+): typeof import("vscode").extensions.getExtension {
+	return mock(
+		<T>(_extensionId: string) =>
+			extension as unknown as import("vscode").Extension<T> | undefined,
+	) as typeof import("vscode").extensions.getExtension;
+}
+
 describe("SortedGitChangesProvider Core Functionality", () => {
 	let mockLogger: LoggerService;
 
@@ -66,26 +105,9 @@ describe("SortedGitChangesProvider Core Functionality", () => {
 			onDidCloseRepository: mock(() => ({ dispose: () => {} })),
 		};
 
-		const mockGitExtension: import("vscode").Extension<{
-			getAPI: () => typeof mockGitApi;
-		}> = {
-			id: "vscode.git",
-			extensionUri: vscode.Uri.file("/mock/extension"),
-			extensionPath: "/mock/extension",
-			isActive: true,
-			packageJSON: {},
-			extensionKind: vscode.ExtensionKind.Workspace,
-			activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
-			exports: {
-				getAPI: mock(() => mockGitApi),
-			},
-		};
+		const mockGitExtension = createMockGitExtension(vscode, mockGitApi);
 
-		vscode.extensions.getExtension = mock(
-			(_extensionId: string) =>
-				// biome-ignore lint/suspicious/noExplicitAny: GitExtension API has dynamic export structure
-				mockGitExtension as import("vscode").Extension<any> | undefined,
-		);
+		vscode.extensions.getExtension = createGetExtensionMock(mockGitExtension);
 
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
@@ -405,19 +427,13 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 		);
 
 		// Mock Git extension with existing repositories (common scenario)
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		vscode.extensions.getExtension = mock(() => ({
-			exports: {
-				getAPI: mock(() => ({
-					repositories: [
-						{ state: { workingTreeChanges: [], indexChanges: [] } },
-					],
-					onDidOpenRepository: mock(() => ({ dispose: mock() })),
-					onDidCloseRepository: mock(() => ({ dispose: mock() })),
-				})),
-			},
-			isActive: true,
-		})) as any;
+		vscode.extensions.getExtension = createGetExtensionMock(
+			createMockGitExtension(vscode, {
+				repositories: [{ state: { workingTreeChanges: [], indexChanges: [] } }],
+				onDidOpenRepository: () => ({ dispose: mock() }),
+				onDidCloseRepository: () => ({ dispose: mock() }),
+			}),
+		);
 
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
@@ -434,17 +450,13 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
 
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		vscode.extensions.getExtension = mock(() => ({
-			exports: {
-				getAPI: mock(() => ({
-					repositories: [],
-					onDidOpenRepository: mock(() => ({ dispose: mock() })),
-					onDidCloseRepository: mock(() => ({ dispose: mock() })),
-				})),
-			},
-			isActive: true,
-		})) as any;
+		vscode.extensions.getExtension = createGetExtensionMock(
+			createMockGitExtension(vscode, {
+				repositories: [],
+				onDidOpenRepository: () => ({ dispose: mock() }),
+				onDidCloseRepository: () => ({ dispose: mock() }),
+			}),
+		);
 
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
@@ -480,17 +492,13 @@ describe("SortedGitChangesProvider GitStatusGroup Icons", () => {
 			rootUri: vscode.Uri.file("/workspace/test"),
 		};
 
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		vscode.extensions.getExtension = mock(() => ({
-			exports: {
-				getAPI: mock(() => ({
-					repositories: [mockRepository],
-					onDidOpenRepository: mock(() => ({ dispose: mock() })),
-					onDidCloseRepository: mock(() => ({ dispose: mock() })),
-				})),
-			},
-			isActive: true,
-		})) as any;
+		vscode.extensions.getExtension = createGetExtensionMock(
+			createMockGitExtension(vscode, {
+				repositories: [mockRepository],
+				onDidOpenRepository: () => ({ dispose: mock() }),
+				onDidCloseRepository: () => ({ dispose: mock() }),
+			}),
+		);
 
 		const mockContext = createMockExtensionContext();
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);

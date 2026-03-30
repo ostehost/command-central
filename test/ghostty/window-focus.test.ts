@@ -54,9 +54,12 @@ mock.module("node:child_process", () => ({
 }));
 
 // Import after mocks are set up
-const { lookupGhosttyTerminal, focusGhosttyWindow } = await import(
-	"../../src/ghostty/window-focus.js"
-);
+type WindowFocusModule = typeof import("../../src/ghostty/window-focus.js");
+const windowFocusModulePath =
+	"../../src/ghostty/window-focus.js?window-focus-test";
+const { lookupGhosttyTerminal, focusGhosttyWindow } = (await import(
+	windowFocusModulePath
+)) as WindowFocusModule;
 
 beforeEach(() => {
 	mockReadFileResult = {};

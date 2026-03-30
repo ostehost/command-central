@@ -327,7 +327,7 @@ describe("smoke: completion — task status transitions", () => {
 		const prev = previousStatuses.get(task.id);
 		expect(prev).toBe("running");
 		expect(
-			task.status === "completed" || task.status === "completed_dirty",
+			(["completed", "completed_dirty"] as const).includes(task.status),
 		).toBe(true);
 	});
 });

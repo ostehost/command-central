@@ -50,7 +50,9 @@ process.kill = ((pid: number, signal?: number) => {
 		}
 		return true;
 	}
-	return originalKill.call(process, pid, signal!);
+	return signal === undefined
+		? originalKill.call(process, pid)
+		: originalKill.call(process, pid, signal);
 }) as typeof process.kill;
 
 import { SessionWatcher } from "../../src/discovery/session-watcher.js";

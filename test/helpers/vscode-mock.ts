@@ -87,7 +87,7 @@ export function createVSCodeMock() {
 			})),
 			getConfiguration: mock((_section?: string) => ({
 				get: mock((_key: string, defaultValue?: unknown) => defaultValue),
-				update: mock((_section: string, _value: any, _target?: any) =>
+				update: mock((_section: string, _value: unknown, _target?: unknown) =>
 					Promise.resolve(),
 				),
 			})),
