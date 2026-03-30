@@ -1163,7 +1163,7 @@ export class AgentStatusTreeProvider
 		const actionableCount = counts.attention;
 		if (actionableCount > 0) {
 			hints.push(
-				`${actionableCount} ${actionableCount === 1 ? "agent needs" : "agents need"} attention — use Agent Actions in Agent Status tree to restart or inspect`,
+				`${actionableCount} stopped ${actionableCount === 1 ? "agent" : "agents"} — use Agent Actions in Agent Status tree to restart or inspect`,
 			);
 		}
 		return hints.join("\n");
@@ -1923,11 +1923,21 @@ export class AgentStatusTreeProvider
 
 	/** Get detail children for discovered agents (no task record) */
 	private getDiscoveredChildren(agent: DiscoveredAgent): DetailNode[] {
+		const sourceLabel =
+			agent.source === "process"
+				? "Discovered via ps"
+				: "Discovered via session file";
 		const details: DetailNode[] = [
 			{
 				type: "detail",
 				label: "PID",
 				value: `${agent.pid}`,
+				taskId: `discovered-${agent.pid}`,
+			},
+			{
+				type: "detail",
+				label: "Source",
+				value: sourceLabel,
 				taskId: `discovered-${agent.pid}`,
 			},
 			{
@@ -2033,14 +2043,14 @@ export class AgentStatusTreeProvider
 		const parts =
 			sortMode === "status"
 				? [
-						counts.attention > 0 ? `${counts.attention} attention` : null,
+						counts.attention > 0 ? `${counts.attention} stopped` : null,
 						counts.working > 0 ? `${counts.working} working` : null,
 						counts.done > 0 ? `${counts.done} done` : null,
 					]
 				: [
 						counts.working > 0 ? `${counts.working} working` : null,
 						counts.done > 0 ? `${counts.done} done` : null,
-						counts.attention > 0 ? `${counts.attention} attention` : null,
+						counts.attention > 0 ? `${counts.attention} stopped` : null,
 					];
 
 		return (
@@ -2556,12 +2566,12 @@ export class AgentStatusTreeProvider
 		const rawStatus = this.registry.tasks[t.id]?.status;
 
 		if (t.status === "failed" && t.exit_code != null) {
-			const attemptsSuffix =
-				t.attempts > 1 ? ` · ${t.attempts}/${t.max_attempts} attempts` : "";
+			const retrySuffix =
+				t.attempts > 1 ? ` · Retry ${t.attempts}/${t.max_attempts}` : "";
 			const errorMessage = t.error_message?.trim();
 			details.push({
 				type: "detail",
-				label: `Error: Exit ${t.exit_code}${attemptsSuffix}`,
+				label: `Error: ❌ Failed (code ${t.exit_code})${retrySuffix}`,
 				value: "",
 				taskId: t.id,
 				description:
@@ -2573,8 +2583,8 @@ export class AgentStatusTreeProvider
 		if (rawStatus === "running" && t.status === "stopped") {
 			details.push({
 				type: "detail",
-				label: "Session appears inactive",
-				value: "Counted as stopped for health-aware summary",
+				label: "Agent process ended",
+				value: "Click to restart or dismiss",
 				taskId: t.id,
 				icon: "alert",
 				iconColor: "charts.yellow",
@@ -2596,13 +2606,16 @@ export class AgentStatusTreeProvider
 		const promptSummary = this.readPromptSummary(t.prompt_file);
 		const isPromptFallback =
 			!promptSummary || promptSummary === path.basename(t.prompt_file);
-		details.push({
-			type: "detail",
-			label: "Prompt",
-			value:
-				isPromptFallback && t.prompt_summary ? t.prompt_summary : promptSummary,
-			taskId: t.id,
-		});
+		const promptValue =
+			isPromptFallback && t.prompt_summary ? t.prompt_summary : promptSummary;
+		if (promptValue && promptValue !== "---" && !promptValue.endsWith(".md")) {
+			details.push({
+				type: "detail",
+				label: "Prompt",
+				value: promptValue,
+				taskId: t.id,
+			});
+		}
 
 		// Diff summary
 		const diffSummary = this.getCachedDiffSummaryForTask(t);
@@ -2640,10 +2653,14 @@ export class AgentStatusTreeProvider
 				t.status === "completed_dirty" ||
 				t.status === "stopped")
 		) {
+			const resultText =
+				t.exit_code === 0 ? "✅ Success" : `❌ Failed (code ${t.exit_code})`;
+			const retrySuffix =
+				t.attempts > 1 ? ` · Retry ${t.attempts}/${t.max_attempts}` : "";
 			details.push({
 				type: "detail",
 				label: "Result",
-				value: `Exit ${t.exit_code} · Attempt ${t.attempts}/${t.max_attempts}`,
+				value: `${resultText}${retrySuffix}`,
 				taskId: t.id,
 			});
 		}
@@ -3525,7 +3542,7 @@ export class AgentStatusTreeProvider
 		});
 		const attentionCount = counts.attention;
 		if (attentionCount > 0) {
-			item.tooltip = `${attentionCount} ${attentionCount === 1 ? "agent needs" : "agents need"} attention in ${node.projectName}.`;
+			item.tooltip = `${attentionCount} stopped ${attentionCount === 1 ? "agent" : "agents"} in ${node.projectName}.`;
 		}
 		item.contextValue = "projectGroup";
 		return item;
@@ -3779,10 +3796,6 @@ export class AgentStatusTreeProvider
 		const projectDir = this.getDiscoveredProjectDir(agent);
 		const projectIcon = this.getProjectIcon(projectDir);
 		const uptime = formatElapsed(agent.startTime.toISOString());
-		const sourceLabel =
-			agent.source === "process"
-				? "(discovered via ps)"
-				: "(discovered via session file)";
 		const worktreeLabel = agent.worktree?.isLinkedWorktree
 			? `${agent.worktree.branch} · worktree`
 			: null;
@@ -3794,14 +3807,13 @@ export class AgentStatusTreeProvider
 		const discoveredDiff = this.getCachedDiffSummaryForDiscovered(agent);
 		const discoveredDiffLoading =
 			!discoveredDiff && this.isDiscoveredDiffSummaryLoading(agent);
-		const descriptionParts = [`PID ${agent.pid}`, uptime];
+		const descriptionParts = [uptime];
 		if (worktreeLabel) descriptionParts.push(worktreeLabel);
 		if (discoveredDiff) {
 			descriptionParts.push(discoveredDiff);
 		} else if (discoveredDiffLoading) {
 			descriptionParts.push("loading diff...");
 		}
-		descriptionParts.push(sourceLabel);
 		item.description = descriptionParts.join(" · ");
 		item.iconPath = getStatusThemeIcon("running");
 		item.contextValue = "discoveredAgent.running";

@@ -373,7 +373,7 @@ describe("AgentStatusTreeProvider", () => {
 		if (summary?.type === "summary") {
 			expect(summary.label).toContain("Recent");
 			expect(summary.label).toContain("1 working");
-			expect(summary.label).toContain("2 attention");
+			expect(summary.label).toContain("2 stopped");
 			expect(summary.label).toContain("1 done");
 		}
 	});
@@ -418,7 +418,7 @@ describe("AgentStatusTreeProvider", () => {
 			const summary = children.find((n) => n.type === "summary");
 			expect(summary).toBeDefined();
 			if (summary?.type === "summary") {
-				expect(summary.label).toContain("1 attention");
+				expect(summary.label).toContain("1 stopped");
 				expect(summary.label).not.toContain("1 working");
 			}
 			const taskNode = getFirstTask(children);
@@ -488,8 +488,7 @@ describe("AgentStatusTreeProvider", () => {
 				expect(
 					details.some(
 						(child) =>
-							child.type === "detail" &&
-							child.label === "Session appears inactive",
+							child.type === "detail" && child.label === "Agent process ended",
 					),
 				).toBe(false);
 			} finally {
@@ -700,7 +699,7 @@ describe("AgentStatusTreeProvider", () => {
 				expect(summary).toBeDefined();
 				if (summary?.type === "summary") {
 					expect(summary.label).not.toContain("1 working");
-					expect(summary.label).toContain("1 attention");
+					expect(summary.label).toContain("1 stopped");
 					expect(summary.label).toContain("1 done");
 				}
 
@@ -1046,7 +1045,7 @@ describe("AgentStatusTreeProvider", () => {
 		});
 	});
 
-	test("summary includes stuck count and attention tooltip guidance", () => {
+	test("summary includes stuck count and stopped tooltip guidance", () => {
 		const stuckRunning = createMockTask({
 			id: "stuck-running",
 			status: "running",
@@ -1067,14 +1066,12 @@ describe("AgentStatusTreeProvider", () => {
 		expect(summary).toBeDefined();
 		if (summary?.type === "summary") {
 			expect(summary.label).toContain("1 working");
-			expect(summary.label).toContain("2 attention");
+			expect(summary.label).toContain("2 stopped");
 			expect(summary.label).toContain("1 stuck");
 		}
 
 		const summaryItem = provider.getTreeItem(summary as AgentNode);
-		expect(String(summaryItem.tooltip ?? "")).toContain(
-			"agents need attention",
-		);
+		expect(String(summaryItem.tooltip ?? "")).toContain("stopped agents");
 	});
 
 	test("sorts tasks by started_at descending (newest first)", () => {
@@ -2182,7 +2179,7 @@ describe("AgentStatusTreeProvider", () => {
 		expect(icon.color?.id).toBe("charts.orange");
 	});
 
-	test("summary icon is warning yellow when stopped tasks need attention", () => {
+	test("summary icon is warning yellow when stopped tasks present", () => {
 		const stopped = createMockTask({ id: "t1", status: "stopped" });
 		provider.readRegistry = () => createMockRegistry({ t1: stopped });
 		provider.reload();
@@ -2395,7 +2392,7 @@ describe("AgentStatusTreeProvider", () => {
 		const errorDetail = details[0];
 		expect(errorDetail?.type).toBe("detail");
 		if (errorDetail?.type === "detail") {
-			expect(errorDetail.label).toBe("Error: Exit 127 · 2/3 attempts");
+			expect(errorDetail.label).toBe("Error: ❌ Failed (code 127) · Retry 2/3");
 			expect(errorDetail.description).toBe("build failed: missing env var");
 			const treeItem = provider.getTreeItem(errorDetail);
 			expect((treeItem.iconPath as { id: string }).id).toBe("error");
@@ -2425,7 +2422,7 @@ describe("AgentStatusTreeProvider", () => {
 		const errorDetail = details[0];
 		expect(errorDetail?.type).toBe("detail");
 		if (errorDetail?.type === "detail") {
-			expect(errorDetail.label).toBe("Error: Exit 2");
+			expect(errorDetail.label).toBe("Error: ❌ Failed (code 2)");
 		}
 	});
 
@@ -3891,7 +3888,7 @@ describe("AgentStatusTreeProvider", () => {
 			);
 			expect(resultDetail).toBeDefined();
 			if (resultDetail?.type === "detail") {
-				expect(resultDetail.value).toBe("Exit 0 · Attempt 1/3");
+				expect(resultDetail.value).toBe("✅ Success");
 			}
 		});
 
@@ -3903,6 +3900,7 @@ describe("AgentStatusTreeProvider", () => {
 				branch: "main",
 				lastCommit: "abc1234 feat: stuff (1m ago)",
 			});
+			provider.readPromptSummary = () => "Fix the login bug";
 			provider.reload();
 
 			const root = provider.getChildren();
@@ -4100,7 +4098,7 @@ describe("AgentStatusTreeProvider", () => {
 			};
 			provider.getDiffSummary = () => null;
 			const item = provider.getTreeItem({ type: "discovered", agent });
-			expect(item.description).toContain("PID 66666");
+			expect(item.description).not.toContain("PID");
 			expect(item.description).not.toContain("files");
 		});
 	});
