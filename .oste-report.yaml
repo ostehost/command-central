@@ -1,8 +1,0 @@
-task_id: "polish-agent-status-tree-ux"
-status: "success"
-summary: "Polished Agent Status tree UX: cleaner labels, human-readable exit codes, hidden empty prompts, renamed attention→stopped"
-files_changed:
-  - "src/providers/agent-status-tree-provider.ts"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
-tests_passing: true
-next_steps: "Consider updating agent-counts.ts formatCountSummary and agent-status-bar.ts tooltip to also use 'stopped' instead of 'attention' for full consistency"
