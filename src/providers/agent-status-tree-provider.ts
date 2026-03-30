@@ -1133,6 +1133,7 @@ export class AgentStatusTreeProvider
 			| "shell-process"
 			| "stale-process"
 			| "cwd-unresolved"
+			| "internal-tool-dir"
 			| undefined,
 	): string {
 		switch (reason) {
@@ -1148,6 +1149,8 @@ export class AgentStatusTreeProvider
 				return "Filtered stale process";
 			case "cwd-unresolved":
 				return "Dropped after cwd lookup failed";
+			case "internal-tool-dir":
+				return "Filtered internal tool directory";
 			default:
 				return "Filtered";
 		}
