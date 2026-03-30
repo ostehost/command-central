@@ -1,8 +1,7 @@
-task_id: "cc-persist-health-fix"
+task_id: "cc-prompt-persist"
 status: "success"
-summary: "Fixed persist-backed agent health check to use persist socket instead of tmux, added isPersistSessionAlive() with cache"
+summary: "Added prompt_summary fallback in tree provider for when temp prompt files are deleted"
 files_changed:
   - "src/providers/agent-status-tree-provider.ts"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
 tests_passing: true
-next_steps: "Monitor persist-backed agents in tree view to confirm they display as Running when sockets are alive"
+next_steps: "Launcher side (oste-spawn.sh) already persists prompt_summary at registration time — no changes needed there"
