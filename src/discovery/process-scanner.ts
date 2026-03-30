@@ -60,13 +60,44 @@ const AGENT_CLI_RE = new RegExp(
 );
 
 const NOISE_RE = /electron|helper|renderer|gpu-process|crashpad|--type=/i;
+const EXCLUDED_BINARY_RE = new RegExp(
+	`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*(?:terminal-notifier|osascript|notify-send)${CLI_TOKEN_SUFFIX}`,
+	"i",
+);
 
 type ExecFileFn = typeof defaultExecFileAsync;
 type ResolveWorktreeFn = typeof resolveWorktree;
 
+export type ProcessScanFilterReason =
+	| "excluded-binary"
+	| "noise-process"
+	| "cwd-unresolved";
+
+export interface ProcessScanDiagnosticEntry {
+	pid: number;
+	command: string;
+	startTime: Date;
+	binaryName?: string;
+	projectDir?: string;
+	reason?: ProcessScanFilterReason;
+}
+
+export interface ProcessScanDiagnostics {
+	psRowCount: number;
+	agentLikeCandidateCount: number;
+	retained: ProcessScanDiagnosticEntry[];
+	filtered: ProcessScanDiagnosticEntry[];
+}
+
 export class ProcessScanner {
 	private execFileAsync: ExecFileFn;
 	private resolveWorktreeFn: ResolveWorktreeFn;
+	private lastDiagnostics: ProcessScanDiagnostics = {
+		psRowCount: 0,
+		agentLikeCandidateCount: 0,
+		retained: [],
+		filtered: [],
+	};
 
 	constructor(execFileFn?: ExecFileFn, resolveWorktreeFn?: ResolveWorktreeFn) {
 		this.execFileAsync = execFileFn ?? defaultExecFileAsync;
@@ -80,14 +111,32 @@ export class ProcessScanner {
 	async scan(): Promise<DiscoveredAgent[]> {
 		const psLines = await this.getPsOutput();
 		const candidates = this.parsePsOutput(psLines);
+		const retained: ProcessScanDiagnosticEntry[] = [];
+		const filtered = [...this.lastDiagnostics.filtered];
 
 		// Resolve CWDs in parallel (bounded by candidate count, typically < 10)
 		const results = await Promise.all(
 			candidates.map(async (c) => {
 				const projectDir = await this.getProcessCwd(c.pid);
-				if (!projectDir) return null;
+				if (!projectDir) {
+					filtered.push({
+						pid: c.pid,
+						command: c.command,
+						startTime: c.startTime,
+						binaryName: this.extractBinaryName(c.command),
+						reason: "cwd-unresolved",
+					});
+					return null;
+				}
 				const meta = this.parseClaudeArgs(c.command);
 				const worktree = await this.resolveWorktreeFn(projectDir);
+				retained.push({
+					pid: c.pid,
+					command: c.command,
+					startTime: c.startTime,
+					binaryName: this.extractBinaryName(c.command),
+					projectDir,
+				});
 				const agent: DiscoveredAgent = {
 					pid: c.pid,
 					projectDir,
@@ -101,7 +150,22 @@ export class ProcessScanner {
 			}),
 		);
 
+		this.lastDiagnostics = {
+			...this.lastDiagnostics,
+			retained,
+			filtered,
+		};
+
 		return results.filter((a): a is DiscoveredAgent => a !== null);
+	}
+
+	getLastDiagnostics(): ProcessScanDiagnostics {
+		return {
+			psRowCount: this.lastDiagnostics.psRowCount,
+			agentLikeCandidateCount: this.lastDiagnostics.agentLikeCandidateCount,
+			retained: [...this.lastDiagnostics.retained],
+			filtered: [...this.lastDiagnostics.filtered],
+		};
 	}
 
 	// ── Internal helpers ────────────────────────────────────────────────
@@ -130,12 +194,19 @@ export class ProcessScanner {
 	parsePsOutput(
 		raw: string,
 	): Array<{ pid: number; startTime: Date; command: string }> {
+		const diagnostics: ProcessScanDiagnostics = {
+			psRowCount: 0,
+			agentLikeCandidateCount: 0,
+			retained: [],
+			filtered: [],
+		};
 		const results: Array<{ pid: number; startTime: Date; command: string }> =
 			[];
 
 		for (const line of raw.split("\n")) {
 			const trimmed = line.trim();
 			if (!trimmed || trimmed.startsWith("PID")) continue;
+			diagnostics.psRowCount += 1;
 
 			// PID is the first token
 			const pidMatch = trimmed.match(/^(\d+)\s+/);
@@ -157,11 +228,34 @@ export class ProcessScanner {
 
 			// Filter: must look like a supported CLI agent command and not be noise
 			if (!AGENT_CLI_RE.test(command)) continue;
-			if (NOISE_RE.test(command)) continue;
+			diagnostics.agentLikeCandidateCount += 1;
+
+			const binaryName = this.extractBinaryName(command);
+			if (EXCLUDED_BINARY_RE.test(command)) {
+				diagnostics.filtered.push({
+					pid,
+					command,
+					startTime,
+					binaryName,
+					reason: "excluded-binary",
+				});
+				continue;
+			}
+			if (NOISE_RE.test(command)) {
+				diagnostics.filtered.push({
+					pid,
+					command,
+					startTime,
+					binaryName,
+					reason: "noise-process",
+				});
+				continue;
+			}
 
 			results.push({ pid, startTime, command });
 		}
 
+		this.lastDiagnostics = diagnostics;
 		return results;
 	}
 
@@ -234,5 +328,12 @@ export class ProcessScanner {
 		if (CODEX_CLI_HINT_RE.test(command)) return "codex";
 		if (GEMINI_CLI_HINT_RE.test(command)) return "gemini";
 		return undefined;
+	}
+
+	private extractBinaryName(command: string): string | undefined {
+		const [token] = command.trim().split(/\s+/, 1);
+		if (!token) return undefined;
+		const unquoted = token.replace(/^['"]|['"]$/g, "");
+		return unquoted.split("/").at(-1) ?? unquoted;
 	}
 }

@@ -788,6 +788,10 @@ export async function activate(
 		const agentOutputChannel =
 			vscode.window.createOutputChannel("Agent Output");
 		context.subscriptions.push(agentOutputChannel);
+		const discoveryDiagnosticsChannel = vscode.window.createOutputChannel(
+			"Agent Discovery Diagnostics",
+		);
+		context.subscriptions.push(discoveryDiagnosticsChannel);
 
 		const getConfiguredAgentBackend = (): "codex" | "gemini" => {
 			const configured = vscode.workspace
@@ -1073,6 +1077,17 @@ export async function activate(
 				"commandCentral.refreshAgentStatus",
 				() => {
 					agentStatusProvider?.reload();
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.showDiscoveryDiagnostics",
+				() => {
+					if (!agentStatusProvider) return;
+					discoveryDiagnosticsChannel.clear();
+					discoveryDiagnosticsChannel.appendLine(
+						agentStatusProvider.getDiscoveryDiagnosticsReport(),
+					);
+					discoveryDiagnosticsChannel.show(true);
 				},
 			),
 			vscode.commands.registerCommand(

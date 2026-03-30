@@ -790,6 +790,12 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "commandCentral.showDiscoveryDiagnostics",
+        "title": "Agent Status: Discovery Diagnostics",
+        "category": "Command Central",
+        "icon": "$(pulse)"
+      },
+      {
         "command": "commandCentral.cycleSortMode",
         "title": "Agent Status: Cycle Sort Mode",
         "category": "Command Central",
@@ -1700,6 +1706,11 @@
           "command": "commandCentral.clearTerminalTasks",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.hasTerminalTasks",
           "group": "navigation@6"
+        },
+        {
+          "command": "commandCentral.showDiscoveryDiagnostics",
+          "when": "view == commandCentral.agentStatus",
+          "group": "navigation@7"
         }
       ]
     },

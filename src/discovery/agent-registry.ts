@@ -14,9 +14,19 @@
 
 import * as vscode from "vscode";
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
-import { ProcessScanner } from "./process-scanner.js";
+import {
+	type ProcessScanDiagnostics,
+	ProcessScanner,
+} from "./process-scanner.js";
 import { SessionWatcher } from "./session-watcher.js";
 import type { DiscoveredAgent } from "./types.js";
+
+export interface AgentRegistryDiagnostics {
+	discoveredCount: number;
+	sessionFileCount: number;
+	prunedDeadAgents: number;
+	processScanner: ProcessScanDiagnostics;
+}
 
 export class AgentRegistry implements vscode.Disposable {
 	private readonly processScanner = new ProcessScanner();
@@ -25,6 +35,8 @@ export class AgentRegistry implements vscode.Disposable {
 	private discoveredAgents: DiscoveredAgent[] = [];
 	private scanTimer: ReturnType<typeof setInterval> | null = null;
 	private scanning = false;
+	private lastSessionAgentCount = 0;
+	private lastPrunedDeadAgents = 0;
 
 	private _onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChange = this._onDidChange.event;
@@ -116,7 +128,17 @@ export class AgentRegistry implements vscode.Disposable {
 
 	/** Get all raw discovered agents (before launcher dedup) */
 	getAllDiscovered(): DiscoveredAgent[] {
-		return [...this.discoveredAgents];
+		return [...this.refreshLiveDiscoveredAgents()];
+	}
+
+	getDiagnostics(): AgentRegistryDiagnostics {
+		const discoveredAgents = this.refreshLiveDiscoveredAgents();
+		return {
+			discoveredCount: discoveredAgents.length,
+			sessionFileCount: this.lastSessionAgentCount,
+			prunedDeadAgents: this.lastPrunedDeadAgents,
+			processScanner: this.processScanner.getLastDiagnostics(),
+		};
 	}
 
 	dispose(): void {
@@ -133,8 +155,11 @@ export class AgentRegistry implements vscode.Disposable {
 		this.scanning = true;
 		try {
 			const agents = await this.processScanner.scan();
-			const sessionAgents = this.sessionWatcher.getAgents();
-			this.discoveredAgents = this.dedup([...sessionAgents, ...agents]);
+			const sessionAgents = this.getLiveSessionAgents();
+			this.discoveredAgents = this.setLiveDiscoveredAgents([
+				...sessionAgents,
+				...agents,
+			]);
 			this._onDidChange.fire();
 		} finally {
 			this.scanning = false;
@@ -142,12 +167,15 @@ export class AgentRegistry implements vscode.Disposable {
 	}
 
 	private mergeAndNotify(): void {
-		const sessionAgents = this.sessionWatcher.getAgents();
+		const sessionAgents = this.getLiveSessionAgents();
 		// Merge session agents into the existing process-scanned list
 		const processOnly = this.discoveredAgents.filter(
 			(a) => a.source === "process",
 		);
-		this.discoveredAgents = this.dedup([...sessionAgents, ...processOnly]);
+		this.discoveredAgents = this.setLiveDiscoveredAgents([
+			...sessionAgents,
+			...processOnly,
+		]);
 		this._onDidChange.fire();
 	}
 
@@ -156,7 +184,7 @@ export class AgentRegistry implements vscode.Disposable {
 	 * Session-file source wins over process source for same PID.
 	 */
 	private mergeDiscoverySources(): DiscoveredAgent[] {
-		return this.dedup(this.discoveredAgents);
+		return this.refreshLiveDiscoveredAgents();
 	}
 
 	/**
@@ -210,5 +238,43 @@ export class AgentRegistry implements vscode.Disposable {
 
 	private restartPolling(): void {
 		this.startPolling();
+	}
+
+	private getLiveSessionAgents(): DiscoveredAgent[] {
+		const sessionAgents = this.sessionWatcher.getAgents();
+		this.lastSessionAgentCount = sessionAgents.length;
+		return sessionAgents;
+	}
+
+	private setLiveDiscoveredAgents(
+		agents: DiscoveredAgent[],
+	): DiscoveredAgent[] {
+		const deduped = this.dedup(agents);
+		const liveAgents = this.filterLiveAgents(deduped);
+		this.lastPrunedDeadAgents = deduped.length - liveAgents.length;
+		return liveAgents;
+	}
+
+	private refreshLiveDiscoveredAgents(): DiscoveredAgent[] {
+		const liveAgents = this.filterLiveAgents(this.discoveredAgents);
+		const prunedDeadAgents = this.discoveredAgents.length - liveAgents.length;
+		if (prunedDeadAgents > 0 || this.lastPrunedDeadAgents === 0) {
+			this.lastPrunedDeadAgents = prunedDeadAgents;
+		}
+		this.discoveredAgents = liveAgents;
+		return liveAgents;
+	}
+
+	private filterLiveAgents(agents: DiscoveredAgent[]): DiscoveredAgent[] {
+		return agents.filter((agent) => this.isPidAlive(agent.pid));
+	}
+
+	private isPidAlive(pid: number): boolean {
+		try {
+			process.kill(pid, 0);
+			return true;
+		} catch {
+			return false;
+		}
 	}
 }

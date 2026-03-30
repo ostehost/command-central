@@ -1125,6 +1125,21 @@ export class AgentStatusTreeProvider
 		return hints.join("\n");
 	}
 
+	private formatDiscoveryFilterReason(
+		reason: "excluded-binary" | "noise-process" | "cwd-unresolved" | undefined,
+	): string {
+		switch (reason) {
+			case "excluded-binary":
+				return "Excluded helper binary";
+			case "noise-process":
+				return "Filtered UI/helper noise";
+			case "cwd-unresolved":
+				return "Dropped after cwd lookup failed";
+			default:
+				return "Filtered";
+		}
+	}
+
 	private setHasAgentsContext(): void {
 		const hasAgents =
 			Object.keys(this.registry.tasks).length > 0 ||
@@ -3260,6 +3275,71 @@ export class AgentStatusTreeProvider
 			}),
 		);
 		return [...launcherTasks, ...syntheticDiscovered];
+	}
+
+	getDiscoveryDiagnosticsReport(): string {
+		const lines = ["Agent Status Discovery Diagnostics", ""];
+		const displayTasks = this.getDisplayLauncherTasks();
+		const runningTasks = displayTasks.filter(
+			(task) => task.status === "running",
+		);
+
+		lines.push(`Tasks in registry: ${displayTasks.length}`);
+		lines.push(`Launcher tasks marked running: ${runningTasks.length}`);
+		lines.push(`Visible discovered agents: ${this._discoveredAgents.length}`);
+		lines.push(`All discovered agents: ${this._allDiscoveredAgents.length}`);
+
+		if (!this._agentRegistry) {
+			lines.push("");
+			lines.push("Discovery is disabled.");
+			return lines.join("\n");
+		}
+
+		const diagnostics = this._agentRegistry.getDiagnostics();
+		lines.push("");
+		lines.push("Discovery liveness");
+		lines.push(
+			`- Session-file agents before PID pruning: ${diagnostics.sessionFileCount}`,
+		);
+		lines.push(
+			`- Dead discovered agents pruned by PID liveness: ${diagnostics.prunedDeadAgents}`,
+		);
+		lines.push(
+			`- Live discovered agents after merge: ${diagnostics.discoveredCount}`,
+		);
+
+		const processDiagnostics = diagnostics.processScanner;
+		lines.push("");
+		lines.push("Process scanner");
+		lines.push(`- ps rows scanned: ${processDiagnostics.psRowCount}`);
+		lines.push(
+			`- Agent-like candidates: ${processDiagnostics.agentLikeCandidateCount}`,
+		);
+		lines.push(`- Retained: ${processDiagnostics.retained.length}`);
+		lines.push(`- Filtered: ${processDiagnostics.filtered.length}`);
+
+		if (processDiagnostics.filtered.length > 0) {
+			lines.push("");
+			lines.push("Filtered matches");
+			for (const entry of processDiagnostics.filtered) {
+				lines.push(
+					`- ${this.formatDiscoveryFilterReason(entry.reason)} · PID ${entry.pid} · ${entry.binaryName ?? "unknown"} · ${entry.command}`,
+				);
+			}
+		}
+
+		if (processDiagnostics.retained.length > 0) {
+			lines.push("");
+			lines.push("Retained matches");
+			for (const entry of processDiagnostics.retained) {
+				const location = entry.projectDir ? ` · ${entry.projectDir}` : "";
+				lines.push(
+					`- PID ${entry.pid} · ${entry.binaryName ?? "unknown"}${location} · ${entry.command}`,
+				);
+			}
+		}
+
+		return lines.join("\n");
 	}
 
 	private getDiscoveredProjectDir(agent: DiscoveredAgent): string {

@@ -117,6 +117,28 @@ describe("ProcessScanner", () => {
 			expect(results).toHaveLength(0);
 		});
 
+		test("filters terminal notification helpers even when they mention codex or claude", () => {
+			const psOutput = [
+				"  PID   STARTED                       COMMAND",
+				"60001 Mon Jan  6 14:00:00 2025 /opt/homebrew/bin/terminal-notifier -title Command\\ Central -message 'codex finished cleanly'",
+				"60002 Mon Jan  6 14:00:01 2025 /usr/bin/osascript -e 'display notification \"claude completed\"'",
+				"60003 Mon Jan  6 14:00:03 2025 /opt/homebrew/bin/codex --model gpt-5 --print hello",
+			].join("\n");
+
+			const results = scanner.parsePsOutput(psOutput);
+			expect(results).toHaveLength(1);
+			expect(results[0]?.pid).toBe(60003);
+
+			const diagnostics = scanner.getLastDiagnostics();
+			expect(diagnostics.agentLikeCandidateCount).toBe(2);
+			expect(diagnostics.filtered).toHaveLength(1);
+			expect(
+				diagnostics.filtered.every(
+					(entry) => entry.reason === "excluded-binary",
+				),
+			).toBe(true);
+		});
+
 		test("returns empty array for empty ps output", () => {
 			expect(scanner.parsePsOutput("")).toHaveLength(0);
 		});

@@ -268,6 +268,34 @@ describe("AgentRegistry", () => {
 			const discovered = registry.getDiscoveredAgents([createMockTask()]);
 			expect(discovered).toHaveLength(0);
 		});
+
+		test("prunes stale session-file agents whose PID died after initial discovery", () => {
+			sessionFiles["605.json"] = JSON.stringify({
+				pid: 605,
+				sessionId: "ghost-worktree-agent",
+				cwd: "/Users/test/projects/command-central-feature-diagnostics",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["605.json"];
+			alivePids.add(605);
+
+			registry.start();
+			expect(registry.getAllDiscovered().map((agent) => agent.pid)).toContain(
+				605,
+			);
+
+			alivePids.delete(605);
+
+			expect(
+				registry.getAllDiscovered().map((agent) => agent.pid),
+			).not.toContain(605);
+			expect(
+				registry.getDiscoveredAgents([]).map((agent) => agent.pid),
+			).not.toContain(605);
+			expect(registry.getDiagnostics().prunedDeadAgents).toBeGreaterThanOrEqual(
+				1,
+			);
+		});
 	});
 
 	// ── Dedup: same PID from session + process → one entry ───────────

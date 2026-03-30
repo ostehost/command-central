@@ -39,6 +39,7 @@ import {
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
 import { AgentStatusBar } from "../../src/services/agent-status-bar.js";
+import { PerformanceTestHelper } from "../helpers/performance-test-helper.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 // ── Mock data ────────────────────────────────────────────────────────
@@ -77,6 +78,34 @@ function loadAgentStatusFixture(fileName: string): TaskRegistry {
 		fileName,
 	);
 	return JSON.parse(fs.readFileSync(fixturePath, "utf-8")) as TaskRegistry;
+}
+
+function loadDogfoodFixture(): TaskRegistry {
+	const fixture = loadAgentStatusFixture("dogfood-live-tasks.json");
+	const nextTasks: Record<string, AgentTask> = {};
+	let runningIndex = 0;
+	const now = Date.now();
+
+	for (const task of Object.values(fixture.tasks)) {
+		if (task.status !== "running") {
+			nextTasks[task.id] = task;
+			continue;
+		}
+
+		runningIndex += 1;
+		const id = `dogfood-running-${runningIndex}`;
+		nextTasks[id] = {
+			...task,
+			id,
+			started_at: new Date(now - runningIndex * 5 * 60_000).toISOString(),
+			stream_file: `/tmp/command-central-fixtures/${id}.jsonl`,
+		};
+	}
+
+	return {
+		version: fixture.version,
+		tasks: nextTasks,
+	};
 }
 
 /** Helper: extract only task nodes from root children (skips summary node) */
@@ -715,6 +744,177 @@ describe("AgentStatusTreeProvider", () => {
 			const taskItem = provider.getTreeItem(taskNode);
 			expect(taskItem.label).toContain("🚀");
 			expect(taskItem.label).toContain("launcher-icon-task");
+		});
+	});
+
+	describe("dogfood discovery integration", () => {
+		test("live tasks snapshot keeps only genuine running tasks active and caps history", () => {
+			setAgentStatusConfig(vscodeMock, {
+				groupByProject: false,
+				sortMode: "recency",
+				maxVisibleAgents: 10,
+				discoveryEnabled: false,
+			});
+
+			const fixture = loadDogfoodFixture();
+			const runningTasks = Object.values(fixture.tasks).filter(
+				(task) => task.status === "running",
+			);
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache = new Map(
+				runningTasks.map((task) => [
+					task.session_id,
+					{ alive: true, checkedAt: Date.now() },
+				]),
+			);
+			provider.readRegistry = () => fixture;
+			provider.reload();
+
+			const tasks = provider.getTasks();
+			expect(tasks).toHaveLength(213);
+			expect(tasks.filter((task) => task.status === "running")).toHaveLength(2);
+
+			const children = provider.getChildren();
+			expect(getSummaryNode(children).label).toContain("2 working");
+			expect(getSummaryNode(children).label).toContain("213 agents");
+			expect(getTaskNodes(children)).toHaveLength(10);
+			expect(getOlderRunsNode(children).hiddenNodes.length).toBeGreaterThan(
+				150,
+			);
+		});
+
+		test("live tasks snapshot stays within the large-registry render budget", () => {
+			setAgentStatusConfig(vscodeMock, {
+				groupByProject: false,
+				sortMode: "recency",
+				maxVisibleAgents: 10,
+				discoveryEnabled: false,
+			});
+
+			const fixture = loadDogfoodFixture();
+			const runningTasks = Object.values(fixture.tasks).filter(
+				(task) => task.status === "running",
+			);
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache = new Map(
+				runningTasks.map((task) => [
+					task.session_id,
+					{ alive: true, checkedAt: Date.now() },
+				]),
+			);
+			provider.readRegistry = () => fixture;
+			provider.reload();
+
+			const measurement = PerformanceTestHelper.measureSync(
+				() => provider.getChildren(),
+				100,
+			);
+			expect(measurement.passed).toBe(true);
+		});
+
+		test("discovery diagnostics report shows retained vs filtered scanner matches", () => {
+			const fixture = loadDogfoodFixture();
+			provider.readRegistry = () => fixture;
+			provider.reload();
+			(
+				provider as unknown as {
+					_agentRegistry: {
+						getDiagnostics: () => {
+							discoveredCount: number;
+							sessionFileCount: number;
+							prunedDeadAgents: number;
+							processScanner: {
+								psRowCount: number;
+								agentLikeCandidateCount: number;
+								retained: Array<{
+									pid: number;
+									command: string;
+									binaryName?: string;
+									projectDir?: string;
+								}>;
+								filtered: Array<{
+									pid: number;
+									command: string;
+									binaryName?: string;
+									reason?: string;
+								}>;
+							};
+						};
+					};
+					_discoveredAgents: Array<{ pid: number }>;
+					_allDiscoveredAgents: Array<{ pid: number }>;
+				}
+			)._agentRegistry = {
+				getDiagnostics: () => ({
+					discoveredCount: 3,
+					sessionFileCount: 5,
+					prunedDeadAgents: 2,
+					processScanner: {
+						psRowCount: 85,
+						agentLikeCandidateCount: 85,
+						retained: [
+							{
+								pid: 4242,
+								command: "/opt/homebrew/bin/codex --model gpt-5",
+								binaryName: "codex",
+								projectDir: "/Users/test/projects/command-central",
+							},
+						],
+						filtered: [
+							{
+								pid: 5001,
+								command:
+									"/opt/homebrew/bin/terminal-notifier -message 'codex finished'",
+								binaryName: "terminal-notifier",
+								reason: "excluded-binary",
+							},
+							{
+								pid: 5002,
+								command:
+									"/usr/bin/osascript -e 'display notification \"claude done\"'",
+								binaryName: "osascript",
+								reason: "excluded-binary",
+							},
+						],
+					},
+				}),
+			};
+			(
+				provider as unknown as {
+					_discoveredAgents: Array<{ pid: number }>;
+					_allDiscoveredAgents: Array<{ pid: number }>;
+				}
+			)._discoveredAgents = [{ pid: 1 }, { pid: 2 }, { pid: 3 }];
+			(
+				provider as unknown as {
+					_allDiscoveredAgents: Array<{ pid: number }>;
+				}
+			)._allDiscoveredAgents = [{ pid: 1 }, { pid: 2 }, { pid: 3 }];
+
+			const report = provider.getDiscoveryDiagnosticsReport();
+			expect(report).toContain("Tasks in registry: 213");
+			expect(report).toContain("Session-file agents before PID pruning: 5");
+			expect(report).toContain(
+				"Dead discovered agents pruned by PID liveness: 2",
+			);
+			expect(report).toContain("Agent-like candidates: 85");
+			expect(report).toContain("Retained: 1");
+			expect(report).toContain("Filtered: 2");
+			expect(report).toContain("terminal-notifier");
+			expect(report).toContain("osascript");
+			expect(report).toContain("codex");
 		});
 	});
 
