@@ -64,7 +64,7 @@ const AGENT_CLI_RE = new RegExp(
 	"i",
 );
 
-const NOISE_RE = /electron|helper|renderer|gpu-process|crashpad|--type=/i;
+const NOISE_RE = /electron|renderer|gpu-process|crashpad|--type=/i;
 const EXCLUDED_BINARY_RE = new RegExp(
 	`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*(?:terminal-notifier|osascript|notify-send)${CLI_TOKEN_SUFFIX}`,
 	"i",
