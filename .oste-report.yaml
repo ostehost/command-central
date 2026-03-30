@@ -1,8 +1,6 @@
-task_id: "cc-codex-cwd-fix"
+task_id: "cc-verify-discovery-fix"
 status: "success"
-summary: "Fixed Codex CWD resolution via --cd flag parsing and added internal tool dir filtering"
-files_changed:
-  - "src/discovery/process-scanner.ts"
-  - "test/discovery/process-scanner.test.ts"
+summary: "Verified process-scanner tests: 40/40 pass, 0 fail, 76 expect() calls — --cd fix from cc-plans-discovery-fix is working"
+files_changed: []
 tests_passing: true
-next_steps: "Consider extending --cd extraction to handle quoted paths if Codex ever wraps them"
+next_steps: "No action needed — discovery fix is confirmed working"
