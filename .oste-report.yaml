@@ -1,11 +1,10 @@
-task_id: "cc-display-bugs-fix"
+task_id: "cc-time-display-fix"
 status: "success"
-summary: "Fixed agent status tree warning, diff-count, runtime-overlay, and prompt-summary display bugs with focused regression tests."
+summary: "Fixed Agent Status tree time labels to show terminal-state recency instead of task duration."
 files_changed:
   - "src/providers/agent-status-tree-provider.ts"
   - "test/tree-view/agent-status-tree-provider.test.ts"
-  - "test/tree-view/agent-status-tree-provider-per-file-diff.test.ts"
-  - "research/DEV-NOTES-agent-status-display-bugs.md"
+  - "research/DEV-NOTES-time-display-fix.md"
   - ".oste-report.yaml"
 tests_passing: true
-next_steps: "Consider reusing the new section-aware prompt summary logic for discovered-agent prompt extraction."
+next_steps: "If the dashboard or other surfaces reuse separate elapsed helpers, align them to the same terminal-state recency wording."

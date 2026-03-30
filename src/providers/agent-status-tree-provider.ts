@@ -349,9 +349,19 @@ export function formatElapsed(startedAt: string, now?: Date): string {
 	const minutes = Math.floor((totalSeconds % 3600) / 60);
 
 	if (hours > 0) {
+		if (minutes === 0) {
+			return `${hours}h`;
+		}
 		return `${hours}h ${minutes}m`;
 	}
 	return `${minutes}m`;
+}
+
+function getStatusElapsedReference(task: AgentTask): string {
+	if (task.status === "running") {
+		return task.started_at;
+	}
+	return task.completed_at ?? task.started_at;
 }
 
 // ── Task normalization (v1 → v2) ─────────────────────────────────────
@@ -3386,24 +3396,24 @@ export class AgentStatusTreeProvider
 	}
 
 	private formatElapsedDescription(task: AgentTask): string {
-		const elapsed = formatElapsed(task.started_at);
+		const elapsed = formatElapsed(getStatusElapsedReference(task));
 		switch (task.status) {
 			case "running":
 				return `Running for ${elapsed}`;
 			case "completed":
 			case "completed_dirty":
 			case "completed_stale":
-				return `Completed in ${elapsed}`;
+				return `Completed ${elapsed} ago`;
 			case "failed":
-				return `Failed after ${elapsed}`;
+				return `Failed ${elapsed} ago`;
 			case "contract_failure":
-				return `Contract failure after ${elapsed}`;
+				return `Contract failure ${elapsed} ago`;
 			case "stopped":
-				return `Stopped after ${elapsed}`;
+				return `Stopped ${elapsed} ago`;
 			case "killed":
-				return `Killed after ${elapsed}`;
+				return `Killed ${elapsed} ago`;
 			default:
-				return `Failed after ${elapsed}`;
+				return `Failed ${elapsed} ago`;
 		}
 	}
 

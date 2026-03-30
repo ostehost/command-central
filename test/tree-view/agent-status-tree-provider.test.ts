@@ -180,6 +180,11 @@ describe("formatElapsed", () => {
 		expect(formatElapsed("2026-02-25T08:00:00Z", now)).toBe("2h 15m");
 	});
 
+	test("omits zero minutes for exact-hour durations", () => {
+		const now = new Date("2026-02-25T10:00:00Z");
+		expect(formatElapsed("2026-02-25T08:00:00Z", now)).toBe("2h");
+	});
+
 	test("shows 0m for same time", () => {
 		const now = new Date("2026-02-25T08:00:00Z");
 		expect(formatElapsed("2026-02-25T08:00:00Z", now)).toBe("0m");
@@ -2234,6 +2239,51 @@ describe("AgentStatusTreeProvider", () => {
 		const item = provider.getTreeItem(node);
 		expect(item.command).toBeDefined();
 		expect(item.command?.command).toBe("commandCentral.focusAgentTerminal");
+	});
+
+	describe("task status time descriptions", () => {
+		test("running tasks show elapsed time since start", () => {
+			const task = createMockTask({
+				status: "running",
+				started_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+			});
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("Running for 5m");
+		});
+
+		test("completed tasks show time since completion instead of duration", () => {
+			const task = createMockTask({
+				status: "completed",
+				started_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+				completed_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+			});
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("Completed 1h ago");
+			expect(item.description).not.toContain("Completed 2h");
+			expect(item.description).not.toContain("Completed in");
+		});
+
+		test("failed tasks show time since completion using completed_at", () => {
+			const task = createMockTask({
+				status: "failed",
+				started_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+				completed_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+			});
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("Failed 30m ago");
+			expect(item.description).not.toContain("Failed after");
+		});
+
+		test("stopped tasks show time since completion using completed_at", () => {
+			const task = createMockTask({
+				status: "stopped",
+				started_at: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+				completed_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+			});
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("Stopped 2h ago");
+			expect(item.description).not.toContain("Stopped after");
+		});
 	});
 
 	describe("stuck agent detection", () => {
