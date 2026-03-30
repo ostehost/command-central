@@ -86,6 +86,7 @@ export interface AgentTask {
 	error_message?: string | null;
 	completed_at?: string | null;
 	model?: string | null;
+	prompt_summary?: string | null;
 }
 
 // ── Tree node types ──────────────────────────────────────────────────
@@ -557,6 +558,7 @@ function normalizeTask(
 		exit_code: asNullableNumber(raw["exit_code"]) ?? null,
 		error_message: asString(raw["error_message"]) ?? null,
 		completed_at: asString(raw["completed_at"]) ?? null,
+		prompt_summary: asString(raw["prompt_summary"]) ?? null,
 	};
 }
 
@@ -2591,10 +2593,14 @@ export class AgentStatusTreeProvider
 			});
 		}
 
+		const promptSummary = this.readPromptSummary(t.prompt_file);
+		const isPromptFallback =
+			!promptSummary || promptSummary === path.basename(t.prompt_file);
 		details.push({
 			type: "detail",
 			label: "Prompt",
-			value: this.readPromptSummary(t.prompt_file),
+			value:
+				isPromptFallback && t.prompt_summary ? t.prompt_summary : promptSummary,
 			taskId: t.id,
 		});
 
