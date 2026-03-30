@@ -10,6 +10,7 @@
 
 import { execFile, execFileSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
@@ -624,6 +625,10 @@ export class AgentStatusTreeProvider
 		string,
 		{ alive: boolean; checkedAt: number }
 	>();
+	private readonly _persistSessionHealthCache = new Map<
+		string,
+		{ alive: boolean; checkedAt: number }
+	>();
 	private projectIconManager: ProjectIconManager;
 
 	constructor(projectIconManager?: ProjectIconManager) {
@@ -834,6 +839,33 @@ export class AgentStatusTreeProvider
 		return alive;
 	}
 
+	private isPersistSessionAlive(sessionId: string): boolean {
+		const cacheTtlMs = 5_000;
+		const cached = this._persistSessionHealthCache.get(sessionId);
+		const now = Date.now();
+		if (cached && now - cached.checkedAt < cacheTtlMs) {
+			return cached.alive;
+		}
+
+		let alive = false;
+		try {
+			const socketPath = path.join(
+				os.homedir(),
+				".local",
+				"share",
+				"cc",
+				"sockets",
+				`${sessionId}.sock`,
+			);
+			execFileSync("persist", ["-s", socketPath], { timeout: 500 });
+			alive = true;
+		} catch {
+			alive = false;
+		}
+		this._persistSessionHealthCache.set(sessionId, { alive, checkedAt: now });
+		return alive;
+	}
+
 	private isRunningTaskHealthy(task: AgentTask): boolean {
 		if (task.status !== "running") return true;
 
@@ -845,14 +877,16 @@ export class AgentStatusTreeProvider
 		const looksStale =
 			ageMs !== null && ageMs >= staleThresholdMs && this.isAgentStuck(task);
 
-		// Launcher sessions are expected to be tmux-backed; verify session liveness.
-		if (
-			(task.terminal_backend === "tmux" ||
-				task.terminal_backend === "persist") &&
-			isValidSessionId(task.session_id)
-		) {
-			if (!this.isTmuxSessionAlive(task.session_id)) return false;
-			return !looksStale;
+		// Verify session liveness using the appropriate backend check.
+		if (isValidSessionId(task.session_id)) {
+			if (task.terminal_backend === "persist") {
+				if (!this.isPersistSessionAlive(task.session_id)) return false;
+				return !looksStale;
+			}
+			if (task.terminal_backend === "tmux") {
+				if (!this.isTmuxSessionAlive(task.session_id)) return false;
+				return !looksStale;
+			}
 		}
 
 		if (this.hasLiveDiscoveredSession(task)) {
@@ -995,6 +1029,7 @@ export class AgentStatusTreeProvider
 				staleTaskIds.add(task.id);
 			}
 			this._tmuxSessionHealthCache.delete(sessionId);
+			this._persistSessionHealthCache.delete(sessionId);
 		}
 
 		return tasks.map((task) =>
@@ -3784,6 +3819,7 @@ export class AgentStatusTreeProvider
 			this._agentRegistry = null;
 		}
 		this._tmuxSessionHealthCache.clear();
+		this._persistSessionHealthCache.clear();
 		for (const d of this.disposables) d.dispose();
 	}
 }

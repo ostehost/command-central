@@ -497,12 +497,59 @@ describe("AgentStatusTreeProvider", () => {
 			}
 		});
 
-		test("downgrades unhealthy running persist task to stopped", () => {
+		test("downgrades unhealthy running persist task to stopped when socket is dead", () => {
 			const task = createMockTask({
 				id: "persist-running",
 				status: "running",
 				terminal_backend: "persist",
 			});
+			(
+				provider as unknown as {
+					_persistSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._persistSessionHealthCache.set(task.session_id, {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("stopped");
+		});
+
+		test("persist-backed running task shows as running when socket is alive", () => {
+			const task = createMockTask({
+				id: "persist-alive",
+				status: "running",
+				terminal_backend: "persist",
+			});
+			(
+				provider as unknown as {
+					_persistSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._persistSessionHealthCache.set(task.session_id, {
+				alive: true,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("running");
+		});
+
+		test("tmux-backed running task still uses tmux cache (no regression)", () => {
+			const task = createMockTask({
+				id: "tmux-check",
+				status: "running",
+				terminal_backend: "tmux",
+			});
+			// Set tmux cache to alive
 			(
 				provider as unknown as {
 					_tmuxSessionHealthCache: Map<
@@ -511,13 +558,56 @@ describe("AgentStatusTreeProvider", () => {
 					>;
 				}
 			)._tmuxSessionHealthCache.set(task.session_id, {
+				alive: true,
+				checkedAt: Date.now(),
+			});
+			// Persist cache says dead — should be ignored for tmux tasks
+			(
+				provider as unknown as {
+					_persistSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._persistSessionHealthCache.set(task.session_id, {
 				alive: false,
 				checkedAt: Date.now(),
 			});
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
-			expect(provider.getTasks()[0]?.status).toBe("stopped");
+			expect(provider.getTasks()[0]?.status).toBe("running");
+		});
+
+		test("persist health cache is used on second call within TTL", () => {
+			const task = createMockTask({
+				id: "persist-cached",
+				status: "running",
+				terminal_backend: "persist",
+			});
+			const persistCache = (
+				provider as unknown as {
+					_persistSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._persistSessionHealthCache;
+			persistCache.set(task.session_id, {
+				alive: true,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+			// First call uses cache
+			expect(provider.getTasks()[0]?.status).toBe("running");
+
+			// Reload again — cache entry should still be used (within 5s TTL)
+			const sizeBeforeReload = persistCache.size;
+			provider.reload();
+			expect(provider.getTasks()[0]?.status).toBe("running");
+			// Cache should not have grown (no duplicate entries)
+			expect(persistCache.size).toBe(sizeBeforeReload);
 		});
 
 		test("keeps only newest running task per reused session id", () => {
@@ -538,12 +628,12 @@ describe("AgentStatusTreeProvider", () => {
 			});
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
+					_persistSessionHealthCache: Map<
 						string,
 						{ alive: boolean; checkedAt: number }
 					>;
 				}
-			)._tmuxSessionHealthCache.set("agent-shared", {
+			)._persistSessionHealthCache.set("agent-shared", {
 				alive: true,
 				checkedAt: Date.now(),
 			});
@@ -592,12 +682,12 @@ describe("AgentStatusTreeProvider", () => {
 			try {
 				(
 					provider as unknown as {
-						_tmuxSessionHealthCache: Map<
+						_persistSessionHealthCache: Map<
 							string,
 							{ alive: boolean; checkedAt: number }
 						>;
 					}
-				)._tmuxSessionHealthCache.set(stale.session_id, {
+				)._persistSessionHealthCache.set(stale.session_id, {
 					alive: false,
 					checkedAt: Date.now(),
 				});
@@ -760,6 +850,12 @@ describe("AgentStatusTreeProvider", () => {
 			const runningTasks = Object.values(fixture.tasks).filter(
 				(task) => task.status === "running",
 			);
+			const tmuxRunning = runningTasks.filter(
+				(task) => task.terminal_backend === "tmux",
+			);
+			const persistRunning = runningTasks.filter(
+				(task) => task.terminal_backend === "persist",
+			);
 			(
 				provider as unknown as {
 					_tmuxSessionHealthCache: Map<
@@ -768,7 +864,20 @@ describe("AgentStatusTreeProvider", () => {
 					>;
 				}
 			)._tmuxSessionHealthCache = new Map(
-				runningTasks.map((task) => [
+				tmuxRunning.map((task) => [
+					task.session_id,
+					{ alive: true, checkedAt: Date.now() },
+				]),
+			);
+			(
+				provider as unknown as {
+					_persistSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._persistSessionHealthCache = new Map(
+				persistRunning.map((task) => [
 					task.session_id,
 					{ alive: true, checkedAt: Date.now() },
 				]),
@@ -801,6 +910,12 @@ describe("AgentStatusTreeProvider", () => {
 			const runningTasks = Object.values(fixture.tasks).filter(
 				(task) => task.status === "running",
 			);
+			const tmuxRunning = runningTasks.filter(
+				(task) => task.terminal_backend === "tmux",
+			);
+			const persistRunning = runningTasks.filter(
+				(task) => task.terminal_backend === "persist",
+			);
 			(
 				provider as unknown as {
 					_tmuxSessionHealthCache: Map<
@@ -809,7 +924,20 @@ describe("AgentStatusTreeProvider", () => {
 					>;
 				}
 			)._tmuxSessionHealthCache = new Map(
-				runningTasks.map((task) => [
+				tmuxRunning.map((task) => [
+					task.session_id,
+					{ alive: true, checkedAt: Date.now() },
+				]),
+			);
+			(
+				provider as unknown as {
+					_persistSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._persistSessionHealthCache = new Map(
+				persistRunning.map((task) => [
 					task.session_id,
 					{ alive: true, checkedAt: Date.now() },
 				]),
