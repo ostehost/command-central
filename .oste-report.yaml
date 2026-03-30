@@ -1,7 +1,8 @@
-task_id: "cc-codex-smoke-v1"
+task_id: "cc-codex-cwd-fix"
 status: "success"
-summary: "Smoke checks passed: just check clean, discovery tests 82/82 passing, and latest 3 commits look correct"
+summary: "Fixed Codex CWD resolution via --cd flag parsing and added internal tool dir filtering"
 files_changed:
-  - ".oste-report.yaml"
+  - "src/discovery/process-scanner.ts"
+  - "test/discovery/process-scanner.test.ts"
 tests_passing: true
-next_steps: "None"
+next_steps: "Consider extending --cd extraction to handle quoted paths if Codex ever wraps them"
