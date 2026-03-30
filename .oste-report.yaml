@@ -1,7 +1,13 @@
-task_id: "prompt-summary-persist"
+task_id: "cron-sidebar-phase1"
 status: "success"
-summary: "Persist prompt_summary in tasks.json at registration and use as fallback in tree provider"
+summary: "Implemented Cron Jobs sidebar view Phase 1 — types, CronService (CLI wrapper + file watching), CronTreeProvider (tree rendering with status icons + detail children), package.json wiring, extension.ts integration, and 33 passing tests"
 files_changed:
-  - "src/providers/agent-status-tree-provider.ts"
+  - "src/types/cron-types.ts"
+  - "src/services/cron-service.ts"
+  - "src/providers/cron-tree-provider.ts"
+  - "package.json"
+  - "src/extension.ts"
+  - "test/services/cron-service.test.ts"
+  - "test/providers/cron-tree-provider.test.ts"
 tests_passing: true
-next_steps: "Launcher change already committed in ghostty-launcher (f8a5ef0). Both repos in sync."
+next_steps: "Phase 2 — Create/Edit job wizard (QuickPick flow), delete confirmation dialog, run history webview"

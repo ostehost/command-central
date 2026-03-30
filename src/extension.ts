@@ -622,6 +622,75 @@ export async function activate(
 		);
 
 		// ============================================================================
+		// Cron Jobs View
+		// ============================================================================
+		const { CronService } = await import("./services/cron-service.js");
+		const { CronTreeProvider } = await import(
+			"./providers/cron-tree-provider.js"
+		);
+
+		const cronService = new CronService();
+		const cronTreeProvider = new CronTreeProvider(cronService);
+		const cronView = vscode.window.createTreeView("commandCentral.cronJobs", {
+			treeDataProvider: cronTreeProvider,
+			showCollapseAll: true,
+		});
+		context.subscriptions.push(cronService, cronTreeProvider, cronView);
+		cronService.start(() => cronTreeProvider.refresh());
+
+		context.subscriptions.push(
+			vscode.commands.registerCommand("commandCentral.cron.refresh", () =>
+				cronTreeProvider.refresh(),
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.cron.runNow",
+				async (node?: { kind: string; job?: { id: string } }) => {
+					if (node?.kind === "job" && node.job) {
+						await cronService.runJob(node.job.id);
+					}
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.cron.enable",
+				async (node?: { kind: string; job?: { id: string } }) => {
+					if (node?.kind === "job" && node.job) {
+						await cronService.enableJob(node.job.id);
+					}
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.cron.disable",
+				async (node?: { kind: string; job?: { id: string } }) => {
+					if (node?.kind === "job" && node.job) {
+						await cronService.disableJob(node.job.id);
+					}
+				},
+			),
+			vscode.commands.registerCommand("commandCentral.cron.create", () =>
+				vscode.window.showInformationMessage(
+					"Create Cron Job — coming in Phase 2",
+				),
+			),
+			vscode.commands.registerCommand("commandCentral.cron.edit", () =>
+				vscode.window.showInformationMessage(
+					"Edit Cron Job — coming in Phase 2",
+				),
+			),
+			vscode.commands.registerCommand("commandCentral.cron.delete", () =>
+				vscode.window.showInformationMessage(
+					"Delete Cron Job — coming in Phase 2",
+				),
+			),
+			vscode.commands.registerCommand("commandCentral.cron.viewHistory", () =>
+				vscode.window.showInformationMessage(
+					"View Run History — coming in Phase 2",
+				),
+			),
+		);
+
+		mainLogger.info("Cron Jobs view initialized");
+
+		// ============================================================================
 		// Agent Status Panel
 		// ============================================================================
 		const sessionStore = new SessionStore();
