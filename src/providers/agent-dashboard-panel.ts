@@ -9,7 +9,10 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { countAgentStatuses } from "../utils/agent-counts.js";
-import type { AgentTask } from "./agent-status-tree-provider.js";
+import {
+	type AgentTask,
+	formatTaskElapsedDescription,
+} from "./agent-status-tree-provider.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -62,19 +65,6 @@ function escapeHtml(text: string): string {
 		.replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;")
 		.replace(/'/g, "&#039;");
-}
-
-function formatElapsed(startedAt: string): string {
-	const start = new Date(startedAt).getTime();
-	const now = Date.now();
-	const diffMs = now - start;
-	const diffMin = Math.floor(diffMs / 60000);
-	const diffHr = Math.floor(diffMin / 60);
-	const diffDay = Math.floor(diffHr / 24);
-
-	if (diffDay > 0) return `${diffDay}d ${diffHr % 24}h`;
-	if (diffHr > 0) return `${diffHr}h ${diffMin % 60}m`;
-	return `${diffMin}m`;
 }
 
 // ── Panel ────────────────────────────────────────────────────────────
@@ -218,7 +208,9 @@ ${stopped.length > 0 ? `<h2>Stopped</h2><div class="grid">${stopped.map((t) => t
 		const roleIcon =
 			task.role && ROLE_ICONS[task.role] ? `${ROLE_ICONS[task.role]} ` : "";
 		const projectName = task.project_dir ? path.basename(task.project_dir) : "";
-		const elapsed = task.started_at ? formatElapsed(task.started_at) : "";
+		const elapsedDescription = task.started_at
+			? formatTaskElapsedDescription(task)
+			: "";
 
 		let gitHtml = "";
 		if (this.gitInfoProvider && task.project_dir) {
@@ -234,7 +226,7 @@ ${stopped.length > 0 ? `<h2>Stopped</h2><div class="grid">${stopped.map((t) => t
 		<span class="status-badge ${escapeHtml(task.status)}">${escapeHtml(statusLabel)}</span>
 	</div>
 	${projectName ? `<div class="detail">Project: ${escapeHtml(projectName)}</div>` : ""}
-	${elapsed ? `<div class="detail">Elapsed: ${escapeHtml(elapsed)}</div>` : ""}
+	${elapsedDescription ? `<div class="detail">${escapeHtml(elapsedDescription)}</div>` : ""}
 	${gitHtml}
 </div>`;
 	}

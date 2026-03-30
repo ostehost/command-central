@@ -364,6 +364,28 @@ function getStatusElapsedReference(task: AgentTask): string {
 	return task.completed_at ?? task.started_at;
 }
 
+export function formatTaskElapsedDescription(task: AgentTask): string {
+	const elapsed = formatElapsed(getStatusElapsedReference(task));
+	switch (task.status) {
+		case "running":
+			return `Running for ${elapsed}`;
+		case "completed":
+		case "completed_dirty":
+		case "completed_stale":
+			return `Completed ${elapsed} ago`;
+		case "failed":
+			return `Failed ${elapsed} ago`;
+		case "contract_failure":
+			return `Contract failure ${elapsed} ago`;
+		case "stopped":
+			return `Stopped ${elapsed} ago`;
+		case "killed":
+			return `Killed ${elapsed} ago`;
+		default:
+			return `Failed ${elapsed} ago`;
+	}
+}
+
 // ── Task normalization (v1 → v2) ─────────────────────────────────────
 
 const VALID_TASK_STATUSES = new Set<AgentTaskStatus>([
@@ -3390,25 +3412,7 @@ export class AgentStatusTreeProvider
 	}
 
 	private formatElapsedDescription(task: AgentTask): string {
-		const elapsed = formatElapsed(getStatusElapsedReference(task));
-		switch (task.status) {
-			case "running":
-				return `Running for ${elapsed}`;
-			case "completed":
-			case "completed_dirty":
-			case "completed_stale":
-				return `Completed ${elapsed} ago`;
-			case "failed":
-				return `Failed ${elapsed} ago`;
-			case "contract_failure":
-				return `Contract failure ${elapsed} ago`;
-			case "stopped":
-				return `Stopped ${elapsed} ago`;
-			case "killed":
-				return `Killed ${elapsed} ago`;
-			default:
-				return `Failed ${elapsed} ago`;
-		}
+		return formatTaskElapsedDescription(task);
 	}
 
 	private getStuckThresholdMinutes(): number {

@@ -304,11 +304,58 @@ describe("AgentDashboardPanel", () => {
 		test("renders elapsed time", () => {
 			const panel = new AgentDashboardPanel();
 			const tasks: Record<string, AgentTask> = {
-				t1: createMockTask({ id: "t1", started_at: "2026-02-25T08:00:00Z" }),
+				t1: createMockTask({
+					id: "t1",
+					status: "running",
+					started_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+				}),
 			};
 			const html = panel.getHtml(tasks);
 
-			expect(html).toContain("Elapsed:");
+			expect(html).toContain("Running for 5m");
+			expect(html).not.toContain("Elapsed:");
+			panel.dispose();
+		});
+
+		test("renders completed tasks using time since completion", () => {
+			const panel = new AgentDashboardPanel();
+			const tasks: Record<string, AgentTask> = {
+				t1: createMockTask({
+					id: "t1",
+					status: "completed",
+					started_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+					completed_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+				}),
+			};
+			const html = panel.getHtml(tasks);
+
+			expect(html).toContain("Completed 1h ago");
+			expect(html).not.toContain("Elapsed:");
+			expect(html).not.toContain("Completed 2h");
+			panel.dispose();
+		});
+
+		test("renders failed and stopped tasks using time since completion", () => {
+			const panel = new AgentDashboardPanel();
+			const tasks: Record<string, AgentTask> = {
+				failed: createMockTask({
+					id: "failed",
+					status: "failed",
+					started_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+					completed_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+				}),
+				stopped: createMockTask({
+					id: "stopped",
+					status: "stopped",
+					started_at: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+					completed_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+				}),
+			};
+			const html = panel.getHtml(tasks);
+
+			expect(html).toContain("Failed 30m ago");
+			expect(html).toContain("Stopped 2h ago");
+			expect(html).not.toContain("Elapsed:");
 			panel.dispose();
 		});
 

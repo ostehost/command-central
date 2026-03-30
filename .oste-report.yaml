@@ -1,10 +1,10 @@
-task_id: "consistency-polish"
+task_id: "cc-dashboard-time-parity"
 status: "success"
-summary: "Fixed three display inconsistencies: scope toggle icons (action→state convention), status mode group sorting (alphabetical→freshest activity), and ambiguous grouping command titles"
+summary: "Aligned Agent Dashboard task timing text with the Agent Status tree"
 files_changed:
-  - "package.json"
+  - "src/providers/agent-dashboard-panel.ts"
   - "src/providers/agent-status-tree-provider.ts"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
-  - "research/DEV-NOTES-consistency-polish.md"
+  - "test/providers/agent-dashboard-panel.test.ts"
+  - "research/DEV-NOTES-dashboard-time-parity.md"
 tests_passing: true
-next_steps: "Consider adding a test that explicitly validates scope toggle icon values in agent-menu-contributions.test.ts"
+next_steps: "If the task system requirement must be enforced strictly, run this same task in a session with write access to ~/.claude/tasks."
