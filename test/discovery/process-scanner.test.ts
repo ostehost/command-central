@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import { ProcessScanner } from "../../src/discovery/process-scanner.js";
 
 const FIXED_NOW = Date.parse("2026-03-29T23:30:00Z");
@@ -360,6 +361,32 @@ describe("ProcessScanner", () => {
 		});
 	});
 
+	// ── extractExplicitProjectDir ────────────────────────────────────
+
+	describe("extractExplicitProjectDir", () => {
+		test("extracts --cd value (space separated)", () => {
+			expect(
+				scanner.extractExplicitProjectDir(
+					"codex exec --cd /Users/test/projects/my-app 'fix bug'",
+				),
+			).toBe("/Users/test/projects/my-app");
+		});
+
+		test("extracts --cd value (equals form)", () => {
+			expect(
+				scanner.extractExplicitProjectDir(
+					"codex exec --cd=/Users/test/projects/my-app 'fix bug'",
+				),
+			).toBe("/Users/test/projects/my-app");
+		});
+
+		test("returns null when --cd is not present", () => {
+			expect(
+				scanner.extractExplicitProjectDir("codex exec 'fix bug'"),
+			).toBeNull();
+		});
+	});
+
 	// ── scan (integration) ───────────────────────────────────────────
 
 	describe("scan", () => {
@@ -587,6 +614,67 @@ describe("ProcessScanner", () => {
 			} finally {
 				fs.rmSync(streamFile, { force: true });
 			}
+		});
+
+		test("prefers --cd flag over lsof CWD for Codex processes", async () => {
+			mockExecFile.mockImplementation(
+				(cmd: unknown, args: unknown, _opts: unknown) => {
+					if (cmd === "ps") {
+						return Promise.resolve({
+							stdout: [
+								"  PID   STARTED                       COMMAND",
+								"77001 Sun Mar 29 23:03:22 2026 /opt/homebrew/bin/codex exec --cd /Users/test/projects/my-app 'fix the bug'",
+							].join("\n"),
+							stderr: "",
+						});
+					}
+					if (cmd === "lsof" && Array.isArray(args) && args[1] === "77001") {
+						return Promise.resolve({
+							stdout: `p77001\nfcwd\nn${os.homedir()}/.claude/plans\n`,
+							stderr: "",
+						});
+					}
+					return Promise.resolve({ stdout: "", stderr: "" });
+				},
+			);
+
+			const agents = await scanner.scan();
+			expect(agents).toHaveLength(1);
+			expect(agents[0]?.projectDir).toBe("/Users/test/projects/my-app");
+		});
+
+		test("filters processes with internal tool dir CWD when no --cd present", async () => {
+			mockExecFile.mockImplementation(
+				(cmd: unknown, args: unknown, _opts: unknown) => {
+					if (cmd === "ps") {
+						return Promise.resolve({
+							stdout: [
+								"  PID   STARTED                       COMMAND",
+								"77002 Sun Mar 29 23:03:22 2026 /opt/homebrew/bin/codex exec 'do something'",
+							].join("\n"),
+							stderr: "",
+						});
+					}
+					if (cmd === "lsof" && Array.isArray(args) && args[1] === "77002") {
+						return Promise.resolve({
+							stdout: `p77002\nfcwd\nn${os.homedir()}/.claude/plans\n`,
+							stderr: "",
+						});
+					}
+					return Promise.resolve({ stdout: "", stderr: "" });
+				},
+			);
+
+			const agents = await scanner.scan();
+			expect(agents).toHaveLength(0);
+			expect(
+				scanner
+					.getLastDiagnostics()
+					.filtered.some(
+						(entry) =>
+							entry.pid === 77002 && entry.reason === "internal-tool-dir",
+					),
+			).toBe(true);
 		});
 
 		test("populates worktree info when resolver detects a linked worktree", async () => {

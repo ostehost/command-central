@@ -10,6 +10,7 @@
 
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import { promisify } from "node:util";
 import type { DiscoveredAgent } from "./types.js";
 import { resolveWorktree } from "./worktree-resolver.js";
@@ -105,7 +106,8 @@ export type ProcessScanFilterReason =
 	| "noise-process"
 	| "shell-process"
 	| "stale-process"
-	| "cwd-unresolved";
+	| "cwd-unresolved"
+	| "internal-tool-dir";
 
 export interface ProcessScanDiagnosticEntry {
 	pid: number;
@@ -169,7 +171,9 @@ export class ProcessScanner {
 		// Resolve CWDs in parallel (bounded by candidate count, typically < 10)
 		const results = await Promise.all(
 			candidates.map(async (c) => {
-				const projectDir = await this.getProcessCwd(c.pid);
+				const lsofCwd = await this.getProcessCwd(c.pid);
+				const explicitDir = this.extractExplicitProjectDir(c.command);
+				const projectDir = explicitDir ?? lsofCwd;
 				if (!projectDir) {
 					filtered.push({
 						pid: c.pid,
@@ -177,6 +181,17 @@ export class ProcessScanner {
 						startTime: c.startTime,
 						binaryName: this.extractBinaryName(c.command),
 						reason: "cwd-unresolved",
+					});
+					return null;
+				}
+				if (this.isInternalToolDir(projectDir)) {
+					filtered.push({
+						pid: c.pid,
+						command: c.command,
+						startTime: c.startTime,
+						binaryName: this.extractBinaryName(c.command),
+						projectDir,
+						reason: "internal-tool-dir",
 					});
 					return null;
 				}
@@ -417,6 +432,31 @@ export class ProcessScanner {
 
 	private extractBinaryName(command: string): string | undefined {
 		return classifyProcessCommand(command).binaryName;
+	}
+
+	/**
+	 * Extract an explicit project directory from the command string.
+	 * Codex CLI uses `--cd <dir>` to specify the working project directory.
+	 */
+	extractExplicitProjectDir(command: string): string | null {
+		const match = command.match(/--cd(?:=|\s+)(\S+)/);
+		return match?.[1] ?? null;
+	}
+
+	/**
+	 * Returns true if the given directory is inside a known internal tool path
+	 * (e.g. ~/.claude/, ~/.codex/, ~/.config/).
+	 */
+	private isInternalToolDir(dir: string): boolean {
+		const home = os.homedir();
+		const internalPrefixes = [
+			`${home}/.claude/`,
+			`${home}/.codex/`,
+			`${home}/.config/`,
+		];
+		return internalPrefixes.some(
+			(prefix) => dir === prefix.slice(0, -1) || dir.startsWith(prefix),
+		);
 	}
 
 	private isAgentModeProcess(
