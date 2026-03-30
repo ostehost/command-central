@@ -126,7 +126,7 @@ describe("SessionWatcher", () => {
 			alivePids.add(100);
 			alivePids.add(200);
 			pidCommands[100] = "/usr/local/bin/claude --print one";
-			pidCommands[200] = "/opt/homebrew/bin/codex --model gpt-5";
+			pidCommands[200] = "/opt/homebrew/bin/codex exec --model gpt-5";
 
 			watcher.start();
 			expect(watcher.getAgents()).toHaveLength(2);

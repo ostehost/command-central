@@ -14,6 +14,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type * as vscode from "vscode";
 import { classifyProcessCommand } from "./process-scanner.js";
+
+/** Matches agent-mode invocations: -p, --print, exec subcommand, --prompt */
+const AGENT_MODE_RE =
+	/(?:\s|^)(?:-p|--print|exec\s|--prompt(?:\s|=)|--resume(?:\s|=|$))/i;
+
 import type { DiscoveredAgent } from "./types.js";
 
 /** Shape of ~/.claude/sessions/<PID>.json */
@@ -168,7 +173,13 @@ export class SessionWatcher implements vscode.Disposable {
 			// If `ps` is unavailable, keep the session file rather than over-pruning.
 			return true;
 		}
-		return classifyProcessCommand(command).kind === "agent";
+		const identity = classifyProcessCommand(command);
+		if (identity.kind !== "agent") return false;
+
+		// Ensure the process is in agent mode (e.g. claude -p/--print, codex exec)
+		// rather than an interactive CLI session that merely matches the binary.
+		// Interactive sessions (bare `claude`, `codex` without exec) should be excluded.
+		return AGENT_MODE_RE.test(command);
 	}
 
 	private getProcessCommand(pid: number): string | null {
