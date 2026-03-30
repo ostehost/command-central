@@ -1,6 +1,8 @@
-task_id: "verify-session-watcher-tests"
+task_id: "cc-persist-health-fix"
 status: "success"
-summary: "Verified session-watcher.test.ts: 16/16 tests pass, 28 expect() calls, 0 failures"
-files_changed: []
+summary: "Fixed persist-backed agent health check to use persist socket instead of tmux, added isPersistSessionAlive() with cache"
+files_changed:
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
 tests_passing: true
-next_steps: "No action needed — all tests green"
+next_steps: "Monitor persist-backed agents in tree view to confirm they display as Running when sockets are alive"
