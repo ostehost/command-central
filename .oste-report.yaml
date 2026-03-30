@@ -1,13 +1,8 @@
-task_id: "cron-sidebar-phase1"
+task_id: "polish-agent-status-tree-ux"
 status: "success"
-summary: "Implemented Cron Jobs sidebar view Phase 1 — types, CronService (CLI wrapper + file watching), CronTreeProvider (tree rendering with status icons + detail children), package.json wiring, extension.ts integration, and 33 passing tests"
+summary: "Polished Agent Status tree UX: cleaner labels, human-readable exit codes, hidden empty prompts, renamed attention→stopped"
 files_changed:
-  - "src/types/cron-types.ts"
-  - "src/services/cron-service.ts"
-  - "src/providers/cron-tree-provider.ts"
-  - "package.json"
-  - "src/extension.ts"
-  - "test/services/cron-service.test.ts"
-  - "test/providers/cron-tree-provider.test.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
 tests_passing: true
-next_steps: "Phase 2 — Create/Edit job wizard (QuickPick flow), delete confirmation dialog, run history webview"
+next_steps: "Consider updating agent-counts.ts formatCountSummary and agent-status-bar.ts tooltip to also use 'stopped' instead of 'attention' for full consistency"
