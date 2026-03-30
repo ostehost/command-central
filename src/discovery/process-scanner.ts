@@ -9,6 +9,7 @@
  */
 
 import { execFile } from "node:child_process";
+import * as fs from "node:fs";
 import { promisify } from "node:util";
 import type { DiscoveredAgent } from "./types.js";
 import { resolveWorktree } from "./worktree-resolver.js";
@@ -17,6 +18,9 @@ const defaultExecFileAsync = promisify(execFile);
 
 /** Timeout for shell commands (ms) */
 const CMD_TIMEOUT = 5_000;
+const DEFAULT_STALE_PROCESS_AGE_MS = 4 * 60 * 60_000;
+const DEFAULT_STALE_STREAM_THRESHOLD_MS = 10 * 60_000;
+const TASK_START_MATCH_WINDOW_MS = 15 * 60_000;
 
 /**
  * Regex hints used to identify supported agent CLIs.
@@ -75,11 +79,32 @@ export interface ProcessCommandIdentity {
 
 type ExecFileFn = typeof defaultExecFileAsync;
 type ResolveWorktreeFn = typeof resolveWorktree;
+type NowProviderFn = () => number;
+
+export interface LauncherTaskSnapshot {
+	status?: string | null;
+	pid?: number | null;
+	session_id?: string | null;
+	project_dir?: string | null;
+	started_at?: string | null;
+	stream_file?: string | null;
+	agent_backend?: string | null;
+	cli_name?: string | null;
+}
+
+export interface ProcessScannerOptions {
+	launcherTasksProvider?: () => LauncherTaskSnapshot[];
+	staleProcessAgeMs?: number;
+	staleStreamThresholdMs?: number;
+	nowProvider?: NowProviderFn;
+}
 
 export type ProcessScanFilterReason =
 	| "excluded-binary"
+	| "interactive-process"
 	| "noise-process"
 	| "shell-process"
+	| "stale-process"
 	| "cwd-unresolved";
 
 export interface ProcessScanDiagnosticEntry {
@@ -101,6 +126,10 @@ export interface ProcessScanDiagnostics {
 export class ProcessScanner {
 	private execFileAsync: ExecFileFn;
 	private resolveWorktreeFn: ResolveWorktreeFn;
+	private launcherTasksProvider: () => LauncherTaskSnapshot[];
+	private staleProcessAgeMs: number;
+	private staleStreamThresholdMs: number;
+	private nowProvider: NowProviderFn;
 	private lastDiagnostics: ProcessScanDiagnostics = {
 		psRowCount: 0,
 		agentLikeCandidateCount: 0,
@@ -108,9 +137,23 @@ export class ProcessScanner {
 		filtered: [],
 	};
 
-	constructor(execFileFn?: ExecFileFn, resolveWorktreeFn?: ResolveWorktreeFn) {
+	constructor(
+		execFileFn?: ExecFileFn,
+		resolveWorktreeFn?: ResolveWorktreeFn,
+		options?: ProcessScannerOptions,
+	) {
 		this.execFileAsync = execFileFn ?? defaultExecFileAsync;
 		this.resolveWorktreeFn = resolveWorktreeFn ?? resolveWorktree;
+		this.launcherTasksProvider = options?.launcherTasksProvider ?? (() => []);
+		this.staleProcessAgeMs = Math.max(
+			60_000,
+			options?.staleProcessAgeMs ?? DEFAULT_STALE_PROCESS_AGE_MS,
+		);
+		this.staleStreamThresholdMs = Math.max(
+			60_000,
+			options?.staleStreamThresholdMs ?? DEFAULT_STALE_STREAM_THRESHOLD_MS,
+		);
+		this.nowProvider = options?.nowProvider ?? (() => Date.now());
 	}
 
 	/**
@@ -139,13 +182,6 @@ export class ProcessScanner {
 				}
 				const meta = this.parseClaudeArgs(c.command);
 				const worktree = await this.resolveWorktreeFn(projectDir);
-				retained.push({
-					pid: c.pid,
-					command: c.command,
-					startTime: c.startTime,
-					binaryName: this.extractBinaryName(c.command),
-					projectDir,
-				});
 				const agent: DiscoveredAgent = {
 					pid: c.pid,
 					projectDir,
@@ -155,6 +191,24 @@ export class ProcessScanner {
 					worktree: worktree ?? undefined,
 					...meta,
 				};
+				if (this.isStaleProcess(agent)) {
+					filtered.push({
+						pid: c.pid,
+						command: c.command,
+						startTime: c.startTime,
+						binaryName: this.extractBinaryName(c.command),
+						projectDir,
+						reason: "stale-process",
+					});
+					return null;
+				}
+				retained.push({
+					pid: c.pid,
+					command: c.command,
+					startTime: c.startTime,
+					binaryName: this.extractBinaryName(c.command),
+					projectDir,
+				});
 				return agent;
 			}),
 		);
@@ -261,6 +315,17 @@ export class ProcessScanner {
 				});
 				continue;
 			}
+			const backend = this.detectBackend(command);
+			if (!backend || !this.isAgentModeProcess(command, backend)) {
+				diagnostics.filtered.push({
+					pid,
+					command,
+					startTime,
+					binaryName,
+					reason: "interactive-process",
+				});
+				continue;
+			}
 			if (NOISE_RE.test(command)) {
 				diagnostics.filtered.push({
 					pid,
@@ -353,6 +418,125 @@ export class ProcessScanner {
 	private extractBinaryName(command: string): string | undefined {
 		return classifyProcessCommand(command).binaryName;
 	}
+
+	private isAgentModeProcess(
+		command: string,
+		backend: NonNullable<DiscoveredAgent["agent_backend"]>,
+	): boolean {
+		const invocation = parseAgentCliInvocation(command);
+		if (!invocation || invocation.backend !== backend) return false;
+		const args = invocation.args.map((arg) => arg.toLowerCase());
+		switch (backend) {
+			case "claude":
+				return args.includes("-p") || args.includes("--print");
+			case "codex":
+			case "gemini":
+				return (
+					args[0] === "exec" ||
+					args.includes("-p") ||
+					args.includes("--print") ||
+					args.includes("--prompt")
+				);
+			default:
+				return false;
+		}
+	}
+
+	private isStaleProcess(agent: DiscoveredAgent): boolean {
+		const matchingTask = this.findMatchingLauncherTask(agent);
+		if (matchingTask && matchingTask.status !== "running") {
+			return true;
+		}
+		if (matchingTask?.status === "running") {
+			if (this.isTaskStreamStale(matchingTask)) {
+				return true;
+			}
+			if (this.hasRecentTaskStream(matchingTask)) {
+				return false;
+			}
+		}
+
+		return (
+			this.nowProvider() - agent.startTime.getTime() >= this.staleProcessAgeMs
+		);
+	}
+
+	private findMatchingLauncherTask(
+		agent: DiscoveredAgent,
+	): LauncherTaskSnapshot | null {
+		for (const task of this.launcherTasksProvider()) {
+			if (!task) continue;
+			const taskPid =
+				typeof task.pid === "number" && Number.isFinite(task.pid)
+					? task.pid
+					: null;
+			if (taskPid !== null && taskPid === agent.pid) {
+				return task;
+			}
+
+			if (
+				task.session_id &&
+				agent.sessionId &&
+				task.session_id === agent.sessionId
+			) {
+				return task;
+			}
+
+			if (!task.project_dir || task.project_dir !== agent.projectDir) {
+				continue;
+			}
+
+			const taskBackend = normalizeBackendHint(
+				task.agent_backend ?? task.cli_name ?? undefined,
+			);
+			if (
+				taskBackend &&
+				agent.agent_backend &&
+				taskBackend !== agent.agent_backend
+			) {
+				continue;
+			}
+
+			const taskStartedAtMs = new Date(task.started_at ?? "").getTime();
+			const agentStartedAtMs = agent.startTime.getTime();
+			if (
+				!Number.isFinite(taskStartedAtMs) ||
+				!Number.isFinite(agentStartedAtMs)
+			) {
+				continue;
+			}
+
+			if (
+				Math.abs(taskStartedAtMs - agentStartedAtMs) <=
+				TASK_START_MATCH_WINDOW_MS
+			) {
+				return task;
+			}
+		}
+
+		return null;
+	}
+
+	private hasRecentTaskStream(task: LauncherTaskSnapshot): boolean {
+		const mtimeMs = this.getTaskStreamMtime(task);
+		if (mtimeMs === null) return false;
+		return this.nowProvider() - mtimeMs < this.staleStreamThresholdMs;
+	}
+
+	private isTaskStreamStale(task: LauncherTaskSnapshot): boolean {
+		const mtimeMs = this.getTaskStreamMtime(task);
+		if (mtimeMs === null) return false;
+		return this.nowProvider() - mtimeMs >= this.staleStreamThresholdMs;
+	}
+
+	private getTaskStreamMtime(task: LauncherTaskSnapshot): number | null {
+		if (!task.stream_file) return null;
+		try {
+			return fs.statSync(task.stream_file).mtimeMs;
+		} catch {
+			return null;
+		}
+	}
 }
 
 export function classifyProcessCommand(
@@ -373,4 +557,82 @@ function extractCommandBinaryName(command: string): string | undefined {
 	if (!token) return undefined;
 	const unquoted = token.replace(/^['"]|['"]$/g, "");
 	return unquoted.split("/").at(-1) ?? unquoted;
+}
+
+type AgentCliInvocation = {
+	backend: NonNullable<DiscoveredAgent["agent_backend"]>;
+	args: string[];
+};
+
+function parseAgentCliInvocation(command: string): AgentCliInvocation | null {
+	const tokens = tokenizeCommand(command);
+	for (let index = 0; index < tokens.length; index += 1) {
+		const token = tokens[index];
+		if (!token) continue;
+		const backend = detectBackendFromToken(token);
+		if (!backend) continue;
+		return {
+			backend,
+			args: tokens.slice(index + 1).map((token) => stripMatchingQuotes(token)),
+		};
+	}
+	return null;
+}
+
+function tokenizeCommand(command: string): string[] {
+	return command.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
+}
+
+function stripMatchingQuotes(token: string): string {
+	return token.replace(/^(['"])(.*)\1$/s, "$2");
+}
+
+function detectBackendFromToken(
+	token: string,
+): NonNullable<DiscoveredAgent["agent_backend"]> | null {
+	const normalized = stripMatchingQuotes(token);
+	const basename = normalized.split("/").at(-1)?.toLowerCase() ?? "";
+	const lower = normalized.toLowerCase();
+
+	if (
+		basename === "claude" ||
+		basename === "claude.js" ||
+		lower.includes("/claude-code/") ||
+		lower === "@anthropic-ai/claude-code"
+	) {
+		return "claude";
+	}
+	if (
+		basename === "codex" ||
+		basename === "codex.js" ||
+		basename === "codex-cli" ||
+		basename === "codex-cli.js" ||
+		lower.includes("node_modules/@openai/codex") ||
+		lower === "@openai/codex"
+	) {
+		return "codex";
+	}
+	if (
+		basename === "gemini" ||
+		basename === "gemini.js" ||
+		basename === "gemini-cli" ||
+		basename === "gemini-cli.js" ||
+		lower.includes("node_modules/@google/gemini-cli") ||
+		lower === "@google/gemini-cli"
+	) {
+		return "gemini";
+	}
+
+	return null;
+}
+
+function normalizeBackendHint(
+	value: string | undefined,
+): DiscoveredAgent["agent_backend"] | undefined {
+	if (!value) return undefined;
+	const lower = value.toLowerCase();
+	if (lower.includes("claude")) return "claude";
+	if (lower.includes("codex") || lower.includes("openai")) return "codex";
+	if (lower.includes("gemini") || lower.includes("google")) return "gemini";
+	return undefined;
 }

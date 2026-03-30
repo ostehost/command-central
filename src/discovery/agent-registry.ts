@@ -48,7 +48,7 @@ export interface AgentRegistryDiagnostics {
 }
 
 export class AgentRegistry implements vscode.Disposable {
-	private readonly processScanner = new ProcessScanner();
+	private readonly processScanner: ProcessScanner;
 	private readonly sessionWatcher: SessionWatcher;
 	private readonly launcherTasksProvider: () => AgentTask[];
 	private readonly idleStreamThresholdMs: number;
@@ -75,6 +75,9 @@ export class AgentRegistry implements vscode.Disposable {
 			60_000,
 			options?.idleStreamThresholdMs ?? DISCOVERY_IDLE_STREAM_THRESHOLD_MS,
 		);
+		this.processScanner = new ProcessScanner(undefined, undefined, {
+			launcherTasksProvider: this.launcherTasksProvider,
+		});
 	}
 
 	/** Start polling and watching. */

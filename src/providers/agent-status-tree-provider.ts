@@ -1128,18 +1128,24 @@ export class AgentStatusTreeProvider
 	private formatDiscoveryFilterReason(
 		reason:
 			| "excluded-binary"
+			| "interactive-process"
 			| "noise-process"
 			| "shell-process"
+			| "stale-process"
 			| "cwd-unresolved"
 			| undefined,
 	): string {
 		switch (reason) {
 			case "excluded-binary":
 				return "Excluded helper binary";
+			case "interactive-process":
+				return "Filtered idle interactive CLI";
 			case "noise-process":
 				return "Filtered UI/helper noise";
 			case "shell-process":
 				return "Filtered idle shell/wrapper";
+			case "stale-process":
+				return "Filtered stale process";
 			case "cwd-unresolved":
 				return "Dropped after cwd lookup failed";
 			default:
