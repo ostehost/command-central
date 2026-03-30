@@ -1,6 +1,6 @@
-task_id: "cc-verify-discovery-fix"
+task_id: "verify-session-watcher-tests"
 status: "success"
-summary: "Verified process-scanner tests: 40/40 pass, 0 fail, 76 expect() calls — --cd fix from cc-plans-discovery-fix is working"
+summary: "Verified session-watcher.test.ts: 16/16 tests pass, 28 expect() calls, 0 failures"
 files_changed: []
 tests_passing: true
-next_steps: "No action needed — discovery fix is confirmed working"
+next_steps: "No action needed — all tests green"
