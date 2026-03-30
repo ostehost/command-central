@@ -17,6 +17,7 @@ import * as vscode from "vscode";
 import { AgentRegistry } from "../discovery/agent-registry.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
+import type { OpenClawConfigService } from "../services/openclaw-config-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
 import {
 	type AgentCounts,
@@ -84,6 +85,7 @@ export interface AgentTask {
 	exit_code?: number | null;
 	error_message?: string | null;
 	completed_at?: string | null;
+	model?: string | null;
 }
 
 // ── Tree node types ──────────────────────────────────────────────────
@@ -630,6 +632,7 @@ export class AgentStatusTreeProvider
 		{ alive: boolean; checkedAt: number }
 	>();
 	private projectIconManager: ProjectIconManager;
+	private _openclawConfigService: OpenClawConfigService | null = null;
 
 	constructor(projectIconManager?: ProjectIconManager) {
 		this.projectIconManager = projectIconManager ?? new ProjectIconManager();
@@ -730,6 +733,10 @@ export class AgentStatusTreeProvider
 	setTreeView(treeView: vscode.TreeView<AgentNode>): void {
 		this._agentStatusView = treeView;
 		this.updateDockBadge();
+	}
+
+	setOpenClawConfigService(service: OpenClawConfigService): void {
+		this._openclawConfigService = service;
 	}
 
 	findTaskElement(taskId: string): TreeElement | undefined {
@@ -2643,6 +2650,33 @@ export class AgentStatusTreeProvider
 				value: `#${t.pr_number}${t.review_status ? ` (${t.review_status})` : ""}`,
 				taskId: t.id,
 			});
+		}
+
+		// Model — from tasks.json (spawn-time) or OpenClaw config (policy)
+		const taskModel = t.model;
+		if (taskModel) {
+			details.push({
+				type: "detail",
+				label: "Model",
+				value: taskModel,
+				taskId: t.id,
+			});
+		}
+		if (this._openclawConfigService) {
+			// Try matching by role → agent ID mapping
+			const allModels = this._openclawConfigService.getAllAgentModels();
+			if (allModels.length > 0 && !taskModel) {
+				const policyModel = allModels.find((m) => m.model && m.id === "main");
+				if (policyModel) {
+					details.push({
+						type: "detail",
+						label: "Policy Default",
+						value: policyModel.model,
+						taskId: t.id,
+						description: "(from openclaw.json)",
+					});
+				}
+			}
 		}
 
 		// Port detection — only for running tasks with a valid session (non-blocking)

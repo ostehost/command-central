@@ -44,6 +44,7 @@ import { AgentOutputChannels } from "./services/agent-output-channels.js";
 import { AgentStatusBar } from "./services/agent-status-bar.js";
 import { GroupingStateManager } from "./services/grouping-state-manager.js";
 import { LoggerService, LogLevel } from "./services/logger-service.js";
+import { OpenClawConfigService } from "./services/openclaw-config-service.js";
 import { ProjectIconManager } from "./services/project-icon-manager.js";
 import { ProjectIconService } from "./services/project-icon-service.js";
 import { ProjectViewManager } from "./services/project-view-manager.js";
@@ -633,6 +634,15 @@ export async function activate(
 			{ treeDataProvider: agentStatusProvider, showCollapseAll: true },
 		);
 		agentStatusProvider.setTreeView(agentStatusView);
+
+		// OpenClaw model policy visibility
+		const openclawConfigService = new OpenClawConfigService();
+		openclawConfigService.start(() => {
+			agentStatusProvider?.reload();
+		});
+		agentStatusProvider.setOpenClawConfigService(openclawConfigService);
+		context.subscriptions.push(openclawConfigService);
+
 		const syncAgentStatusViewContexts = async (): Promise<void> => {
 			const config = vscode.workspace.getConfiguration("commandCentral");
 			const showOnlyRunning = config.get<boolean>(
