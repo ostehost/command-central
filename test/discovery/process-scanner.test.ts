@@ -139,6 +139,25 @@ describe("ProcessScanner", () => {
 			).toBe(true);
 		});
 
+		test("filters shell wrapper processes even when command text mentions an agent CLI", () => {
+			const psOutput = [
+				"  PID   STARTED                       COMMAND",
+				"60011 Mon Jan  6 14:00:00 2025 /bin/zsh /tmp/node_modules/@openai/codex/dist/cli.js --resume sess-1",
+				"60012 Mon Jan  6 14:00:01 2025 /opt/homebrew/bin/codex --model gpt-5 --print hello",
+			].join("\n");
+
+			const results = scanner.parsePsOutput(psOutput);
+			expect(results).toHaveLength(1);
+			expect(results[0]?.pid).toBe(60012);
+
+			const diagnostics = scanner.getLastDiagnostics();
+			expect(
+				diagnostics.filtered.some(
+					(entry) => entry.pid === 60011 && entry.reason === "shell-process",
+				),
+			).toBe(true);
+		});
+
 		test("returns empty array for empty ps output", () => {
 			expect(scanner.parsePsOutput("")).toHaveLength(0);
 		});

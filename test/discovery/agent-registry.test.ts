@@ -27,11 +27,19 @@ mock.module("node:child_process", () => ({
 		if (cb) cb(null, { stdout: "", stderr: "" });
 		return { on: () => ({}) };
 	},
+	execFileSync: (_cmd: string, args: string[]) => {
+		const pid = Number(args[1]);
+		const command =
+			pidCommands[pid] ?? `/usr/local/bin/claude --resume pid-${pid}`;
+		if (!command) throw new Error("ESRCH");
+		return `${command}\n`;
+	},
 }));
 
 // Mock node:fs for SessionWatcher
 let sessionFiles: Record<string, string> = {};
 let dirContents: string[] = [];
+let pidCommands: Record<number, string> = {};
 
 mock.module("node:fs", () => ({
 	...realFs,
@@ -114,12 +122,18 @@ function createMockTask(overrides: Record<string, unknown> = {}) {
 
 describe("AgentRegistry", () => {
 	let registry: AgentRegistry;
+	let trackedLauncherTasks: ReturnType<typeof createMockTask>[];
 
 	beforeEach(() => {
 		sessionFiles = {};
 		dirContents = [];
+		pidCommands = {};
 		alivePids = new Set();
-		registry = new AgentRegistry("/tmp/test-sessions");
+		trackedLauncherTasks = [];
+		registry = new AgentRegistry("/tmp/test-sessions", {
+			launcherTasksProvider: () => trackedLauncherTasks,
+			idleStreamThresholdMs: 5 * 60_000,
+		});
 	});
 
 	// ── Merging launcher + discovered agents ─────────────────────────
@@ -295,6 +309,61 @@ describe("AgentRegistry", () => {
 			expect(registry.getDiagnostics().prunedDeadAgents).toBeGreaterThanOrEqual(
 				1,
 			);
+		});
+
+		test("suppresses discovered agents when the matching launcher task is already completed", () => {
+			sessionFiles["606.json"] = JSON.stringify({
+				pid: 606,
+				sessionId: "cli-sess-completed",
+				cwd: "/project-terminal",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["606.json"];
+			alivePids.add(606);
+			trackedLauncherTasks = [
+				createMockTask({
+					status: "completed",
+					project_dir: "/project-terminal",
+					started_at: new Date(1704067200000).toISOString(),
+					agent_backend: "claude",
+				}),
+			];
+
+			registry.start();
+
+			expect(registry.getAllDiscovered()).toHaveLength(0);
+			expect(registry.getDiscoveredAgents([])).toHaveLength(0);
+		});
+
+		test("suppresses idle session-file agents when the matching running task stream is stale", () => {
+			const streamFile = `/tmp/agent-registry-idle-${Date.now()}.jsonl`;
+			realFs.writeFileSync(streamFile, '{"type":"thread.started"}\n');
+			const staleSeconds = Math.floor((Date.now() - 6 * 60_000) / 1000);
+			realFs.utimesSync(streamFile, staleSeconds, staleSeconds);
+
+			sessionFiles["607.json"] = JSON.stringify({
+				pid: 607,
+				sessionId: "cli-sess-idle",
+				cwd: "/project-idle",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["607.json"];
+			alivePids.add(607);
+			trackedLauncherTasks = [
+				createMockTask({
+					id: "running-idle",
+					status: "running",
+					project_dir: "/project-idle",
+					started_at: new Date(1704067200000).toISOString(),
+					stream_file: streamFile,
+					agent_backend: "claude",
+				}),
+			];
+
+			registry.start();
+
+			expect(registry.getAllDiscovered()).toHaveLength(0);
+			realFs.rmSync(streamFile, { force: true });
 		});
 	});
 

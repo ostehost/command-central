@@ -12,14 +12,33 @@
  *   - Higher-priority source wins on conflict
  */
 
+import * as fs from "node:fs";
 import * as vscode from "vscode";
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
+import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
 import {
 	type ProcessScanDiagnostics,
 	ProcessScanner,
 } from "./process-scanner.js";
 import { SessionWatcher } from "./session-watcher.js";
 import type { DiscoveredAgent } from "./types.js";
+
+const TERMINAL_TASK_STATUSES = new Set<AgentTask["status"]>([
+	"completed",
+	"completed_dirty",
+	"completed_stale",
+	"contract_failure",
+	"failed",
+	"killed",
+	"stopped",
+]);
+const DISCOVERY_IDLE_STREAM_THRESHOLD_MS = 5 * 60_000;
+const DISCOVERY_TASK_START_MATCH_WINDOW_MS = 15 * 60_000;
+
+interface AgentRegistryOptions {
+	launcherTasksProvider?: () => AgentTask[];
+	idleStreamThresholdMs?: number;
+}
 
 export interface AgentRegistryDiagnostics {
 	discoveredCount: number;
@@ -31,6 +50,8 @@ export interface AgentRegistryDiagnostics {
 export class AgentRegistry implements vscode.Disposable {
 	private readonly processScanner = new ProcessScanner();
 	private readonly sessionWatcher: SessionWatcher;
+	private readonly launcherTasksProvider: () => AgentTask[];
+	private readonly idleStreamThresholdMs: number;
 
 	private discoveredAgents: DiscoveredAgent[] = [];
 	private scanTimer: ReturnType<typeof setInterval> | null = null;
@@ -46,8 +67,14 @@ export class AgentRegistry implements vscode.Disposable {
 
 	private disposables: vscode.Disposable[] = [];
 
-	constructor(sessionsDir?: string) {
+	constructor(sessionsDir?: string, options?: AgentRegistryOptions) {
 		this.sessionWatcher = new SessionWatcher(sessionsDir);
+		this.launcherTasksProvider =
+			options?.launcherTasksProvider ?? (() => this.readLauncherTasks());
+		this.idleStreamThresholdMs = Math.max(
+			60_000,
+			options?.idleStreamThresholdMs ?? DISCOVERY_IDLE_STREAM_THRESHOLD_MS,
+		);
 	}
 
 	/** Start polling and watching. */
@@ -266,7 +293,12 @@ export class AgentRegistry implements vscode.Disposable {
 	}
 
 	private filterLiveAgents(agents: DiscoveredAgent[]): DiscoveredAgent[] {
-		return agents.filter((agent) => this.isPidAlive(agent.pid));
+		const launcherTasks = this.launcherTasksProvider();
+		return agents.filter(
+			(agent) =>
+				this.isPidAlive(agent.pid) &&
+				!this.isSuppressedByLauncherTask(agent, launcherTasks),
+		);
 	}
 
 	private isPidAlive(pid: number): boolean {
@@ -276,5 +308,105 @@ export class AgentRegistry implements vscode.Disposable {
 		} catch {
 			return false;
 		}
+	}
+
+	private isSuppressedByLauncherTask(
+		agent: DiscoveredAgent,
+		launcherTasks: AgentTask[],
+	): boolean {
+		for (const task of launcherTasks) {
+			if (!this.matchesLauncherTask(agent, task)) continue;
+			if (TERMINAL_TASK_STATUSES.has(task.status)) {
+				return true;
+			}
+			if (agent.source === "session-file" && this.isTaskStreamIdle(task)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private matchesLauncherTask(
+		agent: DiscoveredAgent,
+		task: AgentTask,
+	): boolean {
+		const taskPid = (task as AgentTask & { pid?: unknown }).pid;
+		if (typeof taskPid === "number" && Number.isFinite(taskPid)) {
+			if (taskPid === agent.pid) return true;
+		}
+
+		if (
+			task.session_id &&
+			agent.sessionId &&
+			task.session_id === agent.sessionId
+		) {
+			return true;
+		}
+
+		if (!task.project_dir || task.project_dir !== agent.projectDir) {
+			return false;
+		}
+
+		const taskBackend = task.agent_backend ?? task.cli_name ?? undefined;
+		if (
+			taskBackend &&
+			agent.agent_backend &&
+			taskBackend !== agent.agent_backend
+		) {
+			return false;
+		}
+
+		const taskStartedAtMs = new Date(task.started_at).getTime();
+		const agentStartedAtMs = agent.startTime.getTime();
+		if (
+			!Number.isFinite(taskStartedAtMs) ||
+			!Number.isFinite(agentStartedAtMs)
+		) {
+			return false;
+		}
+
+		return (
+			Math.abs(taskStartedAtMs - agentStartedAtMs) <=
+			DISCOVERY_TASK_START_MATCH_WINDOW_MS
+		);
+	}
+
+	private isTaskStreamIdle(task: AgentTask): boolean {
+		if (task.status !== "running" || !task.stream_file) return false;
+		try {
+			const stat = fs.statSync(task.stream_file);
+			return Date.now() - stat.mtimeMs >= this.idleStreamThresholdMs;
+		} catch {
+			return false;
+		}
+	}
+
+	private readLauncherTasks(): AgentTask[] {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		const configuredPath = config.get<string>("agentTasksFile", "");
+		const tasksFilePath = this.resolveLauncherTasksFile(configuredPath);
+		if (!tasksFilePath) return [];
+
+		try {
+			const content = fs.readFileSync(tasksFilePath, "utf-8");
+			const parsed = JSON.parse(content) as {
+				tasks?: Record<string, AgentTask>;
+			};
+			if (!parsed.tasks || typeof parsed.tasks !== "object") return [];
+			return Object.values(parsed.tasks);
+		} catch {
+			return [];
+		}
+	}
+
+	private resolveLauncherTasksFile(configuredPath: string): string | null {
+		const envTasksFile = process.env["TASKS_FILE"];
+		if (envTasksFile && fs.existsSync(envTasksFile)) {
+			return envTasksFile;
+		}
+		return resolveTasksFilePath(
+			configuredPath,
+			vscode.workspace.workspaceFolders,
+		);
 	}
 }

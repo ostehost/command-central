@@ -8,10 +8,12 @@
  * the JSON, and emits discovered agents.
  */
 
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type * as vscode from "vscode";
+import { classifyProcessCommand } from "./process-scanner.js";
 import type { DiscoveredAgent } from "./types.js";
 
 /** Shape of ~/.claude/sessions/<PID>.json */
@@ -24,6 +26,7 @@ export interface ClaudeSessionFile {
 
 /** Default session directory */
 const SESSIONS_DIR = path.join(os.homedir(), ".claude", "sessions");
+const PROCESS_LOOKUP_TIMEOUT = 1_000;
 
 export class SessionWatcher implements vscode.Disposable {
 	private watcher: fs.FSWatcher | null = null;
@@ -108,6 +111,13 @@ export class SessionWatcher implements vscode.Disposable {
 				}
 				return;
 			}
+			if (!this.isAgentProcess(session.pid)) {
+				if (this.agents.has(session.pid)) {
+					this.agents.delete(session.pid);
+					this.onChange?.();
+				}
+				return;
+			}
 
 			const agent: DiscoveredAgent = {
 				pid: session.pid,
@@ -149,6 +159,33 @@ export class SessionWatcher implements vscode.Disposable {
 			return true;
 		} catch {
 			return false;
+		}
+	}
+
+	private isAgentProcess(pid: number): boolean {
+		const command = this.getProcessCommand(pid);
+		if (!command) {
+			// If `ps` is unavailable, keep the session file rather than over-pruning.
+			return true;
+		}
+		return classifyProcessCommand(command).kind === "agent";
+	}
+
+	private getProcessCommand(pid: number): string | null {
+		try {
+			const stdout = execFileSync("ps", ["-p", String(pid), "-o", "command="], {
+				encoding: "utf-8",
+				timeout: PROCESS_LOOKUP_TIMEOUT,
+			});
+			for (const line of stdout.split("\n")) {
+				const trimmed = line.trim();
+				if (trimmed.length > 0) {
+					return trimmed;
+				}
+			}
+			return null;
+		} catch {
+			return null;
 		}
 	}
 }

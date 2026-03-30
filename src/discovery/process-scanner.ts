@@ -64,6 +64,14 @@ const EXCLUDED_BINARY_RE = new RegExp(
 	`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*(?:terminal-notifier|osascript|notify-send)${CLI_TOKEN_SUFFIX}`,
 	"i",
 );
+const SHELL_BINARY_RE = /^(?:-)?(?:bash|zsh|fish|sh|ksh|tcsh|csh|dash)$/i;
+
+export type ProcessCommandKind = "agent" | "shell" | "other";
+
+export interface ProcessCommandIdentity {
+	kind: ProcessCommandKind;
+	binaryName?: string;
+}
 
 type ExecFileFn = typeof defaultExecFileAsync;
 type ResolveWorktreeFn = typeof resolveWorktree;
@@ -71,6 +79,7 @@ type ResolveWorktreeFn = typeof resolveWorktree;
 export type ProcessScanFilterReason =
 	| "excluded-binary"
 	| "noise-process"
+	| "shell-process"
 	| "cwd-unresolved";
 
 export interface ProcessScanDiagnosticEntry {
@@ -230,7 +239,8 @@ export class ProcessScanner {
 			if (!AGENT_CLI_RE.test(command)) continue;
 			diagnostics.agentLikeCandidateCount += 1;
 
-			const binaryName = this.extractBinaryName(command);
+			const identity = classifyProcessCommand(command);
+			const binaryName = identity.binaryName;
 			if (EXCLUDED_BINARY_RE.test(command)) {
 				diagnostics.filtered.push({
 					pid,
@@ -238,6 +248,16 @@ export class ProcessScanner {
 					startTime,
 					binaryName,
 					reason: "excluded-binary",
+				});
+				continue;
+			}
+			if (identity.kind === "shell") {
+				diagnostics.filtered.push({
+					pid,
+					command,
+					startTime,
+					binaryName,
+					reason: "shell-process",
 				});
 				continue;
 			}
@@ -331,9 +351,26 @@ export class ProcessScanner {
 	}
 
 	private extractBinaryName(command: string): string | undefined {
-		const [token] = command.trim().split(/\s+/, 1);
-		if (!token) return undefined;
-		const unquoted = token.replace(/^['"]|['"]$/g, "");
-		return unquoted.split("/").at(-1) ?? unquoted;
+		return classifyProcessCommand(command).binaryName;
 	}
+}
+
+export function classifyProcessCommand(
+	command: string,
+): ProcessCommandIdentity {
+	const binaryName = extractCommandBinaryName(command);
+	if (binaryName && SHELL_BINARY_RE.test(binaryName)) {
+		return { kind: "shell", binaryName };
+	}
+	if (AGENT_CLI_RE.test(command)) {
+		return { kind: "agent", binaryName };
+	}
+	return { kind: "other", binaryName };
+}
+
+function extractCommandBinaryName(command: string): string | undefined {
+	const [token] = command.trim().split(/\s+/, 1);
+	if (!token) return undefined;
+	const unquoted = token.replace(/^['"]|['"]$/g, "");
+	return unquoted.split("/").at(-1) ?? unquoted;
 }

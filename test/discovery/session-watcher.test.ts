@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realChildProcess from "node:child_process";
 import * as path from "node:path";
 
 // Track fs.watch callbacks so we can trigger them in tests
@@ -19,8 +20,19 @@ const mockWatcher = {
 // Mocked file contents keyed by filename
 let sessionFiles: Record<string, string> = {};
 let dirContents: string[] = [];
+let pidCommands: Record<number, string> = {};
 
 import * as realFs from "node:fs";
+
+mock.module("node:child_process", () => ({
+	...realChildProcess,
+	execFileSync: (_cmd: string, args: string[]) => {
+		const pid = Number(args[1]);
+		const command = pidCommands[pid];
+		if (!command) throw new Error("ESRCH");
+		return `${command}\n`;
+	},
+}));
 
 mock.module("node:fs", () => ({
 	...realFs,
@@ -63,6 +75,7 @@ describe("SessionWatcher", () => {
 	beforeEach(() => {
 		sessionFiles = {};
 		dirContents = [];
+		pidCommands = {};
 		alivePids = new Set();
 		watchCallback = null;
 		mockWatcher.close.mockClear();
@@ -84,6 +97,7 @@ describe("SessionWatcher", () => {
 			sessionFiles["12345.json"] = JSON.stringify(session);
 			dirContents = ["12345.json"];
 			alivePids.add(12345);
+			pidCommands[12345] = "/usr/local/bin/claude --print hi";
 
 			watcher.start();
 			const agents = watcher.getAgents();
@@ -111,6 +125,8 @@ describe("SessionWatcher", () => {
 			dirContents = ["100.json", "200.json"];
 			alivePids.add(100);
 			alivePids.add(200);
+			pidCommands[100] = "/usr/local/bin/claude --print one";
+			pidCommands[200] = "/opt/homebrew/bin/codex --model gpt-5";
 
 			watcher.start();
 			expect(watcher.getAgents()).toHaveLength(2);
@@ -171,6 +187,7 @@ describe("SessionWatcher", () => {
 				startedAt: 1704068000000,
 			});
 			alivePids.add(555);
+			pidCommands[555] = "/usr/local/bin/claude --print new";
 			watchCallback?.("change", "555.json");
 
 			expect(watcher.getAgents()).toHaveLength(1);
@@ -186,6 +203,7 @@ describe("SessionWatcher", () => {
 			});
 			dirContents = ["777.json"];
 			alivePids.add(777);
+			pidCommands[777] = "/usr/local/bin/claude --resume s-old";
 
 			watcher.start();
 			expect(watcher.getAgents()[0]?.projectDir).toBe("/old-dir");
@@ -211,6 +229,7 @@ describe("SessionWatcher", () => {
 			});
 			dirContents = ["888.json"];
 			alivePids.add(888);
+			pidCommands[888] = "/usr/local/bin/claude --resume s-dead";
 
 			watcher.start();
 			expect(watcher.getAgents()).toHaveLength(1);
@@ -219,6 +238,21 @@ describe("SessionWatcher", () => {
 			alivePids.delete(888);
 			watchCallback?.("change", "888.json");
 
+			expect(watcher.getAgents()).toHaveLength(0);
+		});
+
+		test("ignores live shell processes left behind by completed sessions", () => {
+			sessionFiles["889.json"] = JSON.stringify({
+				pid: 889,
+				sessionId: "stale-shell",
+				cwd: "/stale-project",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["889.json"];
+			alivePids.add(889);
+			pidCommands[889] = "/bin/zsh";
+
+			watcher.start();
 			expect(watcher.getAgents()).toHaveLength(0);
 		});
 
@@ -251,6 +285,7 @@ describe("SessionWatcher", () => {
 			});
 			dirContents = ["123.json"];
 			alivePids.add(123);
+			pidCommands[123] = "/usr/local/bin/claude --resume v1";
 
 			watcher.start();
 			expect(watcher.getAgents()).toHaveLength(1);
@@ -282,6 +317,7 @@ describe("SessionWatcher", () => {
 			});
 			dirContents = ["999.json"];
 			alivePids.add(999);
+			pidCommands[999] = "/usr/local/bin/claude --resume s";
 
 			watcher.start();
 			expect(watcher.getAgents()).toHaveLength(1);
@@ -307,6 +343,7 @@ describe("SessionWatcher", () => {
 				startedAt: 1704067200000,
 			});
 			alivePids.add(111);
+			pidCommands[111] = "/usr/local/bin/claude --resume s";
 			watchCallback?.("change", "111.json");
 
 			expect(onChange).toHaveBeenCalled();
@@ -322,6 +359,7 @@ describe("SessionWatcher", () => {
 			});
 			dirContents = ["222.json"];
 			alivePids.add(222);
+			pidCommands[222] = "/usr/local/bin/claude --resume s";
 
 			watcher.start(onChange);
 			onChange.mockClear();
