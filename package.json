@@ -2,7 +2,7 @@
   "name": "command-central",
   "displayName": "Command Central",
   "description": "The VS Code agent control tower. Monitor all your AI coding agents from one sidebar.",
-  "version": "0.5.1-31",
+  "version": "0.5.1-32",
   "publisher": "oste",
   "icon": "resources/icons/icon.png",
   "type": "module",
