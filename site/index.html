@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Command Central | Dock Icons + Agent Multiplexer for VS Code</title>
-  <meta name="description" content="See all your AI coding agents - even ones VS Code cannot see - from one sidebar. Command Central combines per-project Dock identity with cross-terminal agent auto-discovery.">
-  <meta property="og:title" content="Command Central | Dock Icons + Agent Multiplexer for VS Code">
-  <meta property="og:description" content="One Dock icon per project. One VS Code sidebar for every Claude Code, Codex, and Gemini agent running in any terminal.">
+  <title>Command Central | Agent Control Tower for VS Code</title>
+  <meta name="description" content="Stop managing terminals. Start managing agents. Command Central is the VS Code sidebar that sees Claude Code, Codex, and Gemini running anywhere, including external terminals VS Code cannot see.">
+  <meta property="og:title" content="Command Central | Agent Control Tower for VS Code">
+  <meta property="og:description" content="The VS Code sidebar that sees every AI coding agent, even the ones running in external terminals.">
   <meta property="og:image" content="https://partnerai.dev/images/og-card.png">
   <meta property="og:url" content="https://cc.partnerai.dev">
   <meta property="og:type" content="website">
@@ -74,7 +74,7 @@
       <a href="https://cc.partnerai.dev" class="nav-brand">Command Central</a>
       <div class="nav-links">
         <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="nav-link" data-track="install_clicked" data-source="nav">Marketplace</a>
-        <a href="https://github.com/ostehost/command-central" class="nav-link">GitHub</a>
+        <a href="https://github.com/ostehost/command-central" class="nav-link" data-track="github_clicked" data-source="nav">GitHub</a>
       </div>
     </div>
   </nav>
@@ -84,20 +84,21 @@
       <div class="hero-logo" style="margin-bottom: 24px;">
         <img src="images/logo.svg" alt="Command Central" width="112" height="112" style="display:block;margin:0 auto;">
       </div>
-      <div class="hero-badge">M4 launch: Dock identity + agent multiplexer</div>
-      <h1>One Dock icon per project.<br>One sidebar for every agent.</h1>
-      <p class="subtitle">See all your AI coding agents — even ones VS Code can't see — from one sidebar. Auto-discover Claude Code, Codex, and Gemini sessions running in any terminal.</p>
+      <div class="hero-badge">M4 launch: agent control tower for multi-agent teams</div>
+      <h1>Stop managing terminals.<br>Start managing agents.</h1>
+      <p class="subtitle">The VS Code sidebar that sees every AI coding agent, even the ones running in external terminals. Auto-discover Claude Code, Codex, and Gemini across Ghostty, iTerm2, Terminal.app, tmux, and VS Code itself.</p>
       <div class="hero-highlights">
-        <span class="hero-highlight">Per-project emoji Dock icons with persistent identity</span>
-        <span class="hero-highlight">Auto-discovery across Ghostty, iTerm2, Terminal.app, and tmux</span>
-        <span class="hero-highlight">Kill/restart/output/diff + inline per-agent +/- summaries</span>
+        <span class="hero-highlight">Auto-discovery beyond VS Code native sessions</span>
+        <span class="hero-highlight">Kill, restart, inspect output, and review diffs from one sidebar</span>
+        <span class="hero-highlight">Prompt display, stuck detection, and per-file +/- change lists</span>
       </div>
       <div class="cta-group">
         <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-primary" data-track="install_clicked" data-source="hero">Install from VS Code Marketplace</a>
         <a href="https://github.com/ostehost/command-central" class="btn btn-secondary" data-track="github_clicked" data-source="hero">View GitHub</a>
       </div>
+      <p class="hero-proof">1000+ tests. MIT licensed. Built by developers who run 10 agents daily.</p>
       <div class="hero-screenshot">
-        <img src="assets/workflow-unified-hero.svg" alt="Command Central showing Dock icons, an auto-discovered agent sidebar, and a linked project terminal as one continuous workflow" width="560" height="340" loading="eager">
+        <img src="assets/workflow-unified-hero.svg" alt="Command Central showing an agent control tower in the VS Code sidebar alongside external terminal sessions" width="560" height="340" loading="eager">
       </div>
     </div>
   </section>
@@ -106,7 +107,7 @@
     <div class="container">
       <div class="trust-compat-inner">
         <div class="compat-row">
-          <span class="compat-label">Auto-discovers</span>
+          <span class="compat-label">Auto-discovers agents</span>
           <div class="compat-pills">
             <span class="compat-pill">Claude <span aria-hidden="true">🟣</span></span>
             <span class="compat-pill">Codex <span aria-hidden="true">🟢</span></span>
@@ -114,12 +115,13 @@
           </div>
         </div>
         <div class="compat-row" style="margin-top: 12px;">
-          <span class="compat-label">Works with your terminal stack</span>
+          <span class="compat-label">Works across terminals</span>
           <div class="compat-pills">
             <span class="compat-pill">Ghostty</span>
             <span class="compat-pill">iTerm2</span>
             <span class="compat-pill">Terminal.app</span>
             <span class="compat-pill">tmux</span>
+            <span class="compat-pill">VS Code</span>
           </div>
         </div>
         <div class="trust-divider" aria-hidden="true">
@@ -127,40 +129,17 @@
         </div>
         <div class="trust-row">
           <div class="trust-signal">
-            <span class="trust-number">974</span>
-            <span class="trust-label">tests passing</span>
+            <span class="trust-number">1116</span>
+            <span class="trust-label">tests</span>
           </div>
           <div class="trust-signal">
             <span class="trust-number">MIT</span>
             <span class="trust-label">licensed</span>
           </div>
           <div class="trust-signal">
-            <span class="trust-number">Provenance</span>
-            <span class="trust-label">cross-repo prerelease gate</span>
+            <span class="trust-number">Daily</span>
+            <span class="trust-label">10-agent operators</span>
           </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="use-cases">
-    <div class="container">
-      <h2>Built for the way agent-heavy teams already work</h2>
-      <div class="use-case-grid">
-        <div class="use-case">
-          <span class="use-case-emoji">🧭</span>
-          <p class="use-case-title">Per-project Dock identity that sticks</p>
-          <p class="use-case-desc">Auto-assign emoji Dock icons per project, override when needed, and keep identity stable across restarts.</p>
-        </div>
-        <div class="use-case">
-          <span class="use-case-emoji">🪟</span>
-          <p class="use-case-title">See agents VS Code did not spawn</p>
-          <p class="use-case-desc">Command Central auto-discovers Claude Code, Codex, and Gemini in any terminal and surfaces them in VS Code.</p>
-        </div>
-        <div class="use-case">
-          <span class="use-case-emoji">⚡</span>
-          <p class="use-case-title">Ship safely across repos</p>
-          <p class="use-case-desc">Cross-repo prerelease gating with provenance helps catch release issues before you publish.</p>
         </div>
       </div>
     </div>
@@ -168,122 +147,148 @@
 
   <section class="features">
     <div class="container">
-      <h2 class="features-heading">Launch Features</h2>
+      <div class="section-heading-block">
+        <p class="section-kicker">Why it matters</p>
+        <h2 class="features-heading">Everything you need to run agents like a control tower</h2>
+        <p class="section-intro">Command Central keeps the landing page tight, but the core value is broad: see all agents, know what they are doing, and intervene without leaving VS Code.</p>
+      </div>
       <div class="launch-feature-grid">
         <article class="launch-feature-card">
-          <h3>Per-Project Emoji Dock Icons</h3>
-          <p>Each project gets a distinct Dock identity that stays stable over time.</p>
-          <ul>
-            <li>Auto-assign icon on first project launch</li>
-            <li>User override when you want a custom icon</li>
-            <li>Persistent identity across relaunches</li>
-          </ul>
+          <div class="card-kicker">Auto-Discovery</div>
+          <h3>Sees agents VS Code cannot</h3>
+          <p>Command Central finds agents running in external terminals and surfaces them in one sidebar without manual registration.</p>
+          <div class="card-badges">
+            <span class="agent-badge badge-claude">Claude</span>
+            <span class="agent-badge badge-codex">Codex</span>
+            <span class="agent-badge badge-gemini">Gemini</span>
+          </div>
         </article>
         <article class="launch-feature-card">
-          <h3>Auto-Discovery in Any Terminal</h3>
-          <p>The wedge: external-terminal agents appear in VS Code automatically.</p>
-          <ul>
-            <li>Discovers Claude Code, Codex, and Gemini sessions</li>
-            <li>Supports Ghostty, iTerm2, Terminal.app, and tmux</li>
-            <li>No manual registration or naming rules</li>
-          </ul>
+          <div class="card-kicker">Control Tower</div>
+          <h3>See every running agent in one view</h3>
+          <p>Use the VS Code sidebar as your control plane instead of hopping between tabs, panes, and terminal windows.</p>
         </article>
         <article class="launch-feature-card">
-          <h3>Agent Lifecycle Controls</h3>
-          <p>Operate active agents from the VS Code sidebar without tab-hunting.</p>
-          <ul>
-            <li>Kill and restart actions on each agent card</li>
-            <li>Open output and diff directly from sidebar actions</li>
-            <li>Works for auto-discovered and launcher-managed agents</li>
-          </ul>
+          <div class="card-kicker">Lifecycle Controls</div>
+          <h3>Kill, restart, and inspect output</h3>
+          <p>Take action directly from the sidebar when an agent wedges, finishes the wrong task, or needs a clean rerun.</p>
         </article>
         <article class="launch-feature-card">
-          <h3>Diff Summary Per Agent</h3>
-          <p>Review change scope quickly before diving into full diffs.</p>
-          <ul>
-            <li>Inline summary on each card: `N files · +X/-Y`</li>
-            <li>Per-file change list with additions/deletions per agent</li>
-            <li>Open Git diff for details with one click</li>
-          </ul>
+          <div class="card-kicker">Diff Viewer</div>
+          <h3>Review what each agent changed</h3>
+          <p>Open per-agent diffs and scan per-file additions and deletions before you jump into a detailed review.</p>
         </article>
         <article class="launch-feature-card">
-          <h3>Works With Your Terminal Stack</h3>
-          <p>Use Ghostty Launcher when available, keep moving when it is not.</p>
-          <ul>
-            <li>Ghostty, iTerm2, Terminal.app, and tmux compatibility</li>
-            <li>Graceful fallback to VS Code integrated terminal</li>
-            <li>Cross-repo prerelease gate with provenance</li>
-          </ul>
+          <div class="card-kicker">Prompt Display</div>
+          <h3>Know what each agent is working on</h3>
+          <p>Prompt summaries stay visible in the sidebar so you do not have to reconstruct intent from a terminal transcript.</p>
+        </article>
+        <article class="launch-feature-card">
+          <div class="card-kicker">Stuck Detection</div>
+          <h3>Spot frozen sessions early</h3>
+          <p>When an agent stops making progress, Command Central calls it out so you can intervene before time disappears.</p>
+        </article>
+        <article class="launch-feature-card">
+          <div class="card-kicker">Per-File Change Lists</div>
+          <h3>See scope before opening the diff</h3>
+          <p>Each agent surfaces file-level change counts, which makes it obvious who touched what and how much.</p>
+        </article>
+        <article class="launch-feature-card">
+          <div class="card-kicker">Ghostty Bonus</div>
+          <h3>Per-project Dock icons when you want them</h3>
+          <p>Ghostty Launcher integration adds durable project identity in the Dock, but the core product works even when you use other terminals.</p>
         </article>
       </div>
+    </div>
+  </section>
 
-      <div class="feature-strip">
-        <figure class="feature-strip-item">
-          <img src="assets/workflow-sidebar-dock.svg" alt="Project Dock icons mirrored into the Command Central sidebar as the primary navigation anchors">
-          <figcaption>Per-project Dock icons anchor the sidebar</figcaption>
-        </figure>
-        <figure class="feature-strip-item">
-          <img src="assets/workflow-cmdtab.svg" alt="Cmd+Tab switching between VS Code and a project terminal while preserving the same project identity">
-          <figcaption>Cmd+Tab keeps editor and terminal mentally aligned</figcaption>
-        </figure>
-        <figure class="feature-strip-item">
-          <img src="assets/workflow-continuous.svg" alt="Editor pane and project terminal connected as a single continuous Command Central workflow">
-          <figcaption>Editor, sidebar, and terminal feel like one surface</figcaption>
-        </figure>
+  <section class="use-cases">
+    <div class="container">
+      <div class="section-heading-block">
+        <p class="section-kicker">How it works</p>
+        <h2>Install once. Open the sidebar. Agents appear.</h2>
+        <p class="section-intro">No build step, no session naming ritual, no special terminal wrapper required for the main experience.</p>
+      </div>
+      <div class="use-case-grid how-it-works-grid">
+        <div class="use-case">
+          <span class="use-case-emoji">1</span>
+          <p class="use-case-title">Install the extension</p>
+          <p class="use-case-desc">Get Command Central from the VS Code Marketplace and open the sidebar in your normal editor workflow.</p>
+        </div>
+        <div class="use-case">
+          <span class="use-case-emoji">2</span>
+          <p class="use-case-title">Run agents where you already work</p>
+          <p class="use-case-desc">Claude Code, Codex, and Gemini can keep running in Ghostty, iTerm2, Terminal.app, tmux, or VS Code terminals.</p>
+        </div>
+        <div class="use-case">
+          <span class="use-case-emoji">3</span>
+          <p class="use-case-title">Manage them from one sidebar</p>
+          <p class="use-case-desc">See prompts, detect stuck sessions, inspect output, restart work, and review diffs without leaving VS Code.</p>
+        </div>
       </div>
     </div>
   </section>
 
   <section class="comparison-matrix">
     <div class="container">
-      <h2>Why Command Central?</h2>
-      <p class="quiet-note">The wedge: Command Central auto-discovers external-terminal agents inside VS Code.</p>
+      <div class="section-heading-block">
+        <p class="section-kicker">Comparison</p>
+        <h2>Why Command Central instead of another session view?</h2>
+        <p class="section-intro">The wedge is simple: Command Central sees external terminal agents that native VS Code tooling and terminal multiplexers do not unify inside the editor.</p>
+      </div>
       <div class="matrix-wrap" role="region" aria-label="Product comparison" tabindex="0">
         <table class="matrix-table">
           <thead>
             <tr>
               <th scope="col">Capability</th>
               <th scope="col">Command Central</th>
-              <th scope="col">dmux/cmux</th>
+              <th scope="col">VS Code Agent Sessions</th>
+              <th scope="col">dmux / cmux</th>
               <th scope="col">FleetCode</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <th scope="row">Auto-discovers external terminal agents inside VS Code</th>
+              <th scope="row">See agents running in external terminals</th>
               <td>✅ Yes</td>
               <td>❌ No</td>
+              <td>⚠️ In terminal only</td>
               <td>❌ No</td>
             </tr>
             <tr>
-              <th scope="row">Per-project emoji Dock identity (auto + override + persistence)</th>
+              <th scope="row">Unified VS Code sidebar for Claude, Codex, and Gemini</th>
               <td>✅ Yes</td>
+              <td>⚠️ Native sessions only</td>
               <td>❌ No</td>
-              <td>❌ No</td>
+              <td>⚠️ Product-specific</td>
             </tr>
             <tr>
-              <th scope="row">Inline lifecycle actions (kill/restart/output/diff)</th>
-              <td>✅ Full set</td>
-              <td>❌ Terminal commands</td>
-              <td>⚠️ Not external-terminal focused</td>
-            </tr>
-            <tr>
-              <th scope="row">Per-agent file list with +/- diff summary</th>
+              <th scope="row">Kill, restart, and open output from the sidebar</th>
               <td>✅ Built in</td>
-              <td>❌ Not available</td>
-              <td>❌ Not available</td>
+              <td>⚠️ Limited to native flow</td>
+              <td>❌ Terminal commands</td>
+              <td>⚠️ Limited</td>
             </tr>
             <tr>
-              <th scope="row">Works with Ghostty, iTerm2, Terminal.app, tmux</th>
+              <th scope="row">Per-agent diff viewer and per-file +/- counts</th>
+              <td>✅ Built in</td>
+              <td>❌ No</td>
+              <td>❌ No</td>
+              <td>❌ No</td>
+            </tr>
+            <tr>
+              <th scope="row">Prompt display and stuck-session detection</th>
               <td>✅ Yes</td>
-              <td>⚠️ tmux-first</td>
-              <td>⚠️ IDE-first</td>
+              <td>⚠️ Partial</td>
+              <td>❌ No</td>
+              <td>❌ No</td>
             </tr>
             <tr>
               <th scope="row">Best fit</th>
-              <td>One VS Code sidebar for all agent terminals</td>
-              <td>Terminal multiplexing workflows</td>
-              <td>In-IDE assistant workflows</td>
+              <td>Agent-heavy developers managing many sessions at once</td>
+              <td>Single-editor native agent workflows</td>
+              <td>Terminal-first multiplexing</td>
+              <td>Separate agent product workflow</td>
             </tr>
           </tbody>
         </table>
@@ -293,37 +298,17 @@
 
   <section class="install-snippet">
     <div class="container">
-      <h2>Install and run</h2>
-      <p class="quiet-note">Single extension install. Keep your current terminal workflow.</p>
-      <div class="use-case-grid" style="margin-top: 32px;">
-        <div class="use-case">
-          <span class="use-case-emoji">1️⃣</span>
-          <p class="use-case-title">Install the extension</p>
-          <p class="use-case-desc">`code --install-extension oste.command-central`</p>
-        </div>
-        <div class="use-case">
-          <span class="use-case-emoji">2️⃣</span>
-          <p class="use-case-title">Run agents anywhere</p>
-          <p class="use-case-desc">Ghostty, iTerm2, Terminal.app, tmux, or integrated VS Code terminals.</p>
-        </div>
-        <div class="use-case">
-          <span class="use-case-emoji">3️⃣</span>
-          <p class="use-case-title">Manage from one sidebar</p>
-          <p class="use-case-desc">Monitor, control, and inspect every session from inside VS Code.</p>
-        </div>
+      <div class="section-heading-block">
+        <p class="section-kicker">Install</p>
+        <h2>Run the control tower in under a minute</h2>
+        <p class="section-intro">Single extension install. Static landing page. No new build tooling. Your existing terminal workflow stays intact.</p>
       </div>
-    </div>
-  </section>
-
-  <section class="install-snippet">
-    <div class="container">
-      <h2>Get Command Central</h2>
-      <p class="quiet-note">Free and open source.</p>
       <div class="snippet-block">
         <code>code --install-extension oste.command-central</code>
       </div>
       <div class="cta-group" style="margin-top: 8px;">
-        <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-primary" data-track="install_clicked" data-source="install-section">Install Command Central</a>
+        <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-primary" data-track="install_clicked" data-source="install-section">Install from VS Code Marketplace</a>
+        <a href="https://github.com/ostehost/command-central" class="btn btn-secondary" data-track="github_clicked" data-source="install-section">Read the code</a>
       </div>
     </div>
   </section>

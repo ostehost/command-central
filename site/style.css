@@ -228,6 +228,12 @@ a:hover {
   line-height: 1.2;
 }
 
+.hero-proof {
+  margin-top: var(--space-4);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 .cta-group {
   display: flex;
   gap: var(--space-3);
@@ -402,6 +408,29 @@ a:hover {
   font-weight: 400;
 }
 
+.section-heading-block {
+  text-align: center;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.section-kicker {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: var(--space-3);
+}
+
+.section-intro {
+  color: var(--text-muted);
+  font-size: 0.98rem;
+  line-height: 1.75;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
 /* ─── Features Section ─── */
 .features {
   padding: var(--space-8) 0;
@@ -416,7 +445,7 @@ a:hover {
 
 .launch-feature-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-4);
 }
 
@@ -444,18 +473,7 @@ a:hover {
 .launch-feature-card p {
   color: var(--text-muted);
   font-size: 0.92rem;
-  margin-bottom: var(--space-3);
-}
-
-.launch-feature-card ul {
-  margin-left: var(--space-4);
-  color: var(--text);
-  font-size: 0.88rem;
-  line-height: 1.55;
-}
-
-.launch-feature-card li + li {
-  margin-top: 4px;
+  margin-bottom: 0;
 }
 
 .feature-strip {
@@ -487,12 +505,11 @@ a:hover {
 }
 
 .features-heading {
-  text-align: center;
   font-family: var(--font-brand);
   font-size: 1.75rem;
   font-weight: 600;
   color: var(--text-bright);
-  margin-bottom: 0;
+  margin-bottom: var(--space-3);
   position: relative;
   padding-bottom: var(--space-4);
   letter-spacing: -0.01em;
@@ -509,6 +526,56 @@ a:hover {
   background: var(--accent);
   border-radius: 2px;
   opacity: 0.8;
+}
+
+.card-kicker {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 10px;
+  margin-bottom: var(--space-3);
+  border-radius: 999px;
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  background: rgba(88, 166, 255, 0.08);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.agent-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-bright);
+  border: 1px solid transparent;
+}
+
+.badge-claude {
+  background: rgba(160, 95, 255, 0.14);
+  border-color: rgba(160, 95, 255, 0.3);
+}
+
+.badge-codex {
+  background: rgba(63, 185, 80, 0.12);
+  border-color: rgba(63, 185, 80, 0.28);
+}
+
+.badge-gemini {
+  background: rgba(88, 166, 255, 0.12);
+  border-color: rgba(88, 166, 255, 0.28);
 }
 
 /* ─── Feature Card: 2-column grid ─── */
@@ -599,12 +666,11 @@ a:hover {
 }
 
 .use-cases h2 {
-  text-align: center;
   font-family: var(--font-brand);
   font-size: 1.75rem;
   font-weight: 600;
   color: var(--text-bright);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-3);
   position: relative;
   padding-bottom: var(--space-4);
   letter-spacing: -0.01em;
@@ -643,7 +709,9 @@ a:hover {
 }
 
 .use-case-emoji {
-  font-size: 2rem;
+  font-size: 1.3rem;
+  font-family: var(--font-brand);
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -654,6 +722,21 @@ a:hover {
   border-radius: 12px;
   margin-bottom: var(--space-4);
   line-height: 1;
+}
+
+.how-it-works-grid .use-case {
+  position: relative;
+  overflow: hidden;
+}
+
+.how-it-works-grid .use-case::after {
+  content: '';
+  position: absolute;
+  inset: auto auto 0 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(88, 166, 255, 0.7), rgba(88, 166, 255, 0));
+  opacity: 0.6;
 }
 
 .use-case-title {
@@ -690,7 +773,6 @@ a:hover {
 }
 
 .comparison-matrix h2 {
-  text-align: center;
   font-family: var(--font-brand);
   font-size: 1.75rem;
   font-weight: 600;
@@ -714,7 +796,7 @@ a:hover {
 .matrix-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 680px;
+  min-width: 860px;
 }
 
 .matrix-table th,
@@ -1248,7 +1330,7 @@ a:hover {
   }
 
   .use-case-emoji {
-    font-size: 2rem;
+    font-size: 1.15rem;
   }
 
   /* Section headings: scale down accent line */
@@ -1367,6 +1449,12 @@ a:hover {
   .snippet-block {
     padding: var(--space-3) var(--space-5);
   }
+
+  .hero-proof {
+    max-width: 420px;
+    margin-left: auto;
+    margin-right: auto;
+  }
 }
 
 /* ─── Tablets (≤1024px) ─── */
@@ -1378,6 +1466,10 @@ a:hover {
 
   .feature-card--reverse {
     gap: var(--space-5);
+  }
+
+  .launch-feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
