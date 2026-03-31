@@ -133,6 +133,9 @@ describe("package.json agent menu contributions", () => {
 		expect(setting?.default).toBe("recency");
 		expect(setting?.enum).toEqual(["recency", "status", "status-recency"]);
 		expect(setting?.markdownDescription).toContain("latest work first");
+		expect(setting?.markdownDescription).toContain(
+			"running-then-completed-then-failed",
+		);
 	});
 
 	test("keeps legacy sortByStatus config as a deprecated migration alias", async () => {
@@ -293,9 +296,13 @@ describe("package.json agent menu contributions", () => {
 		expect(
 			sortEntries.some((item) => item.when?.includes("== 'status-recency'")),
 		).toBe(true);
-		expect(sortEntries.some((item) => item.icon === "$(history)")).toBe(true);
-		expect(sortEntries.some((item) => item.icon === "$(warning)")).toBe(true);
-		expect(sortEntries.some((item) => item.icon === "$(pin)")).toBe(true);
+		expect(sortEntries.some((item) => item.icon === "$(clock)")).toBe(true);
+		expect(sortEntries.some((item) => item.icon === "$(list-ordered)")).toBe(
+			true,
+		);
+		expect(
+			sortEntries.some((item) => item.icon === "$(split-horizontal)"),
+		).toBe(true);
 	});
 
 	test("adds paired view-title scope toggle actions for all vs current project", async () => {

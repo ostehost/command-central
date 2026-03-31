@@ -180,7 +180,7 @@ function setAgentStatusConfig(
 		discoveryEnabled?: boolean;
 	},
 ): void {
-	vscodeMock.workspace.getConfiguration = mock((_section?: string) => ({
+	const getConfigurationMock = mock((_section?: string) => ({
 		update: mock(),
 		get: mock((_key: string, defaultValue?: unknown) => {
 			if (_key === "agentStatus.groupByProject") {
@@ -219,6 +219,11 @@ function setAgentStatusConfig(
 			return undefined;
 		}),
 	}));
+
+	vscodeMock.workspace.getConfiguration = getConfigurationMock;
+	const runtimeVscode = require("vscode") as typeof import("vscode");
+	runtimeVscode.workspace.getConfiguration =
+		getConfigurationMock as typeof runtimeVscode.workspace.getConfiguration;
 }
 
 function getOlderRunsNode(
@@ -1391,6 +1396,35 @@ describe("AgentStatusTreeProvider", () => {
 		);
 	});
 
+	test("uses updated_at as the latest-activity fallback in recency mode", () => {
+		setAgentStatusConfig(vscodeMock, { sortMode: "recency" });
+
+		const updatedLatest = createMockTask({
+			id: "updated-latest",
+			status: "completed",
+			started_at: "2026-02-25T05:00:00Z",
+			completed_at: "2026-02-25T08:00:00Z",
+			updated_at: "2026-02-25T11:00:00Z",
+		});
+		const completedLatest = createMockTask({
+			id: "completed-latest",
+			status: "completed",
+			started_at: "2026-02-25T06:00:00Z",
+			completed_at: "2026-02-25T10:00:00Z",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[updatedLatest.id]: updatedLatest,
+				[completedLatest.id]: completedLatest,
+			});
+		provider.reload();
+
+		const taskIds = getTaskNodes(provider.getChildren()).map(
+			(node) => (node as { type: "task"; task: AgentTask }).task.id,
+		);
+		expect(taskIds).toEqual(["updated-latest", "completed-latest"]);
+	});
+
 	test("interleaves launcher and discovered agents by the same recency sort", () => {
 		setAgentStatusConfig(vscodeMock, { sortMode: "recency" });
 
@@ -1512,6 +1546,9 @@ describe("AgentStatusTreeProvider", () => {
 		const taskNodes = getTaskNodes(children);
 		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
 			"legacy-failed",
+		);
+		expect((taskNodes[1] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"legacy-running",
 		);
 		expect(getSummaryNode(children).label).toContain("⚠ Status");
 	});

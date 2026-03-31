@@ -747,6 +747,10 @@ export async function activate(
 				"commandCentral.agentStatus.sortMode",
 				sortMode,
 			);
+			await context.workspaceState.update(
+				"commandCentral.agentStatus.sortMode",
+				sortMode,
+			);
 		};
 		const setAgentStatusSortMode = async (
 			sortMode: AgentStatusSortMode,
@@ -754,6 +758,10 @@ export async function activate(
 		): Promise<void> => {
 			const config = vscode.workspace.getConfiguration("commandCentral");
 			await config.update("agentStatus.sortMode", sortMode, target);
+			await context.workspaceState.update(
+				"commandCentral.agentStatus.sortMode",
+				sortMode,
+			);
 			await syncAgentStatusViewContexts();
 			agentStatusProvider?.reload();
 		};
@@ -1196,12 +1204,12 @@ export async function activate(
 						},
 						{
 							label: "Status",
-							description: "Attention first",
+							description: "Running, then completed, then failed",
 							sortMode: "status",
 						},
 						{
-							label: "Active",
-							description: "Running pinned first",
+							label: "Status + Recent",
+							description: "Status groups with recency inside each group",
 							sortMode: "status-recency",
 						},
 					];

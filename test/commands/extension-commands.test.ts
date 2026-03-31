@@ -902,8 +902,8 @@ describe("agent sort mode commands", () => {
 			detail?: string;
 		};
 		const selected: SortModeQuickPickItem = {
-			label: "Active",
-			description: "Running pinned first",
+			label: "Status + Recent",
+			description: "Status groups with recency inside each group",
 			sortMode: "status-recency",
 		};
 		const showSortModeQuickPick = mock(() => Promise.resolve(selected));

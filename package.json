@@ -245,10 +245,10 @@
           "default": "recency",
           "enumDescriptions": [
             "Sort all agents by most recent activity first",
-            "Sort by attention status first, then by recency within each status bucket",
-            "Pin active agents first, then sort everything else by recency"
+            "Sort by status order: running, then completed, then failed",
+            "Group by status, then sort each status group by recency"
           ],
-          "markdownDescription": "Controls how agents are sorted in the Agent Status tree. `recency` shows the latest work first. `status` groups by attention needed. `status-recency` keeps active agents pinned while preserving recency below.",
+          "markdownDescription": "Controls how agents are sorted in the Agent Status tree. `recency` shows the latest work first. `status` keeps the current running-then-completed-then-failed ordering. `status-recency` keeps that status grouping but sorts each group by most recent activity.",
           "scope": "window"
         },
         "commandCentral.agentStatus.maxVisibleAgents": {
@@ -819,7 +819,7 @@
         "command": "commandCentral.cycleSortMode",
         "title": "Agent Status: Cycle Sort Mode",
         "category": "Command Central",
-        "icon": "$(history)"
+        "icon": "$(clock)"
       },
       {
         "command": "commandCentral.setSortMode",
@@ -1790,19 +1790,19 @@
           "command": "commandCentral.cycleSortMode",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.sortMode == 'recency'",
           "group": "navigation@3.5",
-          "icon": "$(history)"
+          "icon": "$(clock)"
         },
         {
           "command": "commandCentral.cycleSortMode",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.sortMode == 'status'",
           "group": "navigation@3.5",
-          "icon": "$(warning)"
+          "icon": "$(list-ordered)"
         },
         {
           "command": "commandCentral.cycleSortMode",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.sortMode == 'status-recency'",
           "group": "navigation@3.5",
-          "icon": "$(pin)"
+          "icon": "$(split-horizontal)"
         },
         {
           "command": "commandCentral.toggleAgentScopeCurrentProject",

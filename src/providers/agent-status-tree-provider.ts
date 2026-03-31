@@ -87,6 +87,7 @@ export interface AgentTask {
 	exit_code?: number | null;
 	error_message?: string | null;
 	completed_at?: string | null;
+	updated_at?: string | null;
 	model?: string | null;
 	prompt_summary?: string | null;
 }
@@ -442,22 +443,38 @@ function isAgentStatusSortMode(value: unknown): value is AgentStatusSortMode {
 function getExplicitSortMode(
 	config: SortModeConfig,
 ): AgentStatusSortMode | undefined {
+	const rawValue = config.get<unknown>("agentStatus.sortMode");
 	if (typeof config.inspect === "function") {
 		const inspected = config.inspect("agentStatus.sortMode");
 		const explicitValue =
 			inspected?.workspaceFolderValue ??
 			inspected?.workspaceValue ??
 			inspected?.globalValue;
-		return isAgentStatusSortMode(explicitValue) ? explicitValue : undefined;
+		if (isAgentStatusSortMode(explicitValue)) {
+			return explicitValue;
+		}
+
+		const defaultValue = inspected?.defaultValue;
+		if (
+			isAgentStatusSortMode(rawValue) &&
+			(!isAgentStatusSortMode(defaultValue) || rawValue !== defaultValue)
+		) {
+			return rawValue;
+		}
+		return undefined;
 	}
 
-	const rawValue = config.get<unknown>("agentStatus.sortMode");
 	return isAgentStatusSortMode(rawValue) ? rawValue : undefined;
 }
 
 export function resolveAgentStatusSortMode(
 	config: SortModeConfig,
 ): AgentStatusSortMode {
+	const rawSortMode = config.get<unknown>("agentStatus.sortMode");
+	if (rawSortMode === "status" || rawSortMode === "status-recency") {
+		return rawSortMode;
+	}
+
 	const explicitSortMode = getExplicitSortMode(config);
 	if (explicitSortMode) {
 		return explicitSortMode;
@@ -561,6 +578,7 @@ function normalizeTask(
 		exit_code: asNullableNumber(raw["exit_code"]) ?? null,
 		error_message: asString(raw["error_message"]) ?? null,
 		completed_at: asString(raw["completed_at"]) ?? null,
+		updated_at: asString(raw["updated_at"]) ?? null,
 		prompt_summary: asString(raw["prompt_summary"]) ?? null,
 	};
 }
@@ -2074,19 +2092,33 @@ export class AgentStatusTreeProvider
 		);
 	}
 
+	private getTimestampMs(timestamp?: string | null): number {
+		if (!timestamp) return 0;
+		const timeMs = new Date(timestamp).getTime();
+		return Number.isFinite(timeMs) ? timeMs : 0;
+	}
+
+	private getTaskStartedTimeMs(task: AgentTask): number {
+		return this.getTimestampMs(task.started_at);
+	}
+
 	private getTaskActivityTimeMs(task: AgentTask): number {
-		const activityTimestamp = task.completed_at ?? task.started_at;
-		const activityTimeMs = new Date(activityTimestamp).getTime();
-		if (Number.isFinite(activityTimeMs)) {
-			return activityTimeMs;
-		}
-		const startedAtMs = new Date(task.started_at).getTime();
-		return Number.isFinite(startedAtMs) ? startedAtMs : 0;
+		return Math.max(
+			this.getTaskStartedTimeMs(task),
+			this.getTimestampMs(task.completed_at),
+			this.getTimestampMs(task.updated_at),
+		);
 	}
 
 	private getDiscoveredActivityTimeMs(agent: DiscoveredAgent): number {
 		const startedAtMs = agent.startTime.getTime();
 		return Number.isFinite(startedAtMs) ? startedAtMs : 0;
+	}
+
+	private getNodeStartedTimeMs(node: SortableAgentNode): number {
+		return node.type === "task"
+			? this.getTaskStartedTimeMs(node.task)
+			: this.getDiscoveredActivityTimeMs(node.agent);
 	}
 
 	private getNodeActivityTimeMs(node: SortableAgentNode): number {
@@ -2133,8 +2165,12 @@ export class AgentStatusTreeProvider
 		}
 
 		const activityDiff = this.compareActivityTimeDesc(
-			this.getNodeActivityTimeMs(left),
-			this.getNodeActivityTimeMs(right),
+			sortMode === "status"
+				? this.getNodeStartedTimeMs(left)
+				: this.getNodeActivityTimeMs(left),
+			sortMode === "status"
+				? this.getNodeStartedTimeMs(right)
+				: this.getNodeActivityTimeMs(right),
 		);
 		if (activityDiff !== 0) {
 			return activityDiff;
