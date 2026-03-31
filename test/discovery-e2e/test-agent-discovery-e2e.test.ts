@@ -234,8 +234,8 @@ describe("Agent Discovery E2E Pipeline", () => {
 						stdout:
 							cmd === "ps"
 								? [
-										"  PID   STARTED                       COMMAND",
-										"50012 Mon Mar 30 11:50:00 2026 claude",
+										"  PID  PPID STARTED                       COMMAND",
+										"50012 1 Mon Mar 30 11:50:00 2026 claude",
 									].join("\n")
 								: "",
 						stderr: "",
@@ -262,8 +262,8 @@ describe("Agent Discovery E2E Pipeline", () => {
 				if (cmd === "ps") {
 					return Promise.resolve({
 						stdout: [
-							"  PID   STARTED                       COMMAND",
-							`60001 Mon Mar 30 11:55:00 2026 /opt/homebrew/bin/codex exec --json --full-auto --cd /Users/test/projects/my-app 'fix the bug'`,
+							"  PID  PPID STARTED                       COMMAND",
+							`60001 1 Mon Mar 30 11:55:00 2026 /opt/homebrew/bin/codex exec --json --full-auto --cd /Users/test/projects/my-app 'fix the bug'`,
 						].join("\n"),
 						stderr: "",
 					});
@@ -292,8 +292,8 @@ describe("Agent Discovery E2E Pipeline", () => {
 				if (cmd === "ps") {
 					return Promise.resolve({
 						stdout: [
-							"  PID   STARTED                       COMMAND",
-							"60002 Mon Mar 30 11:55:00 2026 codex exec --cd=/Users/test/projects/backend 'ship it'",
+							"  PID  PPID STARTED                       COMMAND",
+							"60002 1 Mon Mar 30 11:55:00 2026 codex exec --cd=/Users/test/projects/backend 'ship it'",
 						].join("\n"),
 						stderr: "",
 					});
@@ -322,8 +322,8 @@ describe("Agent Discovery E2E Pipeline", () => {
 				if (cmd === "ps") {
 					return Promise.resolve({
 						stdout: [
-							"  PID   STARTED                       COMMAND",
-							"70001 Mon Mar 30 11:55:00 2026 /opt/homebrew/bin/codex exec 'do something'",
+							"  PID  PPID STARTED                       COMMAND",
+							"70001 1 Mon Mar 30 11:55:00 2026 /opt/homebrew/bin/codex exec 'do something'",
 						].join("\n"),
 						stderr: "",
 					});
@@ -353,8 +353,8 @@ describe("Agent Discovery E2E Pipeline", () => {
 				if (cmd === "ps") {
 					return Promise.resolve({
 						stdout: [
-							"  PID   STARTED                       COMMAND",
-							"70002 Mon Mar 30 11:55:00 2026 /opt/homebrew/bin/codex exec 'run task'",
+							"  PID  PPID STARTED                       COMMAND",
+							"70002 1 Mon Mar 30 11:55:00 2026 /opt/homebrew/bin/codex exec 'run task'",
 						].join("\n"),
 						stderr: "",
 					});
@@ -384,8 +384,8 @@ describe("Agent Discovery E2E Pipeline", () => {
 				if (cmd === "ps") {
 					return Promise.resolve({
 						stdout: [
-							"  PID   STARTED                       COMMAND",
-							"70003 Mon Mar 30 11:55:00 2026 claude -p 'internal task'",
+							"  PID  PPID STARTED                       COMMAND",
+							"70003 1 Mon Mar 30 11:55:00 2026 claude -p 'internal task'",
 						].join("\n"),
 						stderr: "",
 					});
@@ -415,8 +415,8 @@ describe("Agent Discovery E2E Pipeline", () => {
 				if (cmd === "ps") {
 					return Promise.resolve({
 						stdout: [
-							"  PID   STARTED                       COMMAND",
-							`70004 Mon Mar 30 11:55:00 2026 codex exec --cd /Users/test/real-project 'fix bug'`,
+							"  PID  PPID STARTED                       COMMAND",
+							`70004 1 Mon Mar 30 11:55:00 2026 codex exec --cd /Users/test/real-project 'fix bug'`,
 						].join("\n"),
 						stderr: "",
 					});
@@ -461,8 +461,8 @@ describe("Agent Discovery E2E Pipeline", () => {
 				if (cmd === "ps") {
 					return Promise.resolve({
 						stdout: [
-							"  PID   STARTED                       COMMAND",
-							"80001 Mon Mar 30 11:59:00 2026 claude -p 'summarize this repo' --model opus",
+							"  PID  PPID STARTED                       COMMAND",
+							"80001 1 Mon Mar 30 11:59:00 2026 claude -p 'summarize this repo' --model opus",
 						].join("\n"),
 						stderr: "",
 					});
@@ -540,8 +540,8 @@ describe("Agent Discovery E2E Pipeline", () => {
 				if (cmd === "ps") {
 					return Promise.resolve({
 						stdout: [
-							"  PID   STARTED                       COMMAND",
-							"80020 Mon Mar 30 11:58:00 2026 /opt/homebrew/bin/codex exec --cd /Users/test/projects/backend 'deploy'",
+							"  PID  PPID STARTED                       COMMAND",
+							"80020 1 Mon Mar 30 11:58:00 2026 /opt/homebrew/bin/codex exec --cd /Users/test/projects/backend 'deploy'",
 						].join("\n"),
 						stderr: "",
 					});
@@ -598,9 +598,9 @@ describe("Agent Discovery E2E Pipeline", () => {
 				if (cmd === "ps") {
 					return Promise.resolve({
 						stdout: [
-							"  PID   STARTED                       COMMAND",
-							"90003 Mon Mar 30 11:57:00 2026 codex exec --cd /Users/test/projects/backend 'deploy'",
-							"90004 Mon Mar 30 11:57:00 2026 codex exec 'internal task'",
+							"  PID  PPID STARTED                       COMMAND",
+							"90003 1 Mon Mar 30 11:57:00 2026 codex exec --cd /Users/test/projects/backend 'deploy'",
+							"90004 1 Mon Mar 30 11:57:00 2026 codex exec 'internal task'",
 						].join("\n"),
 						stderr: "",
 					});

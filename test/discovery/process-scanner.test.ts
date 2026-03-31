@@ -51,16 +51,17 @@ describe("ProcessScanner", () => {
 	describe("parsePsOutput", () => {
 		test("parses supported agent CLI processes from ps output", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"12345 Mon Jan  6 14:03:22 2025 /usr/local/bin/claude --model opus --print hello",
-				"12346 Mon Jan  6 14:05:00 2025 /usr/bin/node /path/to/claude-code/cli.js -p 'ship it'",
-				"12347 Mon Jan  6 14:05:30 2025 /opt/homebrew/bin/codex exec --model gpt-5 'fix the bug'",
-				"12348 Mon Jan  6 14:06:10 2025 node /tmp/node_modules/@google/gemini-cli/dist/index.js --model gemini-2.5-pro --prompt hi",
+				"  PID  PPID STARTED                       COMMAND",
+				"12345 1 Mon Jan  6 14:03:22 2025 /usr/local/bin/claude --model opus --print hello",
+				"12346 1 Mon Jan  6 14:05:00 2025 /usr/bin/node /path/to/claude-code/cli.js -p 'ship it'",
+				"12347 1 Mon Jan  6 14:05:30 2025 /opt/homebrew/bin/codex exec --model gpt-5 'fix the bug'",
+				"12348 1 Mon Jan  6 14:06:10 2025 node /tmp/node_modules/@google/gemini-cli/dist/index.js --model gemini-2.5-pro --prompt hi",
 			].join("\n");
 
 			const results = scanner.parsePsOutput(psOutput);
 			expect(results).toHaveLength(4);
 			expect(results[0]?.pid).toBe(12345);
+			expect(results[0]?.ppid).toBe(1);
 			expect(results[0]?.command).toContain("claude");
 			expect(results[1]?.pid).toBe(12346);
 			expect(results[2]?.pid).toBe(12347);
@@ -69,8 +70,8 @@ describe("ProcessScanner", () => {
 
 		test("does not discover bare claude with no meaningful args", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"18054 Sun Mar 29 19:17:00 2026 claude",
+				"  PID  PPID STARTED                       COMMAND",
+				"18054 1 Sun Mar 29 19:17:00 2026 claude",
 			].join("\n");
 
 			expect(scanner.parsePsOutput(psOutput)).toHaveLength(0);
@@ -86,8 +87,8 @@ describe("ProcessScanner", () => {
 
 		test("discovers claude -p prompt mode", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"98956 Sun Mar 29 18:56:00 2026 claude -p 'summarize this repo'",
+				"  PID  PPID STARTED                       COMMAND",
+				"98956 1 Sun Mar 29 18:56:00 2026 claude -p 'summarize this repo'",
 			].join("\n");
 
 			const results = scanner.parsePsOutput(psOutput);
@@ -97,8 +98,8 @@ describe("ProcessScanner", () => {
 
 		test("discovers codex exec mode", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"88555 Thu Mar 26 20:10:00 2026 /opt/homebrew/bin/codex exec 'run the task'",
+				"  PID  PPID STARTED                       COMMAND",
+				"88555 1 Thu Mar 26 20:10:00 2026 /opt/homebrew/bin/codex exec 'run the task'",
 			].join("\n");
 
 			const results = scanner.parsePsOutput(psOutput);
@@ -108,8 +109,8 @@ describe("ProcessScanner", () => {
 
 		test("does not discover codex with no subcommand", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"88554 Thu Mar 26 20:10:00 2026 node /opt/homebrew/bin/codex",
+				"  PID  PPID STARTED                       COMMAND",
+				"88554 1 Thu Mar 26 20:10:00 2026 node /opt/homebrew/bin/codex",
 			].join("\n");
 
 			expect(scanner.parsePsOutput(psOutput)).toHaveLength(0);
@@ -125,10 +126,10 @@ describe("ProcessScanner", () => {
 
 		test("filters out non-agent processes", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"11111 Mon Jan  6 14:00:00 2025 /usr/bin/vim test.ts",
-				"22222 Mon Jan  6 14:01:00 2025 /usr/bin/node server.js",
-				"33333 Mon Jan  6 14:02:00 2025 grep claude",
+				"  PID  PPID STARTED                       COMMAND",
+				"11111 1 Mon Jan  6 14:00:00 2025 /usr/bin/vim test.ts",
+				"22222 1 Mon Jan  6 14:01:00 2025 /usr/bin/node server.js",
+				"33333 1 Mon Jan  6 14:02:00 2025 grep claude",
 			].join("\n");
 
 			const results = scanner.parsePsOutput(psOutput);
@@ -137,9 +138,9 @@ describe("ProcessScanner", () => {
 
 		test("detects npx/pnpm dlx invocations for codex and gemini", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"55551 Mon Jan  6 14:07:10 2025 npx @openai/codex exec --model gpt-5 hello",
-				"55552 Mon Jan  6 14:07:40 2025 pnpm dlx @google/gemini-cli --model gemini-2.5-pro --prompt hi",
+				"  PID  PPID STARTED                       COMMAND",
+				"55551 1 Mon Jan  6 14:07:10 2025 npx @openai/codex exec --model gpt-5 hello",
+				"55552 1 Mon Jan  6 14:07:40 2025 pnpm dlx @google/gemini-cli --model gemini-2.5-pro --prompt hi",
 			].join("\n");
 
 			const results = scanner.parsePsOutput(psOutput);
@@ -150,10 +151,10 @@ describe("ProcessScanner", () => {
 
 		test("filters out non-agent processes with codex/gemini in path", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"44441 Mon Jan  6 14:00:00 2025 /usr/bin/node /projects/codex/server.js",
-				"44442 Mon Jan  6 14:00:00 2025 /usr/bin/python /srv/gemini/app.py",
-				"44443 Mon Jan  6 14:00:00 2025 /usr/bin/node /tmp/gemini-cli-helper/index.js",
+				"  PID  PPID STARTED                       COMMAND",
+				"44441 1 Mon Jan  6 14:00:00 2025 /usr/bin/node /projects/codex/server.js",
+				"44442 1 Mon Jan  6 14:00:00 2025 /usr/bin/python /srv/gemini/app.py",
+				"44443 1 Mon Jan  6 14:00:00 2025 /usr/bin/node /tmp/gemini-cli-helper/index.js",
 			].join("\n");
 
 			const results = scanner.parsePsOutput(psOutput);
@@ -162,11 +163,11 @@ describe("ProcessScanner", () => {
 
 		test("ignores near-miss codex/gemini path segments that are not CLI invocations", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"44451 Mon Jan  6 14:00:00 2025 /usr/bin/node /workspace/services/codex/runner.js --task build",
-				"44452 Mon Jan  6 14:00:00 2025 /usr/bin/node /workspace/tools/gemini/sync.js --env prod",
-				"44453 Mon Jan  6 14:00:00 2025 /usr/bin/node /tmp/node_modules/@acme/codex-cli/dist/index.js --help",
-				"44454 Mon Jan  6 14:00:00 2025 /usr/bin/node /tmp/node_modules/@google/gemini-cli-helper/dist/index.js --version",
+				"  PID  PPID STARTED                       COMMAND",
+				"44451 1 Mon Jan  6 14:00:00 2025 /usr/bin/node /workspace/services/codex/runner.js --task build",
+				"44452 1 Mon Jan  6 14:00:00 2025 /usr/bin/node /workspace/tools/gemini/sync.js --env prod",
+				"44453 1 Mon Jan  6 14:00:00 2025 /usr/bin/node /tmp/node_modules/@acme/codex-cli/dist/index.js --help",
+				"44454 1 Mon Jan  6 14:00:00 2025 /usr/bin/node /tmp/node_modules/@google/gemini-cli-helper/dist/index.js --version",
 			].join("\n");
 
 			const results = scanner.parsePsOutput(psOutput);
@@ -175,9 +176,9 @@ describe("ProcessScanner", () => {
 
 		test("filters out electron helpers and renderers", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"44444 Mon Jan  6 14:00:00 2025 /Applications/Claude.app/Contents/Frameworks/Electron Helper (Renderer).app/Contents/MacOS/Electron Helper (Renderer)",
-				"55555 Mon Jan  6 14:00:00 2025 /path/to/electron --type=gpu-process",
+				"  PID  PPID STARTED                       COMMAND",
+				"44444 1 Mon Jan  6 14:00:00 2025 /Applications/Claude.app/Contents/Frameworks/Electron Helper (Renderer).app/Contents/MacOS/Electron Helper (Renderer)",
+				"55555 1 Mon Jan  6 14:00:00 2025 /path/to/electron --type=gpu-process",
 			].join("\n");
 
 			const results = scanner.parsePsOutput(psOutput);
@@ -186,10 +187,10 @@ describe("ProcessScanner", () => {
 
 		test("filters terminal notification helpers even when they mention codex or claude", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"60001 Mon Jan  6 14:00:00 2025 /opt/homebrew/bin/terminal-notifier -title Command\\ Central -message 'codex finished cleanly'",
-				"60002 Mon Jan  6 14:00:01 2025 /usr/bin/osascript -e 'display notification \"claude completed\"'",
-				"60003 Mon Jan  6 14:00:03 2025 /opt/homebrew/bin/codex exec --model gpt-5 hello",
+				"  PID  PPID STARTED                       COMMAND",
+				"60001 1 Mon Jan  6 14:00:00 2025 /opt/homebrew/bin/terminal-notifier -title Command\\ Central -message 'codex finished cleanly'",
+				"60002 1 Mon Jan  6 14:00:01 2025 /usr/bin/osascript -e 'display notification \"claude completed\"'",
+				"60003 1 Mon Jan  6 14:00:03 2025 /opt/homebrew/bin/codex exec --model gpt-5 hello",
 			].join("\n");
 
 			const results = scanner.parsePsOutput(psOutput);
@@ -208,9 +209,9 @@ describe("ProcessScanner", () => {
 
 		test("filters shell wrapper processes even when command text mentions an agent CLI", () => {
 			const psOutput = [
-				"  PID   STARTED                       COMMAND",
-				"60011 Mon Jan  6 14:00:00 2025 /bin/zsh /tmp/node_modules/@openai/codex/dist/cli.js --resume sess-1",
-				"60012 Mon Jan  6 14:00:01 2025 /opt/homebrew/bin/codex exec --model gpt-5 hello",
+				"  PID  PPID STARTED                       COMMAND",
+				"60011 1 Mon Jan  6 14:00:00 2025 /bin/zsh /tmp/node_modules/@openai/codex/dist/cli.js --resume sess-1",
+				"60012 1 Mon Jan  6 14:00:01 2025 /opt/homebrew/bin/codex exec --model gpt-5 hello",
 			].join("\n");
 
 			const results = scanner.parsePsOutput(psOutput);
@@ -230,19 +231,68 @@ describe("ProcessScanner", () => {
 		});
 
 		test("skips header line", () => {
-			const psOutput = "  PID   STARTED                       COMMAND\n";
+			const psOutput = "  PID  PPID STARTED                       COMMAND\n";
 			expect(scanner.parsePsOutput(psOutput)).toHaveLength(0);
 		});
 
 		test("handles malformed lines gracefully", () => {
 			const psOutput = [
 				"not a valid line",
-				"  PID   STARTED                       COMMAND",
+				"  PID  PPID STARTED                       COMMAND",
 				"abc notapid",
 				"",
 			].join("\n");
 
 			expect(scanner.parsePsOutput(psOutput)).toHaveLength(0);
+		});
+
+		test("drops node wrapper parents when the child codex process is also retained", () => {
+			const psOutput = [
+				"  PID  PPID STARTED                       COMMAND",
+				"100 50 Mon Jan  6 14:05:00 2025 node /opt/homebrew/bin/codex exec --json --full-auto --cd /Users/test/project",
+				"200 100 Mon Jan  6 14:05:01 2025 codex exec --json --full-auto --cd /Users/test/project",
+			].join("\n");
+
+			const results = scanner.parsePsOutput(psOutput);
+			expect(results).toHaveLength(1);
+			expect(results[0]?.pid).toBe(200);
+			expect(results[0]?.ppid).toBe(100);
+		});
+
+		test("keeps standalone retained agents when their parent is not retained", () => {
+			const psOutput = [
+				"  PID  PPID STARTED                       COMMAND",
+				"300 25 Mon Jan  6 14:05:00 2025 claude -p 'ship it'",
+			].join("\n");
+
+			const results = scanner.parsePsOutput(psOutput);
+			expect(results).toHaveLength(1);
+			expect(results[0]?.pid).toBe(300);
+		});
+
+		test("collapses three-level wrapper chains down to the leaf agent", () => {
+			const psOutput = [
+				"  PID  PPID STARTED                       COMMAND",
+				"100 50 Mon Jan  6 14:05:00 2025 node /opt/homebrew/bin/codex exec --json --full-auto --cd /Users/test/project",
+				"200 100 Mon Jan  6 14:05:01 2025 /opt/homebrew/bin/codex exec --json --full-auto --cd /Users/test/project",
+				"400 1 Mon Jan  6 14:06:01 2025 claude -p 'other project'",
+			].join("\n");
+
+			const results = scanner.parsePsOutput(psOutput);
+			expect(results).toHaveLength(2);
+			expect(results.map((entry) => entry.pid)).toEqual([200, 400]);
+		});
+
+		test("keeps unrelated retained agents for different projects", () => {
+			const psOutput = [
+				"  PID  PPID STARTED                       COMMAND",
+				"500 1 Mon Jan  6 14:05:00 2025 codex exec --cd /Users/test/project-a 'fix a'",
+				"600 1 Mon Jan  6 14:05:30 2025 claude -p 'fix b'",
+			].join("\n");
+
+			const results = scanner.parsePsOutput(psOutput);
+			expect(results).toHaveLength(2);
+			expect(results.map((entry) => entry.pid)).toEqual([500, 600]);
 		});
 	});
 
@@ -396,8 +446,8 @@ describe("ProcessScanner", () => {
 					if (cmd === "ps") {
 						return Promise.resolve({
 							stdout: [
-								"  PID   STARTED                       COMMAND",
-								"12345 Sun Mar 29 23:03:22 2026 /usr/local/bin/claude --model opus --print hello",
+								"  PID  PPID STARTED                       COMMAND",
+								"12345 1 Sun Mar 29 23:03:22 2026 /usr/local/bin/claude --model opus --print hello",
 							].join("\n"),
 							stderr: "",
 						});
@@ -415,6 +465,7 @@ describe("ProcessScanner", () => {
 			const agents = await scanner.scan();
 			expect(agents).toHaveLength(1);
 			expect(agents[0]?.pid).toBe(12345);
+			expect(agents[0]?.ppid).toBe(1);
 			expect(agents[0]?.projectDir).toBe("/home/user/project");
 			expect(agents[0]?.model).toBe("opus");
 			expect(agents[0]?.source).toBe("process");
@@ -435,8 +486,8 @@ describe("ProcessScanner", () => {
 					if (cmd === "ps") {
 						return Promise.resolve({
 							stdout: [
-								"  PID   STARTED                       COMMAND",
-								"12345 Sun Mar 29 23:03:22 2026 /usr/local/bin/claude --print hello",
+								"  PID  PPID STARTED                       COMMAND",
+								"12345 1 Sun Mar 29 23:03:22 2026 /usr/local/bin/claude --print hello",
 							].join("\n"),
 							stderr: "",
 						});
@@ -456,8 +507,8 @@ describe("ProcessScanner", () => {
 					if (cmd === "ps") {
 						return Promise.resolve({
 							stdout: [
-								"  PID   STARTED                       COMMAND",
-								"88554 Thu Mar 26 20:10:00 2026 node /opt/homebrew/bin/codex exec 'run the task'",
+								"  PID  PPID STARTED                       COMMAND",
+								"88554 1 Thu Mar 26 20:10:00 2026 node /opt/homebrew/bin/codex exec 'run the task'",
 							].join("\n"),
 							stderr: "",
 						});
@@ -489,13 +540,13 @@ describe("ProcessScanner", () => {
 					if (cmd === "ps") {
 						return Promise.resolve({
 							stdout: [
-								"  PID   STARTED                       COMMAND",
-								"88554 Thu Mar 26 20:10:00 2026 node /opt/homebrew/bin/codex",
-								"88555 Thu Mar 26 20:10:01 2026 /opt/homebrew/bin/codex",
-								"18054 Sun Mar 29 19:17:00 2026 claude",
-								"26303 Sat Mar 28 21:43:00 2026 claude",
-								"98956 Sun Mar 29 18:56:00 2026 claude -p 'completed task output'",
-								"24607 Fri Mar 27 21:15:00 2026 claude",
+								"  PID  PPID STARTED                       COMMAND",
+								"88554 1 Thu Mar 26 20:10:00 2026 node /opt/homebrew/bin/codex",
+								"88555 1 Thu Mar 26 20:10:01 2026 /opt/homebrew/bin/codex",
+								"18054 1 Sun Mar 29 19:17:00 2026 claude",
+								"26303 1 Sat Mar 28 21:43:00 2026 claude",
+								"98956 1 Sun Mar 29 18:56:00 2026 claude -p 'completed task output'",
+								"24607 1 Fri Mar 27 21:15:00 2026 claude",
 							].join("\n"),
 							stderr: "",
 						});
@@ -537,8 +588,8 @@ describe("ProcessScanner", () => {
 					if (cmd === "ps") {
 						return Promise.resolve({
 							stdout: [
-								"  PID   STARTED                       COMMAND",
-								"98956 Sun Mar 29 18:56:00 2026 claude -p 'summarize this repo' --session-id sess-stale",
+								"  PID  PPID STARTED                       COMMAND",
+								"98956 1 Sun Mar 29 18:56:00 2026 claude -p 'summarize this repo' --session-id sess-stale",
 							].join("\n"),
 							stderr: "",
 						});
@@ -591,8 +642,8 @@ describe("ProcessScanner", () => {
 					if (cmd === "ps") {
 						return Promise.resolve({
 							stdout: [
-								"  PID   STARTED                       COMMAND",
-								"88555 Thu Mar 26 20:10:00 2026 /opt/homebrew/bin/codex exec --session-id sess-fresh 'run the task'",
+								"  PID  PPID STARTED                       COMMAND",
+								"88555 1 Thu Mar 26 20:10:00 2026 /opt/homebrew/bin/codex exec --session-id sess-fresh 'run the task'",
 							].join("\n"),
 							stderr: "",
 						});
@@ -622,8 +673,8 @@ describe("ProcessScanner", () => {
 					if (cmd === "ps") {
 						return Promise.resolve({
 							stdout: [
-								"  PID   STARTED                       COMMAND",
-								"77001 Sun Mar 29 23:03:22 2026 /opt/homebrew/bin/codex exec --cd /Users/test/projects/my-app 'fix the bug'",
+								"  PID  PPID STARTED                       COMMAND",
+								"77001 1 Sun Mar 29 23:03:22 2026 /opt/homebrew/bin/codex exec --cd /Users/test/projects/my-app 'fix the bug'",
 							].join("\n"),
 							stderr: "",
 						});
@@ -649,8 +700,8 @@ describe("ProcessScanner", () => {
 					if (cmd === "ps") {
 						return Promise.resolve({
 							stdout: [
-								"  PID   STARTED                       COMMAND",
-								"77002 Sun Mar 29 23:03:22 2026 /opt/homebrew/bin/codex exec 'do something'",
+								"  PID  PPID STARTED                       COMMAND",
+								"77002 1 Sun Mar 29 23:03:22 2026 /opt/homebrew/bin/codex exec 'do something'",
 							].join("\n"),
 							stderr: "",
 						});
@@ -698,8 +749,8 @@ describe("ProcessScanner", () => {
 					if (cmd === "ps") {
 						return Promise.resolve({
 							stdout: [
-								"  PID   STARTED                       COMMAND",
-								"12345 Sun Mar 29 23:03:22 2026 /usr/local/bin/claude --print hello",
+								"  PID  PPID STARTED                       COMMAND",
+								"12345 1 Sun Mar 29 23:03:22 2026 /usr/local/bin/claude --print hello",
 							].join("\n"),
 							stderr: "",
 						});

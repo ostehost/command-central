@@ -14,6 +14,8 @@ export type DiscoverySource = "process" | "session-file" | "launcher";
 export interface DiscoveredAgent {
 	/** OS process ID (used for dedup across sources) */
 	pid: number;
+	/** Parent process ID when discovered from the process table */
+	ppid?: number;
 	/** Absolute path to the project the agent is working in */
 	projectDir: string;
 	/** Raw command string from `ps` */

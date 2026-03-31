@@ -2,7 +2,7 @@
  * ProcessScanner — Detect running CLI agent instances via `ps` + `lsof`.
  *
  * Scanning approach:
- *   1. `ps -eo pid,lstart,command` → find processes whose command hints at claude/codex/gemini
+ *   1. `ps -eo pid,ppid,lstart,command` → find processes whose command hints at claude/codex/gemini
  *   2. Filter to actual CLI processes (skip electron helpers, renderer/gpu processes, etc.)
  *   3. `lsof -p PID -d cwd -Fn` → resolve working directory
  *   4. Parse command args for backend/model/session metadata used in UI detection
@@ -111,6 +111,7 @@ export type ProcessScanFilterReason =
 
 export interface ProcessScanDiagnosticEntry {
 	pid: number;
+	ppid?: number;
 	command: string;
 	startTime: Date;
 	binaryName?: string;
@@ -199,6 +200,7 @@ export class ProcessScanner {
 				const worktree = await this.resolveWorktreeFn(projectDir);
 				const agent: DiscoveredAgent = {
 					pid: c.pid,
+					ppid: c.ppid,
 					projectDir,
 					command: c.command,
 					startTime: c.startTime,
@@ -219,6 +221,7 @@ export class ProcessScanner {
 				}
 				retained.push({
 					pid: c.pid,
+					ppid: c.ppid,
 					command: c.command,
 					startTime: c.startTime,
 					binaryName: this.extractBinaryName(c.command),
@@ -253,7 +256,7 @@ export class ProcessScanner {
 		try {
 			const { stdout } = await this.execFileAsync(
 				"ps",
-				["-eo", "pid,lstart,command"],
+				["-eo", "pid,ppid,lstart,command"],
 				{ timeout: CMD_TIMEOUT },
 			);
 			return stdout;
@@ -263,37 +266,42 @@ export class ProcessScanner {
 	}
 
 	/**
-	 * Parse `ps -eo pid,lstart,command` output into candidate entries.
+	 * Parse `ps -eo pid,ppid,lstart,command` output into candidate entries.
 	 *
 	 * lstart format: "Day Mon DD HH:MM:SS YYYY" (5 tokens).
 	 * Example line:
-	 *   12345 Mon Jan  6 14:03:22 2025 /usr/local/bin/claude --model opus ...
+	 *   12345 1 Mon Jan  6 14:03:22 2025 /usr/local/bin/claude --model opus ...
 	 */
 	parsePsOutput(
 		raw: string,
-	): Array<{ pid: number; startTime: Date; command: string }> {
+	): Array<{ pid: number; ppid: number; startTime: Date; command: string }> {
 		const diagnostics: ProcessScanDiagnostics = {
 			psRowCount: 0,
 			agentLikeCandidateCount: 0,
 			retained: [],
 			filtered: [],
 		};
-		const results: Array<{ pid: number; startTime: Date; command: string }> =
-			[];
+		const results: Array<{
+			pid: number;
+			ppid: number;
+			startTime: Date;
+			command: string;
+		}> = [];
 
 		for (const line of raw.split("\n")) {
 			const trimmed = line.trim();
 			if (!trimmed || trimmed.startsWith("PID")) continue;
 			diagnostics.psRowCount += 1;
 
-			// PID is the first token
-			const pidMatch = trimmed.match(/^(\d+)\s+/);
-			if (!pidMatch) continue;
-			const pid = Number(pidMatch[1]);
+			// PID and PPID are the first two tokens.
+			const procMatch = trimmed.match(/^(\d+)\s+(\d+)\s+/);
+			if (!procMatch) continue;
+			const pid = Number(procMatch[1]);
+			const ppid = Number(procMatch[2]);
 
-			// lstart is 5 tokens after the PID
-			const afterPid = trimmed.slice(pidMatch[0].length);
-			const lstartMatch = afterPid.match(
+			// lstart is 5 tokens after the PID and PPID.
+			const afterProc = trimmed.slice(procMatch[0].length);
+			const lstartMatch = afterProc.match(
 				/^(\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d{4})\s+(.+)$/,
 			);
 			if (!lstartMatch) continue;
@@ -313,6 +321,7 @@ export class ProcessScanner {
 			if (EXCLUDED_BINARY_RE.test(command)) {
 				diagnostics.filtered.push({
 					pid,
+					ppid,
 					command,
 					startTime,
 					binaryName,
@@ -323,6 +332,7 @@ export class ProcessScanner {
 			if (identity.kind === "shell") {
 				diagnostics.filtered.push({
 					pid,
+					ppid,
 					command,
 					startTime,
 					binaryName,
@@ -334,6 +344,7 @@ export class ProcessScanner {
 			if (!backend || !this.isAgentModeProcess(command, backend)) {
 				diagnostics.filtered.push({
 					pid,
+					ppid,
 					command,
 					startTime,
 					binaryName,
@@ -344,6 +355,7 @@ export class ProcessScanner {
 			if (NOISE_RE.test(command)) {
 				diagnostics.filtered.push({
 					pid,
+					ppid,
 					command,
 					startTime,
 					binaryName,
@@ -352,11 +364,22 @@ export class ProcessScanner {
 				continue;
 			}
 
-			results.push({ pid, startTime, command });
+			results.push({ pid, ppid, startTime, command });
 		}
 
+		const retainedPids = new Set(results.map((entry) => entry.pid));
+		const parentPidsToRemove = new Set(
+			results
+				.filter((entry) => retainedPids.has(entry.ppid))
+				.map((entry) => entry.ppid),
+		);
+		const dedupedResults =
+			parentPidsToRemove.size > 0
+				? results.filter((entry) => !parentPidsToRemove.has(entry.pid))
+				: results;
+
 		this.lastDiagnostics = diagnostics;
-		return results;
+		return dedupedResults;
 	}
 
 	/**
