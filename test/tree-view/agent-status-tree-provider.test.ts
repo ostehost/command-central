@@ -7,12 +7,26 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realChildProcess from "node:child_process";
+import * as os from "node:os";
 import * as path from "node:path";
 import type * as vscode from "vscode";
 
 // Keep this test file on real node:fs even when other files mock it.
 const fs = require("node:fs") as typeof import("node:fs");
 mock.module("node:fs", () => fs);
+
+const execFileSyncMock = mock((...fnArgs: unknown[]) =>
+	realChildProcess.execFileSync(
+		fnArgs[0] as string,
+		fnArgs[1] as string[] | undefined,
+		fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+	),
+);
+mock.module("node:child_process", () => ({
+	...realChildProcess,
+	execFileSync: execFileSyncMock,
+}));
 
 // Mock port-detector to avoid real lsof calls in tree provider tests
 const mockDetectListeningPorts = mock(
@@ -45,7 +59,7 @@ import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 // ── Mock data ────────────────────────────────────────────────────────
 
 function createMockTask(overrides: Partial<AgentTask> = {}): AgentTask {
-	return {
+	const task: AgentTask = {
 		id: "test-task-1",
 		status: "running",
 		project_dir: "/Users/test/projects/my-app",
@@ -61,6 +75,28 @@ function createMockTask(overrides: Partial<AgentTask> = {}): AgentTask {
 		review_status: null,
 		...overrides,
 	};
+
+	if (task.terminal_backend === "persist" && !task.persist_socket) {
+		task.persist_socket = getPersistSocketPath(task);
+	}
+
+	return task;
+}
+
+function getPersistSocketPath(
+	task: Pick<AgentTask, "session_id" | "persist_socket">,
+): string {
+	return (
+		task.persist_socket ??
+		path.join(
+			os.homedir(),
+			".local",
+			"share",
+			"cc",
+			"sockets",
+			`${task.session_id}.sock`,
+		)
+	);
 }
 
 function createMockRegistry(
@@ -310,6 +346,16 @@ describe("AgentStatusTreeProvider", () => {
 
 	beforeEach(() => {
 		mock.restore();
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const [cmd, args] = fnArgs as [string, string[] | undefined];
+			if (cmd === "tmux" && args?.[0] === "has-session") return "";
+			if (cmd === "persist" && args?.[0] === "-s") return "";
+			return realChildProcess.execFileSync(
+				cmd,
+				args,
+				fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+			);
+		});
 		vscodeMock = setupVSCodeMock();
 		projectIconManagerMock = {
 			getIconForProject: mock(() => "🧩"),
@@ -509,7 +555,7 @@ describe("AgentStatusTreeProvider", () => {
 						{ alive: boolean; checkedAt: number }
 					>;
 				}
-			)._persistSessionHealthCache.set(task.session_id, {
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -532,7 +578,7 @@ describe("AgentStatusTreeProvider", () => {
 						{ alive: boolean; checkedAt: number }
 					>;
 				}
-			)._persistSessionHealthCache.set(task.session_id, {
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
 				alive: true,
 				checkedAt: Date.now(),
 			});
@@ -568,7 +614,7 @@ describe("AgentStatusTreeProvider", () => {
 						{ alive: boolean; checkedAt: number }
 					>;
 				}
-			)._persistSessionHealthCache.set(task.session_id, {
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -576,6 +622,29 @@ describe("AgentStatusTreeProvider", () => {
 			provider.reload();
 
 			expect(provider.getTasks()[0]?.status).toBe("running");
+		});
+
+		test("legacy running task without terminal_backend falls back to tmux health", () => {
+			const task = createMockTask({
+				id: "legacy-tmux",
+				status: "running",
+				terminal_backend: undefined,
+			});
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set(task.session_id, {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("stopped");
 		});
 
 		test("persist health cache is used on second call within TTL", () => {
@@ -592,7 +661,7 @@ describe("AgentStatusTreeProvider", () => {
 					>;
 				}
 			)._persistSessionHealthCache;
-			persistCache.set(task.session_id, {
+			persistCache.set(getPersistSocketPath(task), {
 				alive: true,
 				checkedAt: Date.now(),
 			});
@@ -632,7 +701,7 @@ describe("AgentStatusTreeProvider", () => {
 						{ alive: boolean; checkedAt: number }
 					>;
 				}
-			)._persistSessionHealthCache.set("agent-shared", {
+			)._persistSessionHealthCache.set(getPersistSocketPath(older), {
 				alive: true,
 				checkedAt: Date.now(),
 			});
@@ -686,7 +755,7 @@ describe("AgentStatusTreeProvider", () => {
 							{ alive: boolean; checkedAt: number }
 						>;
 					}
-				)._persistSessionHealthCache.set(stale.session_id, {
+				)._persistSessionHealthCache.set(getPersistSocketPath(stale), {
 					alive: false,
 					checkedAt: Date.now(),
 				});
@@ -877,7 +946,7 @@ describe("AgentStatusTreeProvider", () => {
 				}
 			)._persistSessionHealthCache = new Map(
 				persistRunning.map((task) => [
-					task.session_id,
+					getPersistSocketPath(task),
 					{ alive: true, checkedAt: Date.now() },
 				]),
 			);
@@ -937,7 +1006,7 @@ describe("AgentStatusTreeProvider", () => {
 				}
 			)._persistSessionHealthCache = new Map(
 				persistRunning.map((task) => [
-					task.session_id,
+					getPersistSocketPath(task),
 					{ alive: true, checkedAt: Date.now() },
 				]),
 			);

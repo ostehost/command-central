@@ -24,6 +24,7 @@ import {
 	countAgentStatuses,
 	formatCountSummary,
 } from "../utils/agent-counts.js";
+import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
 import type { ListeningPort } from "../utils/port-detector.js";
 import { detectListeningPortsAsync } from "../utils/port-detector.js";
 import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
@@ -68,6 +69,7 @@ export interface AgentTask {
 	stream_file?: string | null;
 	agent_backend?: string | null;
 	cli_name?: string | null;
+	persist_socket?: string | null;
 	tmux_session?: string;
 	bundle_path: string;
 	prompt_file: string;
@@ -525,6 +527,7 @@ function normalizeTask(
 		stream_file: asString(raw["stream_file"]) ?? null,
 		agent_backend: asString(raw["agent_backend"]) ?? null,
 		cli_name: asString(raw["cli_name"]) ?? null,
+		persist_socket: asString(raw["persist_socket"]) ?? null,
 		tmux_session: asString(raw["tmux_session"]),
 		bundle_path: bundlePath,
 		prompt_file: promptFile,
@@ -848,30 +851,35 @@ export class AgentStatusTreeProvider
 		return alive;
 	}
 
-	private isPersistSessionAlive(sessionId: string): boolean {
+	private getPersistSocketPath(task: AgentTask): string | null {
+		if (task.persist_socket) return task.persist_socket;
+		if (!isValidSessionId(task.session_id)) return null;
+		return path.join(
+			os.homedir(),
+			".local",
+			"share",
+			"cc",
+			"sockets",
+			`${task.session_id}.sock`,
+		);
+	}
+
+	private isPersistTaskAlive(task: AgentTask): boolean {
+		const socketPath = this.getPersistSocketPath(task);
+		if (!socketPath) return false;
+
 		const cacheTtlMs = 5_000;
-		const cached = this._persistSessionHealthCache.get(sessionId);
+		const cached = this._persistSessionHealthCache.get(socketPath);
 		const now = Date.now();
 		if (cached && now - cached.checkedAt < cacheTtlMs) {
 			return cached.alive;
 		}
 
-		let alive = false;
-		try {
-			const socketPath = path.join(
-				os.homedir(),
-				".local",
-				"share",
-				"cc",
-				"sockets",
-				`${sessionId}.sock`,
-			);
-			execFileSync("persist", ["-s", socketPath], { timeout: 500 });
-			alive = true;
-		} catch {
-			alive = false;
-		}
-		this._persistSessionHealthCache.set(sessionId, { alive, checkedAt: now });
+		const alive = checkPersistSessionAlive(socketPath);
+		this._persistSessionHealthCache.set(socketPath, {
+			alive,
+			checkedAt: now,
+		});
 		return alive;
 	}
 
@@ -886,16 +894,19 @@ export class AgentStatusTreeProvider
 		const looksStale =
 			ageMs !== null && ageMs >= staleThresholdMs && this.isAgentStuck(task);
 
-		// Verify session liveness using the appropriate backend check.
-		if (isValidSessionId(task.session_id)) {
-			if (task.terminal_backend === "persist") {
-				if (!this.isPersistSessionAlive(task.session_id)) return false;
-				return !looksStale;
-			}
-			if (task.terminal_backend === "tmux") {
-				if (!this.isTmuxSessionAlive(task.session_id)) return false;
-				return !looksStale;
-			}
+		if (task.terminal_backend === "persist") {
+			if (!this.isPersistTaskAlive(task)) return false;
+			return !looksStale;
+		}
+
+		// Backward compatibility: tasks without terminal_backend were tmux-backed.
+		if (
+			(task.terminal_backend === "tmux" ||
+				task.terminal_backend === undefined) &&
+			isValidSessionId(task.session_id)
+		) {
+			if (!this.isTmuxSessionAlive(task.session_id)) return false;
+			return !looksStale;
 		}
 
 		if (this.hasLiveDiscoveredSession(task)) {
@@ -1036,6 +1047,10 @@ export class AgentStatusTreeProvider
 			for (const task of sessionTasks) {
 				if (task.id === newestTask?.id) continue;
 				staleTaskIds.add(task.id);
+				const persistSocketPath = this.getPersistSocketPath(task);
+				if (persistSocketPath) {
+					this._persistSessionHealthCache.delete(persistSocketPath);
+				}
 			}
 			this._tmuxSessionHealthCache.delete(sessionId);
 			this._persistSessionHealthCache.delete(sessionId);
