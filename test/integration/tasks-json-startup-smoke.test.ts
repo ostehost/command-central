@@ -117,9 +117,9 @@ describe("tasks.json startup smoke", () => {
 				},
 			]);
 			expect(warnMock).toHaveBeenCalledTimes(1);
-			expect(String(warnMock.mock.calls[0]?.[0] ?? "")).toContain(
-				"Falling back to an empty tasks registry",
-			);
+			expect(
+				String((warnMock.mock.calls as unknown[][])[0]?.[0] ?? ""),
+			).toContain("Falling back to an empty tasks registry");
 		} finally {
 			console.warn = originalWarn;
 		}
