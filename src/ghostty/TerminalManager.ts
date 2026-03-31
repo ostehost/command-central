@@ -590,12 +590,13 @@ export class TerminalManager {
 			const { stdout } = await this.execLauncher(binaryPath, ["--version"]);
 
 			// Expected output contains launcher version info
-			// Look for keywords that indicate this is the ghostty-launcher
-			const output = stdout.toLowerCase();
+			// Look for launcher-identifying keywords or a plain semver string.
+			const output = stdout.trim().toLowerCase();
 			const isValidLauncher =
 				output.includes("launcher") ||
 				output.includes("ghostty") ||
-				output.includes("version");
+				output.includes("version") ||
+				/v?\d+\.\d+\.\d+/.test(output);
 
 			this.launcherValidationCache.set(binaryPath, isValidLauncher);
 

@@ -47,6 +47,10 @@ export interface TaskRegistry {
 	tasks: Record<string, AgentTask>;
 }
 
+function createEmptyTaskRegistry(): TaskRegistry {
+	return { version: 2, tasks: {} };
+}
+
 export type AgentTaskStatus =
 	| "running"
 	| "stopped"
@@ -582,6 +586,29 @@ function normalizeTask(
 		updated_at: asString(raw["updated_at"]) ?? null,
 		prompt_summary: asString(raw["prompt_summary"]) ?? null,
 	};
+}
+
+function normalizeRegistryTasks(
+	tasks: unknown,
+): Record<string, AgentTask> | null {
+	if (!tasks || typeof tasks !== "object") {
+		return null;
+	}
+
+	const normalized: Record<string, AgentTask> = {};
+	for (const [key, raw] of Object.entries(tasks)) {
+		if (!raw || typeof raw !== "object") continue;
+		const task = normalizeTask(key, raw as Record<string, unknown>);
+		if (task) normalized[key] = task;
+	}
+
+	return normalized;
+}
+
+function warnTaskRegistryFallback(filePath: string, reason: string): void {
+	console.warn(
+		`[Command Central] Falling back to an empty tasks registry for ${filePath}: ${reason}`,
+	);
 }
 
 // ── Provider ─────────────────────────────────────────────────────────
@@ -1577,39 +1604,62 @@ export class AgentStatusTreeProvider
 	/** Exposed for testing — override to inject mock data */
 	readRegistry(): TaskRegistry {
 		this._registryLoadIssue = null;
-		if (!this._filePath) return { version: 2, tasks: {} };
+		if (!this._filePath) return createEmptyTaskRegistry();
+
+		let content = "";
+
 		try {
-			const content = fs.readFileSync(this._filePath, "utf-8");
-			const parsed = JSON.parse(content) as unknown;
-			if (!parsed || typeof parsed !== "object") {
-				this._registryLoadIssue = "Task registry is not a JSON object.";
-				return { version: 2, tasks: {} };
+			content = fs.readFileSync(this._filePath, "utf-8");
+		} catch (err) {
+			if (
+				err instanceof Error &&
+				(err as NodeJS.ErrnoException).code === "ENOENT"
+			) {
+				return createEmptyTaskRegistry();
 			}
+
+			warnTaskRegistryFallback(
+				this._filePath,
+				err instanceof Error ? err.message : "Failed to read tasks.json",
+			);
+			return createEmptyTaskRegistry();
+		}
+
+		if (content.trim().length === 0) {
+			warnTaskRegistryFallback(this._filePath, "tasks.json is empty");
+			return createEmptyTaskRegistry();
+		}
+
+		try {
+			const parsed = JSON.parse(content) as unknown;
+			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+				warnTaskRegistryFallback(
+					this._filePath,
+					"tasks.json root is not a JSON object",
+				);
+				return createEmptyTaskRegistry();
+			}
+
 			const parsedRegistry = parsed as Record<string, unknown>;
 			const version = parsedRegistry["version"];
-			const tasks = parsedRegistry["tasks"];
-			if (
-				(version === 1 || version === 2) &&
-				tasks &&
-				typeof tasks === "object"
-			) {
-				const normalized: Record<string, AgentTask> = {};
-				for (const [key, raw] of Object.entries(tasks)) {
-					if (!raw || typeof raw !== "object") continue;
-					const task = normalizeTask(key, raw as Record<string, unknown>);
-					if (task) normalized[key] = task;
-				}
-				return { version: 2, tasks: normalized };
+			const normalizedTasks = normalizeRegistryTasks(parsedRegistry["tasks"]);
+			if ((version === 1 || version === 2) && normalizedTasks) {
+				return { version: 2, tasks: normalizedTasks };
 			}
-			this._registryLoadIssue =
+
+			warnTaskRegistryFallback(
+				this._filePath,
 				version !== 1 && version !== 2
-					? `Unsupported tasks.json version: ${String(version)}`
-					: "tasks.json is missing a valid tasks object.";
-			return { version: 2, tasks: {} };
+					? `unsupported tasks.json version: ${String(version)}`
+					: "tasks.json is missing a valid tasks collection",
+			);
+			return createEmptyTaskRegistry();
 		} catch (err) {
-			this._registryLoadIssue =
-				err instanceof Error ? err.message : "Failed to parse tasks.json";
-			return { version: 2, tasks: {} };
+			warnTaskRegistryFallback(
+				this._filePath,
+				err instanceof Error ? err.message : "Failed to parse tasks.json",
+			);
+			return createEmptyTaskRegistry();
 		}
 	}
 

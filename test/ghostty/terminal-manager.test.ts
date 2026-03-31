@@ -874,7 +874,7 @@ describe("TerminalManager.validateLauncherBinary (Fix 2)", () => {
 				if (a.includes("--help")) {
 					cb(null, { stdout: "Usage: some-tool...", stderr: "" });
 				} else if (a.includes("--version")) {
-					cb(null, { stdout: "some-other-tool v2.0.0", stderr: "" });
+					cb(null, { stdout: "some-other-tool build abc123", stderr: "" });
 				} else {
 					cb(null, { stdout: "", stderr: "" });
 				}
@@ -883,6 +883,23 @@ describe("TerminalManager.validateLauncherBinary (Fix 2)", () => {
 
 		const mgr = new TerminalManager(createMockLogger() as never);
 		expect(await mgr.isLauncherInstalled()).toBe(false);
+	});
+
+	test("accepts plain semver output from --version", async () => {
+		execFileMock.mockImplementation(
+			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--help")) {
+					cb(null, { stdout: "Usage: launcher...", stderr: "" });
+				} else if (a.includes("--version")) {
+					cb(null, { stdout: "v0.1.0", stderr: "" });
+				} else {
+					cb(null, { stdout: "", stderr: "" });
+				}
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		expect(await mgr.isLauncherInstalled()).toBe(true);
 	});
 
 	test("caches validation results to avoid repeated checks", async () => {
@@ -1050,7 +1067,7 @@ describe("TerminalManager error handling (Fix 3)", () => {
 				if (a.includes("--help")) {
 					cb(null, { stdout: "Usage: wrong-tool...", stderr: "" });
 				} else if (a.includes("--version")) {
-					cb(null, { stdout: "wrong-tool v1.0.0", stderr: "" });
+					cb(null, { stdout: "wrong-tool build abc123", stderr: "" });
 				} else {
 					cb(null, { stdout: "", stderr: "" });
 				}
