@@ -462,8 +462,8 @@ export class ProcessScanner {
 	 * Codex CLI uses `--cd <dir>` to specify the working project directory.
 	 */
 	extractExplicitProjectDir(command: string): string | null {
-		const match = command.match(/--cd(?:=|\s+)(\S+)/);
-		return match?.[1] ?? null;
+		const match = command.match(/--cd(?:=|\s+)(?:"([^"]+)"|'([^']+)'|(\S+))/);
+		return match?.[1] ?? match?.[2] ?? match?.[3] ?? null;
 	}
 
 	/**

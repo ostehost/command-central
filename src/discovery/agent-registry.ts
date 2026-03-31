@@ -129,6 +129,7 @@ export class AgentRegistry implements vscode.Disposable {
 	getDiscoveredAgents(launcherTasks: AgentTask[]): DiscoveredAgent[] {
 		const launcherPids = new Set<number>();
 		const launcherSessionIds = new Set<string>();
+		const launcherProjectDirs = new Set<string>();
 
 		for (const task of launcherTasks) {
 			// Only hide discovered agents for actively running launcher entries.
@@ -141,6 +142,9 @@ export class AgentRegistry implements vscode.Disposable {
 				if (task.session_id) {
 					launcherSessionIds.add(task.session_id);
 				}
+				if (task.project_dir) {
+					launcherProjectDirs.add(task.project_dir);
+				}
 			}
 		}
 
@@ -152,6 +156,7 @@ export class AgentRegistry implements vscode.Disposable {
 			if (launcherPids.has(agent.pid)) return false;
 			if (agent.sessionId && launcherSessionIds.has(agent.sessionId))
 				return false;
+			if (launcherProjectDirs.has(agent.projectDir)) return false;
 			return true;
 		});
 	}
