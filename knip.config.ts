@@ -84,7 +84,7 @@ const config: KnipConfig = {
     // VS Code extension types
     // Code quality tools (CLI only)
     "@biomejs/biome", // Formatter/linter
-    "@vscode/sqlite3", // Dynamic require - provided by VS Code runtime
+    "playwright", // Used by scripts/svg-to-png.ts and just site-screenshot
   ],
 
   // ──────────────────────────────────────────────────────────

@@ -1,6 +1,8 @@
-task_id: "cc-hello-test"
+task_id: "cc-knip-cleanup-v1"
 status: "success"
-summary: "Integration test — Claude Code visible in CC sidebar"
-files_changed: []
-tests_passing: true
-next_steps: "None — this was a visibility test"
+summary: "Removed the stale Knip sqlite hint and marked Playwright as an intentional script dependency"
+files_changed:
+  - "knip.config.ts"
+  - ".oste-report.yaml"
+tests_passing: false
+next_steps: "Address the remaining Knip unused file/export findings if you want a clean Knip run"
