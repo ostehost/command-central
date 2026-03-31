@@ -1,5 +1,5 @@
 /* Command Central Landing Page v4 — Spacing & Responsiveness Overhaul */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -44,7 +44,7 @@
 html { scroll-behavior: smooth; }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-brand);
   background:
     radial-gradient(circle at 20% -10%, rgba(88, 166, 255, 0.18), transparent 45%),
     linear-gradient(180deg, #0b1320 0%, var(--bg) 28%, var(--bg) 100%);
@@ -443,6 +443,12 @@ a:hover {
   gap: var(--space-6);
 }
 
+.feature-card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
 .launch-feature-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -581,21 +587,25 @@ a:hover {
 /* ─── Feature Card: 2-column grid ─── */
 .feature-card {
   display: grid;
-  grid-template-columns: 2fr 3fr;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
   gap: var(--space-6);
   align-items: center;
   padding: var(--space-5);
-  border-radius: 16px;
-  transition: background 0.3s ease;
+  background: rgba(28, 33, 40, 0.72);
+  border: 1px solid rgba(48, 54, 61, 0.82);
+  border-radius: 18px;
+  transition: background 0.3s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
 .feature-card:hover {
   background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(88, 166, 255, 0.24);
+  transform: translateY(-2px);
 }
 
 /* Reversed card: visual left, text right */
 .feature-card--reverse {
-  grid-template-columns: 3fr 2fr;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
 }
 
 .feature-card--reverse .feature-content {
@@ -640,11 +650,14 @@ a:hover {
 /* ─── Visual (SVG) Container ─── */
 .feature-visual {
   min-width: 0;
+  display: flex;
+  justify-content: center;
 }
 
 .feature-visual svg,
 .feature-visual img {
   width: 100%;
+  max-width: 100%;
   height: auto;
   display: block;
   border-radius: 8px;
@@ -1316,12 +1329,22 @@ a:hover {
 
   /* Plus features pills: tighter on small screens */
   .features-also {
+    justify-content: flex-start;
     gap: var(--space-2);
   }
 
   .features-also-item {
-    padding: 6px 14px;
-    font-size: 0.8rem;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+  }
+
+  .features-also-item::before {
+    font-size: 0.7rem;
+  }
+
+  .features-also-label {
+    width: 100%;
+    margin-right: 0;
   }
 
   /* Use case cards: slightly less padding */
@@ -1343,6 +1366,25 @@ a:hover {
   .snippet-block code {
     font-size: 0.85rem;
   }
+
+  .compat-pills {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0 var(--space-3);
+    gap: var(--space-3);
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .compat-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .compat-pill {
+    flex-shrink: 0;
+    min-width: 100px;
+  }
 }
 
 /* ─── Phones & small tablets (≤768px) ─── */
@@ -1361,7 +1403,7 @@ a:hover {
   .feature-card--reverse {
     grid-template-columns: 1fr;
     gap: var(--space-5);
-    padding: var(--space-4) 0;
+    padding: var(--space-4);
   }
 
   .feature-card--reverse .feature-content { order: 0; }
@@ -1372,8 +1414,14 @@ a:hover {
   }
 
   .feature-visual {
-    max-width: 480px;
+    max-width: 340px;
     margin: 0 auto;
+  }
+
+  .feature-visual svg,
+  .feature-visual img {
+    border: 1px solid rgba(88, 166, 255, 0.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   }
 
   .launch-feature-grid {

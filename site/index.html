@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Command Central | Agent Control Tower for VS Code</title>
-  <meta name="description" content="Stop managing terminals. Start managing agents. Command Central is the VS Code sidebar that sees Claude Code, Codex, and Gemini running anywhere, including external terminals VS Code cannot see.">
-  <meta property="og:title" content="Command Central | Agent Control Tower for VS Code">
-  <meta property="og:description" content="The VS Code sidebar that sees every AI coding agent, even the ones running in external terminals.">
+  <title>Command Central | Recent Changes and AI Progress in VS Code</title>
+  <meta name="description" content="See recent code changes and AI agent progress in one VS Code sidebar. Track what changed when, monitor coding assistants, and keep project windows organized.">
+  <meta property="og:title" content="Command Central | Recent Changes and AI Progress in VS Code">
+  <meta property="og:description" content="Track what changed when, plus monitor AI coding assistants, all in your VS Code sidebar.">
   <meta property="og:image" content="https://partnerai.dev/images/og-card.png">
   <meta property="og:url" content="https://cc.partnerai.dev">
   <meta property="og:type" content="website">
@@ -84,13 +84,13 @@
       <div class="hero-logo" style="margin-bottom: 24px;">
         <img src="images/logo.svg" alt="Command Central" width="112" height="112" style="display:block;margin:0 auto;">
       </div>
-      <div class="hero-badge">M4 launch: agent control tower for multi-agent teams</div>
-      <h1>Stop managing terminals.<br>Start managing agents.</h1>
-      <p class="subtitle">The VS Code sidebar that sees every AI coding agent, even the ones running in external terminals. Auto-discover Claude Code, Codex, and Gemini across Ghostty, iTerm2, Terminal.app, tmux, and VS Code itself.</p>
+      <div class="hero-badge">VS Code sidebar for recent changes and active AI work</div>
+      <h1>See recent code changes<br>and AI agent progress</h1>
+      <p class="subtitle">Track what changed when, plus monitor AI coding assistants — all in your VS Code sidebar.</p>
       <div class="hero-highlights">
-        <span class="hero-highlight">Auto-discovery beyond VS Code native sessions</span>
-        <span class="hero-highlight">Kill, restart, inspect output, and review diffs from one sidebar</span>
-        <span class="hero-highlight">Prompt display, stuck detection, and per-file +/- change lists</span>
+        <span class="hero-highlight">Recent changes stay at the top</span>
+        <span class="hero-highlight">Track AI assistant progress without leaving the editor</span>
+        <span class="hero-highlight">Give each project its own identifiable window</span>
       </div>
       <div class="cta-group">
         <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-primary" data-track="install_clicked" data-source="hero">Install from VS Code Marketplace</a>
@@ -129,7 +129,7 @@
         </div>
         <div class="trust-row">
           <div class="trust-signal">
-            <span class="trust-number">1116</span>
+            <span class="trust-number">1134</span>
             <span class="trust-label">tests</span>
           </div>
           <div class="trust-signal">
@@ -149,55 +149,67 @@
     <div class="container">
       <div class="section-heading-block">
         <p class="section-kicker">Why it matters</p>
-        <h2 class="features-heading">Everything you need to run agents like a control tower</h2>
-        <p class="section-intro">Command Central keeps the landing page tight, but the core value is broad: see all agents, know what they are doing, and intervene without leaving VS Code.</p>
+        <h2 class="features-heading">Built for the moments when code is moving fast</h2>
+        <p class="section-intro">Command Central keeps change history, Git state, project windows, and AI coding activity visible in one place so you spend less time hunting for context.</p>
       </div>
-      <div class="launch-feature-grid">
-        <article class="launch-feature-card">
-          <div class="card-kicker">Auto-Discovery</div>
-          <h3>Sees agents VS Code cannot</h3>
-          <p>Command Central finds agents running in external terminals and surfaces them in one sidebar without manual registration.</p>
-          <div class="card-badges">
-            <span class="agent-badge badge-claude">Claude</span>
-            <span class="agent-badge badge-codex">Codex</span>
-            <span class="agent-badge badge-gemini">Gemini</span>
+      <div class="feature-card-stack">
+        <article class="feature-card">
+          <div class="feature-content">
+            <div class="card-kicker">Recent Changes</div>
+            <h3>See recent changes first</h3>
+            <p>Code that changed minutes ago appears above code that changed yesterday.</p>
+          </div>
+          <div class="feature-visual">
+            <img src="assets/feature-workflow.svg" alt="A vertical timeline showing recent code changes with timestamps" width="360" height="160" loading="lazy">
           </div>
         </article>
-        <article class="launch-feature-card">
-          <div class="card-kicker">Control Tower</div>
-          <h3>See every running agent in one view</h3>
-          <p>Use the VS Code sidebar as your control plane instead of hopping between tabs, panes, and terminal windows.</p>
+        <article class="feature-card feature-card--reverse">
+          <div class="feature-content">
+            <div class="card-kicker">Git Status</div>
+            <h3>Staged vs. working files</h3>
+            <p>Toggle to separate files you've staged from files still being worked on.</p>
+          </div>
+          <div class="feature-visual">
+            <img src="assets/git-status.svg" alt="A status view that separates staged files from working changes" width="400" height="280" loading="lazy">
+          </div>
         </article>
-        <article class="launch-feature-card">
-          <div class="card-kicker">Lifecycle Controls</div>
-          <h3>Kill, restart, and inspect output</h3>
-          <p>Take action directly from the sidebar when an agent wedges, finishes the wrong task, or needs a clean rerun.</p>
+        <article class="feature-card">
+          <div class="feature-content">
+            <div class="card-kicker">Filtering</div>
+            <h3>Focus on what matters</h3>
+            <p>Filter by file type to see only JavaScript, CSS, or whatever you're working on.</p>
+          </div>
+          <div class="feature-visual">
+            <img src="assets/filter.svg" alt="Filter controls for narrowing the list to relevant file types" width="400" height="280" loading="lazy">
+          </div>
         </article>
-        <article class="launch-feature-card">
-          <div class="card-kicker">Diff Viewer</div>
-          <h3>Review what each agent changed</h3>
-          <p>Open per-agent diffs and scan per-file additions and deletions before you jump into a detailed review.</p>
+        <article class="feature-card feature-card--reverse">
+          <div class="feature-content">
+            <div class="card-kicker">Project Windows</div>
+            <h3>Every project gets its own window</h3>
+            <p>Launch a terminal for each project. Each gets a unique emoji icon so you can tell them apart.</p>
+          </div>
+          <div class="feature-visual">
+            <img src="assets/feature-dock.svg" alt="Project terminal windows with distinct emoji icons for each project" width="380" height="180" loading="lazy">
+          </div>
         </article>
-        <article class="launch-feature-card">
-          <div class="card-kicker">Prompt Display</div>
-          <h3>Know what each agent is working on</h3>
-          <p>Prompt summaries stay visible in the sidebar so you do not have to reconstruct intent from a terminal transcript.</p>
+        <article class="feature-card">
+          <div class="feature-content">
+            <div class="card-kicker">AI Agents</div>
+            <h3>Track your AI assistants</h3>
+            <p>When AI tools are writing code for you, see their progress without leaving your editor.</p>
+          </div>
+          <div class="feature-visual">
+            <img src="assets/feature-agents.svg" alt="A simple AI agent status panel showing active and completed work" width="340" height="200" loading="lazy">
+          </div>
         </article>
-        <article class="launch-feature-card">
-          <div class="card-kicker">Stuck Detection</div>
-          <h3>Spot frozen sessions early</h3>
-          <p>When an agent stops making progress, Command Central calls it out so you can intervene before time disappears.</p>
-        </article>
-        <article class="launch-feature-card">
-          <div class="card-kicker">Per-File Change Lists</div>
-          <h3>See scope before opening the diff</h3>
-          <p>Each agent surfaces file-level change counts, which makes it obvious who touched what and how much.</p>
-        </article>
-        <article class="launch-feature-card">
-          <div class="card-kicker">Ghostty Bonus</div>
-          <h3>Per-project Dock icons when you want them</h3>
-          <p>Ghostty Launcher integration adds durable project identity in the Dock, but the core product works even when you use other terminals.</p>
-        </article>
+      </div>
+      <div class="features-also" aria-label="Additional capabilities">
+        <span class="features-also-label">Also includes</span>
+        <span class="features-also-item">Works across Git views</span>
+        <span class="features-also-item">Fits inside the VS Code sidebar</span>
+        <span class="features-also-item">Keeps AI progress visible during edits</span>
+        <span class="features-also-item">Pairs with multi-project terminal workflows</span>
       </div>
     </div>
   </section>

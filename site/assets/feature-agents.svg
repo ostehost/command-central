@@ -1,40 +1,18 @@
-<svg width="340" height="200" viewBox="0 0 340 200" xmlns="http://www.w3.org/2000/svg">
-  <!-- Background -->
+<svg width="340" height="200" viewBox="0 0 340 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Simple AI agent status panel">
   <rect width="340" height="200" fill="#161b22"/>
-  
-  <!-- Main panel -->
-  <rect x="20" y="40" width="300" height="120" rx="12" fill="#1c2128" stroke="#21262d" stroke-width="2"/>
-  
-  <!-- Header -->
-  <text x="36" y="65" font-family="system-ui" font-size="16" font-weight="600" fill="#e6edf3">AI Agents</text>
-  
-  <!-- Running agent row -->
-  <g>
-    <!-- Green status dot -->
-    <circle cx="44" cy="87" r="4" fill="#3fb950"/>
-    
-    <!-- Robot emoji -->
-    <text x="56" y="92" font-family="system-ui" font-size="16" fill="#e6edf3">🤖</text>
-    
-    <!-- Task text -->
-    <text x="80" y="92" font-family="system-ui" font-size="14" fill="#e6edf3">Refactoring auth</text>
-    
-    <!-- Duration (right-aligned) -->
-    <text x="280" y="92" font-family="monospace" font-size="12" fill="#8b949e" text-anchor="end">4m 12s</text>
-  </g>
-  
-  <!-- Completed agent row -->
-  <g>
-    <!-- Checkmark -->
-    <path d="M40 110 L45 115 L52 108" stroke="#3fb950" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-    
-    <!-- Checkmark emoji -->
-    <text x="56" y="118" font-family="system-ui" font-size="16" fill="#e6edf3">✅</text>
-    
-    <!-- Task text -->
-    <text x="80" y="118" font-family="system-ui" font-size="14" fill="#e6edf3">Added tests</text>
-    
-    <!-- Status (right-aligned) -->
-    <text x="280" y="118" font-family="system-ui" font-size="12" fill="#8b949e" text-anchor="end">Done</text>
-  </g>
+  <rect x="20" y="28" width="300" height="120" rx="12" fill="#1c2128" stroke="#21262d" stroke-width="2"/>
+  <text x="40" y="54" fill="#e6edf3" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="600">AI Agents</text>
+
+  <rect x="32" y="66" width="276" height="30" rx="8" fill="#161b22" opacity="0.7"/>
+  <circle cx="47" cy="81" r="4" fill="#3fb950"/>
+  <text x="59" y="86" fill="#e6edf3" font-family="'Space Grotesk', sans-serif" font-size="16">🤖</text>
+  <text x="83" y="82" fill="#e6edf3" font-family="'Space Grotesk', sans-serif" font-size="14" font-weight="500">Refactoring auth</text>
+  <text x="83" y="94" fill="#8b949e" font-family="'Cascadia Code', monospace" font-size="12">4m 12s</text>
+
+  <rect x="32" y="104" width="276" height="30" rx="8" fill="#161b22" opacity="0.45"/>
+  <path d="M42 118l4 4 8-9" fill="none" stroke="#3fb950" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="59" y="122" fill="#e6edf3" font-family="'Space Grotesk', sans-serif" font-size="14" font-weight="500">Added tests</text>
+  <text x="288" y="122" text-anchor="end" fill="#8b949e" font-family="'Cascadia Code', monospace" font-size="12">Done</text>
+
+  <text x="170" y="176" text-anchor="middle" fill="#e6edf3" font-family="'Space Grotesk', sans-serif" font-size="14" font-weight="500">See what AI agents are doing in real time</text>
 </svg>
