@@ -1,6 +1,7 @@
 # Command Central — Product Roadmap
 
-> v1.4 — 2026-03-29. Living document. Updated as priorities shift.
+> v1.5 — 2026-03-30. Living document. Updated as priorities shift.
+> v1.5 adds: ACP integration items (M3-7/8/9, M5-6/7) for post-launch.
 > Strategy basis: `research/STRATEGY-SYNTHESIS-2026-03-22.md`, `research/PMF-ANALYSIS-2026-03-22.md`, `research/RESEARCH-sidebar-ux-2026-03-24.md`, `research/DISSERTATION-cmdtab-platform-2026-03-24.md`
 > **Critical path:** M0 ✅ → M1 ✅ → M2 ✅ → M2.5 ✅ (core) → **M4 (LAUNCH)** → M3.5 (sort/group UX) → M3 → M5
 
@@ -121,6 +122,9 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M3-4 | Diff summary per agent ("touched 12 files, +340/-87") | ✅ DONE | P1 | `getDiffSummary()` inline + `viewAgentDiff` — shipped in M2.5 |
 | M3-5 | Multi-workspace agent tracking | PARKED | P2 | Scope creep — evaluate post-launch |
 | M3-6 | Stuck-agent detection (heuristic: same state for N min) | ✅ DONE | P1 | Address "runaway agent" fear |
+| M3-7 | ACP session visibility in sidebar | TODO | P1 | Show ACP-bound agents (Discord/Telegram/iMessage) alongside local agents. Watch `~/.openclaw/agents/*/sessions/` for ACP state. |
+| M3-8 | ACP provenance trace display per agent | TODO | P2 | Show origin, sender identity, trace ID chain in agent detail view. Unique differentiator. |
+| M3-9 | "Bind to channel" sidebar action | TODO | P2 | Context menu: bind selected agent to a Discord thread/Telegram topic via ACP. Remote collaboration without terminal access. |
 
 ### M5: Monetization (v1.0)
 **Goal:** Pro tier generating revenue.
@@ -132,6 +136,8 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 | M5-3 | Pro tier ($9-12/mo): cost estimation, stuck detection, lifecycle controls, diff summaries | TODO | P0 | Pay for power features |
 | M5-4 | Token/cost estimation per agent session | TODO | P0 | Pain point #2 from PMF analysis |
 | M5-5 | Early-adopter lifetime deal ($49 one-time Pro) | TODO | P1 | Launch incentive, test willingness to pay |
+| M5-6 | ACP provenance visualization + audit trail | TODO | P1 | Full trace chain view, cost attribution per trace. Pro-tier differentiator. |
+| M5-7 | Cross-channel agent dashboard | TODO | P2 | Control tower for ALL agents: local terminals + ACP sessions + remote channels. The unified view. |
 
 ---
 
