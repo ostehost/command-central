@@ -265,7 +265,10 @@ test *args="":
     elif [ -z "{{args}}" ]; then \
         echo "🧪 Running test suite..."; \
         echo ""; \
-        bun test; \
+        bun test test/commands/ test/config/ test/discovery/ test/events/ test/git-sort/ test/helpers/ test/mocks/ test/package-json/ test/ghostty/ test/integration/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/; \
+        echo ""; \
+        echo "🧪 Running isolated mock tests..."; \
+        bun test test/discovery-e2e/; \
         echo ""; \
         just test-quality; \
     else \

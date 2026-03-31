@@ -20,7 +20,7 @@ coverage = true
 coverageReporter = ["text"]
 coverageSkipTestFiles = true
 # Exclude legacy tests from test runs
-ignore = ["**/legacy/**"]
+ignore = ["**/legacy/**", "**/discovery-e2e/**"]
 # Global test setup - prevents test pollution
 preload = ["./test/setup/global-test-cleanup.ts"]
 
