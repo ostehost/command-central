@@ -27,6 +27,7 @@ import {
 import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
 import type { ListeningPort } from "../utils/port-detector.js";
 import { detectListeningPortsAsync } from "../utils/port-detector.js";
+import { relativeTime } from "../utils/relative-time.js";
 import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
@@ -3580,8 +3581,11 @@ export class AgentStatusTreeProvider
 		const launcherIcon =
 			node.tasks.find((task) => task.project_icon)?.project_icon ?? null;
 		const icon = this.getProjectIcon(projectDir, { launcherIcon });
+		const latestActivity = this.getProjectGroupRelativeActivity(node);
 		const item = new vscode.TreeItem(
-			`${icon} ${node.projectName}`,
+			latestActivity
+				? `${icon} ${node.projectName} · ${latestActivity}`
+				: `${icon} ${node.projectName}`,
 			vscode.TreeItemCollapsibleState.Expanded,
 		);
 		const discoveredCount = node.discoveredAgents?.length ?? 0;
@@ -3650,8 +3654,21 @@ export class AgentStatusTreeProvider
 		);
 	}
 
-	private formatElapsedDescription(task: AgentTask): string {
-		return formatTaskElapsedDescription(task);
+	private getTaskStatusTimeDescription(task: AgentTask): string {
+		if (task.status === "running") {
+			return `running · ${formatElapsed(task.started_at)}`;
+		}
+
+		const reference =
+			task.completed_at ?? task.updated_at ?? task.started_at ?? null;
+		return `${getStatusDisplayLabel(task.status)} · ${relativeTime(reference)}`;
+	}
+
+	private getProjectGroupRelativeActivity(
+		node: ProjectGroupNode,
+	): string | null {
+		const freshestActivityMs = this.getProjectGroupFreshestActivityMs(node);
+		return freshestActivityMs > 0 ? relativeTime(freshestActivityMs) : null;
 	}
 
 	private getStuckThresholdMinutes(): number {
@@ -3726,7 +3743,7 @@ export class AgentStatusTreeProvider
 
 	private createTaskItem(task: AgentTask): vscode.TreeItem {
 		const roleIcon = task.role ? ROLE_ICONS[task.role] : null;
-		const elapsedDesc = this.formatElapsedDescription(task);
+		const statusTimeDesc = this.getTaskStatusTimeDescription(task);
 		const projectIcon = this.getProjectIcon(task.project_dir, {
 			launcherIcon: task.project_icon,
 		});
@@ -3737,10 +3754,10 @@ export class AgentStatusTreeProvider
 		const diffLoading =
 			!diffSummaryInline && this.isTaskDiffSummaryLoading(task);
 		const baseDescription = diffSummaryInline
-			? `${task.project_name} · ${elapsedDesc} · ${diffSummaryInline}`
+			? `${task.project_name} · ${statusTimeDesc} · ${diffSummaryInline}`
 			: diffLoading
-				? `${task.project_name} · ${elapsedDesc} · loading diff...`
-				: `${task.project_name} · ${elapsedDesc}`;
+				? `${task.project_name} · ${statusTimeDesc} · loading diff...`
+				: `${task.project_name} · ${statusTimeDesc}`;
 		const description = isStuck
 			? `${baseDescription} (possibly stuck)`
 			: baseDescription;
@@ -3858,7 +3875,7 @@ export class AgentStatusTreeProvider
 		const discoveredDiff = this.getCachedDiffSummaryForDiscovered(agent);
 		const discoveredDiffLoading =
 			!discoveredDiff && this.isDiscoveredDiffSummaryLoading(agent);
-		const descriptionParts = [uptime];
+		const descriptionParts = ["running", uptime];
 		if (worktreeLabel) descriptionParts.push(worktreeLabel);
 		if (discoveredDiff) {
 			descriptionParts.push(discoveredDiff);

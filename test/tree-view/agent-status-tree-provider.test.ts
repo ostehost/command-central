@@ -896,7 +896,7 @@ describe("AgentStatusTreeProvider", () => {
 			);
 			if (!groupNode) throw new Error("expected project group");
 			const groupItem = provider.getTreeItem(groupNode);
-			expect(groupItem.label).toBe("🚀 Command Central");
+			expect(groupItem.label).toBe("🚀 Command Central · 1m ago");
 
 			const children = provider.getChildren(groupNode);
 			const taskNode = children.find(
@@ -1519,6 +1519,32 @@ describe("AgentStatusTreeProvider", () => {
 		).toBe("Alpha");
 	});
 
+	test("project group labels show the freshest child activity timestamp", () => {
+		const olderTask = createMockTask({
+			id: "alpha-running",
+			project_dir: "/Users/test/projects/alpha",
+			project_name: "Alpha",
+			status: "running",
+			started_at: new Date(Date.now() - 15 * 60_000).toISOString(),
+		});
+		const fresherTask = createMockTask({
+			id: "alpha-completed",
+			project_dir: "/Users/test/projects/alpha",
+			project_name: "Alpha",
+			status: "completed",
+			started_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+			completed_at: new Date(Date.now() - 2 * 60_000).toISOString(),
+		});
+		const item = provider.getTreeItem({
+			type: "projectGroup",
+			projectName: "Alpha",
+			projectDir: "/Users/test/projects/alpha",
+			tasks: [olderTask, fresherTask],
+		});
+
+		expect(item.label).toBe("🧩 Alpha · 2m ago");
+	});
+
 	test("falls back to legacy sortByStatus when sortMode is unset", () => {
 		setAgentStatusConfig(vscodeMock, { sortByStatus: true });
 
@@ -2139,14 +2165,21 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	test("getTreeItem creates expanded folder item for project groups", () => {
+		const startedAt = new Date(Date.now() - 60_000).toISOString();
 		const node: AgentNode = {
 			type: "projectGroup",
 			projectName: "Alpha",
 			projectDir: "/Users/test/projects/alpha",
-			tasks: [createMockTask({ id: "alpha-1", project_name: "Alpha" })],
+			tasks: [
+				createMockTask({
+					id: "alpha-1",
+					project_name: "Alpha",
+					started_at: startedAt,
+				}),
+			],
 		};
 		const item = provider.getTreeItem(node);
-		expect(item.label).toBe("🧩 Alpha");
+		expect(item.label).toBe("🧩 Alpha · 1m ago");
 		expect(item.description).toBe("1 working");
 		expect(item.collapsibleState).toBe(2); // Expanded
 		expect(item.iconPath).toBeUndefined();
@@ -2169,10 +2202,16 @@ describe("AgentStatusTreeProvider", () => {
 			type: "projectGroup",
 			projectName: "Alpha",
 			projectDir: "/Users/test/projects/alpha",
-			tasks: [createMockTask({ id: "alpha-1", project_name: "Alpha" })],
+			tasks: [
+				createMockTask({
+					id: "alpha-1",
+					project_name: "Alpha",
+					started_at: new Date(Date.now() - 60_000).toISOString(),
+				}),
+			],
 		};
 		const item = provider.getTreeItem(node);
-		expect(item.label).toBe("🛸 Alpha");
+		expect(item.label).toBe("🛸 Alpha · 1m ago");
 		expect(projectIconManagerMock.getIconForProject).not.toHaveBeenCalled();
 	});
 
@@ -2681,7 +2720,7 @@ describe("AgentStatusTreeProvider", () => {
 				started_at: new Date(Date.now() - 5 * 60_000).toISOString(),
 			});
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).toContain("Running for 5m");
+			expect(item.description).toContain("running · 5m");
 		});
 
 		test("completed tasks show time since completion instead of duration", () => {
@@ -2691,7 +2730,7 @@ describe("AgentStatusTreeProvider", () => {
 				completed_at: new Date(Date.now() - 60 * 60_000).toISOString(),
 			});
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).toContain("Completed 1h ago");
+			expect(item.description).toContain("completed · 1h ago");
 			expect(item.description).not.toContain("Completed 2h");
 			expect(item.description).not.toContain("Completed in");
 		});
@@ -2703,7 +2742,7 @@ describe("AgentStatusTreeProvider", () => {
 				completed_at: new Date(Date.now() - 30 * 60_000).toISOString(),
 			});
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).toContain("Failed 30m ago");
+			expect(item.description).toContain("failed · 30m ago");
 			expect(item.description).not.toContain("Failed after");
 		});
 
@@ -2714,7 +2753,7 @@ describe("AgentStatusTreeProvider", () => {
 				completed_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
 			});
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).toContain("Stopped 2h ago");
+			expect(item.description).toContain("stopped · 2h ago");
 			expect(item.description).not.toContain("Stopped after");
 		});
 	});

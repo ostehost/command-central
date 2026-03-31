@@ -6,7 +6,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { formatRelativeTime } from "../../src/utils/relative-time.js";
+import {
+	formatRelativeTime,
+	relativeTime,
+} from "../../src/utils/relative-time.js";
 
 describe("formatRelativeTime", () => {
 	const now = Date.now();
@@ -154,5 +157,38 @@ describe("formatRelativeTime", () => {
 			const result = formatRelativeTime(timestamp, now);
 			expect(result).toBe("yesterday");
 		});
+	});
+});
+
+describe("relativeTime", () => {
+	const now = new Date("2026-03-31T16:00:00Z").getTime();
+
+	test("formats seconds ago", () => {
+		expect(relativeTime(now - 2_000, now)).toBe("2s ago");
+	});
+
+	test("formats minutes ago", () => {
+		expect(relativeTime(now - 5 * 60_000, now)).toBe("5m ago");
+	});
+
+	test("formats hours ago", () => {
+		expect(relativeTime(now - 2 * 3_600_000, now)).toBe("2h ago");
+	});
+
+	test("formats days ago", () => {
+		expect(relativeTime(now - 3 * 86_400_000, now)).toBe("3d ago");
+	});
+
+	test("returns just now for null and undefined", () => {
+		expect(relativeTime(null, now)).toBe("just now");
+		expect(relativeTime(undefined, now)).toBe("just now");
+	});
+
+	test("returns just now for invalid dates", () => {
+		expect(relativeTime("not-a-date", now)).toBe("just now");
+	});
+
+	test("returns just now for future dates", () => {
+		expect(relativeTime(now + 30_000, now)).toBe("just now");
 	});
 });

@@ -12,6 +12,43 @@ export interface FormatOptions {
 	locale?: string;
 }
 
+/**
+ * Formats a timestamp as a compact relative time string used in sidebar labels
+ * and descriptions (for example "2s ago", "5m ago", "2h ago").
+ *
+ * Invalid or future timestamps collapse to "just now" so tree items never show
+ * misleading raw dates or negative durations.
+ */
+export function relativeTime(
+	date: Date | string | number | null | undefined,
+	now: number = Date.now(),
+): string {
+	if (date === null || date === undefined) {
+		return "just now";
+	}
+
+	const then = date instanceof Date ? date.getTime() : new Date(date).getTime();
+	if (!Number.isFinite(then)) {
+		return "just now";
+	}
+
+	const diffMs = now - then;
+	if (diffMs <= 0) {
+		return "just now";
+	}
+
+	if (diffMs < 60_000) {
+		return `${Math.max(1, Math.floor(diffMs / 1000))}s ago`;
+	}
+	if (diffMs < 3_600_000) {
+		return `${Math.floor(diffMs / 60_000)}m ago`;
+	}
+	if (diffMs < 86_400_000) {
+		return `${Math.floor(diffMs / 3_600_000)}h ago`;
+	}
+	return `${Math.floor(diffMs / 86_400_000)}d ago`;
+}
+
 // Time unit thresholds in seconds
 const TIME_UNITS = [
 	{ unit: "year" as const, seconds: 31536000 }, // 365 days
