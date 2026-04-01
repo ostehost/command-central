@@ -178,6 +178,7 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 
 ## References
 
+- **OpenClaw Integration Roadmap: `research/ROADMAP-OPENCLAW-INTEGRATION.md`** ← Phase 1-5 plan for native OpenClaw feature adoption
 - Sort/Group Redesign Spec: `research/SPEC-agent-status-sorting-roadmap.md`
 - Strategy Synthesis: `research/STRATEGY-SYNTHESIS-2026-03-22.md`
 - PMF Analysis: `research/PMF-ANALYSIS-2026-03-22.md`
