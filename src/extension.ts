@@ -4,7 +4,10 @@
 
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { getAgentQuickActions } from "./commands/agent-quick-actions.js";
+import {
+	getAgentQuickActions,
+	getOpenClawTaskQuickActions,
+} from "./commands/agent-quick-actions.js";
 import * as disableSortCommand from "./commands/disable-sort.js";
 import * as enableSortCommand from "./commands/enable-sort.js";
 import {
@@ -60,6 +63,7 @@ import { ProjectIconService } from "./services/project-icon-service.js";
 import { ProjectViewManager } from "./services/project-view-manager.js";
 import { SessionStore } from "./services/session-store.js";
 import { TelemetryService } from "./services/telemetry-service.js";
+import type { OpenClawTask } from "./types/openclaw-task-types.js";
 import type { GitChangeItem } from "./types/tree-element.js";
 import { GroupingViewManager } from "./ui/grouping-view-manager.js";
 import { buildOsteSpawnCommand, shellQuote } from "./utils/shell-command.js";
@@ -1207,14 +1211,31 @@ export async function activate(
 			),
 			vscode.commands.registerCommand(
 				"commandCentral.agentQuickActions",
-				async (node?: { type: string; task?: AgentTask }) => {
-					const task = node?.task;
-					if (!task) {
+				async (node?: { type: string; task?: AgentTask | OpenClawTask }) => {
+					if (!node?.task) {
 						vscode.window.showWarningMessage(
 							"No agent selected. Right-click an agent in the tree.",
 						);
 						return;
 					}
+					if (node.type === "openclawTask") {
+						const task = node.task as OpenClawTask;
+						const actions = getOpenClawTaskQuickActions(task.status);
+						const selected = await vscode.window.showQuickPick(
+							actions.map((action) => ({
+								label: action.label,
+								actionId: action.id,
+							})),
+							{ placeHolder: `Actions for ${task.taskId}` },
+						);
+						const picked = actions.find(
+							(action) => action.id === selected?.actionId,
+						);
+						if (picked)
+							await vscode.commands.executeCommand(picked.command, node);
+						return;
+					}
+					const task = node.task as AgentTask;
 					if (task.status === "running") {
 						await vscode.commands.executeCommand(
 							"commandCentral.focusAgentTerminal",
