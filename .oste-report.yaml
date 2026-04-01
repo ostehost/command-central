@@ -1,8 +1,10 @@
-task_id: "cc-knip-quickaction-fix"
+task_id: "cc-nav-fallback-v1"
 status: "success"
-summary: "Wired OpenClaw task quick actions into the shared handler to remove the unused export warning."
+summary: "Fixed terminal navigation fallbacks so diff/resume/focus degrade cleanly when Ghostty Launcher is missing or invalid"
 files_changed:
   - "src/extension.ts"
-  - ".oste-report.yaml"
+  - "src/ghostty/TerminalManager.ts"
+  - "test/commands/extension-commands.test.ts"
+  - "test/ghostty/terminal-manager.test.ts"
 tests_passing: true
-next_steps: ""
+next_steps: "Verify the VS Code commands end-to-end on a machine where `launcher` is absent from PATH but the Ghostty bundle and tmux session still exist."

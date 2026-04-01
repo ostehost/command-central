@@ -587,6 +587,39 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 		expect(mockTerminalShow).toHaveBeenCalled();
 	});
 
+	test("falls back to VS Code integrated terminal when configured launcher is invalid", async () => {
+		mockConfigGet.mockImplementation((_key: string, _def?: unknown) => {
+			if (_key === "ghostty.launcherPath") return "/usr/bin/wrong-tool";
+			return _def;
+		});
+		fsExistsSyncMock.mockImplementation(
+			(p: string) => p === "/usr/bin/wrong-tool",
+		);
+		execFileMock.mockImplementation(
+			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (f === "/usr/bin/wrong-tool" && a.includes("--help")) {
+					cb(null, { stdout: "Usage: wrong-tool", stderr: "" });
+					return;
+				}
+				if (f === "/usr/bin/wrong-tool" && a.includes("--version")) {
+					cb(null, { stdout: "wrong-tool build abc123", stderr: "" });
+					return;
+				}
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await mgr.runInProjectTerminal("/Users/test/my-project", "echo hi");
+
+		expect(mockCreateTerminal).toHaveBeenCalledWith({
+			name: "Terminal: my-project",
+			cwd: "/Users/test/my-project",
+		});
+		expect(mockTerminalSendText).toHaveBeenCalledWith("echo hi");
+		expect(mockTerminalShow).toHaveBeenCalled();
+	});
+
 	test("opens existing project bundle when session exists and no command provided", async () => {
 		const calls: Array<{ file: string; args: string[] }> = [];
 		execFileMock.mockImplementation(

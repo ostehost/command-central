@@ -232,7 +232,7 @@ describe("focusAgentTerminal command", () => {
 		expect(task.status).toBe("completed");
 	});
 
-	test("Strategy 3 checks tmux has-session before attach", () => {
+	test("Strategy 3 shows resume guidance when tmux session is dead", () => {
 		const task = createTask({
 			terminal_backend: "tmux",
 			ghostty_bundle_id: null,
@@ -247,17 +247,17 @@ describe("focusAgentTerminal command", () => {
 			/^[a-zA-Z0-9._-]+$/.test(task.session_id);
 		expect(strategy3Fires).toBeTruthy();
 
-		// Simulate tmux has-session failing (session ended) — Strategy 3 falls through
+		// Simulate tmux has-session failing (session ended) — the command should guide the user to Resume Session
 		const sessionAlive = false;
 		if (!sessionAlive) {
-			// Falls through to "no terminal" message instead of opening Ghostty
+			// Dead sessions should produce a more helpful degraded message
 			vscodeMock.window.showInformationMessage(
-				"No terminal available for this agent.",
+				"Terminal session ended. Use Resume Session to start a new one.",
 			);
 		}
 
 		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-			"No terminal available for this agent.",
+			"Terminal session ended. Use Resume Session to start a new one.",
 		);
 	});
 

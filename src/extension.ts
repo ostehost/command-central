@@ -964,6 +964,58 @@ export async function activate(
 			);
 		};
 
+		const openIntegratedTerminal = (
+			name: string,
+			cwd: string,
+			command?: string,
+		): void => {
+			const terminal = vscode.window.createTerminal({ name, cwd });
+			terminal.show();
+			if (command) {
+				terminal.sendText(command);
+			}
+		};
+
+		const runCommandInProjectTerminalWithFallback = async (
+			projectDir: string,
+			command: string,
+			terminalName: string,
+			cwd?: string,
+		): Promise<void> => {
+			if (!terminalManager) {
+				openIntegratedTerminal(terminalName, cwd ?? projectDir, command);
+				return;
+			}
+			try {
+				await terminalManager.runInProjectTerminal(projectDir, command, cwd);
+			} catch {
+				openIntegratedTerminal(terminalName, cwd ?? projectDir, command);
+			}
+		};
+
+		const openGhosttyTmuxAttach = async (
+			sessionId: string,
+		): Promise<boolean> => {
+			try {
+				await execFileAsync("tmux", ["has-session", "-t", sessionId]);
+			} catch {
+				return false;
+			}
+
+			try {
+				await execFileAsync("open", [
+					"-a",
+					"Ghostty",
+					"--args",
+					"-e",
+					`tmux attach -t ${sessionId}`,
+				]);
+				return true;
+			} catch {
+				return false;
+			}
+		};
+
 		const focusExistingTaskTerminal = async (
 			task: AgentTask,
 		): Promise<void> => {
@@ -1006,13 +1058,26 @@ export async function activate(
 				task.bundle_path !== "(tmux-mode)"
 			) {
 				try {
-					await execFileAsync("open", ["-a", task.bundle_path], 5000);
+					await execFileAsync("open", [task.bundle_path], 5000);
+					return;
 				} catch {
-					// Launcher/openProjectTerminal still handles the project surface fallback.
+					// Fall through to tmux attach or integrated terminal resume.
 				}
 			}
 
-			await terminalManager?.runInProjectTerminal(task.project_dir, command);
+			if (
+				task.session_id &&
+				isValidSessionId(task.session_id) &&
+				(await openGhosttyTmuxAttach(task.session_id))
+			) {
+				return;
+			}
+
+			await runCommandInProjectTerminalWithFallback(
+				task.project_dir,
+				command,
+				`Resume: ${task.id}`,
+			);
 		};
 
 		const parseRegistry = (rawRegistry: string) => {
@@ -1183,25 +1248,31 @@ export async function activate(
 					}
 
 					// Strategy 3: tmux-only — open Ghostty with tmux attach (REQUIRES live session)
+					let hasLiveTmuxSession = false;
 					if (
 						task.terminal_backend === "tmux" &&
 						task.session_id &&
 						isValidSessionId(task.session_id)
 					) {
-						try {
-							// Guard: check if tmux session is still alive before attempting attach
-							await runExec("tmux", ["has-session", "-t", task.session_id]);
-							await runExec("open", [
-								"-a",
-								"Ghostty",
-								"--args",
-								"-e",
-								`tmux attach -t ${task.session_id}`,
-							]);
+						hasLiveTmuxSession = await isTaskTmuxSessionAlive(task);
+						if (
+							hasLiveTmuxSession &&
+							(await openGhosttyTmuxAttach(task.session_id))
+						) {
 							return;
-						} catch {
-							// Session ended or Ghostty failed — fall through
 						}
+					}
+
+					if (
+						task.terminal_backend === "tmux" &&
+						task.session_id &&
+						isValidSessionId(task.session_id) &&
+						!hasLiveTmuxSession
+					) {
+						vscode.window.showInformationMessage(
+							"Terminal session ended. Use Resume Session to start a new one.",
+						);
+						return;
 					}
 
 					vscode.window.showInformationMessage(
@@ -1849,7 +1920,11 @@ export async function activate(
 							? `claude --resume ${shellQuote(claudeSessionId)}`
 							: "claude --continue";
 						try {
-							await terminalManager?.runInProjectTerminal(projectDir, command);
+							await runCommandInProjectTerminalWithFallback(
+								projectDir,
+								command,
+								`Resume: ${path.basename(projectDir)}`,
+							);
 						} catch {
 							vscode.window.showErrorMessage(
 								"Failed to open the terminal with the resumed session.",
@@ -2138,9 +2213,10 @@ export async function activate(
 								/* fallback to HEAD */
 							}
 						}
-						await terminalManager?.runInProjectTerminal(
+						await runCommandInProjectTerminalWithFallback(
 							projectDir,
 							`git diff ${sinceRef} --stat && echo "---" && git diff ${sinceRef}`,
+							`Diff: ${path.basename(projectDir)}`,
 						);
 						return;
 					}
@@ -2176,9 +2252,10 @@ export async function activate(
 						}
 					}
 
-					await terminalManager?.runInProjectTerminal(
+					await runCommandInProjectTerminalWithFallback(
 						task.project_dir,
 						`git diff ${sinceRef}..HEAD --stat && echo "---" && git diff ${sinceRef}..HEAD`,
+						`Diff: ${task.id}`,
 					);
 				},
 			),

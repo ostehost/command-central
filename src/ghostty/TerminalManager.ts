@@ -460,79 +460,87 @@ export class TerminalManager {
 		command?: string,
 		cwd?: string,
 	): Promise<void> {
-		const installed = await this.isLauncherInstalled();
+		try {
+			const installed = await this.isLauncherInstalled();
 
-		if (!installed) {
-			this.logger.warn(
-				"Ghostty launcher not installed — falling back to integrated terminal",
-				"TerminalManager",
-			);
-			const terminal = vscode.window.createTerminal({
-				name: `Terminal: ${path.basename(projectDir)}`,
-				cwd: cwd ?? projectDir,
-			});
-			if (command) {
-				terminal.sendText(command);
-			}
-			terminal.show();
-			return;
-		}
-
-		// Try to find existing launcher session for the project
-		const info = await this.getTerminalInfo(projectDir);
-
-		if (info.tmuxSession && command) {
-			// Send command to existing launcher session via oste-steer.sh
-			try {
-				await this.execCommand("oste-steer.sh", [
-					info.tmuxSession,
-					"--raw",
-					command,
-				]);
-				this.logger.info(
-					`Sent command to launcher session ${info.tmuxSession}`,
-					"TerminalManager",
-				);
-				return;
-			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
+			if (!installed) {
 				this.logger.warn(
-					`Failed to steer launcher session: ${message} — creating new terminal`,
+					"Ghostty launcher not installed — falling back to integrated terminal",
 					"TerminalManager",
 				);
+				this.openIntegratedTerminal(projectDir, command, cwd);
+				return;
 			}
-		}
 
-		if (info.tmuxSession && !command) {
-			// Existing session, no command: surface the project bundle terminal.
-			await this.openProjectTerminal(projectDir);
-			return;
-		}
+			// Try to find existing launcher session for the project
+			const info = await this.getTerminalInfo(projectDir);
 
-		// No session: rebuild bundle identity, then open/activate launch surface.
-		await this.createProjectTerminal(projectDir);
-		await this.openProjectTerminal(projectDir);
-
-		// If we just created a terminal and have a command, wait briefly then steer
-		if (command) {
-			// Re-fetch session info after terminal creation
-			await new Promise((resolve) => setTimeout(resolve, 1500));
-			try {
-				const newInfo = await this.getTerminalInfo(projectDir);
-				if (newInfo.tmuxSession) {
+			if (info.tmuxSession && command) {
+				// Send command to existing launcher session via oste-steer.sh
+				try {
 					await this.execCommand("oste-steer.sh", [
-						newInfo.tmuxSession,
+						info.tmuxSession,
 						"--raw",
 						command,
 					]);
+					this.logger.info(
+						`Sent command to launcher session ${info.tmuxSession}`,
+						"TerminalManager",
+					);
+					return;
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					this.logger.warn(
+						`Failed to steer launcher session: ${message} — creating new terminal`,
+						"TerminalManager",
+					);
 				}
-			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
+			}
+
+			if (info.tmuxSession && !command) {
+				// Existing session, no command: surface the project bundle terminal.
+				await this.openProjectTerminal(projectDir);
+				return;
+			}
+
+			// No session: rebuild bundle identity, then open/activate launch surface.
+			await this.createProjectTerminal(projectDir);
+			await this.openProjectTerminal(projectDir);
+
+			// If we just created a terminal and have a command, wait briefly then steer
+			if (command) {
+				// Re-fetch session info after terminal creation
+				await new Promise((resolve) => setTimeout(resolve, 1500));
+				try {
+					const newInfo = await this.getTerminalInfo(projectDir);
+					if (newInfo.tmuxSession) {
+						await this.execCommand("oste-steer.sh", [
+							newInfo.tmuxSession,
+							"--raw",
+							command,
+						]);
+					}
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					this.logger.warn(
+						`Failed to send command after terminal creation: ${message}`,
+						"TerminalManager",
+					);
+				}
+			}
+		} catch (error) {
+			if (
+				error instanceof LauncherNotFoundError ||
+				error instanceof LauncherValidationError
+			) {
 				this.logger.warn(
-					`Failed to send command after terminal creation: ${message}`,
+					`${error.message} Falling back to VS Code integrated terminal.`,
 					"TerminalManager",
 				);
+				this.openIntegratedTerminal(projectDir, command, cwd);
+				return;
 			}
+			throw error;
 		}
 	}
 
@@ -563,16 +571,31 @@ export class TerminalManager {
 			await this.execLauncher(binaryPath, ["--help"]);
 			return true;
 		} catch (err) {
-			// ENOENT means the binary was not found at all
 			if (
-				err instanceof Error &&
-				(err as NodeJS.ErrnoException).code === "ENOENT"
+				err instanceof LauncherNotFoundError ||
+				(err instanceof Error &&
+					(err as NodeJS.ErrnoException).code === "ENOENT")
 			) {
 				return false;
 			}
 			// Any other error (non-zero exit, timeout, etc.) — binary exists
 			return true;
 		}
+	}
+
+	private openIntegratedTerminal(
+		projectDir: string,
+		command?: string,
+		cwd?: string,
+	): void {
+		const terminal = vscode.window.createTerminal({
+			name: `Terminal: ${path.basename(projectDir)}`,
+			cwd: cwd ?? projectDir,
+		});
+		if (command) {
+			terminal.sendText(command);
+		}
+		terminal.show();
 	}
 
 	/**
