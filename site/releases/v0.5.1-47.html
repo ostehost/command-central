@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Command Central v0.5.1-47 Release Notes</title>
+  <meta name="description" content="Release notes for Command Central v0.5.1-47 covering the April 1, 2026 rollout.">
+  <link rel="icon" href="../images/favicon.ico" sizes="32x32">
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+  <link rel="canonical" href="https://cc.partnerai.dev/releases/v0.5.1-47.html">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    .release-page {
+      padding-top: 48px;
+    }
+
+    .release-hero {
+      padding: 96px 0 56px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .release-hero::after {
+      content: '';
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 260px;
+      background: radial-gradient(circle at center, rgba(88, 166, 255, 0.12), transparent 68%);
+      pointer-events: none;
+    }
+
+    .release-hero .container,
+    .release-section .container {
+      position: relative;
+      z-index: 1;
+    }
+
+    .release-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(88, 166, 255, 0.24);
+      background: rgba(88, 166, 255, 0.08);
+      color: var(--text-bright);
+      font-size: 0.82rem;
+    }
+
+    .release-hero h1 {
+      margin-top: 18px;
+      font-size: clamp(2.2rem, 5vw, 4rem);
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      color: var(--text-bright);
+    }
+
+    .release-subtitle {
+      max-width: 740px;
+      margin-top: 18px;
+      color: var(--text-muted);
+      font-size: 1.08rem;
+    }
+
+    .release-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .release-pill {
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.84rem;
+    }
+
+    .release-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 32px;
+    }
+
+    .release-summary-card {
+      padding: 18px;
+      background: rgba(22, 27, 34, 0.84);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+    }
+
+    .release-summary-card strong {
+      display: block;
+      color: var(--text-bright);
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    .release-summary-card p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .release-section {
+      padding: 0 0 56px;
+    }
+
+    .release-section:last-of-type {
+      padding-bottom: 84px;
+    }
+
+    .release-section-header {
+      margin-bottom: 22px;
+    }
+
+    .release-section-header h2 {
+      color: var(--text-bright);
+      font-size: clamp(1.7rem, 3vw, 2.35rem);
+      letter-spacing: -0.02em;
+    }
+
+    .release-section-header p {
+      margin-top: 10px;
+      max-width: 700px;
+      color: var(--text-muted);
+    }
+
+    .release-feature {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+      gap: 28px;
+      align-items: center;
+      padding: 26px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(28, 33, 40, 0.9), rgba(22, 27, 34, 0.92));
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+    }
+
+    .release-feature + .release-feature {
+      margin-top: 20px;
+    }
+
+    .release-kicker {
+      display: inline-block;
+      margin-bottom: 10px;
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .release-feature h3 {
+      color: var(--text-bright);
+      font-size: 1.45rem;
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+
+    .release-feature p {
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+
+    .release-feature ul {
+      padding-left: 20px;
+      color: var(--text-muted);
+    }
+
+    .release-feature li + li {
+      margin-top: 8px;
+    }
+
+    .release-visual {
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(13, 17, 23, 0.9);
+    }
+
+    .release-visual img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .release-columns {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+    }
+
+    .release-note-card {
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: rgba(22, 27, 34, 0.84);
+    }
+
+    .release-note-card h3 {
+      color: var(--text-bright);
+      margin-bottom: 12px;
+    }
+
+    .release-note-card ul {
+      padding-left: 20px;
+      color: var(--text-muted);
+    }
+
+    .release-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .release-thanks {
+      padding: 28px;
+      border-radius: 24px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(88, 166, 255, 0.08), rgba(22, 27, 34, 0.88));
+    }
+
+    .release-thanks h2 {
+      color: var(--text-bright);
+      margin-bottom: 10px;
+    }
+
+    .release-thanks p {
+      max-width: 720px;
+      color: var(--text);
+    }
+
+    @media (max-width: 860px) {
+      .release-summary-grid,
+      .release-columns,
+      .release-feature {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .release-hero {
+        padding: 88px 0 44px;
+      }
+
+      .release-feature,
+      .release-summary-card,
+      .release-note-card,
+      .release-thanks {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body class="release-page">
+  <nav class="site-nav">
+    <div class="container nav-inner">
+      <a href="../index.html" class="nav-brand">Command Central</a>
+      <div class="nav-links">
+        <a href="../index.html" class="nav-link">Marketing Site</a>
+        <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="nav-link">Marketplace</a>
+        <a href="https://github.com/ostehost/command-central" class="nav-link">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="release-hero">
+      <div class="container">
+        <div class="release-eyebrow">April 1, 2026 • Version 0.5.1-47</div>
+        <h1>Command Central Release Notes</h1>
+        <p class="release-subtitle">This release closes the loop on today’s <strong>v0.5.1-46</strong> through <strong>v0.5.1-47</strong> work. The headline: discovery is easier to debug, and diff review now feels native inside VS Code instead of detouring through a workaround flow.</p>
+        <div class="release-meta">
+          <span class="release-pill">Discovery diagnostics</span>
+          <span class="release-pill">Native diff picker</span>
+          <span class="release-pill">OpenClaw tasks + resume still included</span>
+          <span class="release-pill">1160-test suite</span>
+        </div>
+        <div class="release-summary-grid">
+          <div class="release-summary-card">
+            <strong>Debug discovery faster</strong>
+            <p>When the sidebar is empty, Command Central now does a better job of telling you why.</p>
+          </div>
+          <div class="release-summary-card">
+            <strong>Review diffs with native VS Code UX</strong>
+            <p><code>View Diff</code> now hands off to a proper editor-native diff flow instead of an output-channel bridge.</p>
+          </div>
+          <div class="release-summary-card">
+            <strong>The current v0.5.1 line is coherent</strong>
+            <p>Auto-discovery, background tasks, smarter resume, launcher fallbacks, and native diff review now fit together as one story.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-section">
+      <div class="container">
+        <div class="release-section-header">
+          <h2>Discovery Diagnostics</h2>
+          <p>You can now see more clearly why auto-discovery is working, quiet, or partially populated.</p>
+        </div>
+
+        <article class="release-feature">
+          <div>
+            <span class="release-kicker">Diagnostics</span>
+            <h3>Discovery reports now explain what Command Central checked</h3>
+            <p>If you open Command Central and nothing appears, the diagnostics view now gives you a clearer explanation of the current discovery state. That means less guessing when a supported agent is missing and less time spent wondering whether the issue is your terminal, your launcher path, or the process itself.</p>
+            <ul>
+              <li>See whether supported agent processes were detected at all.</li>
+              <li>Tell the difference between "nothing running" and "something was filtered out."</li>
+              <li>Debug launcher or session state without leaving VS Code.</li>
+            </ul>
+          </div>
+          <div class="release-visual">
+            <img src="../assets/feature-agents.svg" alt="Illustration of the Command Central agent status sidebar" width="340" height="200" loading="eager">
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="release-section">
+      <div class="container">
+        <div class="release-section-header">
+          <h2>Diff Review</h2>
+          <p>Reviewing what an agent changed now feels more like the rest of the editor.</p>
+        </div>
+
+        <article class="release-feature">
+          <div>
+            <span class="release-kicker">Editor</span>
+            <h3><code>View Diff</code> now uses VS Code's native diff picker</h3>
+            <p>You can still jump from the sidebar into an agent's changes, but the final handoff now uses a native VS Code diff flow instead of an output-channel-based fallback. That makes comparison faster to read and closer to what users already expect from source control inside the editor.</p>
+            <ul>
+              <li>Keep using the same sidebar quick action.</li>
+              <li>Review changes in a more familiar VS Code-native way.</li>
+              <li>Reduce friction when launcher-specific diff paths are unavailable.</li>
+            </ul>
+          </div>
+          <div class="release-visual">
+            <img src="../assets/git-status.svg" alt="Illustration of diff and git status views inside Command Central" width="400" height="280" loading="lazy">
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="release-section">
+      <div class="container">
+        <div class="release-section-header">
+          <h2>Included In The Current Build</h2>
+          <p>The latest release also carries forward the larger workflow improvements already shipped in this v0.5.1 rollout.</p>
+        </div>
+
+        <div class="release-columns">
+          <div class="release-note-card">
+            <h3>What you already have in v0.5.1</h3>
+            <ul>
+              <li>Auto-discovery for supported Claude, Codex, and Gemini sessions running outside the launcher.</li>
+              <li>OpenClaw background tasks in the Agent Status sidebar.</li>
+              <li>Backend-aware session resume across Claude, Codex, and Gemini.</li>
+            </ul>
+          </div>
+          <div class="release-note-card">
+            <h3>Workflow polish that stays with you</h3>
+            <ul>
+              <li>Launcher fallback behavior is more resilient when your primary path is wrong or missing.</li>
+              <li>The Agent Status tree supports recency-first sorting, project grouping, and relative freshness labels.</li>
+              <li>The current suite size is 1160 tests across 83 files.</li>
+            </ul>
+            <div class="release-links">
+              <a class="btn btn-secondary" href="https://github.com/ostehost/command-central/blob/main/CHANGELOG.md">View changelog</a>
+              <a class="btn btn-secondary" href="https://github.com/ostehost/command-central/blob/main/ROADMAP.md">Read roadmap</a>
+              <a class="btn btn-secondary" href="https://github.com/ostehost/command-central">Browse GitHub</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-section">
+      <div class="container">
+        <div class="release-thanks">
+          <h2>Thank you</h2>
+          <p>Thanks to everyone dogfooding Command Central across Claude, Codex, Gemini, Ghostty, tmux, OpenClaw, and VS Code terminals. This release is about making the current launch story clearer: better visibility when discovery is quiet, and less friction when it is time to review what an agent changed.</p>
+          <div class="release-links">
+            <a class="btn btn-primary" href="../index.html">Back to the site</a>
+            <a class="btn btn-secondary" href="https://marketplace.visualstudio.com/items?itemName=oste.command-central">Install Command Central</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

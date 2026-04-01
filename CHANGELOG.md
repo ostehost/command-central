@@ -5,7 +5,19 @@ All notable changes to the Command Central extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2026-03-22: 660 tests, 1385 assertions across 53 files.
+**Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-01: 1160 tests across 83 files.
+
+## [0.5.1-47] - 2026-04-01
+
+### Changed
+- **Native diff picker for agent review** — You can now open `View Diff` through VS Code's native diff flow instead of being routed through an output-channel workaround.
+- **Faster review handoff** — You keep the sidebar-driven review workflow, but the final comparison now behaves more like the rest of VS Code.
+
+## [0.5.1-46] - 2026-04-01
+
+### Changed
+- **Clearer discovery diagnostics** — You can now open a more explicit diagnostics report when auto-discovery is empty or incomplete, so it is easier to see what Command Central checked and why a session did or did not appear.
+- **Less guesswork when discovery is quiet** — You get a better explanation of missing launcher state, missing supported processes, and other common reasons the sidebar has nothing to show.
 
 ## [0.5.1-45] - 2026-04-01
 

@@ -102,12 +102,12 @@ Solo/small-team devs running 2–10 Claude Code instances in parallel. Already p
 
 | ID | Item | Status | Priority | Notes |
 |----|------|--------|----------|-------|
-| M3.5-1 | Recency-first sort mode + flat list default | TODO | P0 | New `sortMode` enum replaces `sortByStatus` boolean. Unify launcher + discovered agent sorting. |
-| M3.5-2 | Toolbar sort-mode cycle button | TODO | P0 | `cycleSortMode` command, icon swaps per mode: recency/status/status-recency |
-| M3.5-3 | Recency-sorted project groups | TODO | P1 | When grouped, sort groups by most-recent child activity, not alphabetically |
-| M3.5-4 | Group label relative timestamps | TODO | P1 | Show "2s ago" / "10m ago" on project group labels |
-| M3.5-5 | Summary node sort-mode indicator | TODO | P1 | Prefix summary with mode icon/label for immediate visual feedback |
-| M3.5-6 | `sortByStatus` deprecation migration | TODO | P1 | Auto-migrate boolean to enum on activation, remove in next major |
+| M3.5-1 | Recency-first sort mode + flat list default | ✅ DONE | P0 | `sortMode` shipped, and `recency` is now the default Agent Status mode. |
+| M3.5-2 | Toolbar sort-mode cycle button | ✅ DONE | P0 | `cycleSortMode` shipped with per-mode toolbar icons. |
+| M3.5-3 | Recency-sorted project groups | ✅ DONE | P1 | Grouped roots now sort by freshest child activity instead of alphabetically. |
+| M3.5-4 | Group label relative timestamps | ✅ DONE | P1 | Project groups now show freshness labels like `1m ago`. |
+| M3.5-5 | Summary node sort-mode indicator | ✅ DONE | P1 | Summary node now reflects the current mode (`↓ Recent`, `⚠ Status`, `▶ Active`). |
+| M3.5-6 | `sortByStatus` deprecation migration | ✅ DONE | P1 | Deprecated boolean alias remains in place and resolves into `sortMode`. |
 | M3.5-7 | Sort/group telemetry events | TODO | P1 | Track mode changes to validate recency-first hypothesis |
 | M3.5-8 | "What's New" notification for default change | TODO | P2 | One-time notice explaining new sort behavior |
 
