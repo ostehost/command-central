@@ -1028,11 +1028,72 @@ describe("AgentStatusTreeProvider", () => {
 		});
 
 		test("discovery diagnostics report shows retained vs filtered scanner matches", () => {
-			const fixture = loadDogfoodFixture();
-			provider.readRegistry = () => fixture;
+			const now = Date.now();
+			const running = createMockTask({
+				id: "run-1",
+				status: "running",
+				project_dir: "/Users/test/projects/command-central",
+				project_name: "command-central",
+				session_id: "agent-command-central",
+				terminal_backend: "tmux",
+				cli_name: "codex",
+				started_at: new Date(now - 5 * 60_000).toISOString(),
+			});
+			const recentCompleted = createMockTask({
+				id: "done-1",
+				status: "completed",
+				cli_name: "codex",
+				started_at: new Date(now - 40 * 60_000).toISOString(),
+				completed_at: new Date(now - 30 * 60_000).toISOString(),
+			});
+			const dayCompleted = createMockTask({
+				id: "done-2",
+				status: "completed",
+				cli_name: "claude",
+				started_at: new Date(now - 3 * 60 * 60_000).toISOString(),
+				completed_at: new Date(now - 2 * 60 * 60_000).toISOString(),
+			});
+			const oldCompleted = createMockTask({
+				id: "done-3",
+				status: "completed",
+				cli_name: "claude",
+				started_at: new Date(now - 49 * 60 * 60_000).toISOString(),
+				completed_at: new Date(now - 48 * 60 * 60_000).toISOString(),
+			});
+			provider.readRegistry = () =>
+				createMockRegistry({
+					[running.id]: running,
+					[recentCompleted.id]: recentCompleted,
+					[dayCompleted.id]: dayCompleted,
+					[oldCompleted.id]: oldCompleted,
+				});
 			provider.reload();
 			(
 				provider as unknown as {
+					_openclawTaskService: {
+						getTasks: () => Array<{
+							taskId: string;
+							runtime: "cli";
+							ownerKey: string;
+							scopeKind: string;
+							task: string;
+							status:
+								| "queued"
+								| "running"
+								| "succeeded"
+								| "failed"
+								| "timed_out"
+								| "cancelled"
+								| "lost"
+								| "blocked";
+							deliveryStatus: string;
+							notifyPolicy: string;
+							createdAt: number;
+							startedAt?: number;
+							endedAt?: number;
+							lastEventAt?: number;
+						}>;
+					};
 					_agentRegistry: {
 						getDiagnostics: () => {
 							discoveredCount: number;
@@ -1056,23 +1117,118 @@ describe("AgentStatusTreeProvider", () => {
 							};
 						};
 					};
-					_discoveredAgents: Array<{ pid: number }>;
-					_allDiscoveredAgents: Array<{ pid: number }>;
+					_discoveredAgents: Array<{
+						pid: number;
+						projectDir: string;
+						command: string;
+						cli_name?: string;
+						agent_backend?: "codex";
+						startTime: Date;
+						source: "process";
+					}>;
+					_allDiscoveredAgents: Array<{
+						pid: number;
+						projectDir: string;
+						command: string;
+						cli_name?: string;
+						agent_backend?: "codex";
+						startTime: Date;
+						source: "process";
+					}>;
+				}
+			)._openclawTaskService = {
+				getTasks: () => [
+					{
+						taskId: "bg-1",
+						runtime: "cli",
+						ownerKey: "owner",
+						scopeKind: "workspace",
+						task: "background running",
+						status: "running",
+						deliveryStatus: "delivered",
+						notifyPolicy: "always",
+						createdAt: now - 8 * 60_000,
+						startedAt: now - 7 * 60_000,
+						lastEventAt: now - 2 * 60_000,
+					},
+					{
+						taskId: "bg-2",
+						runtime: "cli",
+						ownerKey: "owner",
+						scopeKind: "workspace",
+						task: "background done",
+						status: "succeeded",
+						deliveryStatus: "delivered",
+						notifyPolicy: "always",
+						createdAt: now - 50 * 60_000,
+						startedAt: now - 45 * 60_000,
+						endedAt: now - 20 * 60_000,
+					},
+					{
+						taskId: "bg-3",
+						runtime: "cli",
+						ownerKey: "owner",
+						scopeKind: "workspace",
+						task: "background done again",
+						status: "succeeded",
+						deliveryStatus: "delivered",
+						notifyPolicy: "always",
+						createdAt: now - 90 * 60_000,
+						startedAt: now - 80 * 60_000,
+						endedAt: now - 70 * 60_000,
+					},
+				],
+			};
+			(
+				provider as unknown as {
+					_agentRegistry: {
+						getDiagnostics: () => {
+							discoveredCount: number;
+							sessionFileCount: number;
+							prunedDeadAgents: number;
+							processScanner: {
+								psRowCount: number;
+								agentLikeCandidateCount: number;
+								retained: Array<{
+									pid: number;
+									command: string;
+									startTime: Date;
+									binaryName?: string;
+									projectDir?: string;
+								}>;
+								filtered: Array<{
+									pid: number;
+									command: string;
+									startTime: Date;
+									binaryName?: string;
+									reason?: string;
+								}>;
+							};
+						};
+					};
 				}
 			)._agentRegistry = {
 				getDiagnostics: () => ({
-					discoveredCount: 3,
-					sessionFileCount: 5,
-					prunedDeadAgents: 2,
+					discoveredCount: 2,
+					sessionFileCount: 0,
+					prunedDeadAgents: 0,
 					processScanner: {
-						psRowCount: 85,
-						agentLikeCandidateCount: 85,
+						psRowCount: 22,
+						agentLikeCandidateCount: 6,
 						retained: [
 							{
-								pid: 4242,
+								pid: 64601,
 								command: "/opt/homebrew/bin/codex --model gpt-5",
 								binaryName: "codex",
 								projectDir: "/Users/test/projects/command-central",
+								startTime: new Date(now - 5 * 60_000),
+							},
+							{
+								pid: 19321,
+								command: "/opt/homebrew/bin/codex --model gpt-5 mini",
+								binaryName: "codex",
+								projectDir: "/Users/test/projects/ghostty-launcher",
+								startTime: new Date(now - 12 * 60_000),
 							},
 						],
 						filtered: [
@@ -1082,13 +1238,29 @@ describe("AgentStatusTreeProvider", () => {
 									"/opt/homebrew/bin/terminal-notifier -message 'codex finished'",
 								binaryName: "terminal-notifier",
 								reason: "excluded-binary",
+								startTime: new Date(now - 30 * 60_000),
 							},
 							{
 								pid: 5002,
 								command:
-									"/usr/bin/osascript -e 'display notification \"claude done\"'",
-								binaryName: "osascript",
+									"/opt/homebrew/bin/terminal-notifier -message 'claude finished'",
+								binaryName: "terminal-notifier",
 								reason: "excluded-binary",
+								startTime: new Date(now - 35 * 60_000),
+							},
+							{
+								pid: 5003,
+								command: "/opt/homebrew/bin/claude",
+								binaryName: "claude",
+								reason: "interactive-process",
+								startTime: new Date(now - 45 * 60_000),
+							},
+							{
+								pid: 5004,
+								command: "/opt/homebrew/bin/codex",
+								binaryName: "codex",
+								reason: "interactive-process",
+								startTime: new Date(now - 50 * 60_000),
 							},
 						],
 					},
@@ -1096,28 +1268,113 @@ describe("AgentStatusTreeProvider", () => {
 			};
 			(
 				provider as unknown as {
-					_discoveredAgents: Array<{ pid: number }>;
-					_allDiscoveredAgents: Array<{ pid: number }>;
+					_discoveredAgents: Array<{
+						pid: number;
+						projectDir: string;
+						command: string;
+						cli_name?: string;
+						agent_backend?: "codex";
+						startTime: Date;
+						source: "process";
+					}>;
+					_allDiscoveredAgents: Array<{
+						pid: number;
+						projectDir: string;
+						command: string;
+						cli_name?: string;
+						agent_backend?: "codex";
+						startTime: Date;
+						source: "process";
+					}>;
 				}
-			)._discoveredAgents = [{ pid: 1 }, { pid: 2 }, { pid: 3 }];
+			)._discoveredAgents = [
+				{
+					pid: 64601,
+					projectDir: "/Users/test/projects/command-central",
+					command: "/opt/homebrew/bin/codex --model gpt-5",
+					cli_name: "codex",
+					agent_backend: "codex",
+					startTime: new Date(now - 5 * 60_000),
+					source: "process",
+				},
+				{
+					pid: 19321,
+					projectDir: "/Users/test/projects/ghostty-launcher",
+					command: "/opt/homebrew/bin/codex --model gpt-5 mini",
+					cli_name: "codex",
+					agent_backend: "codex",
+					startTime: new Date(now - 12 * 60_000),
+					source: "process",
+				},
+			];
 			(
 				provider as unknown as {
-					_allDiscoveredAgents: Array<{ pid: number }>;
+					_allDiscoveredAgents: Array<{
+						pid: number;
+						projectDir: string;
+						command: string;
+						cli_name?: string;
+						agent_backend?: "codex";
+						startTime: Date;
+						source: "process";
+					}>;
 				}
-			)._allDiscoveredAgents = [{ pid: 1 }, { pid: 2 }, { pid: 3 }];
+			)._allDiscoveredAgents = [
+				{
+					pid: 64601,
+					projectDir: "/Users/test/projects/command-central",
+					command: "/opt/homebrew/bin/codex --model gpt-5",
+					cli_name: "codex",
+					agent_backend: "codex",
+					startTime: new Date(now - 5 * 60_000),
+					source: "process",
+				},
+				{
+					pid: 19321,
+					projectDir: "/Users/test/projects/ghostty-launcher",
+					command: "/opt/homebrew/bin/codex --model gpt-5 mini",
+					cli_name: "codex",
+					agent_backend: "codex",
+					startTime: new Date(now - 12 * 60_000),
+					source: "process",
+				},
+			];
 
 			const report = provider.getDiscoveryDiagnosticsReport();
-			expect(report).toContain("Tasks in registry: 213");
-			expect(report).toContain("Session-file agents before PID pruning: 5");
+			expect(report).toContain("Agent Discovery Health: ✅ Healthy");
+			expect(report).toContain("Running agents: 2 (2 codex)");
+			expect(report).toContain("Background tasks: 3 (1 running, 2 succeeded)");
 			expect(report).toContain(
-				"Dead discovered agents pruned by PID liveness: 2",
+				"Registry: 4 tasks (1 running, 3 completed/archived)",
 			);
-			expect(report).toContain("Agent-like candidates: 85");
-			expect(report).toContain("Retained: 1");
-			expect(report).toContain("Filtered: 2");
-			expect(report).toContain("terminal-notifier");
-			expect(report).toContain("osascript");
-			expect(report).toContain("codex");
+			expect(report).toContain(
+				"Discovery: 2 agents found via process scanner, 0 via session files",
+			);
+			expect(report).toContain("Registry age:");
+			expect(report).toContain("Last 1h: 2 tasks (1 running, 1 completed)");
+			expect(report).toContain("Last 24h: 1 tasks");
+			expect(report).toContain("Older: 1 tasks (archive candidates)");
+			expect(report).toContain("Filtered (4 matches):");
+			expect(report).toContain(
+				"Helper binaries: 2 (2 terminal-notifier — consider killing stale processes)",
+			);
+			expect(report).toContain(
+				"Interactive CLIs: 2 (claude, codex — idle sessions, not agents)",
+			);
+			expect(report).toContain("Active agents (2):");
+			expect(report).toContain(
+				"codex · command-central · PID 64601 · running 5m",
+			);
+			expect(report).toContain(
+				"codex · ghostty-launcher · PID 19321 · running 12m",
+			);
+			expect(report).toContain(
+				'⚠️ 2 stale terminal-notifier processes — run: pkill -f "terminal-notifier.*oste"',
+			);
+			expect(report).toContain("✅ No stuck agents detected");
+			expect(report).toContain(
+				"✅ All running agents have healthy tmux sessions",
+			);
 		});
 	});
 

@@ -15,6 +15,10 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
 import { AgentRegistry } from "../discovery/agent-registry.js";
+import type {
+	ProcessScanDiagnosticEntry,
+	ProcessScanFilterReason,
+} from "../discovery/process-scanner.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
 import type { OpenClawConfigService } from "../services/openclaw-config-service.js";
@@ -1375,37 +1379,6 @@ export class AgentStatusTreeProvider
 			);
 		}
 		return hints.join("\n");
-	}
-
-	private formatDiscoveryFilterReason(
-		reason:
-			| "excluded-binary"
-			| "interactive-process"
-			| "noise-process"
-			| "shell-process"
-			| "stale-process"
-			| "cwd-unresolved"
-			| "internal-tool-dir"
-			| undefined,
-	): string {
-		switch (reason) {
-			case "excluded-binary":
-				return "Excluded helper binary";
-			case "interactive-process":
-				return "Filtered idle interactive CLI";
-			case "noise-process":
-				return "Filtered UI/helper noise";
-			case "shell-process":
-				return "Filtered idle shell/wrapper";
-			case "stale-process":
-				return "Filtered stale process";
-			case "cwd-unresolved":
-				return "Dropped after cwd lookup failed";
-			case "internal-tool-dir":
-				return "Filtered internal tool directory";
-			default:
-				return "Filtered";
-		}
 	}
 
 	private setHasAgentsContext(): void {
@@ -3880,63 +3853,363 @@ export class AgentStatusTreeProvider
 		const runningTasks = displayTasks.filter(
 			(task) => task.status === "running",
 		);
+		const backgroundTasks = this.getVisibleOpenClawTasks();
+		const backgroundRunningCount = backgroundTasks.filter((task) =>
+			this.isOpenClawTaskActive(task),
+		).length;
+		const backgroundSucceededCount = backgroundTasks.filter(
+			(task) => task.status === "succeeded",
+		).length;
+		const backgroundOtherCount =
+			backgroundTasks.length -
+			backgroundRunningCount -
+			backgroundSucceededCount;
+		const discoveredAgents =
+			this._allDiscoveredAgents.length > 0
+				? this._allDiscoveredAgents
+				: this._discoveredAgents;
+		const runningAgentSubjects =
+			discoveredAgents.length > 0 ? discoveredAgents : runningTasks;
+		const now = new Date();
+		const olderRegistryCount = displayTasks.filter((task) => {
+			const activityMs = this.getTaskActivityTimeMs(task);
+			return activityMs <= 0 || now.getTime() - activityMs > 24 * 60 * 60_000;
+		}).length;
+		const stuckCount = runningTasks.filter((task) =>
+			this.isAgentStuck(task),
+		).length;
+		const healthStatus = !this._agentRegistry
+			? "⚪ Discovery Disabled"
+			: stuckCount > 0
+				? "⚠️ Needs Attention"
+				: "✅ Healthy";
 
-		lines.push(`Tasks in registry: ${displayTasks.length}`);
-		lines.push(`Launcher tasks marked running: ${runningTasks.length}`);
-		lines.push(`Visible discovered agents: ${this._discoveredAgents.length}`);
-		lines.push(`All discovered agents: ${this._allDiscoveredAgents.length}`);
+		lines.push(`Agent Discovery Health: ${healthStatus}`);
+		lines.push(
+			`  Running agents: ${runningAgentSubjects.length} (${this.formatAgentTypeSummary(runningAgentSubjects)})`,
+		);
+		lines.push(
+			`  Background tasks: ${backgroundTasks.length} (${this.formatBackgroundTaskSummary(backgroundRunningCount, backgroundSucceededCount, backgroundOtherCount)})`,
+		);
+		lines.push(
+			`  Registry: ${displayTasks.length} tasks (${runningTasks.length} running, ${displayTasks.length - runningTasks.length} completed/archived)`,
+		);
 
 		if (!this._agentRegistry) {
 			lines.push("");
-			lines.push("Discovery is disabled.");
+			lines.push("Discovery: disabled");
+			lines.push("");
+			lines.push("Registry age:");
+			for (const line of this.getRegistryAgeSummaryLines(displayTasks, now)) {
+				lines.push(line);
+			}
+			lines.push("");
+			lines.push("Recommendations:");
+			lines.push("  ⚠️ Discovery is disabled in settings.");
+			if (olderRegistryCount > 50 || displayTasks.length > 100) {
+				lines.push(
+					`  ⚠️ ${displayTasks.length} tasks in registry — consider: commandCentral.clearTerminalTasks`,
+				);
+			}
 			return lines.join("\n");
 		}
 
 		const diagnostics = this._agentRegistry.getDiagnostics();
-		lines.push("");
-		lines.push("Discovery liveness");
-		lines.push(
-			`- Session-file agents before PID pruning: ${diagnostics.sessionFileCount}`,
-		);
-		lines.push(
-			`- Dead discovered agents pruned by PID liveness: ${diagnostics.prunedDeadAgents}`,
-		);
-		lines.push(
-			`- Live discovered agents after merge: ${diagnostics.discoveredCount}`,
-		);
-
 		const processDiagnostics = diagnostics.processScanner;
-		lines.push("");
-		lines.push("Process scanner");
-		lines.push(`- ps rows scanned: ${processDiagnostics.psRowCount}`);
-		lines.push(
-			`- Agent-like candidates: ${processDiagnostics.agentLikeCandidateCount}`,
+		const processAgentCount = discoveredAgents.filter(
+			(agent) => agent.source === "process",
+		).length;
+		const sessionFileAgentCount = discoveredAgents.filter(
+			(agent) => agent.source === "session-file",
+		).length;
+		const filteredGroups = this.summarizeFilteredDiscoveryMatches(
+			processDiagnostics.filtered,
 		);
-		lines.push(`- Retained: ${processDiagnostics.retained.length}`);
-		lines.push(`- Filtered: ${processDiagnostics.filtered.length}`);
 
-		if (processDiagnostics.filtered.length > 0) {
+		lines.push(
+			`  Discovery: ${processAgentCount} agents found via process scanner, ${sessionFileAgentCount} via session files`,
+		);
+		lines.push("");
+		lines.push("Registry age:");
+		for (const line of this.getRegistryAgeSummaryLines(displayTasks, now)) {
+			lines.push(line);
+		}
+
+		if (filteredGroups.length > 0) {
 			lines.push("");
-			lines.push("Filtered matches");
-			for (const entry of processDiagnostics.filtered) {
-				lines.push(
-					`- ${this.formatDiscoveryFilterReason(entry.reason)} · PID ${entry.pid} · ${entry.binaryName ?? "unknown"} · ${entry.command}`,
-				);
+			lines.push(`Filtered (${processDiagnostics.filtered.length} matches):`);
+			for (const group of filteredGroups) {
+				const detail = group.note
+					? `${group.names} — ${group.note}`
+					: group.names;
+				lines.push(`  ${group.label}: ${group.count} (${detail})`);
 			}
 		}
 
 		if (processDiagnostics.retained.length > 0) {
 			lines.push("");
-			lines.push("Retained matches");
+			lines.push(`Active agents (${processDiagnostics.retained.length}):`);
 			for (const entry of processDiagnostics.retained) {
-				const location = entry.projectDir ? ` · ${entry.projectDir}` : "";
-				lines.push(
-					`- PID ${entry.pid} · ${entry.binaryName ?? "unknown"}${location} · ${entry.command}`,
-				);
+				lines.push(`  ${this.formatRetainedDiscoveryEntry(entry, now)}`);
 			}
 		}
 
+		lines.push("");
+		lines.push("Recommendations:");
+		for (const line of this.getDiscoveryRecommendationLines({
+			displayTasks,
+			runningTasks,
+			stuckCount,
+			olderRegistryCount,
+			filtered: processDiagnostics.filtered,
+		})) {
+			lines.push(line);
+		}
+
 		return lines.join("\n");
+	}
+
+	private formatAgentTypeSummary(
+		agents: Array<DiscoveredAgent | AgentTask>,
+	): string {
+		if (agents.length === 0) return "none";
+
+		const counts = new Map<string, number>();
+		for (const agent of agents) {
+			const type = detectAgentType(agent);
+			const label = type === "unknown" ? "unknown" : type;
+			counts.set(label, (counts.get(label) ?? 0) + 1);
+		}
+
+		return [...counts.entries()]
+			.sort((left, right) =>
+				right[1] === left[1]
+					? left[0].localeCompare(right[0])
+					: right[1] - left[1],
+			)
+			.map(([label, count]) => `${count} ${label}`)
+			.join(", ");
+	}
+
+	private formatBackgroundTaskSummary(
+		runningCount: number,
+		succeededCount: number,
+		otherCount: number,
+	): string {
+		const parts = [
+			runningCount > 0 ? `${runningCount} running` : null,
+			succeededCount > 0 ? `${succeededCount} succeeded` : null,
+			otherCount > 0 ? `${otherCount} other` : null,
+		];
+		return (
+			parts.filter((part): part is string => part !== null).join(", ") || "none"
+		);
+	}
+
+	private getRegistryAgeSummaryLines(
+		tasks: AgentTask[],
+		now = new Date(),
+	): string[] {
+		const bucket1h = tasks.filter((task) => {
+			const activityMs = this.getTaskActivityTimeMs(task);
+			return activityMs > 0 && now.getTime() - activityMs <= 60 * 60_000;
+		});
+		const bucket24h = tasks.filter((task) => {
+			const activityMs = this.getTaskActivityTimeMs(task);
+			return (
+				activityMs > 0 &&
+				now.getTime() - activityMs > 60 * 60_000 &&
+				now.getTime() - activityMs <= 24 * 60 * 60_000
+			);
+		});
+		const older = tasks.length - bucket1h.length - bucket24h.length;
+
+		return [
+			`  Last 1h: ${bucket1h.length} tasks (${this.formatRegistryBucketStatusSummary(bucket1h)})`,
+			`  Last 24h: ${bucket24h.length} tasks`,
+			`  Older: ${older} tasks${older > 0 ? " (archive candidates)" : ""}`,
+		];
+	}
+
+	private formatRegistryBucketStatusSummary(tasks: AgentTask[]): string {
+		if (tasks.length === 0) return "0 running, 0 completed";
+		const runningCount = tasks.filter(
+			(task) => task.status === "running",
+		).length;
+		const archivedCount = tasks.length - runningCount;
+		return `${runningCount} running, ${archivedCount} completed`;
+	}
+
+	private summarizeFilteredDiscoveryMatches(
+		entries: ProcessScanDiagnosticEntry[],
+	): Array<{ label: string; count: number; names: string; note?: string }> {
+		const groups = new Map<
+			string,
+			{
+				label: string;
+				note?: string;
+				count: number;
+				nameCounts: Map<string, number>;
+			}
+		>();
+
+		for (const entry of entries) {
+			const category = this.getDiscoveryFilterCategory(entry.reason);
+			const group = groups.get(category.key) ?? {
+				label: category.label,
+				note: category.note,
+				count: 0,
+				nameCounts: new Map<string, number>(),
+			};
+			group.count += 1;
+			const name = this.getDiscoveryDiagnosticName(entry);
+			group.nameCounts.set(name, (group.nameCounts.get(name) ?? 0) + 1);
+			groups.set(category.key, group);
+		}
+
+		return [...groups.values()]
+			.sort((left, right) => right.count - left.count)
+			.map((group) => ({
+				label: group.label,
+				count: group.count,
+				names: this.formatDiscoveryNameCounts(group.nameCounts),
+				note: group.note,
+			}));
+	}
+
+	private getDiscoveryFilterCategory(
+		reason: ProcessScanFilterReason | undefined,
+	): { key: string; label: string; note?: string } {
+		switch (reason) {
+			case "excluded-binary":
+				return {
+					key: "helper-binaries",
+					label: "Helper binaries",
+					note: "consider killing stale processes",
+				};
+			case "interactive-process":
+			case "shell-process":
+				return {
+					key: "interactive-cli",
+					label: "Interactive CLIs",
+					note: "idle sessions, not agents",
+				};
+			case "noise-process":
+				return {
+					key: "ui-noise",
+					label: "UI/helper noise",
+					note: "renderer/helper processes",
+				};
+			case "stale-process":
+				return {
+					key: "stale-processes",
+					label: "Stale processes",
+					note: "inactive streams or long-idle shells",
+				};
+			case "cwd-unresolved":
+				return {
+					key: "cwd-unresolved",
+					label: "CWD lookup failures",
+					note: "missing usable project directories",
+				};
+			case "internal-tool-dir":
+				return {
+					key: "internal-tools",
+					label: "Internal tool directories",
+					note: "internal tooling, not user agents",
+				};
+			default:
+				return { key: "other", label: "Other filtered matches" };
+		}
+	}
+
+	private getDiscoveryDiagnosticName(
+		entry: ProcessScanDiagnosticEntry,
+	): string {
+		const binaryName = entry.binaryName?.trim().toLowerCase();
+		if (binaryName) return binaryName;
+		const detected = detectAgentType({
+			process_name: entry.binaryName,
+			command: entry.command,
+		});
+		return detected === "unknown" ? "unknown" : detected;
+	}
+
+	private formatDiscoveryNameCounts(nameCounts: Map<string, number>): string {
+		const entries = [...nameCounts.entries()].sort((left, right) =>
+			right[1] === left[1]
+				? left[0].localeCompare(right[0])
+				: right[1] - left[1],
+		);
+		return entries
+			.slice(0, 3)
+			.map(([name, count]) => (count > 1 ? `${count} ${name}` : name))
+			.join(", ");
+	}
+
+	private formatRetainedDiscoveryEntry(
+		entry: ProcessScanDiagnosticEntry,
+		now = new Date(),
+	): string {
+		const agentType = detectAgentType({
+			process_name: entry.binaryName,
+			command: entry.command,
+		});
+		const projectName = entry.projectDir
+			? path.basename(entry.projectDir) || entry.projectDir
+			: "unknown";
+		return `${agentType === "unknown" ? (entry.binaryName ?? "unknown") : agentType} · ${projectName} · PID ${entry.pid} · running ${formatElapsed(entry.startTime.toISOString(), now)}`;
+	}
+
+	private getDiscoveryRecommendationLines(args: {
+		displayTasks: AgentTask[];
+		runningTasks: AgentTask[];
+		stuckCount: number;
+		olderRegistryCount: number;
+		filtered: ProcessScanDiagnosticEntry[];
+	}): string[] {
+		const lines: string[] = [];
+		const terminalNotifierCount = args.filtered.filter(
+			(entry) => entry.binaryName?.toLowerCase() === "terminal-notifier",
+		).length;
+
+		if (terminalNotifierCount > 0) {
+			lines.push(
+				`  ⚠️ ${terminalNotifierCount} stale terminal-notifier processes — run: pkill -f "terminal-notifier.*oste"`,
+			);
+		}
+
+		if (args.olderRegistryCount > 50 || args.displayTasks.length > 100) {
+			lines.push(
+				`  ⚠️ ${args.displayTasks.length} tasks in registry — consider: commandCentral.clearTerminalTasks`,
+			);
+		}
+
+		if (args.stuckCount > 0) {
+			lines.push(
+				`  ⚠️ ${args.stuckCount} running ${args.stuckCount === 1 ? "agent looks" : "agents look"} stuck — inspect the session before reusing it`,
+			);
+		} else {
+			lines.push("  ✅ No stuck agents detected");
+		}
+
+		if (
+			args.runningTasks.length > 0 &&
+			args.runningTasks.every(
+				(task) =>
+					task.terminal_backend === "tmux" &&
+					Boolean(task.session_id) &&
+					!this.isAgentStuck(task),
+			)
+		) {
+			lines.push("  ✅ All running agents have healthy tmux sessions");
+		}
+
+		if (lines.length === 0) {
+			lines.push("  ✅ No action needed");
+		}
+
+		return lines;
 	}
 
 	private getDiscoveredProjectDir(agent: DiscoveredAgent): string {
