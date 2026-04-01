@@ -798,6 +798,18 @@
         "icon": "$(list-selection)"
       },
       {
+        "command": "commandCentral.cancelOpenClawTask",
+        "title": "Cancel Task",
+        "category": "Command Central",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "commandCentral.showOpenClawTaskDetail",
+        "title": "Show Details",
+        "category": "Command Central",
+        "icon": "$(list-flat)"
+      },
+      {
         "command": "commandCentral.agentStatus.focus",
         "title": "Focus Agent Status",
         "category": "Command Central",
@@ -1452,6 +1464,21 @@
         {
           "command": "commandCentral.viewGitLog",
           "when": "viewItem == discoveredAgent.running || viewItem =~ /^agentTask\\./",
+          "group": "navigation"
+        },
+        {
+          "command": "commandCentral.cancelOpenClawTask",
+          "when": "viewItem =~ /^openclawTask\\.(running|queued)$/",
+          "group": "inline"
+        },
+        {
+          "command": "commandCentral.cancelOpenClawTask",
+          "when": "viewItem =~ /^openclawTask\\.(running|queued)$/",
+          "group": "2_actions"
+        },
+        {
+          "command": "commandCentral.showOpenClawTaskDetail",
+          "when": "viewItem =~ /^openclawTask\\./",
           "group": "navigation"
         }
       ],

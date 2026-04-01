@@ -1,54 +1,20 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { CronJob, CronTreeElement } from "../../src/types/cron-types.js";
+import { createVSCodeMock } from "../helpers/vscode-mock.js";
 
 // ── VS Code mock ────────────────────────────────────────────────────
 
 let cronConfig: Record<string, unknown> = {};
-
-mock.module("vscode", () => ({
-	TreeItem: class TreeItem {
-		label: string;
-		collapsibleState: number;
-		iconPath?: unknown;
-		description?: string;
-		contextValue?: string;
-		tooltip?: string;
-		constructor(label: string, collapsibleState: number) {
-			this.label = label;
-			this.collapsibleState = collapsibleState;
+const vscodeMock = createVSCodeMock();
+vscodeMock.workspace.getConfiguration = ((section?: string) => ({
+	get: <T>(key: string, defaultValue?: T): T | undefined => {
+		if (section === "commandCentral.cron") {
+			return (cronConfig[key] as T) ?? defaultValue;
 		}
+		return defaultValue;
 	},
-	TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
-	ThemeIcon: class ThemeIcon {
-		id: string;
-		color?: unknown;
-		constructor(id: string, color?: unknown) {
-			this.id = id;
-			this.color = color;
-		}
-	},
-	ThemeColor: class ThemeColor {
-		id: string;
-		constructor(id: string) {
-			this.id = id;
-		}
-	},
-	EventEmitter: class EventEmitter {
-		event = () => {};
-		fire() {}
-		dispose() {}
-	},
-	workspace: {
-		getConfiguration: (section?: string) => ({
-			get: <T>(key: string, defaultValue?: T): T | undefined => {
-				if (section === "commandCentral.cron") {
-					return (cronConfig[key] as T) ?? defaultValue;
-				}
-				return defaultValue;
-			},
-		}),
-	},
-}));
+})) as typeof vscodeMock.workspace.getConfiguration;
+mock.module("vscode", () => vscodeMock);
 
 // ── Fake CronService ────────────────────────────────────────────────
 
@@ -100,7 +66,9 @@ describe("CronTreeProvider", () => {
 	beforeEach(() => {
 		cronConfig = {};
 		service = new FakeCronService();
-		provider = new CronTreeProvider(service as any);
+		provider = new CronTreeProvider(
+			service as unknown as ConstructorParameters<typeof CronTreeProvider>[0],
+		);
 	});
 
 	test("shows guidance when OpenClaw not installed", () => {

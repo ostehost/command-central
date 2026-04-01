@@ -314,5 +314,11 @@ export function createVSCodeMock() {
 export function setupVSCodeMock() {
 	const vscodeMock = createVSCodeMock();
 	mock.module("vscode", () => vscodeMock);
+	try {
+		const runtimeVscode = require("vscode") as Record<string, unknown>;
+		Object.assign(runtimeVscode, vscodeMock);
+	} catch {
+		// Ignore if the module has not been loaded yet.
+	}
 	return vscodeMock;
 }

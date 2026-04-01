@@ -1,0 +1,17 @@
+task_id: "cc-openclaw-tasks-v1"
+status: "success"
+summary: "Integrated OpenClaw background tasks into the Agent Status sidebar with service wiring, task nodes, actions, and tests."
+files_changed:
+  - "package.json"
+  - "src/commands/agent-quick-actions.ts"
+  - "src/extension.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "src/services/openclaw-task-service.ts"
+  - "src/types/openclaw-task-types.ts"
+  - "test/helpers/vscode-mock.ts"
+  - "test/providers/cron-tree-provider.test.ts"
+  - "test/services/openclaw-task-service.test.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - "test/tree-view/openclaw-task-nodes.test.ts"
+tests_passing: true
+next_steps: "Resolve the local OpenClaw CLI keychain error (SecItemCopyMatching failed -50) if orchestrator task updates must be driven through openclaw tasks commands on this machine."

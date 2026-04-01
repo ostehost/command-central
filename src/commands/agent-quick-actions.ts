@@ -1,4 +1,5 @@
 import type { AgentTaskStatus } from "../providers/agent-status-tree-provider.js";
+import type { OpenClawTaskStatus } from "../types/openclaw-task-types.js";
 
 export type AgentQuickActionId =
 	| "resumeSession"
@@ -9,10 +10,12 @@ export type AgentQuickActionId =
 	| "remove";
 
 export interface AgentQuickActionDefinition {
-	id: AgentQuickActionId;
+	id: string;
 	label: string;
 	command: string;
 }
+
+export type OpenClawQuickActionId = "cancel" | "showDetails";
 
 const QUICK_ACTIONS: Record<AgentQuickActionId, AgentQuickActionDefinition> = {
 	resumeSession: {
@@ -57,6 +60,36 @@ const STATUS_ACTIONS: Partial<Record<AgentTaskStatus, AgentQuickActionId[]>> = {
 	killed: ["showOutput", "viewDiff", "remove"],
 };
 
+const OPENCLAW_QUICK_ACTIONS: Record<
+	OpenClawQuickActionId,
+	AgentQuickActionDefinition
+> = {
+	cancel: {
+		id: "cancel",
+		label: "Cancel Task",
+		command: "commandCentral.cancelOpenClawTask",
+	},
+	showDetails: {
+		id: "showDetails",
+		label: "Show Details",
+		command: "commandCentral.showOpenClawTaskDetail",
+	},
+};
+
+const OPENCLAW_STATUS_ACTIONS: Record<
+	OpenClawTaskStatus,
+	OpenClawQuickActionId[]
+> = {
+	queued: ["cancel", "showDetails"],
+	running: ["cancel", "showDetails"],
+	succeeded: ["showDetails"],
+	failed: ["showDetails"],
+	timed_out: ["showDetails"],
+	cancelled: ["showDetails"],
+	lost: ["showDetails"],
+	blocked: ["showDetails"],
+};
+
 export function getAgentQuickActions(
 	status: AgentTaskStatus,
 	hasResumeSession: boolean,
@@ -67,4 +100,12 @@ export function getAgentQuickActions(
 			? (["resumeSession", ...base] as AgentQuickActionId[])
 			: base;
 	return ids.map((id) => QUICK_ACTIONS[id]);
+}
+
+export function getOpenClawTaskQuickActions(
+	status: OpenClawTaskStatus,
+): AgentQuickActionDefinition[] {
+	return OPENCLAW_STATUS_ACTIONS[status].map(
+		(id) => OPENCLAW_QUICK_ACTIONS[id],
+	);
 }

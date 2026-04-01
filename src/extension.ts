@@ -722,6 +722,16 @@ export async function activate(
 		agentStatusProvider.setOpenClawConfigService(openclawConfigService);
 		context.subscriptions.push(openclawConfigService);
 
+		const { OpenClawTaskService } = await import(
+			"./services/openclaw-task-service.js"
+		);
+		const openclawTaskService = new OpenClawTaskService();
+		openclawTaskService.start(() => {
+			agentStatusProvider?.reload();
+		});
+		agentStatusProvider.setOpenClawTaskService(openclawTaskService);
+		context.subscriptions.push(openclawTaskService);
+
 		const syncAgentStatusViewContexts = async (): Promise<void> => {
 			const config = vscode.workspace.getConfiguration("commandCentral");
 			const showOnlyRunning = config.get<boolean>(
@@ -885,6 +895,9 @@ export async function activate(
 		const agentOutputChannel =
 			vscode.window.createOutputChannel("Agent Output");
 		context.subscriptions.push(agentOutputChannel);
+		const openclawTaskOutputChannel =
+			vscode.window.createOutputChannel("OpenClaw Tasks");
+		context.subscriptions.push(openclawTaskOutputChannel);
 		const discoveryDiagnosticsChannel = vscode.window.createOutputChannel(
 			"Agent Discovery Diagnostics",
 		);
@@ -1996,6 +2009,74 @@ export async function activate(
 						return;
 					}
 					agentOutputChannels.show(task.id, task.session_id);
+				},
+			),
+		);
+
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.cancelOpenClawTask",
+				async (node?: {
+					type: string;
+					task?: { taskId: string; label?: string; status: string };
+				}) => {
+					const task = node?.task;
+					if (!task) {
+						vscode.window.showWarningMessage(
+							"No background task selected. Right-click a task in the tree.",
+						);
+						return;
+					}
+
+					try {
+						await openclawTaskService.cancelTask(task.taskId);
+						agentStatusProvider?.reload();
+						vscode.window.showInformationMessage(
+							`Cancelled background task ${task.label ?? task.taskId}.`,
+						);
+					} catch (error) {
+						vscode.window.showErrorMessage(
+							`Failed to cancel background task: ${
+								error instanceof Error ? error.message : String(error)
+							}`,
+						);
+					}
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.showOpenClawTaskDetail",
+				async (node?: { type: string; task?: { taskId: string } }) => {
+					const task = node?.task;
+					if (!task) {
+						vscode.window.showWarningMessage(
+							"No background task selected. Right-click a task in the tree.",
+						);
+						return;
+					}
+
+					try {
+						const { stdout } = await execFileAsync("openclaw", [
+							"tasks",
+							"show",
+							task.taskId,
+							"--json",
+						]);
+						let formatted = stdout.trim();
+						try {
+							formatted = JSON.stringify(JSON.parse(stdout), null, 2);
+						} catch {
+							// Show raw stdout if the CLI returns non-JSON text.
+						}
+						openclawTaskOutputChannel.clear();
+						openclawTaskOutputChannel.appendLine(formatted);
+						openclawTaskOutputChannel.show(true);
+					} catch (error) {
+						vscode.window.showErrorMessage(
+							`Failed to load background task details: ${
+								error instanceof Error ? error.message : String(error)
+							}`,
+						);
+					}
 				},
 			),
 		);

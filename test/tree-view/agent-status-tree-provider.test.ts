@@ -221,11 +221,11 @@ function setAgentStatusConfig(
 		has: mock((_key: string) => true),
 	}));
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	vscodeMock.workspace.getConfiguration = getConfigurationMock as any;
+	vscodeMock.workspace.getConfiguration =
+		getConfigurationMock as unknown as typeof vscodeMock.workspace.getConfiguration;
 	const runtimeVscode = require("vscode") as typeof import("vscode");
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	runtimeVscode.workspace.getConfiguration = getConfigurationMock as any;
+	runtimeVscode.workspace.getConfiguration =
+		getConfigurationMock as unknown as typeof runtimeVscode.workspace.getConfiguration;
 }
 
 function getOlderRunsNode(

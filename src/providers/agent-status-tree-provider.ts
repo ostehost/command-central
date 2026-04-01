@@ -18,7 +18,13 @@ import { AgentRegistry } from "../discovery/agent-registry.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
 import type { OpenClawConfigService } from "../services/openclaw-config-service.js";
+import type { OpenClawTaskService } from "../services/openclaw-task-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
+import {
+	type OpenClawTask,
+	openclawStatusToIcon,
+	openclawStatusToLabel,
+} from "../types/openclaw-task-types.js";
 import {
 	type AgentCounts,
 	countAgentStatuses,
@@ -106,6 +112,8 @@ export type AgentNode =
 	| DetailNode
 	| FileChangeNode
 	| DiscoveredNode
+	| OpenClawTaskNode
+	| BackgroundTasksNode
 	| OlderRunsNode
 	| StateNode;
 
@@ -118,6 +126,16 @@ export interface SummaryNode {
 export interface TaskNode {
 	type: "task";
 	task: AgentTask;
+}
+
+export interface OpenClawTaskNode {
+	type: "openclawTask";
+	task: OpenClawTask;
+}
+
+export interface BackgroundTasksNode {
+	type: "backgroundTasks";
+	tasks: OpenClawTask[];
 }
 
 export interface ProjectGroupNode {
@@ -190,7 +208,8 @@ export interface StateNode {
 
 type SortableAgentNode =
 	| { type: "task"; task: AgentTask }
-	| { type: "discovered"; agent: DiscoveredAgent };
+	| { type: "discovered"; agent: DiscoveredAgent }
+	| { type: "openclawTask"; task: OpenClawTask };
 
 // ── Agent type detection for discovered agents ───────────────────────
 
@@ -686,6 +705,7 @@ export class AgentStatusTreeProvider
 	>();
 	private projectIconManager: ProjectIconManager;
 	private _openclawConfigService: OpenClawConfigService | null = null;
+	private _openclawTaskService: OpenClawTaskService | null = null;
 
 	constructor(projectIconManager?: ProjectIconManager) {
 		this.projectIconManager = projectIconManager ?? new ProjectIconManager();
@@ -790,6 +810,10 @@ export class AgentStatusTreeProvider
 
 	setOpenClawConfigService(service: OpenClawConfigService): void {
 		this._openclawConfigService = service;
+	}
+
+	setOpenClawTaskService(service: OpenClawTaskService): void {
+		this._openclawTaskService = service;
 	}
 
 	findTaskElement(taskId: string): TreeElement | undefined {
@@ -1171,7 +1195,128 @@ export class AgentStatusTreeProvider
 		);
 	}
 
+	private mapOpenClawTaskToAgentStatus(task: OpenClawTask): AgentTaskStatus {
+		switch (task.status) {
+			case "queued":
+			case "running":
+				return "running";
+			case "succeeded":
+			case "cancelled":
+				return "completed";
+			case "blocked":
+			case "failed":
+			case "timed_out":
+			case "lost":
+				return "failed";
+		}
+	}
+
+	private toSyntheticOpenClawTask(task: OpenClawTask): AgentTask {
+		const timestamp = task.startedAt ?? task.createdAt ?? Date.now();
+		return {
+			id: `openclaw-${task.taskId}`,
+			status: this.mapOpenClawTaskToAgentStatus(task),
+			project_dir: "",
+			project_name: "Background Tasks",
+			session_id: task.childSessionKey ?? task.taskId,
+			bundle_path: "",
+			prompt_file: "",
+			started_at: new Date(timestamp).toISOString(),
+			attempts: 0,
+			max_attempts: 0,
+			completed_at: task.endedAt ? new Date(task.endedAt).toISOString() : null,
+			updated_at: task.lastEventAt
+				? new Date(task.lastEventAt).toISOString()
+				: null,
+			error_message: task.error ?? null,
+			prompt_summary: task.progressSummary ?? task.terminalSummary ?? null,
+		};
+	}
+
+	private isOpenClawTaskActive(task: OpenClawTask): boolean {
+		return task.status === "queued" || task.status === "running";
+	}
+
+	private isOpenClawTaskVisibleInRunningMode(task: OpenClawTask): boolean {
+		return this.isOpenClawTaskActive(task);
+	}
+
+	private getOpenClawTaskActivityTimeMs(task: OpenClawTask): number {
+		return (
+			task.lastEventAt ?? task.endedAt ?? task.startedAt ?? task.createdAt ?? 0
+		);
+	}
+
+	private getOpenClawTaskStartedTimeMs(task: OpenClawTask): number {
+		return task.startedAt ?? task.createdAt ?? 0;
+	}
+
+	private getOpenClawTaskDisplayTitle(task: OpenClawTask): string {
+		return task.label?.trim() || task.task.trim() || task.taskId;
+	}
+
+	private shouldDedupOpenClawTask(task: OpenClawTask): boolean {
+		const launcherTasks = this.getLauncherTasks();
+		if (
+			task.childSessionKey &&
+			launcherTasks.some(
+				(launcherTask) =>
+					launcherTask.session_id &&
+					task.childSessionKey?.includes(launcherTask.session_id),
+			)
+		) {
+			return true;
+		}
+		if (
+			task.label &&
+			launcherTasks.some((launcherTask) => launcherTask.id === task.label)
+		) {
+			return true;
+		}
+		return false;
+	}
+
+	private getNonLauncherOpenClawTasks(): OpenClawTask[] {
+		const tasks = this._openclawTaskService?.getTasks() ?? [];
+		return tasks.filter((task) => !this.shouldDedupOpenClawTask(task));
+	}
+
+	private getVisibleOpenClawTasks(
+		tasks = this.getNonLauncherOpenClawTasks(),
+	): OpenClawTask[] {
+		const filtered = this.isRunningOnlyFilterEnabled()
+			? tasks.filter((task) => this.isOpenClawTaskVisibleInRunningMode(task))
+			: tasks;
+		return [...filtered].sort(
+			(left, right) =>
+				this.getOpenClawTaskActivityTimeMs(right) -
+				this.getOpenClawTaskActivityTimeMs(left),
+		);
+	}
+
 	private getScopedTasksForSummary(
+		tasks = this.getScopedLauncherTasks(),
+		discovered = this.getScopedDiscoveredAgents(),
+	): AgentTask[] {
+		const syntheticDiscovered: AgentTask[] = discovered.map((agent) => ({
+			id: `discovered-${agent.pid}`,
+			status: "running" as const,
+			project_dir: agent.projectDir,
+			project_name: path.basename(agent.projectDir) || agent.projectDir,
+			session_id: agent.sessionId ?? `pid-${agent.pid}`,
+			bundle_path: "",
+			prompt_file: "",
+			started_at: agent.startTime.toISOString(),
+			attempts: 0,
+			max_attempts: 0,
+		}));
+		const syntheticOpenClaw = this.getVisibleOpenClawTasks().map((task) =>
+			this.toSyntheticOpenClawTask(task),
+		);
+		return [...tasks, ...syntheticDiscovered, ...syntheticOpenClaw];
+	}
+
+	private getScopedAgentTasksForSummary(
 		tasks = this.getScopedLauncherTasks(),
 		discovered = this.getScopedDiscoveredAgents(),
 	): AgentTask[] {
@@ -1266,7 +1411,8 @@ export class AgentStatusTreeProvider
 	private setHasAgentsContext(): void {
 		const hasAgents =
 			Object.keys(this.registry.tasks).length > 0 ||
-			this._discoveredAgents.length > 0;
+			this._discoveredAgents.length > 0 ||
+			this.getNonLauncherOpenClawTasks().length > 0;
 		const hasTerminalTasks = this.getDisplayLauncherTasks().some(
 			(task) => task.status !== "running",
 		);
@@ -1672,6 +1818,12 @@ export class AgentStatusTreeProvider
 		if (element.type === "task") {
 			return this.createTaskItem(element.task);
 		}
+		if (element.type === "openclawTask") {
+			return this.createOpenClawTaskItem(element.task);
+		}
+		if (element.type === "backgroundTasks") {
+			return this.createBackgroundTasksItem(element);
+		}
 		if (element.type === "projectGroup") {
 			return this.createProjectGroupItem(element);
 		}
@@ -1697,7 +1849,11 @@ export class AgentStatusTreeProvider
 		if (!element) {
 			const allTasks = this.getScopedLauncherTasks();
 			const discovered = this.getScopedDiscoveredAgents();
-			const hasAnyAgents = allTasks.length > 0 || discovered.length > 0;
+			const openclawTasks = this.getVisibleOpenClawTasks();
+			const hasAnyAgents =
+				allTasks.length > 0 ||
+				discovered.length > 0 ||
+				openclawTasks.length > 0;
 			if (!hasAnyAgents) {
 				if (this._initialReadInProgress && this._filePath) {
 					return [
@@ -1759,7 +1915,12 @@ export class AgentStatusTreeProvider
 			const tasks = runningOnly
 				? allTasks.filter((task) => task.status === "running")
 				: allTasks;
-			if (runningOnly && tasks.length === 0 && discovered.length === 0) {
+			if (
+				runningOnly &&
+				tasks.length === 0 &&
+				discovered.length === 0 &&
+				openclawTasks.length === 0
+			) {
 				return [
 					{
 						type: "state",
@@ -1771,6 +1932,8 @@ export class AgentStatusTreeProvider
 			}
 
 			const groupedByProject = this.isProjectGroupingEnabled();
+			const showOpenClawInline =
+				!groupedByProject && this.getSortMode() === "recency";
 			const groupedNodes: AgentNode[] = groupedByProject
 				? this.buildGroupedRootNodes(tasks, discovered)
 				: [];
@@ -1787,26 +1950,49 @@ export class AgentStatusTreeProvider
 								agent,
 							}) satisfies SortableAgentNode,
 					),
+					...(showOpenClawInline
+						? openclawTasks.map(
+								(task) =>
+									({
+										type: "openclawTask" as const,
+										task,
+									}) satisfies SortableAgentNode,
+							)
+						: []),
 				]),
 			);
 
+			const agentCounts = countAgentStatuses(
+				this.getScopedAgentTasksForSummary(
+					runningOnly ? tasks : allTasks,
+					discovered,
+				),
+			);
 			const counts = countAgentStatuses(
 				this.getScopedTasksForSummary(
 					runningOnly ? tasks : allTasks,
 					discovered,
 				),
 			);
+			const backgroundTaskCount = openclawTasks.length;
 			const stuckCount = this.getStuckRunningCount(allTasks);
 			const summaryLabel = [
 				this.getSortModeIndicatorLabel(),
 				this.getScopeIndicatorLabel(),
-				this.formatScopedAgentCount(counts.total),
+				this.formatScopedAgentCount(agentCounts.total),
 				this.formatSummaryCounts(counts),
+				...(backgroundTaskCount > 0
+					? [
+							backgroundTaskCount === 1
+								? "1 background task"
+								: `${backgroundTaskCount} background tasks`,
+						]
+					: []),
 				...(stuckCount > 0 ? [`${stuckCount} stuck`] : []),
 			]
 				.filter((part) => part.length > 0)
 				.join(" · ");
-			const summaryTooltip = this.getSummaryTooltip(counts, stuckCount);
+			const summaryTooltip = this.getSummaryTooltip(agentCounts, stuckCount);
 
 			return [
 				{
@@ -1814,6 +2000,14 @@ export class AgentStatusTreeProvider
 					label: summaryLabel,
 					tooltip: summaryTooltip || undefined,
 				},
+				...(!showOpenClawInline && openclawTasks.length > 0
+					? [
+							{
+								type: "backgroundTasks" as const,
+								tasks: openclawTasks,
+							},
+						]
+					: []),
 				...(groupedByProject ? groupedNodes : flatNodes),
 			];
 		}
@@ -1855,6 +2049,24 @@ export class AgentStatusTreeProvider
 				? this.getCompactChildren(element.task)
 				: this.getDetailChildren(element.task);
 			return [...detailChildren, ...this.getFileChangeChildren(element.task)];
+		}
+
+		if (element.type === "openclawTask") {
+			return this.getOpenClawTaskDetailChildren(element.task);
+		}
+
+		if (element.type === "backgroundTasks") {
+			return this.applyAgentVisibilityCap(
+				this.sortAgentNodes(
+					element.tasks.map(
+						(task) =>
+							({
+								type: "openclawTask" as const,
+								task,
+							}) satisfies SortableAgentNode,
+					),
+				),
+			);
 		}
 
 		if (element.type === "discovered") {
@@ -2169,19 +2381,29 @@ export class AgentStatusTreeProvider
 	}
 
 	private getNodeStartedTimeMs(node: SortableAgentNode): number {
-		return node.type === "task"
-			? this.getTaskStartedTimeMs(node.task)
-			: this.getDiscoveredActivityTimeMs(node.agent);
+		if (node.type === "task") {
+			return this.getTaskStartedTimeMs(node.task);
+		}
+		if (node.type === "discovered") {
+			return this.getDiscoveredActivityTimeMs(node.agent);
+		}
+		return this.getOpenClawTaskStartedTimeMs(node.task);
 	}
 
 	private getNodeActivityTimeMs(node: SortableAgentNode): number {
-		return node.type === "task"
-			? this.getTaskActivityTimeMs(node.task)
-			: this.getDiscoveredActivityTimeMs(node.agent);
+		if (node.type === "task") {
+			return this.getTaskActivityTimeMs(node.task);
+		}
+		if (node.type === "discovered") {
+			return this.getDiscoveredActivityTimeMs(node.agent);
+		}
+		return this.getOpenClawTaskActivityTimeMs(node.task);
 	}
 
 	private getNodeStatus(node: SortableAgentNode): AgentTaskStatus {
-		return node.type === "task" ? node.task.status : "running";
+		if (node.type === "task") return node.task.status;
+		if (node.type === "discovered") return "running";
+		return this.mapOpenClawTaskToAgentStatus(node.task);
 	}
 
 	private compareActivityTimeDesc(
@@ -2232,10 +2454,17 @@ export class AgentStatusTreeProvider
 		if (left.type === "task" && right.type === "task") {
 			return this.compareTaskNames(left.task.id, right.task.id);
 		}
+		if (left.type === "openclawTask" && right.type === "openclawTask") {
+			return this.compareTaskNames(left.task.taskId, right.task.taskId);
+		}
 		if (left.type === "discovered" && right.type === "discovered") {
 			return right.agent.pid - left.agent.pid;
 		}
-		return left.type === "task" ? -1 : 1;
+		if (left.type === "task") return -1;
+		if (right.type === "task") return 1;
+		if (left.type === "openclawTask") return -1;
+		if (right.type === "openclawTask") return 1;
+		return 1;
 	}
 
 	private sortAgentNodes(nodes: SortableAgentNode[]): SortableAgentNode[] {
@@ -2245,12 +2474,19 @@ export class AgentStatusTreeProvider
 	}
 
 	private toAgentNode(node: SortableAgentNode): AgentNode {
-		return node.type === "task"
-			? { type: "task", task: node.task }
-			: { type: "discovered", agent: node.agent };
+		if (node.type === "task") {
+			return { type: "task", task: node.task };
+		}
+		if (node.type === "discovered") {
+			return { type: "discovered", agent: node.agent };
+		}
+		return { type: "openclawTask", task: node.task };
 	}
 
 	private isAlwaysVisibleAgentNode(node: SortableAgentNode): boolean {
+		if (node.type === "openclawTask") {
+			return this.isOpenClawTaskActive(node.task);
+		}
 		return this.getNodeStatus(node) === "running";
 	}
 
@@ -2262,6 +2498,13 @@ export class AgentStatusTreeProvider
 		if (left.type === "task") {
 			const rightTask = right as Extract<SortableAgentNode, { type: "task" }>;
 			return left.task.id === rightTask.task.id;
+		}
+		if (left.type === "openclawTask") {
+			const rightTask = right as Extract<
+				SortableAgentNode,
+				{ type: "openclawTask" }
+			>;
+			return left.task.taskId === rightTask.task.taskId;
 		}
 		if (left.type === "discovered") {
 			const rightAgent = right as Extract<
@@ -2855,6 +3098,99 @@ export class AgentStatusTreeProvider
 		}));
 	}
 
+	private formatOpenClawTaskDuration(task: OpenClawTask): string | null {
+		const start = task.startedAt ?? task.createdAt;
+		if (!start) return null;
+		const end = task.endedAt ?? Date.now();
+		const durationMs = Math.max(0, end - start);
+		const totalMinutes = Math.floor(durationMs / 60_000);
+		const hours = Math.floor(totalMinutes / 60);
+		const minutes = totalMinutes % 60;
+		if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+		if (hours > 0) return `${hours}h`;
+		return `${minutes}m`;
+	}
+
+	private getOpenClawRuntimeIcon(runtime: OpenClawTask["runtime"]): string {
+		switch (runtime) {
+			case "cron":
+				return "clock";
+			case "acp":
+				return "hubot";
+			case "subagent":
+				return "organization";
+			case "cli":
+				return "terminal";
+		}
+	}
+
+	private getOpenClawTaskDetailChildren(task: OpenClawTask): DetailNode[] {
+		const taskId = `openclaw-${task.taskId}`;
+		const details: DetailNode[] = [
+			{
+				type: "detail",
+				label: "Runtime",
+				value: task.runtime,
+				taskId,
+				icon: this.getOpenClawRuntimeIcon(task.runtime),
+			},
+			{
+				type: "detail",
+				label: "Status",
+				value: openclawStatusToLabel(task.status),
+				taskId,
+				icon: openclawStatusToIcon(task.status).id,
+				iconColor: openclawStatusToIcon(task.status).color?.id,
+			},
+		];
+
+		if (task.agentId) {
+			details.push({
+				type: "detail",
+				label: "Agent",
+				value: task.agentId,
+				taskId,
+				icon: "hubot",
+			});
+		}
+
+		const duration = this.formatOpenClawTaskDuration(task);
+		if (duration) {
+			details.push({
+				type: "detail",
+				label: "Duration",
+				value: duration,
+				taskId,
+				icon: "watch",
+			});
+		}
+
+		if (task.error) {
+			details.push({
+				type: "detail",
+				label: "Error",
+				value: task.error,
+				taskId,
+				icon: "error",
+				iconColor: "charts.red",
+			});
+		}
+
+		const summary =
+			task.terminalSummary?.trim() || task.progressSummary?.trim();
+		if (summary) {
+			details.push({
+				type: "detail",
+				label: "Summary",
+				value: summary,
+				taskId,
+				icon: "note",
+			});
+		}
+
+		return details;
+	}
+
 	private getTaskDiffStartCommit(t: AgentTask): string | undefined {
 		if (t.status === "running") return undefined;
 
@@ -3280,6 +3616,7 @@ export class AgentStatusTreeProvider
 	getParent(element: AgentNode): AgentNode | undefined {
 		if (this.isProjectGroupingEnabled()) {
 			const allTasks = this.getScopedLauncherTasks();
+			const openclawTasks = this.getVisibleOpenClawTasks();
 			const visibleTasks = this.isRunningOnlyFilterEnabled()
 				? allTasks.filter((task) => task.status === "running")
 				: allTasks;
@@ -3322,6 +3659,12 @@ export class AgentStatusTreeProvider
 				return findProjectParent((project) =>
 					project.tasks.some((task) => task.id === element.task.id),
 				);
+			}
+
+			if (element.type === "openclawTask") {
+				if (openclawTasks.some((task) => task.taskId === element.task.taskId)) {
+					return { type: "backgroundTasks", tasks: openclawTasks };
+				}
 			}
 
 			if (element.type === "discovered") {
@@ -3382,9 +3725,11 @@ export class AgentStatusTreeProvider
 			}
 		} else {
 			const allTasks = this.getScopedLauncherTasks();
+			const openclawTasks = this.getVisibleOpenClawTasks();
 			const visibleTasks = this.isRunningOnlyFilterEnabled()
 				? allTasks.filter((task) => task.status === "running")
 				: allTasks;
+			const showOpenClawInline = this.getSortMode() === "recency";
 			const flatRootNodes = this.applyAgentVisibilityCap(
 				this.sortAgentNodes([
 					...visibleTasks.map(
@@ -3398,6 +3743,15 @@ export class AgentStatusTreeProvider
 								agent,
 							}) satisfies SortableAgentNode,
 					),
+					...(showOpenClawInline
+						? openclawTasks.map(
+								(task) =>
+									({
+										type: "openclawTask" as const,
+										task,
+									}) satisfies SortableAgentNode,
+							)
+						: []),
 				]),
 			);
 			const olderRuns = flatRootNodes.find(
@@ -3420,6 +3774,27 @@ export class AgentStatusTreeProvider
 					return olderRuns;
 				}
 			}
+
+			if (olderRuns && element.type === "openclawTask") {
+				const sortableNode = {
+					type: "openclawTask" as const,
+					task: element.task,
+				};
+				if (this.olderRunsContainsNode(olderRuns, sortableNode)) {
+					return olderRuns;
+				}
+			}
+
+			if (
+				!showOpenClawInline &&
+				element.type === "openclawTask" &&
+				openclawTasks.some((task) => task.taskId === element.task.taskId)
+			) {
+				return { type: "backgroundTasks", tasks: openclawTasks };
+			}
+		}
+		if (element.type === "backgroundTasks") {
+			return undefined;
 		}
 		if (element.type === "detail") {
 			// Check if it belongs to a discovered agent
@@ -3430,6 +3805,13 @@ export class AgentStatusTreeProvider
 				);
 				const agent = this._discoveredAgents.find((a) => a.pid === pid);
 				if (agent) return { type: "discovered", agent };
+			}
+			if (element.taskId.startsWith("openclaw-")) {
+				const openclawTaskId = element.taskId.replace("openclaw-", "");
+				const task = this.getVisibleOpenClawTasks().find(
+					(entry) => entry.taskId === openclawTaskId,
+				);
+				if (task) return { type: "openclawTask", task };
 			}
 			const task = this.getDisplayTaskById(element.taskId);
 			if (task) return { type: "task", task };
@@ -3486,7 +3868,10 @@ export class AgentStatusTreeProvider
 				max_attempts: 0,
 			}),
 		);
-		return [...launcherTasks, ...syntheticDiscovered];
+		const syntheticOpenClaw = this.getVisibleOpenClawTasks().map((task) =>
+			this.toSyntheticOpenClawTask(task),
+		);
+		return [...launcherTasks, ...syntheticDiscovered, ...syntheticOpenClaw];
 	}
 
 	getDiscoveryDiagnosticsReport(): string {
@@ -3627,6 +4012,20 @@ export class AgentStatusTreeProvider
 		return item;
 	}
 
+	private createBackgroundTasksItem(
+		node: BackgroundTasksNode,
+	): vscode.TreeItem {
+		const count = node.tasks.length;
+		const item = new vscode.TreeItem(
+			count === 1 ? "Background Tasks · 1" : `Background Tasks · ${count}`,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description = count === 1 ? "1 task" : `${count} tasks`;
+		item.contextValue = "backgroundTasks";
+		item.iconPath = new vscode.ThemeIcon("pulse");
+		return item;
+	}
+
 	private createProjectGroupItem(node: ProjectGroupNode): vscode.TreeItem {
 		const projectDir =
 			node.projectDir || node.tasks[0]?.project_dir || node.projectName;
@@ -3668,16 +4067,25 @@ export class AgentStatusTreeProvider
 	private getSummaryIcon(): vscode.ThemeIcon {
 		const tasks = this.getScopedLauncherTasks();
 		const discovered = this.getScopedDiscoveredAgents();
+		const openclawTasks = this.getVisibleOpenClawTasks();
 
 		const hasRunning =
-			tasks.some((t) => t.status === "running") || discovered.length > 0;
-		const hasFailed = tasks.some(
-			(t) => t.status === "failed" || t.status === "killed",
-		);
+			tasks.some((t) => t.status === "running") ||
+			discovered.length > 0 ||
+			openclawTasks.some((task) => this.isOpenClawTaskActive(task));
+		const hasFailed =
+			tasks.some((t) => t.status === "failed" || t.status === "killed") ||
+			openclawTasks.some(
+				(task) => task.status === "failed" || task.status === "timed_out",
+			);
 		const hasContractFailure = tasks.some(
 			(t) => t.status === "contract_failure",
 		);
-		const hasStopped = tasks.some((t) => t.status === "stopped");
+		const hasStopped =
+			tasks.some((t) => t.status === "stopped") ||
+			openclawTasks.some(
+				(task) => task.status === "blocked" || task.status === "lost",
+			);
 
 		if (hasFailed) {
 			return new vscode.ThemeIcon("error", new vscode.ThemeColor("charts.red"));
@@ -3846,6 +4254,54 @@ export class AgentStatusTreeProvider
 				: "commandCentral.agentQuickActions",
 			title: isRunning ? "Focus Terminal" : "Agent Actions",
 			arguments: [{ type: "task" as const, task }],
+		};
+		return item;
+	}
+
+	private createOpenClawTaskItem(task: OpenClawTask): vscode.TreeItem {
+		const title = this.getOpenClawTaskDisplayTitle(task);
+		const activity = relativeTime(this.getOpenClawTaskActivityTimeMs(task));
+		const summary =
+			task.status === "queued" || task.status === "running"
+				? task.progressSummary?.trim()
+				: task.error?.trim() || task.terminalSummary?.trim();
+		const descriptionParts = [
+			task.runtime,
+			openclawStatusToLabel(task.status),
+			activity,
+			summary,
+		].filter((part): part is string => Boolean(part));
+		const item = new vscode.TreeItem(
+			title,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description = descriptionParts.join(" · ");
+		item.tooltip = new vscode.MarkdownString(
+			[
+				`**${title}**`,
+				`Task ID: \`${task.taskId}\``,
+				`Runtime: ${task.runtime}`,
+				`Status: ${openclawStatusToLabel(task.status)}`,
+				`Owner: ${task.ownerKey}`,
+				`Scope: ${task.scopeKind}`,
+				task.agentId ? `Agent: ${task.agentId}` : null,
+				task.runId ? `Run: ${task.runId}` : null,
+				task.childSessionKey
+					? `Child Session: \`${task.childSessionKey}\``
+					: null,
+				task.error ? `Error: ${task.error}` : null,
+				task.terminalSummary ? `Summary: ${task.terminalSummary}` : null,
+			]
+				.filter(Boolean)
+				.join("\n\n"),
+		);
+		item.iconPath = openclawStatusToIcon(task.status);
+		item.contextValue = `openclawTask.${task.status}`;
+		item.resourceUri = vscode.Uri.parse(`openclaw-task:${task.taskId}`);
+		item.command = {
+			command: "commandCentral.showOpenClawTaskDetail",
+			title: "Show Details",
+			arguments: [{ type: "openclawTask" as const, task }],
 		};
 		return item;
 	}
