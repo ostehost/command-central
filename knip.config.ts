@@ -1,8 +1,7 @@
 /**
- * Knip Configuration for Command Central
- * Dead code detection tailored to VS Code extension with Bun
- *
- * @see https://knip.dev/reference/configuration
+ * Knip finds unused files, exports, and dependencies across the project.
+ * Command Central uses it as a CI quality gate to catch dead code drift
+ * before release rather than relying only on runtime behavior or tests.
  */
 
 import type { KnipConfig } from "knip";
