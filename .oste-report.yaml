@@ -1,8 +1,0 @@
-task_id: "cc-knip-cleanup-v1"
-status: "success"
-summary: "Removed the stale Knip sqlite hint and marked Playwright as an intentional script dependency"
-files_changed:
-  - "knip.config.ts"
-  - ".oste-report.yaml"
-tests_passing: false
-next_steps: "Address the remaining Knip unused file/export findings if you want a clean Knip run"
