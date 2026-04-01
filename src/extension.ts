@@ -998,49 +998,97 @@ export async function activate(
 			}
 		};
 
-		const showGitDiffInOutputChannel = async (
+		const showGitDiffAsFilePicker = async (
 			projectDir: string,
 			rangeArgs: string[],
-			title: string,
+			_title: string,
 			noChangesMessage: string,
+			startCommit?: string,
+			taskStatus?: AgentTask["status"],
 		): Promise<void> => {
 			const { execFileSync } = await import("node:child_process");
-			const stat = execFileSync(
-				"git",
-				["-C", projectDir, "diff", ...rangeArgs, "--stat"],
-				{ encoding: "utf-8", timeout: 5000 },
-			).trim();
-			const fullDiff = execFileSync(
-				"git",
-				["-C", projectDir, "diff", ...rangeArgs],
-				{
-					encoding: "utf-8",
-					timeout: 10000,
-				},
-			).trim();
+			let numstat: string;
+			try {
+				numstat = execFileSync(
+					"git",
+					["-C", projectDir, "diff", ...rangeArgs, "--numstat"],
+					{ encoding: "utf-8", timeout: 5000 },
+				).trim();
+			} catch {
+				vscode.window.showWarningMessage("Failed to read git diff.");
+				return;
+			}
 
-			if (!stat && !fullDiff) {
+			if (!numstat) {
 				vscode.window.showInformationMessage(noChangesMessage);
 				return;
 			}
 
-			agentDiffOutputChannel.clear();
-			agentDiffOutputChannel.appendLine(`=== ${title} ===`);
-			if (stat) {
-				agentDiffOutputChannel.appendLine(stat);
+			const files = numstat
+				.split("\n")
+				.filter((l) => l.trim())
+				.map((line) => {
+					const parts = line.split("\t");
+					const add = parts[0] ?? "0";
+					const del = parts[1] ?? "0";
+					const filePath = parts[2];
+					const additions = add === "-" ? -1 : Number.parseInt(add, 10);
+					const deletions = del === "-" ? -1 : Number.parseInt(del, 10);
+					const isBinary = add === "-" && del === "-";
+					const statsLabel = isBinary
+						? "binary"
+						: `+${additions} / -${deletions}`;
+					return {
+						filePath: filePath ?? "",
+						additions,
+						deletions,
+						isBinary,
+						statsLabel,
+					};
+				});
+
+			if (files.length === 1 && files[0]) {
+				// Single file — open diff directly
+				await vscode.commands.executeCommand("commandCentral.openFileDiff", {
+					projectDir,
+					filePath: files[0].filePath,
+					startCommit: startCommit,
+					taskStatus: taskStatus ?? "completed",
+					additions: files[0].additions,
+					deletions: files[0].deletions,
+				});
+				return;
 			}
-			if (fullDiff) {
-				if (stat) {
-					agentDiffOutputChannel.appendLine("");
-					agentDiffOutputChannel.appendLine("---");
-				}
-				agentDiffOutputChannel.appendLine("");
-				agentDiffOutputChannel.append(fullDiff);
-				if (!fullDiff.endsWith("\n")) {
-					agentDiffOutputChannel.appendLine("");
-				}
-			}
-			agentDiffOutputChannel.show(true);
+
+			type DiffPickItem = vscode.QuickPickItem & {
+				filePath: string;
+				additions: number;
+				deletions: number;
+			};
+			const items: DiffPickItem[] = files.map((f) => ({
+				label: `$(file) ${f.filePath}`,
+				description: f.statsLabel,
+				filePath: f.filePath,
+				additions: f.additions,
+				deletions: f.deletions,
+			}));
+
+			const totalAdd = files.reduce((s, f) => s + Math.max(0, f.additions), 0);
+			const totalDel = files.reduce((s, f) => s + Math.max(0, f.deletions), 0);
+
+			const selected = await vscode.window.showQuickPick(items, {
+				placeHolder: `${files.length} files changed (+${totalAdd} / -${totalDel}) — select a file to diff`,
+			});
+			if (!selected) return;
+
+			await vscode.commands.executeCommand("commandCentral.openFileDiff", {
+				projectDir,
+				filePath: selected.filePath,
+				startCommit: startCommit,
+				taskStatus: taskStatus ?? "completed",
+				additions: selected.additions,
+				deletions: selected.deletions,
+			});
 		};
 
 		const openGhosttyTmuxAttach = async (
@@ -2263,11 +2311,12 @@ export async function activate(
 								/* fallback to HEAD */
 							}
 						}
-						await showGitDiffInOutputChannel(
+						await showGitDiffAsFilePicker(
 							projectDir,
 							[sinceRef],
 							`Diff: ${path.basename(projectDir)}`,
 							"No changes found for this agent.",
+							sinceRef,
 						);
 						return;
 					}
@@ -2303,11 +2352,13 @@ export async function activate(
 						}
 					}
 
-					await showGitDiffInOutputChannel(
+					await showGitDiffAsFilePicker(
 						task.project_dir,
 						[`${sinceRef}..HEAD`],
 						`Diff: ${task.id}`,
 						"No changes found for this agent.",
+						task.start_sha ?? sinceRef,
+						task.status,
 					);
 				},
 			),

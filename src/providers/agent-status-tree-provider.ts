@@ -3005,18 +3005,17 @@ export class AgentStatusTreeProvider
 				taskId: t.id,
 			});
 		}
-		if (this._openclawConfigService) {
-			// Try matching by role → agent ID mapping
+		if (this._openclawConfigService && !taskModel) {
 			const allModels = this._openclawConfigService.getAllAgentModels();
-			if (allModels.length > 0 && !taskModel) {
-				const policyModel = allModels.find((m) => m.model && m.id === "main");
-				if (policyModel) {
+			if (allModels.length > 0) {
+				const globalModel = allModels.find((m) => !m.isExplicit);
+				const displayModel = globalModel ?? allModels[0];
+				if (displayModel) {
 					details.push({
 						type: "detail",
-						label: "Policy Default",
-						value: policyModel.model,
+						label: "OpenClaw Default",
+						value: displayModel.model,
 						taskId: t.id,
-						description: "(from openclaw.json)",
 					});
 				}
 			}
