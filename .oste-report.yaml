@@ -1,9 +1,9 @@
-task_id: "cc-diagnostics-v1"
-status: "success"
-summary: "Condensed discovery diagnostics into a summary-first, actionable report with grouped filters and registry age buckets."
+task_id: "cc-current-wip-audit-v1"
+status: "failure"
+summary: "Audited current Apr 1 repo state and wrote a WIP audit recommending launch-surface sync as the next iteration."
 files_changed:
-  - "src/providers/agent-status-tree-provider.ts"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - ".task-bookkeeping/cc-current-wip-audit-v1.yaml"
+  - "research/WIP-AUDIT-2026-04-01.md"
   - ".oste-report.yaml"
-tests_passing: true
-next_steps: "Verify the new diagnostics rendering in VS Code via Command Palette → Show Discovery Diagnostics."
+tests_passing: false
+next_steps: "Sync README/site/changelog/release notes/roadmap to v0.5.1-47 state and investigate the two failing cross-repo smoke tests in just verify."
