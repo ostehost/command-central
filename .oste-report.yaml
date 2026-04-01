@@ -1,11 +1,10 @@
-task_id: "cc-native-diff-v1"
+task_id: "cc-release-notes-v1"
 status: "success"
-summary: "Switched agent diffs to a VS Code output view and fixed Ghostty launcher fallback/caching resolution"
+summary: "Added v0.5.1-45 changelog notes, a VS Code-style release page, and a latest-release callout on the site"
 files_changed:
-  - "src/extension.ts"
-  - "src/ghostty/TerminalManager.ts"
-  - "test/commands/agent-quick-actions.test.ts"
-  - "test/ghostty/terminal-manager.test.ts"
-  - "test/helpers/vscode-mock.ts"
+  - "CHANGELOG.md"
+  - "site/index.html"
+  - "site/style.css"
+  - "site/releases/v0.5.1-45.html"
 tests_passing: true
-next_steps: "Verify View Diff and Focus Terminal end-to-end in VS Code on a machine where the launcher is discovered from ~/projects/ghostty-launcher/launcher."
+next_steps: "Publish the updated site so the new release notes page is live."

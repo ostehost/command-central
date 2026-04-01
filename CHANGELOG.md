@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current metrics as of 2026-03-22: 660 tests, 1385 assertions across 53 files.
 
+## [0.5.1-45] - 2026-04-01
+
+### Added
+- **OpenClaw background tasks in Agent Status** — Command Central now shows OpenClaw cron runs, agent spawns, and CLI operations in the Agent Status sidebar so you can monitor more work from one place. Running tasks can be canceled from the sidebar, blocked tasks are visible, and the feature degrades cleanly when OpenClaw is not installed.
+- **Backend-aware session resume** — `Resume Session` now works across Claude Code, Codex CLI, and Gemini CLI, opens in the correct project bundle, and offers quick actions for interactive resume, terminal focus, and transcript viewing.
+
+### Changed
+- **Test suite growth** — Validation now covers 1156 tests, up from 1123, with all checks passing for this release.
+- **OpenClaw integration groundwork** — Added dedicated OpenClaw task service/types files and documented the rollout plan in `research/ROADMAP-OPENCLAW-INTEGRATION.md`.
+
+### Fixed
+- **Native diff view** — `View Diff` now opens Git diff output directly inside VS Code instead of depending on an external terminal flow.
+- **Launcher auto-discovery** — Launcher resolution now searches common install paths, caches successful results, and no longer gets stuck on a failed primary path.
+- **Terminal navigation fallback** — `Focus Terminal` and `View Diff` now fall back to the VS Code integrated terminal when the launcher is unavailable.
+- **Knip warning cleanup** — Removed an unused-export warning by wiring the OpenClaw quick-actions helper into the extension.
+
 ## [0.3.3] - 2026-03-22
 
 ### Added — Agent Sidebar (16 features)

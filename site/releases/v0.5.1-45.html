@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Command Central v0.5.1-45 Release Notes</title>
+  <meta name="description" content="Release notes for Command Central v0.5.1-45 covering the April 1, 2026 rollout.">
+  <link rel="icon" href="../images/favicon.ico" sizes="32x32">
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+  <link rel="canonical" href="https://cc.partnerai.dev/releases/v0.5.1-45.html">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    .release-page {
+      padding-top: 48px;
+    }
+
+    .release-hero {
+      padding: 96px 0 56px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .release-hero::after {
+      content: '';
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 260px;
+      background: radial-gradient(circle at center, rgba(88, 166, 255, 0.12), transparent 68%);
+      pointer-events: none;
+    }
+
+    .release-hero .container,
+    .release-section .container {
+      position: relative;
+      z-index: 1;
+    }
+
+    .release-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(88, 166, 255, 0.24);
+      background: rgba(88, 166, 255, 0.08);
+      color: var(--text-bright);
+      font-size: 0.82rem;
+    }
+
+    .release-hero h1 {
+      margin-top: 18px;
+      font-size: clamp(2.2rem, 5vw, 4rem);
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      color: var(--text-bright);
+    }
+
+    .release-subtitle {
+      max-width: 740px;
+      margin-top: 18px;
+      color: var(--text-muted);
+      font-size: 1.08rem;
+    }
+
+    .release-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .release-pill {
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.84rem;
+    }
+
+    .release-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 32px;
+    }
+
+    .release-summary-card {
+      padding: 18px;
+      background: rgba(22, 27, 34, 0.84);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+    }
+
+    .release-summary-card strong {
+      display: block;
+      color: var(--text-bright);
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    .release-summary-card p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .release-section {
+      padding: 0 0 56px;
+    }
+
+    .release-section:last-of-type {
+      padding-bottom: 84px;
+    }
+
+    .release-section-header {
+      margin-bottom: 22px;
+    }
+
+    .release-section-header h2 {
+      color: var(--text-bright);
+      font-size: clamp(1.7rem, 3vw, 2.35rem);
+      letter-spacing: -0.02em;
+    }
+
+    .release-section-header p {
+      margin-top: 10px;
+      max-width: 700px;
+      color: var(--text-muted);
+    }
+
+    .release-feature {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+      gap: 28px;
+      align-items: center;
+      padding: 26px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(28, 33, 40, 0.9), rgba(22, 27, 34, 0.92));
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+    }
+
+    .release-feature + .release-feature {
+      margin-top: 20px;
+    }
+
+    .release-kicker {
+      display: inline-block;
+      margin-bottom: 10px;
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .release-feature h3 {
+      color: var(--text-bright);
+      font-size: 1.45rem;
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+
+    .release-feature p {
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+
+    .release-feature ul {
+      padding-left: 20px;
+      color: var(--text-muted);
+    }
+
+    .release-feature li + li {
+      margin-top: 8px;
+    }
+
+    .release-visual {
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(13, 17, 23, 0.9);
+    }
+
+    .release-visual img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .release-columns {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+    }
+
+    .release-note-card {
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: rgba(22, 27, 34, 0.84);
+    }
+
+    .release-note-card h3 {
+      color: var(--text-bright);
+      margin-bottom: 12px;
+    }
+
+    .release-note-card ul {
+      padding-left: 20px;
+      color: var(--text-muted);
+    }
+
+    .release-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .release-thanks {
+      padding: 28px;
+      border-radius: 24px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(88, 166, 255, 0.08), rgba(22, 27, 34, 0.88));
+    }
+
+    .release-thanks h2 {
+      color: var(--text-bright);
+      margin-bottom: 10px;
+    }
+
+    .release-thanks p {
+      max-width: 720px;
+      color: var(--text);
+    }
+
+    @media (max-width: 860px) {
+      .release-summary-grid,
+      .release-columns,
+      .release-feature {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .release-hero {
+        padding: 88px 0 44px;
+      }
+
+      .release-feature,
+      .release-summary-card,
+      .release-note-card,
+      .release-thanks {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body class="release-page">
+  <nav class="site-nav">
+    <div class="container nav-inner">
+      <a href="../index.html" class="nav-brand">Command Central</a>
+      <div class="nav-links">
+        <a href="../index.html" class="nav-link">Marketing Site</a>
+        <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="nav-link">Marketplace</a>
+        <a href="https://github.com/ostehost/command-central" class="nav-link">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="release-hero">
+      <div class="container">
+        <div class="release-eyebrow">April 1, 2026 • Version 0.5.1-45</div>
+        <h1>Command Central Release Notes</h1>
+        <p class="release-subtitle">This release wraps up today’s rollout from <strong>v0.5.1-43</strong> through <strong>v0.5.1-45</strong>. The headline: you can now track more background work in the Agent Status sidebar, resume sessions across supported backends more reliably, and review diffs without depending on a terminal launcher.</p>
+        <div class="release-meta">
+          <span class="release-pill">OpenClaw background tasks</span>
+          <span class="release-pill">Cross-backend session resume</span>
+          <span class="release-pill">Native diff output in VS Code</span>
+          <span class="release-pill">1156 tests passing</span>
+        </div>
+        <div class="release-summary-grid">
+          <div class="release-summary-card">
+            <strong>More work shows up in one sidebar</strong>
+            <p>Cron jobs, CLI runs, and agent spawns can now sit alongside your active coding sessions.</p>
+          </div>
+          <div class="release-summary-card">
+            <strong>Resume is smarter</strong>
+            <p>Session resume now behaves correctly for Claude Code, Codex CLI, and Gemini CLI.</p>
+          </div>
+          <div class="release-summary-card">
+            <strong>Fallbacks fail softer</strong>
+            <p>Diff viewing and terminal navigation now stay useful even when your launcher is missing.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-section">
+      <div class="container">
+        <div class="release-section-header">
+          <h2>Agent Status</h2>
+          <p>You can now see more of your automated work without leaving VS Code.</p>
+        </div>
+
+        <article class="release-feature">
+          <div>
+            <span class="release-kicker">What's New</span>
+            <h3>Background OpenClaw tasks now appear in the sidebar</h3>
+            <p>Command Central now brings OpenClaw background tasks into the Agent Status view, so cron runs, background agent spawns, and CLI operations are no longer hidden off to the side. If you rely on overnight jobs or background automations, you can now monitor them from the same place you watch active coding agents.</p>
+            <ul>
+              <li>See running, completed, failed, and blocked work in one list.</li>
+              <li>Cancel running background tasks from the sidebar context menu.</li>
+              <li>View task counts in the summary node alongside your agent totals.</li>
+              <li>Keep working normally even if OpenClaw is not installed.</li>
+            </ul>
+          </div>
+          <div class="release-visual">
+            <img src="../assets/feature-agents.svg" alt="Illustration of the Command Central agent status sidebar" width="340" height="200" loading="eager">
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="release-section">
+      <div class="container">
+        <div class="release-section-header">
+          <h2>Sessions</h2>
+          <p>Resuming work is now more predictable across the backends Command Central supports today.</p>
+        </div>
+
+        <article class="release-feature">
+          <div>
+            <span class="release-kicker">Sessions</span>
+            <h3>Resume Session now works across Claude, Codex, and Gemini</h3>
+            <p>If you bounce between AI backends, resume behavior now follows the backend you originally used. Command Central opens the right resume flow, restores the session in the correct project bundle, and gives you quick actions to resume interactively, focus the terminal, or open the transcript.</p>
+            <ul>
+              <li>Claude Code sessions resume directly with the correct session match.</li>
+              <li>Codex CLI sessions can jump back in with the latest resume flow.</li>
+              <li>Gemini CLI sessions now get an interactive resume path instead of a dead end.</li>
+            </ul>
+          </div>
+          <div class="release-visual">
+            <img src="../assets/workflow-unified-hero.svg" alt="Illustration of multi-backend agent workflows in Command Central" width="560" height="340" loading="lazy">
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="release-section">
+      <div class="container">
+        <div class="release-section-header">
+          <h2>Terminal And Diff</h2>
+          <p>Reviewing changes and jumping back to a terminal now works better when your launcher setup is imperfect.</p>
+        </div>
+
+        <article class="release-feature">
+          <div>
+            <span class="release-kicker">Editor</span>
+            <h3>View Diff now opens natively inside VS Code</h3>
+            <p>You no longer need a terminal handoff just to inspect what changed. <code>View Diff</code> now writes Git diff output into a VS Code output channel, which means the command works in more environments and avoids launcher-specific failures.</p>
+          </div>
+          <div class="release-visual">
+            <img src="../assets/git-status.svg" alt="Illustration of diff and git status views inside Command Central" width="400" height="280" loading="lazy">
+          </div>
+        </article>
+
+        <article class="release-feature">
+          <div>
+            <span class="release-kicker">Terminal</span>
+            <h3>Launcher discovery and fallback behavior are more resilient</h3>
+            <p>When a launcher binary exists in a common install location, Command Central can now discover and reuse it more reliably. When it does not, terminal actions fall back to the integrated terminal instead of failing outright.</p>
+            <ul>
+              <li>Successful launcher discovery is cached for faster follow-up actions.</li>
+              <li><code>Focus Terminal</code> and <code>View Diff</code> now degrade gracefully.</li>
+              <li>A bad primary launcher path no longer blocks fallback resolution.</li>
+            </ul>
+          </div>
+          <div class="release-visual">
+            <img src="../assets/feature-dock.svg" alt="Illustration of project-aware terminal windows" width="380" height="180" loading="lazy">
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="release-section">
+      <div class="container">
+        <div class="release-section-header">
+          <h2>Notable Fixes</h2>
+          <p>Smaller improvements that tighten up the experience behind the scenes.</p>
+        </div>
+
+        <div class="release-columns">
+          <div class="release-note-card">
+            <h3>Cleaner extension wiring</h3>
+            <ul>
+              <li>The OpenClaw quick-actions helper is now wired into the extension.</li>
+              <li>That removes a dead export warning and keeps the integration path cleaner.</li>
+            </ul>
+          </div>
+          <div class="release-note-card">
+            <h3>Infrastructure keeps moving</h3>
+            <ul>
+              <li>The test suite grew to 1156 passing tests.</li>
+              <li>Dedicated OpenClaw task service files are now part of the codebase.</li>
+              <li>The OpenClaw integration roadmap is documented for the next rollout phases.</li>
+            </ul>
+            <div class="release-links">
+              <a class="btn btn-secondary" href="https://github.com/ostehost/command-central/blob/main/CHANGELOG.md">View changelog</a>
+              <a class="btn btn-secondary" href="https://github.com/ostehost/command-central/blob/main/research/ROADMAP-OPENCLAW-INTEGRATION.md">Read roadmap</a>
+              <a class="btn btn-secondary" href="https://github.com/ostehost/command-central">Browse GitHub</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-section">
+      <div class="container">
+        <div class="release-thanks">
+          <h2>Thank you</h2>
+          <p>Thanks to everyone dogfooding Command Central across Claude, Codex, Gemini, Ghostty, tmux, and VS Code terminals. This release is focused on making the sidebar more useful when your real workflow is messy, multi-backend, and spread across background tasks.</p>
+          <div class="release-links">
+            <a class="btn btn-primary" href="../index.html">Back to the site</a>
+            <a class="btn btn-secondary" href="https://marketplace.visualstudio.com/items?itemName=oste.command-central">Install Command Central</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
