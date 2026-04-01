@@ -5,6 +5,8 @@ import * as path from "node:path";
 import {
 	escapeProjectPath,
 	resolveClaudeSessionId,
+	resolveClaudeSessionIdForTask,
+	resolveClaudeTranscriptPathForTask,
 } from "../session-resolver.js";
 
 describe("escapeProjectPath", () => {
@@ -87,5 +89,80 @@ describe("resolveClaudeSessionId", () => {
 
 		const result = await resolveClaudeSessionId(projectDir, tmpDir);
 		expect(result).toBe("abc-def-123");
+	});
+
+	test("resolveClaudeSessionIdForTask prefers stored claude_session_id", async () => {
+		const projectDir = "/Users/ostemini/projects/command-central";
+		const escaped = escapeProjectPath(projectDir);
+		const sessionsDir = path.join(tmpDir, escaped);
+		fs.mkdirSync(sessionsDir, { recursive: true });
+
+		fs.writeFileSync(path.join(sessionsDir, "first.jsonl"), "");
+		fs.writeFileSync(path.join(sessionsDir, "stored.jsonl"), "");
+
+		const result = await resolveClaudeSessionIdForTask(
+			{
+				project_dir: projectDir,
+				started_at: "2026-04-01T10:00:00Z",
+				completed_at: "2026-04-01T10:30:00Z",
+				claude_session_id: "stored",
+			},
+			tmpDir,
+		);
+		expect(result).toBe("stored");
+	});
+
+	test("resolveClaudeSessionIdForTask narrows candidates to the task time window", async () => {
+		const projectDir = "/Users/ostemini/projects/command-central";
+		const escaped = escapeProjectPath(projectDir);
+		const sessionsDir = path.join(tmpDir, escaped);
+		fs.mkdirSync(sessionsDir, { recursive: true });
+
+		const beforeTask = path.join(sessionsDir, "before-task.jsonl");
+		const duringTask = path.join(sessionsDir, "during-task.jsonl");
+		const afterTask = path.join(sessionsDir, "after-task.jsonl");
+
+		fs.writeFileSync(beforeTask, "");
+		fs.writeFileSync(duringTask, "");
+		fs.writeFileSync(afterTask, "");
+
+		const before = new Date("2026-04-01T09:59:00Z");
+		const during = new Date("2026-04-01T10:05:00Z");
+		const after = new Date("2026-04-01T10:35:00Z");
+		fs.utimesSync(beforeTask, before, before);
+		fs.utimesSync(duringTask, during, during);
+		fs.utimesSync(afterTask, after, after);
+
+		const result = await resolveClaudeSessionIdForTask(
+			{
+				project_dir: projectDir,
+				started_at: "2026-04-01T10:00:00Z",
+				completed_at: "2026-04-01T10:30:00Z",
+				claude_session_id: null,
+			},
+			tmpDir,
+		);
+		expect(result).toBe("during-task");
+	});
+
+	test("resolveClaudeTranscriptPathForTask returns the matched transcript path", async () => {
+		const projectDir = "/Users/ostemini/projects/command-central";
+		const escaped = escapeProjectPath(projectDir);
+		const sessionsDir = path.join(tmpDir, escaped);
+		fs.mkdirSync(sessionsDir, { recursive: true });
+
+		const transcriptPath = path.join(sessionsDir, "resume-me.jsonl");
+		fs.writeFileSync(transcriptPath, "{}\n");
+
+		const result = await resolveClaudeTranscriptPathForTask(
+			{
+				project_dir: projectDir,
+				started_at: "2026-04-01T10:00:00Z",
+				completed_at: "2026-04-01T10:30:00Z",
+				claude_session_id: "resume-me",
+			},
+			tmpDir,
+		);
+		expect(result).toBe(transcriptPath);
 	});
 });

@@ -20,6 +20,10 @@ export interface GhosttyTerminalMapping {
 	bundle_id: string;
 }
 
+function isBundlePath(target: string): boolean {
+	return target.includes("/") || target.endsWith(".app");
+}
+
 /**
  * Read /tmp/ghostty-terminals.json and find mapping for a session name.
  * Returns the mapping or null if not found / file missing / malformed.
@@ -56,11 +60,12 @@ export async function lookupGhosttyTerminal(
  * Returns true if focused successfully.
  */
 export async function focusGhosttyWindow(
-	bundleId: string,
+	bundleTarget: string,
 	sessionName?: string,
 ): Promise<boolean> {
 	// If we have a session name, try to get the precise bundle_id from the terminal map
-	let effectiveBundleId = bundleId;
+	let effectiveBundleId = isBundlePath(bundleTarget) ? null : bundleTarget;
+	const effectiveBundlePath = isBundlePath(bundleTarget) ? bundleTarget : null;
 	if (sessionName) {
 		try {
 			const mapping = await lookupGhosttyTerminal(sessionName);
@@ -73,25 +78,27 @@ export async function focusGhosttyWindow(
 	}
 
 	// Primary: AppleScript with application id for targeted activation
-	try {
-		const script = `
+	if (effectiveBundleId) {
+		try {
+			const script = `
 tell application id "${effectiveBundleId}"
 	activate
 	if (count of windows) > 0 then
 		set index of window 1 to 1
 	end if
 end tell`;
-		await execFileAsync("osascript", ["-e", script], {
-			timeout: WINDOW_FOCUS_TIMEOUT_MS,
-		});
-		return true;
-	} catch {
-		// AppleScript failed — fall back to open -a
+			await execFileAsync("osascript", ["-e", script], {
+				timeout: WINDOW_FOCUS_TIMEOUT_MS,
+			});
+			return true;
+		} catch {
+			// AppleScript failed — fall back to open -a
+		}
 	}
 
 	// Fallback: open -a (activates the app but may not target the right window)
 	try {
-		await execFileAsync("open", ["-a", effectiveBundleId], {
+		await execFileAsync("open", ["-a", effectiveBundlePath ?? bundleTarget], {
 			timeout: WINDOW_FOCUS_TIMEOUT_MS,
 		});
 		return true;

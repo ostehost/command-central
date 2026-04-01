@@ -73,6 +73,7 @@ export interface AgentTask {
 	session_id: string;
 	stream_file?: string | null;
 	agent_backend?: string | null;
+	claude_session_id?: string | null;
 	cli_name?: string | null;
 	persist_socket?: string | null;
 	tmux_session?: string;
@@ -548,6 +549,7 @@ function normalizeTask(
 		session_id: sessionId,
 		stream_file: asString(raw["stream_file"]) ?? null,
 		agent_backend: asString(raw["agent_backend"]) ?? null,
+		claude_session_id: asString(raw["claude_session_id"]) ?? null,
 		cli_name: asString(raw["cli_name"]) ?? null,
 		persist_socket: asString(raw["persist_socket"]) ?? null,
 		tmux_session: asString(raw["tmux_session"]),

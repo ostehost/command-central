@@ -8,6 +8,13 @@ import { getAgentQuickActions } from "./commands/agent-quick-actions.js";
 import * as disableSortCommand from "./commands/disable-sort.js";
 import * as enableSortCommand from "./commands/enable-sort.js";
 import {
+	buildResumeCommand,
+	canShowResumeAction,
+	resolveResumeBackend,
+	resolveTaskTranscriptPath,
+	supportsInteractiveResume,
+} from "./commands/resume-session.js";
+import {
 	compareWithSelected,
 	copyPath,
 	copyRelativePath,
@@ -24,7 +31,10 @@ import { parseWorktreeListPorcelain } from "./discovery/worktree-list.js";
 import { BinaryManager } from "./ghostty/BinaryManager.js";
 import { refreshGhosttyBundleAfterProjectIconChange } from "./ghostty/project-icon-bundle-refresh.js";
 import { TerminalManager } from "./ghostty/TerminalManager.js";
-import { focusGhosttyWindow } from "./ghostty/window-focus.js";
+import {
+	focusGhosttyWindow,
+	lookupGhosttyTerminal,
+} from "./ghostty/window-focus.js";
 import { GitSorter } from "./git-sort/scm-sorter.js";
 import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provider.js";
 import { AgentDashboardPanel } from "./providers/agent-dashboard-panel.js";
@@ -52,7 +62,7 @@ import { SessionStore } from "./services/session-store.js";
 import { TelemetryService } from "./services/telemetry-service.js";
 import type { GitChangeItem } from "./types/tree-element.js";
 import { GroupingViewManager } from "./ui/grouping-view-manager.js";
-import { buildOsteSpawnCommand } from "./utils/shell-command.js";
+import { buildOsteSpawnCommand, shellQuote } from "./utils/shell-command.js";
 
 let gitSorter: GitSorter | undefined;
 let projectViewManager: ProjectViewManager | undefined;
@@ -904,6 +914,90 @@ export async function activate(
 			"contract_failure",
 		]);
 
+		const execFileAsync = async (
+			command: string,
+			args: string[],
+			timeout = 4000,
+		): Promise<{ stdout: string; stderr: string }> => {
+			const { execFile } = await import("node:child_process");
+			const { promisify } = await import("node:util");
+			return promisify(execFile)(command, args, { timeout });
+		};
+
+		const isTaskTmuxSessionAlive = async (
+			task: AgentTask,
+		): Promise<boolean> => {
+			if (!task.session_id || !isValidSessionId(task.session_id)) {
+				return false;
+			}
+			try {
+				await execFileAsync("tmux", ["has-session", "-t", task.session_id]);
+				return true;
+			} catch {
+				return false;
+			}
+		};
+
+		const openTranscriptInEditor = async (
+			transcriptPath: string,
+		): Promise<void> => {
+			await vscode.commands.executeCommand(
+				"vscode.open",
+				vscode.Uri.file(transcriptPath),
+			);
+		};
+
+		const focusExistingTaskTerminal = async (
+			task: AgentTask,
+		): Promise<void> => {
+			await vscode.commands.executeCommand(
+				"commandCentral.focusAgentTerminal",
+				{
+					type: "task",
+					task,
+				},
+			);
+		};
+
+		const runResumeInTaskTerminal = async (
+			task: AgentTask,
+			command: string,
+		): Promise<void> => {
+			if (await isTaskTmuxSessionAlive(task)) {
+				await focusExistingTaskTerminal(task);
+				try {
+					const steerScript =
+						await terminalManager?.resolveLauncherHelperScriptPath(
+							"oste-steer.sh",
+						);
+					if (steerScript) {
+						await execFileAsync(steerScript, [
+							task.session_id,
+							"--raw",
+							command,
+						]);
+						return;
+					}
+				} catch {
+					// Fall back to opening the project terminal and sending the command there.
+				}
+			}
+
+			if (
+				task.bundle_path &&
+				task.bundle_path !== "(test-mode)" &&
+				task.bundle_path !== "(tmux-mode)"
+			) {
+				try {
+					await execFileAsync("open", ["-a", task.bundle_path], 5000);
+				} catch {
+					// Launcher/openProjectTerminal still handles the project surface fallback.
+				}
+			}
+
+			await terminalManager?.runInProjectTerminal(task.project_dir, command);
+		};
+
 		const parseRegistry = (rawRegistry: string) => {
 			const parsed = JSON.parse(rawRegistry) as {
 				version?: number;
@@ -1116,9 +1210,7 @@ export async function activate(
 						return;
 					}
 
-					const hasResumeSession = Boolean(
-						await resolveClaudeSessionId(task.project_dir),
-					);
+					const hasResumeSession = canShowResumeAction(task);
 					const actions = getAgentQuickActions(task.status, hasResumeSession);
 					if (actions.length === 0) {
 						await vscode.commands.executeCommand(
@@ -1698,7 +1790,7 @@ export async function activate(
 			),
 		);
 
-		// Resume Agent Session — opens Ghostty with `claude --resume`
+		// Resume Agent Session — backend-aware, task-specific resume flow
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
 				"commandCentral.resumeAgentSession",
@@ -1707,42 +1799,128 @@ export async function activate(
 					task?: AgentTask;
 					agent?: { projectDir: string };
 				}) => {
-					const projectDir = node?.task?.project_dir ?? node?.agent?.projectDir;
+					const task = node?.task;
+					const projectDir = task?.project_dir ?? node?.agent?.projectDir;
 					if (!projectDir) {
 						vscode.window.showWarningMessage(
 							"No project directory found for this agent.",
 						);
 						return;
 					}
-					const claudeSessionId = await resolveClaudeSessionId(projectDir);
-					if (!claudeSessionId) {
+
+					// Discovered agents keep the simpler Claude fallback behavior.
+					if (!task) {
+						const claudeSessionId = await resolveClaudeSessionId(projectDir);
+						const command = claudeSessionId
+							? `claude --resume ${shellQuote(claudeSessionId)}`
+							: "claude --continue";
+						try {
+							await terminalManager?.runInProjectTerminal(projectDir, command);
+						} catch {
+							vscode.window.showErrorMessage(
+								"Failed to open the terminal with the resumed session.",
+							);
+						}
+						return;
+					}
+
+					if (task.status === "running") {
+						await focusExistingTaskTerminal(task);
+						return;
+					}
+
+					const backend = resolveResumeBackend(task);
+					if (backend === "acp") {
 						vscode.window.showInformationMessage(
-							"No Claude Code session found — showing diff instead.",
+							"ACP sessions cannot be resumed interactively.",
 						);
-						vscode.commands.executeCommand(
+						return;
+					}
+
+					const resumeCommand = supportsInteractiveResume(task)
+						? await buildResumeCommand(task)
+						: null;
+					const transcriptPath = await resolveTaskTranscriptPath(task);
+					const hasLiveTmuxSession = await isTaskTmuxSessionAlive(task);
+					const hasGhosttyMapping = Boolean(
+						task.session_id && (await lookupGhosttyTerminal(task.session_id)),
+					);
+
+					type ResumeQuickPickItem = vscode.QuickPickItem & {
+						action: "resume" | "focus" | "transcript";
+					};
+					const items: ResumeQuickPickItem[] = [];
+					if (resumeCommand) {
+						items.push({
+							label: "Resume in Interactive Mode",
+							description:
+								backend === "codex"
+									? "Run `codex resume --last` in the project terminal"
+									: backend === "gemini"
+										? "Run `gemini -p --resume latest` in the project terminal"
+										: "Run `claude --resume` for this task, or `claude --continue` as fallback",
+							action: "resume",
+						});
+					}
+					if (hasLiveTmuxSession || hasGhosttyMapping) {
+						items.push({
+							label: "Focus Existing Terminal",
+							description: "Bring the project terminal to the front",
+							action: "focus",
+						});
+					}
+					if (transcriptPath) {
+						items.push({
+							label: "View Session Transcript",
+							description: path.basename(transcriptPath),
+							action: "transcript",
+						});
+					}
+
+					if (items.length === 0) {
+						vscode.window.showInformationMessage(
+							"No interactive resume data found for this task — showing diff instead.",
+						);
+						await vscode.commands.executeCommand(
 							"commandCentral.viewAgentDiff",
 							node,
 						);
 						return;
 					}
+
+					const selected =
+						await vscode.window.showQuickPick<ResumeQuickPickItem>(items, {
+							placeHolder: `Resume options for ${task.id}`,
+						});
+					if (!selected) {
+						return;
+					}
+
 					try {
-						const { execFile } = await import("node:child_process");
-						const { promisify } = await import("node:util");
-						const execFileAsync = promisify(execFile);
-						await execFileAsync(
-							"open",
-							[
-								"-a",
-								"Ghostty",
-								"--args",
-								"-e",
-								`cd ${JSON.stringify(projectDir)} && claude --resume ${claudeSessionId}`,
-							],
-							{ timeout: 5000 },
-						);
+						if (selected.action === "focus") {
+							await focusExistingTaskTerminal(task);
+							return;
+						}
+						if (selected.action === "transcript") {
+							if (!transcriptPath) {
+								vscode.window.showWarningMessage(
+									"No transcript file found for this task.",
+								);
+								return;
+							}
+							await openTranscriptInEditor(transcriptPath);
+							return;
+						}
+						if (!resumeCommand) {
+							vscode.window.showInformationMessage(
+								"No interactive resume command is available for this task.",
+							);
+							return;
+						}
+						await runResumeInTaskTerminal(task, resumeCommand);
 					} catch {
 						vscode.window.showErrorMessage(
-							"Failed to open Ghostty with resumed session.",
+							"Failed to open the terminal with the resumed session.",
 						);
 					}
 				},
