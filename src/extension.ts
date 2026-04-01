@@ -899,6 +899,11 @@ export async function activate(
 		const agentOutputChannel =
 			vscode.window.createOutputChannel("Agent Output");
 		context.subscriptions.push(agentOutputChannel);
+		const agentDiffOutputChannel = vscode.window.createOutputChannel(
+			"Agent Diff",
+			"diff",
+		);
+		context.subscriptions.push(agentDiffOutputChannel);
 		const openclawTaskOutputChannel =
 			vscode.window.createOutputChannel("OpenClaw Tasks");
 		context.subscriptions.push(openclawTaskOutputChannel);
@@ -991,6 +996,51 @@ export async function activate(
 			} catch {
 				openIntegratedTerminal(terminalName, cwd ?? projectDir, command);
 			}
+		};
+
+		const showGitDiffInOutputChannel = async (
+			projectDir: string,
+			rangeArgs: string[],
+			title: string,
+			noChangesMessage: string,
+		): Promise<void> => {
+			const { execFileSync } = await import("node:child_process");
+			const stat = execFileSync(
+				"git",
+				["-C", projectDir, "diff", ...rangeArgs, "--stat"],
+				{ encoding: "utf-8", timeout: 5000 },
+			).trim();
+			const fullDiff = execFileSync(
+				"git",
+				["-C", projectDir, "diff", ...rangeArgs],
+				{
+					encoding: "utf-8",
+					timeout: 10000,
+				},
+			).trim();
+
+			if (!stat && !fullDiff) {
+				vscode.window.showInformationMessage(noChangesMessage);
+				return;
+			}
+
+			agentDiffOutputChannel.clear();
+			agentDiffOutputChannel.appendLine(`=== ${title} ===`);
+			if (stat) {
+				agentDiffOutputChannel.appendLine(stat);
+			}
+			if (fullDiff) {
+				if (stat) {
+					agentDiffOutputChannel.appendLine("");
+					agentDiffOutputChannel.appendLine("---");
+				}
+				agentDiffOutputChannel.appendLine("");
+				agentDiffOutputChannel.append(fullDiff);
+				if (!fullDiff.endsWith("\n")) {
+					agentDiffOutputChannel.appendLine("");
+				}
+			}
+			agentDiffOutputChannel.show(true);
 		};
 
 		const openGhosttyTmuxAttach = async (
@@ -2213,10 +2263,11 @@ export async function activate(
 								/* fallback to HEAD */
 							}
 						}
-						await runCommandInProjectTerminalWithFallback(
+						await showGitDiffInOutputChannel(
 							projectDir,
-							`git diff ${sinceRef} --stat && echo "---" && git diff ${sinceRef}`,
+							[sinceRef],
 							`Diff: ${path.basename(projectDir)}`,
+							"No changes found for this agent.",
 						);
 						return;
 					}
@@ -2252,10 +2303,11 @@ export async function activate(
 						}
 					}
 
-					await runCommandInProjectTerminalWithFallback(
+					await showGitDiffInOutputChannel(
 						task.project_dir,
-						`git diff ${sinceRef}..HEAD --stat && echo "---" && git diff ${sinceRef}..HEAD`,
+						[`${sinceRef}..HEAD`],
 						`Diff: ${task.id}`,
+						"No changes found for this agent.",
 					);
 				},
 			),
@@ -2651,7 +2703,11 @@ export async function activate(
 		// ============================================================================
 		// Ghostty Integration — TerminalManager + BinaryManager
 		// ============================================================================
-		terminalManager = new TerminalManager(mainLogger);
+		terminalManager = new TerminalManager(
+			mainLogger,
+			new ProjectIconManager(),
+			context.globalState,
+		);
 		binaryManager = new BinaryManager(mainLogger);
 
 		// Set hasLauncher context for menu visibility

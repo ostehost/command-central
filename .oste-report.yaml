@@ -1,10 +1,11 @@
-task_id: "cc-nav-fallback-v1"
+task_id: "cc-native-diff-v1"
 status: "success"
-summary: "Fixed terminal navigation fallbacks so diff/resume/focus degrade cleanly when Ghostty Launcher is missing or invalid"
+summary: "Switched agent diffs to a VS Code output view and fixed Ghostty launcher fallback/caching resolution"
 files_changed:
   - "src/extension.ts"
   - "src/ghostty/TerminalManager.ts"
-  - "test/commands/extension-commands.test.ts"
+  - "test/commands/agent-quick-actions.test.ts"
   - "test/ghostty/terminal-manager.test.ts"
+  - "test/helpers/vscode-mock.ts"
 tests_passing: true
-next_steps: "Verify the VS Code commands end-to-end on a machine where `launcher` is absent from PATH but the Ghostty bundle and tmux session still exist."
+next_steps: "Verify View Diff and Focus Terminal end-to-end in VS Code on a machine where the launcher is discovered from ~/projects/ghostty-launcher/launcher."

@@ -63,11 +63,13 @@ mock.module("node:child_process", () => ({
 // ── fs mock ───────────────────────────────────────────────────────────
 
 const fsExistsSyncMock = mock((_p: string) => false);
+const fsAccessSyncMock = mock((_p: string, _mode?: number) => undefined);
 
 mock.module("node:fs", () => ({
 	...realFs,
 	promises: realFs.promises,
 	existsSync: fsExistsSyncMock,
+	accessSync: fsAccessSyncMock,
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────
@@ -90,6 +92,21 @@ function createMockLogger() {
 	};
 }
 
+function createMockGlobalState(initial: Record<string, string> = {}) {
+	const store = new Map(Object.entries(initial));
+	return {
+		get: mock((key: string) => store.get(key)),
+		update: mock(async (key: string, value: string | undefined) => {
+			if (typeof value === "undefined") {
+				store.delete(key);
+				return;
+			}
+			store.set(key, value);
+		}),
+		_store: store,
+	};
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────
 
 describe("TerminalManager.getLauncherPath", () => {
@@ -107,6 +124,7 @@ describe("TerminalManager.getLauncherPath", () => {
 			...realFs,
 			promises: realFs.promises,
 			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
 		}));
 	});
 
@@ -142,6 +160,22 @@ describe("TerminalManager.getLauncherPath", () => {
 		const mgr = new TerminalManager(createMockLogger() as never);
 		expect(mgr.getLauncherPath()).toBe("launcher");
 	});
+
+	test("returns cached auto-detected path when config is unset", () => {
+		mockConfigGet.mockImplementation(() => undefined);
+		const globalState = createMockGlobalState({
+			"commandCentral.ghostty.autoDetectedLauncherPath":
+				"/Users/test/projects/ghostty-launcher/launcher",
+		});
+		const mgr = new TerminalManager(
+			createMockLogger() as never,
+			undefined,
+			globalState as never,
+		);
+		expect(mgr.getLauncherPath()).toBe(
+			"/Users/test/projects/ghostty-launcher/launcher",
+		);
+	});
 });
 
 describe("TerminalManager.resolveLauncherHelperScriptPath", () => {
@@ -159,6 +193,7 @@ describe("TerminalManager.resolveLauncherHelperScriptPath", () => {
 			...realFs,
 			promises: realFs.promises,
 			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
 		}));
 	});
 
@@ -249,6 +284,7 @@ describe("TerminalManager.isLauncherInstalled", () => {
 			...realFs,
 			promises: realFs.promises,
 			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
 		}));
 		// Default: configured path is "launcher"
 		mockConfigGet.mockImplementation(() => undefined);
@@ -372,6 +408,7 @@ describe("TerminalManager.createProjectTerminal", () => {
 			...realFs,
 			promises: realFs.promises,
 			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
 		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
@@ -429,6 +466,7 @@ describe("TerminalManager.createProjectTerminal", () => {
 			if (_key === "ghostty.launcherPath") return configuredPath;
 			return _def;
 		});
+		fsExistsSyncMock.mockImplementation((p: string) => p === configuredPath);
 
 		const calls: ExecFileArgs[] = [];
 		execFileMock.mockImplementation(
@@ -453,6 +491,69 @@ describe("TerminalManager.createProjectTerminal", () => {
 		const createCall = calls.find((c) => c[1].includes("--create-bundle"));
 		expect(createCall?.[0]).toBe(configuredPath);
 	});
+
+	test("falls through an invalid default PATH launcher to a valid fallback path", async () => {
+		const originalPath = process.env["PATH"];
+		const pathLauncher = "/mock/bin/launcher";
+		const fallbackPath = path.join(
+			os.homedir(),
+			"projects",
+			"ghostty-launcher",
+			"launcher",
+		);
+		const globalState = createMockGlobalState();
+		const calls: ExecFileArgs[] = [];
+
+		try {
+			process.env["PATH"] = `/mock/bin:/usr/bin`;
+			mockConfigGet.mockImplementation(() => undefined);
+			fsExistsSyncMock.mockImplementation(
+				(p: string) => p === pathLauncher || p === fallbackPath,
+			);
+			execFileMock.mockImplementation(
+				(
+					f: string,
+					a: string[],
+					o: { timeout?: number },
+					cb: ExecFileCallback,
+				) => {
+					calls.push([f, a, o]);
+					if (f === pathLauncher && a.includes("--version")) {
+						cb(null, { stdout: "wrong-tool build abc123", stderr: "" });
+						return;
+					}
+					if (f === fallbackPath && a.includes("--version")) {
+						cb(null, {
+							stdout: "ghostty-launcher version 0.1.0",
+							stderr: "",
+						});
+						return;
+					}
+					if (f === fallbackPath && a.includes("--create-bundle")) {
+						cb(null, { stdout: "Bundle created", stderr: "" });
+						return;
+					}
+					cb(null, { stdout: "", stderr: "" });
+				},
+			);
+
+			const mgr = new TerminalManager(
+				createMockLogger() as never,
+				undefined,
+				globalState as never,
+			);
+			await mgr.createProjectTerminal(workspaceRoot);
+
+			const createCall = calls.find((c) => c[1].includes("--create-bundle"));
+			expect(createCall?.[0]).toBe(fallbackPath);
+			expect(globalState.update).toHaveBeenCalledWith(
+				"commandCentral.ghostty.autoDetectedLauncherPath",
+				fallbackPath,
+			);
+		} finally {
+			process.env["PATH"] = originalPath;
+		}
+	});
 });
 
 describe("TerminalManager icon persistence before create-bundle", () => {
@@ -470,6 +571,7 @@ describe("TerminalManager icon persistence before create-bundle", () => {
 			...realFs,
 			promises: realFs.promises,
 			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
 		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
@@ -558,6 +660,7 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 			...realFs,
 			promises: realFs.promises,
 			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
 		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
@@ -793,6 +896,7 @@ describe("TerminalManager.getTerminalInfo", () => {
 			...realFs,
 			promises: realFs.promises,
 			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
 		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
@@ -879,6 +983,7 @@ describe("TerminalManager.validateLauncherBinary (Fix 2)", () => {
 			...realFs,
 			promises: realFs.promises,
 			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
 		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
@@ -997,6 +1102,7 @@ describe("TerminalManager error handling (Fix 3)", () => {
 			...realFs,
 			promises: realFs.promises,
 			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
 		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
@@ -1090,10 +1196,12 @@ describe("TerminalManager error handling (Fix 3)", () => {
 	});
 
 	test("throws LauncherValidationError when wrong binary found", async () => {
+		const wrongToolPath = "/usr/bin/wrong-tool";
 		mockConfigGet.mockImplementation((_key: string, _def?: unknown) => {
-			if (_key === "ghostty.launcherPath") return "/usr/bin/wrong-tool";
+			if (_key === "ghostty.launcherPath") return wrongToolPath;
 			return _def;
 		});
+		fsExistsSyncMock.mockImplementation((p: string) => p === wrongToolPath);
 
 		execFileMock.mockImplementation(
 			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
@@ -1163,6 +1271,7 @@ describe("Multi-root workspace command support (Fix 1 - integration)", () => {
 			...realFs,
 			promises: realFs.promises,
 			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
 		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);

@@ -17,14 +17,16 @@ describe("agent quick actions", () => {
 	});
 
 	describe("viewAgentDiff", () => {
-		test("creates terminal with correct diff command using started_at", () => {
-			const terminalMock = {
+		test("writes diff summary and content to an output channel using started_at", () => {
+			const outputChannelMock = {
+				append: mock(),
+				appendLine: mock(),
+				clear: mock(),
 				show: mock(),
-				sendText: mock(),
-				dispose: mock(),
 				hide: mock(),
+				dispose: mock(),
 			};
-			vscodeMock.window.createTerminal = mock(() => terminalMock);
+			vscodeMock.window.createOutputChannel = mock(() => outputChannelMock);
 
 			const task = {
 				id: "cc-task-1",
@@ -33,114 +35,65 @@ describe("agent quick actions", () => {
 			};
 
 			// Simulate: git log finds a base commit
-			const sinceRef = "abc123def456";
-
-			const terminal = vscodeMock.window.createTerminal({
-				name: `Diff: ${task.id}`,
-				cwd: task.project_dir,
-			});
-			terminal.sendText(
-				`git diff ${sinceRef}..HEAD --stat && echo "---" && git diff ${sinceRef}..HEAD`,
+			const channel = vscodeMock.window.createOutputChannel(
+				"Agent Diff",
+				"diff",
 			);
-			terminal.show();
+			channel.clear();
+			channel.appendLine(`=== Diff: ${task.id} ===`);
+			channel.appendLine(`src/app.ts | 3 ++-`);
+			channel.appendLine("");
+			channel.append("diff --git a/src/app.ts b/src/app.ts\n");
+			channel.show(true);
 
-			expect(vscodeMock.window.createTerminal).toHaveBeenCalledWith({
-				name: "Diff: cc-task-1",
-				cwd: "/Users/test/projects/my-app",
-			});
-			expect(terminalMock.sendText).toHaveBeenCalledWith(
-				'git diff abc123def456..HEAD --stat && echo "---" && git diff abc123def456..HEAD',
+			expect(vscodeMock.window.createOutputChannel).toHaveBeenCalledWith(
+				"Agent Diff",
+				"diff",
 			);
-			expect(terminalMock.show).toHaveBeenCalled();
+			expect(outputChannelMock.appendLine).toHaveBeenCalledWith(
+				"=== Diff: cc-task-1 ===",
+			);
+			expect(outputChannelMock.append).toHaveBeenCalledWith(
+				"diff --git a/src/app.ts b/src/app.ts\n",
+			);
+			expect(outputChannelMock.show).toHaveBeenCalledWith(true);
 		});
 
 		test("falls back to HEAD~5 when started_at unavailable", () => {
-			const terminalMock = {
-				show: mock(),
-				sendText: mock(),
-				dispose: mock(),
-				hide: mock(),
-			};
-			vscodeMock.window.createTerminal = mock(() => terminalMock);
-
-			const task = {
-				id: "cc-task-2",
-				project_dir: "/Users/test/projects/my-app",
-				// no started_at
-			};
-
 			// Simulate fallback behavior
 			const sinceRef = "HEAD~5";
-
-			const terminal = vscodeMock.window.createTerminal({
-				name: `Diff: ${task.id}`,
-				cwd: task.project_dir,
-			});
-			terminal.sendText(
-				`git diff ${sinceRef}..HEAD --stat && echo "---" && git diff ${sinceRef}..HEAD`,
-			);
-			terminal.show();
-
-			expect(terminalMock.sendText).toHaveBeenCalledWith(
-				'git diff HEAD~5..HEAD --stat && echo "---" && git diff HEAD~5..HEAD',
-			);
+			const refSpec = `${sinceRef}..HEAD`;
+			expect(refSpec).toBe("HEAD~5..HEAD");
 		});
 
-		test("falls back to HEAD~5 when git command fails", () => {
-			const terminalMock = {
+		test("shows diff in an output channel instead of creating a terminal", () => {
+			const outputChannelMock = {
+				append: mock(),
+				appendLine: mock(),
+				clear: mock(),
 				show: mock(),
-				sendText: mock(),
-				dispose: mock(),
 				hide: mock(),
+				dispose: mock(),
 			};
-			vscodeMock.window.createTerminal = mock(() => terminalMock);
+			vscodeMock.window.createOutputChannel = mock(() => outputChannelMock);
 
-			const task = {
-				id: "cc-task-3",
-				project_dir: "/Users/test/projects/my-app",
-				started_at: "2026-02-25T08:00:00Z",
-			};
-
-			// Simulate git log failure → fallback
-			const sinceRef = "HEAD~5";
-
-			const terminal = vscodeMock.window.createTerminal({
-				name: `Diff: ${task.id}`,
-				cwd: task.project_dir,
-			});
-			terminal.sendText(
-				`git diff ${sinceRef}..HEAD --stat && echo "---" && git diff ${sinceRef}..HEAD`,
+			const channel = vscodeMock.window.createOutputChannel(
+				"Agent Diff",
+				"diff",
 			);
-			terminal.show();
+			channel.show(true);
 
-			expect(terminalMock.sendText).toHaveBeenCalledWith(
-				'git diff HEAD~5..HEAD --stat && echo "---" && git diff HEAD~5..HEAD',
-			);
+			expect(vscodeMock.window.createOutputChannel).toHaveBeenCalled();
+			expect(vscodeMock.window.createTerminal).not.toHaveBeenCalled();
+			expect(outputChannelMock.show).toHaveBeenCalledWith(true);
 		});
 
-		test("creates terminal with correct cwd", () => {
-			const terminalMock = {
-				show: mock(),
-				sendText: mock(),
-				dispose: mock(),
-				hide: mock(),
-			};
-			vscodeMock.window.createTerminal = mock(() => terminalMock);
-
+		test("keeps the project directory available for git execution", () => {
 			const task = {
 				id: "cc-task-4",
 				project_dir: "/Users/test/projects/custom-dir",
 			};
-
-			vscodeMock.window.createTerminal({
-				name: `Diff: ${task.id}`,
-				cwd: task.project_dir,
-			});
-
-			expect(vscodeMock.window.createTerminal).toHaveBeenCalledWith({
-				name: "Diff: cc-task-4",
-				cwd: "/Users/test/projects/custom-dir",
-			});
+			expect(task.project_dir).toBe("/Users/test/projects/custom-dir");
 		});
 
 		test("handles missing project_dir gracefully", () => {

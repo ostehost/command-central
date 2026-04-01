@@ -217,7 +217,7 @@ export function createVSCodeMock() {
 				hide: mock(),
 				dispose: mock(),
 			})),
-			createOutputChannel: mock((_name: string) => ({
+			createOutputChannel: mock((_name: string, _languageId?: string) => ({
 				append: mock(),
 				appendLine: mock(),
 				clear: mock(),

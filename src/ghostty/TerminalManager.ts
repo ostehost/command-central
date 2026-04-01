@@ -68,6 +68,8 @@ const LAUNCHER_FALLBACK_PATHS: string[] = [
 
 /** Timeout in milliseconds for launcher subprocess calls */
 const LAUNCHER_TIMEOUT_MS = 10_000;
+const AUTO_DETECTED_LAUNCHER_PATH_KEY =
+	"commandCentral.ghostty.autoDetectedLauncherPath";
 
 export interface TerminalInfo {
 	name: string;
@@ -82,14 +84,17 @@ export interface ProjectIconEnsurer {
 export class TerminalManager {
 	private readonly logger: LoggerService;
 	private readonly projectIconEnsurer: ProjectIconEnsurer;
+	private readonly globalState: vscode.Memento | undefined;
 	private launcherValidationCache = new Map<string, boolean>();
 
 	constructor(
 		logger: LoggerService,
 		projectIconEnsurer: ProjectIconEnsurer = new ProjectIconManager(),
+		globalState?: vscode.Memento,
 	) {
 		this.logger = logger;
 		this.projectIconEnsurer = projectIconEnsurer;
+		this.globalState = globalState;
 	}
 
 	/**
@@ -100,12 +105,7 @@ export class TerminalManager {
 	 *   3. Common local fallback paths (for example ~/projects/ghostty-launcher/launcher)
 	 */
 	getLauncherPath(): string {
-		const config = vscode.workspace.getConfiguration("commandCentral");
-		const configured = config.get<string>("ghostty.launcherPath");
-		if (configured && configured.trim() !== "") {
-			return configured.trim();
-		}
-		return "launcher";
+		return this.getLauncherPathDetails().requestedPath;
 	}
 
 	/**
@@ -241,19 +241,19 @@ export class TerminalManager {
 		}
 
 		const launcherPath = await this.resolvedLauncherPath();
-		const scriptPath = path.join(
-			path.dirname(launcherPath),
-			"scripts",
-			scriptName,
+		const scriptCandidates = this.getHelperScriptSearchDirs(launcherPath).map(
+			(dir) => path.join(dir, scriptName),
 		);
 
-		if (!fs.existsSync(scriptPath)) {
-			throw new Error(
-				`Launcher helper script not found: ${scriptPath}. Check your launcher installation.`,
-			);
+		for (const scriptPath of scriptCandidates) {
+			if (fs.existsSync(scriptPath)) {
+				return scriptPath;
+			}
 		}
 
-		return scriptPath;
+		throw new Error(
+			`Launcher helper script not found: ${scriptName}. Searched: ${scriptCandidates.join(", ")}. Check your launcher installation.`,
+		);
 	}
 
 	/**
@@ -358,47 +358,90 @@ export class TerminalManager {
 	 * Throws specific error types with actionable messages for different failure modes.
 	 */
 	private async resolvedLauncherPath(): Promise<string> {
-		const primary = this.getLauncherPath();
+		const primaryDetails = this.getLauncherPathDetails();
+		const primary = primaryDetails.requestedPath;
 		const primaryCandidate = this.resolveBinaryPath(primary) ?? primary;
 		const searchedPaths: string[] =
 			primaryCandidate === primary ? [primary] : [primary, primaryCandidate];
+		const primaryLabel =
+			primaryDetails.source === "configured"
+				? "configured"
+				: primaryDetails.source === "cached"
+					? "cached"
+					: "default";
+
+		this.logger.debug(
+			`Resolving launcher path from ${primaryLabel} candidate: ${primaryCandidate}`,
+			"TerminalManager",
+		);
 
 		// Check if configured/PATH launcher is accessible
 		const primaryAccessible = await this.isBinaryAccessible(primaryCandidate);
+		this.logger.debug(
+			`Launcher candidate accessible=${String(primaryAccessible)} path=${primaryCandidate}`,
+			"TerminalManager",
+		);
 
 		if (primaryAccessible) {
 			// Binary exists, now validate it's the correct one
 			if (await this.validateLauncherBinary(primaryCandidate)) {
+				await this.cacheAutoDetectedLauncherPath(
+					primaryCandidate,
+					primaryDetails.source,
+				);
 				return primaryCandidate;
-			} else {
+			}
+
+			if (primaryDetails.source === "configured") {
 				throw new LauncherValidationError(
 					`Binary at '${primaryCandidate}' is not the ghostty-launcher executable. ` +
 						"Please check your commandCentral.ghostty.launcherPath setting or install the correct launcher binary.",
 					primaryCandidate,
 				);
 			}
+
+			this.logger.warn(
+				`Ignoring invalid ${primaryLabel} launcher candidate and continuing search: ${primaryCandidate}`,
+				"TerminalManager",
+			);
+			if (primaryDetails.source === "cached") {
+				await this.clearAutoDetectedLauncherPath();
+			}
+		} else if (primaryDetails.source === "cached") {
+			this.logger.warn(
+				`Cached launcher path is no longer accessible: ${primaryCandidate}`,
+				"TerminalManager",
+			);
+			await this.clearAutoDetectedLauncherPath();
 		}
 
-		// Primary not found/accessible, try fallback paths when using default "launcher" name
-		if (primary === "launcher") {
+		// Primary not found/accessible, try fallback paths when the user has not explicitly configured a path
+		if (primaryDetails.source !== "configured") {
 			for (const fallback of LAUNCHER_FALLBACK_PATHS) {
 				searchedPaths.push(fallback);
+				this.logger.debug(
+					`Checking fallback launcher path: ${fallback}`,
+					"TerminalManager",
+				);
 				if (fs.existsSync(fallback)) {
 					// Check if fallback is accessible and valid
 					if (await this.isBinaryAccessible(fallback)) {
 						if (await this.validateLauncherBinary(fallback)) {
+							await this.cacheAutoDetectedLauncherPath(
+								fallback,
+								primaryDetails.source,
+							);
 							this.logger.info(
 								`Using fallback launcher path: ${fallback}`,
 								"TerminalManager",
 							);
 							return fallback;
-						} else {
-							throw new LauncherValidationError(
-								`Binary at fallback path '${fallback}' is not the ghostty-launcher executable. ` +
-									"Please install the correct ghostty-launcher binary.",
-								fallback,
-							);
 						}
+
+						this.logger.warn(
+							`Ignoring invalid fallback launcher binary: ${fallback}`,
+							"TerminalManager",
+						);
 					}
 					// If not accessible, continue to next fallback
 				}
@@ -442,6 +485,86 @@ export class TerminalManager {
 		}
 
 		return null;
+	}
+
+	private getLauncherPathDetails(): {
+		requestedPath: string;
+		source: "configured" | "cached" | "default";
+	} {
+		const configured = this.getConfiguredLauncherPath();
+		if (configured) {
+			return { requestedPath: configured, source: "configured" };
+		}
+
+		const cached = this.getCachedLauncherPath();
+		if (cached) {
+			return { requestedPath: cached, source: "cached" };
+		}
+
+		return { requestedPath: "launcher", source: "default" };
+	}
+
+	private getConfiguredLauncherPath(): string | null {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		const configured = config.get<string>("ghostty.launcherPath");
+		const trimmed = configured?.trim();
+		return trimmed ? trimmed : null;
+	}
+
+	private getCachedLauncherPath(): string | null {
+		const cached = this.globalState?.get<string>(
+			AUTO_DETECTED_LAUNCHER_PATH_KEY,
+		);
+		const trimmed = cached?.trim();
+		return trimmed ? trimmed : null;
+	}
+
+	private async cacheAutoDetectedLauncherPath(
+		launcherPath: string,
+		source: "configured" | "cached" | "default",
+	): Promise<void> {
+		if (!this.globalState || source === "configured") {
+			return;
+		}
+
+		if (this.getCachedLauncherPath() === launcherPath) {
+			return;
+		}
+
+		await this.globalState.update(
+			AUTO_DETECTED_LAUNCHER_PATH_KEY,
+			launcherPath,
+		);
+		this.logger.debug(
+			`Cached auto-detected launcher path: ${launcherPath}`,
+			"TerminalManager",
+		);
+	}
+
+	private async clearAutoDetectedLauncherPath(): Promise<void> {
+		if (!this.globalState || !this.getCachedLauncherPath()) {
+			return;
+		}
+
+		await this.globalState.update(AUTO_DETECTED_LAUNCHER_PATH_KEY, undefined);
+		this.logger.debug("Cleared stale cached launcher path", "TerminalManager");
+	}
+
+	private getHelperScriptSearchDirs(launcherPath: string): string[] {
+		const launcherDir = path.dirname(launcherPath);
+		const parentDir = path.dirname(launcherDir);
+		const candidates = [
+			path.join(launcherDir, "scripts"),
+			path.basename(launcherDir) === "scripts" ? launcherDir : null,
+			path.join(parentDir, "scripts"),
+			...LAUNCHER_FALLBACK_PATHS.map((fallback) =>
+				path.join(path.dirname(fallback), "scripts"),
+			),
+		];
+
+		return [
+			...new Set(candidates.filter((value): value is string => Boolean(value))),
+		];
 	}
 
 	/**
@@ -562,11 +685,32 @@ export class TerminalManager {
 	}
 
 	/**
-	 * Checks if a binary is accessible by attempting to run it with --help.
-	 * Returns true if the binary exists (even if it exits non-zero).
-	 * Returns false only if the binary cannot be found (ENOENT).
+	 * Checks if a binary exists on disk and is executable.
 	 */
 	private async isBinaryAccessible(binaryPath: string): Promise<boolean> {
+		const resolved = this.resolveBinaryPath(binaryPath);
+		if (resolved) {
+			try {
+				fs.accessSync(resolved, fs.constants.X_OK);
+				return true;
+			} catch {
+				return false;
+			}
+		}
+
+		if (path.isAbsolute(binaryPath) || binaryPath.includes(path.sep)) {
+			const candidate = path.resolve(binaryPath);
+			if (!fs.existsSync(candidate)) {
+				return false;
+			}
+			try {
+				fs.accessSync(candidate, fs.constants.X_OK);
+				return true;
+			} catch {
+				return false;
+			}
+		}
+
 		try {
 			await this.execLauncher(binaryPath, ["--help"]);
 			return true;
