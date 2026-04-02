@@ -21,18 +21,18 @@ describe("agent quick action options", () => {
 		expect(labels).toEqual(["Show Output", "View Diff", "Restart", "Remove"]);
 	});
 
-	test("stopped tasks include output/diff/remove", () => {
+	test("stopped tasks include output/diff/restart/remove", () => {
 		const labels = getAgentQuickActions("stopped", false).map(
 			(action) => action.label,
 		);
-		expect(labels).toEqual(["Show Output", "View Diff", "Remove"]);
+		expect(labels).toEqual(["Show Output", "View Diff", "Restart", "Remove"]);
 	});
 
-	test("killed tasks include output/diff/remove", () => {
+	test("killed tasks include output/diff/restart/remove", () => {
 		const labels = getAgentQuickActions("killed", false).map(
 			(action) => action.label,
 		);
-		expect(labels).toEqual(["Show Output", "View Diff", "Remove"]);
+		expect(labels).toEqual(["Show Output", "View Diff", "Restart", "Remove"]);
 	});
 
 	test("resume session is prepended when a resumable session exists", () => {

@@ -760,11 +760,17 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 	test("creates then opens bundle before steering command when session is initially missing", async () => {
 		const events: string[] = [];
 		let tmuxLookupCount = 0;
+		const steerPath = path.join(
+			path.dirname("launcher"),
+			"scripts",
+			"oste-steer.sh",
+		);
 		const originalSetTimeout = globalThis.setTimeout;
 		globalThis.setTimeout = ((fn: () => void) => {
 			fn();
 			return 0 as unknown as NodeJS.Timeout;
 		}) as typeof globalThis.setTimeout;
+		fsExistsSyncMock.mockImplementation((p: string) => p === steerPath);
 
 		execFileMock.mockImplementation(
 			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
@@ -800,7 +806,7 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 					cb(null, { stdout: "Bundle opened", stderr: "" });
 					return;
 				}
-				if (f === "oste-steer.sh") {
+				if (f === steerPath) {
 					events.push("steer");
 					cb(null, { stdout: "", stderr: "" });
 					return;
@@ -821,6 +827,12 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 
 	test("uses launcher --session-id contract for session lookup before steering", async () => {
 		const calls: Array<{ file: string; args: string[] }> = [];
+		const steerPath = path.join(
+			path.dirname("launcher"),
+			"scripts",
+			"oste-steer.sh",
+		);
+		fsExistsSyncMock.mockImplementation((p: string) => p === steerPath);
 
 		execFileMock.mockImplementation(
 			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
@@ -841,7 +853,7 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 					cb(null, { stdout: "agent-contract-session\n", stderr: "" });
 					return;
 				}
-				if (f === "oste-steer.sh") {
+				if (f === steerPath) {
 					cb(null, { stdout: "", stderr: "" });
 					return;
 				}
@@ -865,16 +877,14 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 		expect(
 			calls.some(
 				(c) =>
-					c.file === "oste-steer.sh" &&
+					c.file === steerPath &&
 					c.args[0] === "agent-contract-session" &&
 					c.args[1] === "--raw" &&
 					c.args[2] === "echo contract",
 			),
 		).toBe(true);
 		expect(
-			calls.some(
-				(c) => c.file === "oste-steer.sh" && c.args.includes("--session"),
-			),
+			calls.some((c) => c.file === steerPath && c.args.includes("--session")),
 		).toBe(false);
 	});
 });

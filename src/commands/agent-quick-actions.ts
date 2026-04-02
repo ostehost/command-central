@@ -56,8 +56,8 @@ const STATUS_ACTIONS: Partial<Record<AgentTaskStatus, AgentQuickActionId[]>> = {
 	completed_stale: ["viewDiff", "showOutput", "focusTerminal", "restart"],
 	failed: ["showOutput", "viewDiff", "restart", "remove"],
 	contract_failure: ["showOutput", "viewDiff", "restart", "remove"],
-	stopped: ["showOutput", "viewDiff", "remove"],
-	killed: ["showOutput", "viewDiff", "remove"],
+	stopped: ["showOutput", "viewDiff", "restart", "remove"],
+	killed: ["showOutput", "viewDiff", "restart", "remove"],
 };
 
 const OPENCLAW_QUICK_ACTIONS: Record<

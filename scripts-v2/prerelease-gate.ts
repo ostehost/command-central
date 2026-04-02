@@ -158,6 +158,17 @@ type SteerInvocationContract = {
 	usesPositionalSession: boolean;
 };
 
+const STEER_EXEC_COMMAND_REGEX =
+	/execCommand\(\s*(?:"oste-steer\.sh"|steerPath\d*)\s*,\s*\[([\s\S]*?)\]\s*\)/g;
+
+function extractSteerInvocationArgBlocks(
+	terminalManagerSource: string,
+): string[] {
+	return [...terminalManagerSource.matchAll(STEER_EXEC_COMMAND_REGEX)]
+		.map(match => match[1])
+		.filter((argsBlock): argsBlock is string => typeof argsBlock === "string");
+}
+
 function extractSteerInvocationContract(
 	terminalManagerSource: string,
 ): SteerInvocationContract {
@@ -165,14 +176,9 @@ function extractSteerInvocationContract(
 	let usesRawMode = false;
 	let usesPositionalSession = false;
 
-	for (const match of terminalManagerSource.matchAll(
-		/execCommand\("oste-steer\.sh",\s*\[([\s\S]*?)\]\)/g,
+	for (const argsBlock of extractSteerInvocationArgBlocks(
+		terminalManagerSource,
 	)) {
-		const argsBlock = match[1];
-		if (!argsBlock) {
-			continue;
-		}
-
 		if (/"--session"/.test(argsBlock)) {
 			usesLegacySessionFlag = true;
 		}
@@ -524,6 +530,7 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 export {
 	extractFlagsFromHelp,
 	extractSessionFlagsFromTerminalManager,
+	extractSteerInvocationArgBlocks,
 	extractSteerInvocationContract,
 	validateLauncherContract,
 	validateSteerContract,

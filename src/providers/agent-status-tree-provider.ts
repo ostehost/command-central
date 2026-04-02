@@ -161,7 +161,19 @@ export interface FolderGroupNode {
 	projects: ProjectGroupNode[];
 }
 
-export type TreeElement = TaskNode | ProjectGroupNode | FolderGroupNode;
+export type AgentStatusGroup = "running" | "done" | "attention";
+
+export interface StatusGroupNode {
+	type: "statusGroup";
+	status: AgentStatusGroup;
+	nodes: SortableAgentNode[];
+}
+
+export type TreeElement =
+	| TaskNode
+	| ProjectGroupNode
+	| FolderGroupNode
+	| StatusGroupNode;
 
 export interface DetailNode {
 	type: "detail";
@@ -459,6 +471,24 @@ const SORT_MODE_INDICATOR_LABELS: Record<AgentStatusSortMode, string> = {
 	"status-recency": "▶ Active",
 };
 
+const DIFF_LOADING_LABEL = "Loading diff...";
+const PORT_LOADING_LABEL = "Detecting ports...";
+
+const STATUS_GROUP_LABELS: Record<AgentStatusGroup, string> = {
+	running: "Running",
+	done: "Completed",
+	attention: "Failed & Stopped",
+};
+
+const STATUS_GROUP_ICONS: Record<AgentStatusGroup, vscode.ThemeIcon> = {
+	running: getStatusThemeIcon("running"),
+	done: getStatusThemeIcon("completed"),
+	attention: new vscode.ThemeIcon(
+		"warning",
+		new vscode.ThemeColor("charts.orange"),
+	),
+};
+
 type SortModeConfig = Pick<vscode.WorkspaceConfiguration, "get"> & {
 	inspect?: vscode.WorkspaceConfiguration["inspect"];
 };
@@ -676,6 +706,9 @@ export class AgentStatusTreeProvider
 	private disposables: vscode.Disposable[] = [];
 	private debounceTimer: NodeJS.Timeout | null = null;
 	private autoRefreshTimer: NodeJS.Timeout | null = null;
+	private treeRefreshTimer: NodeJS.Timeout | null = null;
+	private pendingGlobalRefresh = false;
+	private pendingElementRefreshes = new Map<string, AgentNode>();
 	private previousStatuses = new Map<string, string>();
 	private _agentRegistry: AgentRegistry | null = null;
 	private _discoveredAgents: DiscoveredAgent[] = [];
@@ -737,7 +770,7 @@ export class AgentStatusTreeProvider
 					e.affectsConfiguration("commandCentral.project.icon") ||
 					e.affectsConfiguration("commandCentral.projects")
 				) {
-					this._onDidChangeTreeData.fire(undefined);
+					this.scheduleTreeRefresh();
 				}
 			}),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => {
@@ -778,7 +811,7 @@ export class AgentStatusTreeProvider
 					: [];
 				this.setHasAgentsContext();
 				this.updateDockBadge();
-				this._onDidChangeTreeData.fire(undefined);
+				this.scheduleTreeRefresh();
 			}),
 		);
 
@@ -795,7 +828,7 @@ export class AgentStatusTreeProvider
 						this._discoveredAgents = [];
 						this._allDiscoveredAgents = [];
 						this.setHasAgentsContext();
-						this._onDidChangeTreeData.fire(undefined);
+						this.scheduleTreeRefresh();
 					} else if (nowEnabled && !this._agentRegistry) {
 						this.initDiscovery();
 					}
@@ -830,6 +863,99 @@ export class AgentStatusTreeProvider
 			: this.getScopedLauncherTasks();
 		if (!scopedTasks.some((t) => t.id === taskId)) return undefined;
 		return { type: "task", task };
+	}
+
+	private getRefreshElementKey(element: AgentNode): string | null {
+		switch (element.type) {
+			case "task":
+				return `task:${element.task.id}`;
+			case "discovered":
+				return `discovered:${element.agent.pid}`;
+			case "openclawTask":
+				return `openclaw:${element.task.taskId}`;
+			case "projectGroup":
+				return `project:${element.projectDir ?? element.projectName}`;
+			case "folderGroup":
+				return `folder:${element.groupKey}`;
+			case "statusGroup":
+				return `status-group:${element.status}`;
+			case "backgroundTasks":
+				return "backgroundTasks";
+			case "olderRuns":
+				return [
+					"olderRuns",
+					element.parentGroupKey ?? "",
+					element.parentProjectDir ?? "",
+					element.label,
+				].join(":");
+			case "summary":
+				return "summary";
+			case "state":
+				return `state:${element.label}`;
+			default:
+				return null;
+		}
+	}
+
+	private scheduleTreeRefresh(element?: AgentNode): void {
+		if (!element) {
+			this.pendingGlobalRefresh = true;
+			this.pendingElementRefreshes.clear();
+		} else if (!this.pendingGlobalRefresh) {
+			const key = this.getRefreshElementKey(element);
+			if (key) {
+				this.pendingElementRefreshes.set(key, element);
+			} else {
+				this.pendingGlobalRefresh = true;
+				this.pendingElementRefreshes.clear();
+			}
+		}
+
+		if (this.treeRefreshTimer) return;
+		this.treeRefreshTimer = setTimeout(() => {
+			this.treeRefreshTimer = null;
+			const refreshAll =
+				this.pendingGlobalRefresh || this.pendingElementRefreshes.size === 0;
+			const elements = refreshAll
+				? []
+				: [...this.pendingElementRefreshes.values()];
+			this.pendingGlobalRefresh = false;
+			this.pendingElementRefreshes.clear();
+
+			if (refreshAll) {
+				this._onDidChangeTreeData.fire(undefined);
+				return;
+			}
+
+			for (const pending of elements) {
+				this._onDidChangeTreeData.fire(pending);
+			}
+		}, 0);
+	}
+
+	private pruneDiffSummaryCache(
+		tasks: AgentTask[],
+		discoveredAgents: DiscoveredAgent[],
+	): void {
+		const validCacheKeys = new Set<string>([
+			...tasks.map((task) => this.getTaskDiffCacheKey(task)),
+			...discoveredAgents.map((agent) => this.getDiscoveredDiffCacheKey(agent)),
+		]);
+
+		for (const key of this._diffSummaryCache.keys()) {
+			if (!validCacheKeys.has(key)) {
+				this._diffSummaryCache.delete(key);
+			}
+		}
+		for (const key of this._diffSummaryDetecting) {
+			if (!validCacheKeys.has(key)) {
+				this._diffSummaryDetecting.delete(key);
+			}
+		}
+	}
+
+	private getTaskRefreshElement(taskId: string): AgentNode | undefined {
+		return this.findTaskElement(taskId);
 	}
 
 	private getConfiguredPath(): string | null {
@@ -1439,8 +1565,10 @@ export class AgentStatusTreeProvider
 		this._discoveredAgents = this._agentRegistry
 			? this._agentRegistry.getDiscoveredAgents(this.getLauncherTasks())
 			: [];
-		this._diffSummaryCache.clear();
-		this._diffSummaryDetecting.clear();
+		this.pruneDiffSummaryCache(
+			this.getDisplayLauncherTasks(),
+			this._allDiscoveredAgents,
+		);
 		this.checkCompletionNotifications();
 		this.updateAutoRefreshTimer();
 		this.checkStuckTransitions();
@@ -1735,7 +1863,7 @@ export class AgentStatusTreeProvider
 			const intervalMs = config.get<number>("agentStatus.autoRefreshMs", 5000);
 			this.autoRefreshTimer = setInterval(() => {
 				this.checkStuckTransitions();
-				this._onDidChangeTreeData.fire(undefined);
+				this.scheduleTreeRefresh();
 			}, intervalMs);
 		} else if (!hasRunning && this.autoRefreshTimer) {
 			clearInterval(this.autoRefreshTimer);
@@ -1823,6 +1951,9 @@ export class AgentStatusTreeProvider
 		}
 		if (element.type === "folderGroup") {
 			return this.createFolderGroupItem(element);
+		}
+		if (element.type === "statusGroup") {
+			return this.createStatusGroupItem(element);
 		}
 		if (element.type === "fileChange") {
 			return this.createFileChangeItem(element);
@@ -1928,33 +2059,36 @@ export class AgentStatusTreeProvider
 			const groupedByProject = this.isProjectGroupingEnabled();
 			const showOpenClawInline =
 				!groupedByProject && this.getSortMode() === "recency";
+			const sortableFlatNodes = this.sortAgentNodes([
+				...tasks.map(
+					(task) =>
+						({ type: "task" as const, task }) satisfies SortableAgentNode,
+				),
+				...discovered.map(
+					(agent) =>
+						({
+							type: "discovered" as const,
+							agent,
+						}) satisfies SortableAgentNode,
+				),
+				...(showOpenClawInline
+					? openclawTasks.map(
+							(task) =>
+								({
+									type: "openclawTask" as const,
+									task,
+								}) satisfies SortableAgentNode,
+						)
+					: []),
+			]);
 			const groupedNodes: AgentNode[] = groupedByProject
 				? this.buildGroupedRootNodes(tasks, discovered)
 				: [];
-			const flatNodes: AgentNode[] = this.applyAgentVisibilityCap(
-				this.sortAgentNodes([
-					...tasks.map(
-						(task) =>
-							({ type: "task" as const, task }) satisfies SortableAgentNode,
-					),
-					...discovered.map(
-						(agent) =>
-							({
-								type: "discovered" as const,
-								agent,
-							}) satisfies SortableAgentNode,
-					),
-					...(showOpenClawInline
-						? openclawTasks.map(
-								(task) =>
-									({
-										type: "openclawTask" as const,
-										task,
-									}) satisfies SortableAgentNode,
-							)
-						: []),
-				]),
-			);
+			const flatNodes: AgentNode[] = groupedByProject
+				? []
+				: this.getSortMode() === "recency"
+					? this.applyAgentVisibilityCap(sortableFlatNodes)
+					: this.buildStatusGroupNodes(sortableFlatNodes);
 
 			const agentCounts = countAgentStatuses(
 				this.getScopedAgentTasksForSummary(
@@ -2033,6 +2167,10 @@ export class AgentStatusTreeProvider
 			);
 		}
 
+		if (element.type === "statusGroup") {
+			return this.applyAgentVisibilityCap(element.nodes);
+		}
+
 		if (element.type === "olderRuns") {
 			return element.hiddenNodes.map((node) => this.toAgentNode(node));
 		}
@@ -2071,11 +2209,20 @@ export class AgentStatusTreeProvider
 	}
 
 	private getTaskDiffCacheKey(task: AgentTask): string {
-		return `task:${task.id}:${task.status}:${task.project_dir}:${task.started_at}`;
+		return [
+			"task",
+			task.id,
+			task.status,
+			task.project_dir,
+			task.started_at,
+			task.start_sha ?? task.start_commit ?? "",
+			task.updated_at ?? "",
+			task.completed_at ?? "",
+		].join(":");
 	}
 
 	private getDiscoveredDiffCacheKey(agent: DiscoveredAgent): string {
-		return `discovered:${agent.pid}:${agent.projectDir}`;
+		return `discovered:${agent.pid}:${agent.projectDir}:${agent.startTime.toISOString()}`;
 	}
 
 	private getCachedDiffSummaryForTask(task: AgentTask): string | null {
@@ -2097,7 +2244,7 @@ export class AgentStatusTreeProvider
 			void this.computeDiffSummaryAsync(task.project_dir, task)
 				.then((summary) => {
 					this._diffSummaryCache.set(cacheKey, summary);
-					this._onDidChangeTreeData.fire(undefined);
+					this.scheduleTreeRefresh(this.getTaskRefreshElement(task.id));
 				})
 				.finally(() => {
 					this._diffSummaryDetecting.delete(cacheKey);
@@ -2131,7 +2278,10 @@ export class AgentStatusTreeProvider
 			void this.computeDiffSummaryAsync(agent.projectDir, syntheticTask)
 				.then((summary) => {
 					this._diffSummaryCache.set(cacheKey, summary);
-					this._onDidChangeTreeData.fire(undefined);
+					this.scheduleTreeRefresh({
+						type: "discovered",
+						agent,
+					});
 				})
 				.finally(() => {
 					this._diffSummaryDetecting.delete(cacheKey);
@@ -2268,7 +2418,7 @@ export class AgentStatusTreeProvider
 			details.push({
 				type: "detail",
 				label: "Changes",
-				value: "loading...",
+				value: DIFF_LOADING_LABEL,
 				taskId: `discovered-${agent.pid}`,
 			});
 		}
@@ -2475,6 +2625,41 @@ export class AgentStatusTreeProvider
 			return { type: "discovered", agent: node.agent };
 		}
 		return { type: "openclawTask", task: node.task };
+	}
+
+	private getNodeStatusGroup(node: SortableAgentNode): AgentStatusGroup {
+		const status = this.getNodeStatus(node);
+		if (status === "running") return "running";
+		if (
+			status === "completed" ||
+			status === "completed_dirty" ||
+			status === "completed_stale"
+		) {
+			return "done";
+		}
+		return "attention";
+	}
+
+	private buildStatusGroupNodes(nodes: SortableAgentNode[]): AgentNode[] {
+		const grouped = new Map<AgentStatusGroup, SortableAgentNode[]>();
+		for (const node of nodes) {
+			const statusGroup = this.getNodeStatusGroup(node);
+			const bucket = grouped.get(statusGroup) ?? [];
+			bucket.push(node);
+			grouped.set(statusGroup, bucket);
+		}
+
+		return (["running", "attention", "done"] as AgentStatusGroup[])
+			.map((status) => {
+				const groupNodes = grouped.get(status) ?? [];
+				if (groupNodes.length === 0) return null;
+				return {
+					type: "statusGroup" as const,
+					status,
+					nodes: groupNodes,
+				};
+			})
+			.filter((node): node is StatusGroupNode => Boolean(node));
 	}
 
 	private isAlwaysVisibleAgentNode(node: SortableAgentNode): boolean {
@@ -2971,7 +3156,7 @@ export class AgentStatusTreeProvider
 			details.push({
 				type: "detail",
 				label: "Changes",
-				value: "loading...",
+				value: DIFF_LOADING_LABEL,
 				taskId: t.id,
 			});
 		}
@@ -3056,18 +3241,18 @@ export class AgentStatusTreeProvider
 				}
 			} else if (!this._portDetecting.has(t.id)) {
 				this._portDetecting.add(t.id);
-				this._detectPortsAsync(t);
+				void this._detectPortsAsync(t);
 				details.push({
 					type: "detail",
 					label: "Ports",
-					value: "detecting...",
+					value: PORT_LOADING_LABEL,
 					taskId: t.id,
 				});
 			} else {
 				details.push({
 					type: "detail",
 					label: "Ports",
-					value: "detecting...",
+					value: PORT_LOADING_LABEL,
 					taskId: t.id,
 				});
 			}
@@ -3227,7 +3412,7 @@ export class AgentStatusTreeProvider
 			// Only update if task is still running (could have finished by now)
 			if (this.registry.tasks[task.id]?.status === "running") {
 				this._portCache.set(task.id, ports);
-				this._onDidChangeTreeData.fire(undefined);
+				this.scheduleTreeRefresh(this.getTaskRefreshElement(task.id));
 			}
 		} catch {
 			this._portCache.set(task.id, []);
@@ -4356,6 +4541,20 @@ export class AgentStatusTreeProvider
 		return item;
 	}
 
+	private createStatusGroupItem(node: StatusGroupNode): vscode.TreeItem {
+		const count = node.nodes.length;
+		const item = new vscode.TreeItem(
+			STATUS_GROUP_LABELS[node.status],
+			node.status === "done"
+				? vscode.TreeItemCollapsibleState.Collapsed
+				: vscode.TreeItemCollapsibleState.Expanded,
+		);
+		item.description = count === 1 ? "1 agent" : `${count} agents`;
+		item.contextValue = "statusGroup";
+		item.iconPath = STATUS_GROUP_ICONS[node.status];
+		return item;
+	}
+
 	/** Compute summary icon based on aggregate agent state */
 	private getSummaryIcon(): vscode.ThemeIcon {
 		const tasks = this.getScopedLauncherTasks();
@@ -4509,7 +4708,7 @@ export class AgentStatusTreeProvider
 		const baseDescription = diffSummaryInline
 			? `${task.project_name} · ${statusTimeDesc} · ${diffSummaryInline}`
 			: diffLoading
-				? `${task.project_name} · ${statusTimeDesc} · loading diff...`
+				? `${task.project_name} · ${statusTimeDesc} · ${DIFF_LOADING_LABEL}`
 				: `${task.project_name} · ${statusTimeDesc}`;
 		const description = isStuck
 			? `${baseDescription} (possibly stuck)`
@@ -4681,7 +4880,7 @@ export class AgentStatusTreeProvider
 		if (discoveredDiff) {
 			descriptionParts.push(discoveredDiff);
 		} else if (discoveredDiffLoading) {
-			descriptionParts.push("loading diff...");
+			descriptionParts.push(DIFF_LOADING_LABEL);
 		}
 		item.description = descriptionParts.join(" · ");
 		item.iconPath = getStatusThemeIcon("running");
@@ -4731,6 +4930,10 @@ export class AgentStatusTreeProvider
 			this._nativeWatcher = null;
 		}
 		if (this.debounceTimer) clearTimeout(this.debounceTimer);
+		if (this.treeRefreshTimer) {
+			clearTimeout(this.treeRefreshTimer);
+			this.treeRefreshTimer = null;
+		}
 		if (this.autoRefreshTimer) {
 			clearInterval(this.autoRefreshTimer);
 			this.autoRefreshTimer = null;

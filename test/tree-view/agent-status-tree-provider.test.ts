@@ -34,11 +34,13 @@ const mockDetectListeningPorts = mock(
 );
 mock.module("../../src/utils/port-detector.js", () => ({
 	detectListeningPorts: mockDetectListeningPorts,
+	detectListeningPortsAsync: mock(async () => mockDetectListeningPorts()),
 }));
 
 import {
 	type AgentNode,
 	type AgentRole,
+	type AgentStatusGroup,
 	type AgentStatusSortMode,
 	AgentStatusTreeProvider,
 	type AgentTask,
@@ -171,6 +173,22 @@ function getSummaryNode(
 	);
 	if (!summary) throw new Error("No summary node found in children");
 	return summary;
+}
+
+function getStatusGroupNode(
+	children: AgentNode[],
+	status: AgentStatusGroup,
+): Extract<AgentNode, { type: "statusGroup" }> {
+	const group = children.find(
+		(
+			node,
+		): node is Extract<
+			AgentNode,
+			{ type: "statusGroup"; status: AgentStatusGroup }
+		> => node.type === "statusGroup" && node.status === status,
+	);
+	if (!group) throw new Error(`No status group found for ${status}`);
+	return group;
 }
 
 function setAgentStatusConfig(
@@ -1559,21 +1577,22 @@ describe("AgentStatusTreeProvider", () => {
 
 	test("sorts by status priority before started_at when enabled", () => {
 		setAgentStatusConfig(vscodeMock, { sortMode: "status" });
+		const now = Date.now();
 
 		const runningNewest = createMockTask({
 			id: "running-new",
 			status: "running",
-			started_at: "2026-02-25T09:00:00Z",
+			started_at: new Date(now - 60_000).toISOString(),
 		});
 		const failedOlder = createMockTask({
 			id: "failed-old",
 			status: "failed",
-			started_at: "2026-02-25T06:00:00Z",
+			started_at: new Date(now - 6 * 60_000).toISOString(),
 		});
 		const failedNewer = createMockTask({
 			id: "failed-new",
 			status: "failed",
-			started_at: "2026-02-25T08:00:00Z",
+			started_at: new Date(now - 3 * 60_000).toISOString(),
 		});
 		provider.readRegistry = () =>
 			createMockRegistry({
@@ -1584,38 +1603,43 @@ describe("AgentStatusTreeProvider", () => {
 		provider.reload();
 
 		const children = provider.getChildren();
-		const taskNodes = getTaskNodes(children);
-		expect(taskNodes).toHaveLength(3);
-		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"failed-new",
-		);
-		expect((taskNodes[1] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"failed-old",
-		);
-		expect((taskNodes[2] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"running-new",
-		);
+		const runningGroup = getStatusGroupNode(children, "running");
+		const attentionGroup = getStatusGroupNode(children, "attention");
+		const attentionChildren = provider.getChildren(attentionGroup);
+		const runningChildren = provider.getChildren(runningGroup);
+		expect(attentionChildren).toHaveLength(2);
+		expect(runningChildren).toHaveLength(1);
+		expect(
+			(attentionChildren[0] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("failed-new");
+		expect(
+			(attentionChildren[1] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("failed-old");
+		expect(
+			(runningChildren[0] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("running-new");
 		expect(getSummaryNode(children).label).toContain("⚠ Status");
 	});
 
 	test("pins running agents first in status-recency mode", () => {
 		setAgentStatusConfig(vscodeMock, { sortMode: "status-recency" });
+		const now = Date.now();
 
 		const runningOlder = createMockTask({
 			id: "running-older",
 			status: "running",
-			started_at: "2026-02-25T06:00:00Z",
+			started_at: new Date(now - 2 * 60_000).toISOString(),
 		});
 		const completedLatest = createMockTask({
 			id: "completed-latest",
 			status: "completed",
-			started_at: "2026-02-25T05:00:00Z",
-			completed_at: "2026-02-25T10:00:00Z",
+			started_at: new Date(now - 12 * 60_000).toISOString(),
+			completed_at: new Date(now - 30_000).toISOString(),
 		});
 		const failedMiddle = createMockTask({
 			id: "failed-middle",
 			status: "failed",
-			started_at: "2026-02-25T09:00:00Z",
+			started_at: new Date(now - 4 * 60_000).toISOString(),
 		});
 		provider.readRegistry = () =>
 			createMockRegistry({
@@ -1626,18 +1650,106 @@ describe("AgentStatusTreeProvider", () => {
 		provider.reload();
 
 		const children = provider.getChildren();
-		const taskNodes = getTaskNodes(children);
-		expect(taskNodes).toHaveLength(3);
-		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"running-older",
-		);
-		expect((taskNodes[1] as { type: "task"; task: AgentTask }).task.id).toBe(
+		const runningGroup = getStatusGroupNode(children, "running");
+		const attentionGroup = getStatusGroupNode(children, "attention");
+		const doneGroup = getStatusGroupNode(children, "done");
+		const runningChildren = provider.getChildren(runningGroup);
+		const attentionChildren = provider.getChildren(attentionGroup);
+		const doneChildren = provider.getChildren(doneGroup);
+		expect(runningChildren).toHaveLength(1);
+		expect(attentionChildren).toHaveLength(1);
+		expect(doneChildren).toHaveLength(1);
+		expect(
+			(runningChildren[0] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("running-older");
+		expect(
+			(attentionChildren[0] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("failed-middle");
+		expect((doneChildren[0] as { type: "task"; task: AgentTask }).task.id).toBe(
 			"completed-latest",
 		);
-		expect((taskNodes[2] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"failed-middle",
-		);
 		expect(getSummaryNode(children).label).toContain("▶ Active");
+	});
+
+	test("status sorting renders collapsible status groups with completed collapsed by default", () => {
+		setAgentStatusConfig(vscodeMock, { sortMode: "status" });
+
+		const running = createMockTask({ id: "running", status: "running" });
+		const completed = createMockTask({ id: "completed", status: "completed" });
+		const stopped = createMockTask({ id: "stopped", status: "stopped" });
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[running.id]: running,
+				[completed.id]: completed,
+				[stopped.id]: stopped,
+			});
+		provider.reload();
+
+		const children = provider.getChildren();
+		const runningGroup = getStatusGroupNode(children, "running");
+		const doneGroup = getStatusGroupNode(children, "done");
+		const attentionGroup = getStatusGroupNode(children, "attention");
+		expect(provider.getTreeItem(runningGroup).label).toBe("Running");
+		expect(provider.getTreeItem(attentionGroup).label).toBe("Failed & Stopped");
+		expect(provider.getTreeItem(doneGroup).collapsibleState).toBe(1);
+	});
+
+	test("reload preserves diff cache entries when task identity is unchanged", () => {
+		const task = createMockTask({
+			id: "cache-stable",
+			status: "completed",
+			start_sha: "abc123",
+			updated_at: "2026-02-25T09:00:00Z",
+		});
+		provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+		provider.reload();
+
+		const cacheKey = (
+			provider as unknown as {
+				getTaskDiffCacheKey: (taskValue: AgentTask) => string;
+			}
+		).getTaskDiffCacheKey(task);
+		const diffCache = (
+			provider as unknown as {
+				_diffSummaryCache: Map<string, string | null>;
+			}
+		)._diffSummaryCache;
+		diffCache.set(cacheKey, "2 files · +4 / -1");
+
+		provider.reload();
+
+		expect(diffCache.get(cacheKey)).toBe("2 files · +4 / -1");
+	});
+
+	test("async diff completion schedules targeted task refreshes instead of a full tree refresh", async () => {
+		setAgentStatusConfig(vscodeMock, { sortMode: "recency" });
+		const first = createMockTask({ id: "diff-a", status: "completed" });
+		const second = createMockTask({ id: "diff-b", status: "completed" });
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[first.id]: first,
+				[second.id]: second,
+			});
+		(
+			provider as unknown as {
+				computeDiffSummaryAsync: () => Promise<string>;
+			}
+		).computeDiffSummaryAsync = () => Promise.resolve("1 file · +1 / -0");
+		provider.reload();
+
+		const refreshEvents: Array<AgentNode | undefined | null> = [];
+		const subscription = provider.onDidChangeTreeData((element) => {
+			refreshEvents.push(element);
+		});
+
+		for (const node of getTaskNodes(provider.getChildren())) {
+			provider.getTreeItem(node);
+		}
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		expect(refreshEvents).toHaveLength(2);
+		expect(refreshEvents.every((event) => event?.type === "task")).toBe(true);
+		subscription.dispose();
 	});
 
 	test("uses latest activity sorting in recency mode", () => {
@@ -1833,6 +1945,7 @@ describe("AgentStatusTreeProvider", () => {
 
 	test("falls back to legacy sortByStatus when sortMode is unset", () => {
 		setAgentStatusConfig(vscodeMock, { sortByStatus: true });
+		const now = Date.now();
 
 		const config = vscodeMock.workspace.getConfiguration("commandCentral");
 		expect(resolveAgentStatusSortMode(config)).toBe("status");
@@ -1840,12 +1953,12 @@ describe("AgentStatusTreeProvider", () => {
 		const runningNewest = createMockTask({
 			id: "legacy-running",
 			status: "running",
-			started_at: "2026-02-25T09:00:00Z",
+			started_at: new Date(now - 60_000).toISOString(),
 		});
 		const failedOlder = createMockTask({
 			id: "legacy-failed",
 			status: "failed",
-			started_at: "2026-02-25T08:00:00Z",
+			started_at: new Date(now - 3 * 60_000).toISOString(),
 		});
 		provider.readRegistry = () =>
 			createMockRegistry({
@@ -1855,13 +1968,16 @@ describe("AgentStatusTreeProvider", () => {
 		provider.reload();
 
 		const children = provider.getChildren();
-		const taskNodes = getTaskNodes(children);
-		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"legacy-failed",
-		);
-		expect((taskNodes[1] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"legacy-running",
-		);
+		const runningGroup = getStatusGroupNode(children, "running");
+		const attentionGroup = getStatusGroupNode(children, "attention");
+		const attentionChildren = provider.getChildren(attentionGroup);
+		const runningChildren = provider.getChildren(runningGroup);
+		expect(
+			(attentionChildren[0] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("legacy-failed");
+		expect(
+			(runningChildren[0] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("legacy-running");
 		expect(getSummaryNode(children).label).toContain("⚠ Status");
 	});
 

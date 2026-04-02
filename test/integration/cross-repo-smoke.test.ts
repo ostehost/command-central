@@ -20,6 +20,7 @@ import * as path from "node:path";
 import {
 	extractFlagsFromHelp,
 	extractSessionFlagsFromTerminalManager,
+	extractSteerInvocationArgBlocks,
 	extractSteerInvocationContract,
 	validateLauncherContract,
 	validateSteerContract,
@@ -116,16 +117,11 @@ describe("smoke: steer — oste-steer.sh invocation contract", () => {
 	});
 
 	test("source contains execCommand calls with correct shape", () => {
-		// Verify the actual invocation pattern: execCommand("oste-steer.sh", [sessionId, "--raw", command])
-		const steerCalls = [
-			...terminalManagerSource.matchAll(
-				/execCommand\("oste-steer\.sh",\s*\[([\s\S]*?)\]\)/g,
-			),
-		];
+		// Verify the actual invocation pattern: execCommand(steerPath, [sessionId, "--raw", command])
+		const steerCalls = extractSteerInvocationArgBlocks(terminalManagerSource);
 		expect(steerCalls.length).toBeGreaterThan(0);
 
-		for (const call of steerCalls) {
-			const argsBlock = call[1] ?? "";
+		for (const argsBlock of steerCalls) {
 			// First arg should NOT be a flag (it's the session ID variable)
 			const firstArg = argsBlock.split(",")[0]?.trim() ?? "";
 			expect(firstArg).not.toStartWith('"--');
