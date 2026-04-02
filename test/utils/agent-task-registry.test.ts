@@ -19,7 +19,7 @@ describe("agent task registry utils", () => {
 		);
 
 		expect(parsed.version).toBe(2);
-		expect(parsed.tasks.one).toBeDefined();
+		expect(parsed.tasks["one"]).toBeDefined();
 	});
 
 	test("removeTaskFromRegistryMap falls back to nested id matching", () => {
@@ -30,7 +30,7 @@ describe("agent task registry utils", () => {
 
 		expect(removeTaskFromRegistryMap(tasks, "task-1")).toBe(true);
 		expect(tasks["launcher-key"]).toBeUndefined();
-		expect(tasks.other).toBeDefined();
+		expect(tasks["other"]).toBeDefined();
 	});
 
 	test("count and clear helpers ignore contract_failure entries", () => {
