@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-02: 1160+ tests across 83 files.
 
+## [0.5.1-55] - 2026-04-02
+
+### Added
+- **Stale agent detection + auto-reaping** — Tasks that are stuck AND have a dead tmux session get an automatic `completed_stale` overlay with ⚠️ warning icon and "Stale — session ended without completion signal" description. New "Reap Stale Agents" toolbar button finds and marks all stale agents as failed in one click.
+- **"Mark as Failed" quick action** — Right-click any stale agent to permanently mark it as failed in tasks.json.
+
 ## [0.5.1-54] - 2026-04-02
 
 ### Added
