@@ -95,10 +95,10 @@ describe("package.json agent menu contributions", () => {
 		expect(exists).toBe(true);
 	});
 
-	test("registers clearTerminalTasks command contribution", async () => {
+	test("registers clearCompletedAgents command contribution", async () => {
 		const commands = await getCommands();
 		const exists = commands.some(
-			(item) => item.command === "commandCentral.clearTerminalTasks",
+			(item) => item.command === "commandCentral.clearCompletedAgents",
 		);
 		expect(exists).toBe(true);
 	});
@@ -258,7 +258,7 @@ describe("package.json agent menu contributions", () => {
 		const menu = await getViewTitleMenu();
 		const clearAction = menu.find(
 			(item) =>
-				item.command === "commandCentral.clearTerminalTasks" &&
+				item.command === "commandCentral.clearCompletedAgents" &&
 				item.group === "navigation@6",
 		);
 		expect(clearAction).toBeDefined();

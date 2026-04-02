@@ -209,14 +209,17 @@ function getStatusGroupNode(
 
 function getStatusTimeGroupNode(
 	children: AgentNode[],
-	period: "today" | "yesterday" | "older",
+	period: "today" | "yesterday" | "last7days" | "last30days" | "older",
 ): Extract<AgentNode, { type: "statusTimeGroup" }> {
 	const group = children.find(
 		(
 			node,
 		): node is Extract<
 			AgentNode,
-			{ type: "statusTimeGroup"; period: "today" | "yesterday" | "older" }
+			{
+				type: "statusTimeGroup";
+				period: "today" | "yesterday" | "last7days" | "last30days" | "older";
+			}
 		> => node.type === "statusTimeGroup" && node.period === period,
 	);
 	if (!group) throw new Error(`No status time group found for ${period}`);
@@ -1820,7 +1823,7 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	test("done groups create time sub-groups and collapse older buckets", () => {
-		setAgentStatusConfig(vscodeMock, { sortMode: "status" });
+		setAgentStatusConfig(vscodeMock, { sortMode: "status-recency" });
 		const now = Date.now();
 
 		const recentDone = createMockTask({
@@ -1838,31 +1841,47 @@ describe("AgentStatusTreeProvider", () => {
 		const olderDone = createMockTask({
 			id: "done-older",
 			status: "completed",
+			started_at: new Date(now - 40 * 24 * 60 * 60_000).toISOString(),
+			completed_at: new Date(now - 35 * 24 * 60 * 60_000).toISOString(),
+		});
+		const lastWeekDone = createMockTask({
+			id: "done-last-week",
+			status: "completed",
 			started_at: new Date(now - 5 * 24 * 60 * 60_000).toISOString(),
 			completed_at: new Date(now - 4 * 24 * 60 * 60_000).toISOString(),
+		});
+		const lastMonthDone = createMockTask({
+			id: "done-last-month",
+			status: "completed",
+			started_at: new Date(now - 15 * 24 * 60 * 60_000).toISOString(),
+			completed_at: new Date(now - 14 * 24 * 60 * 60_000).toISOString(),
 		});
 		provider.readRegistry = () =>
 			createMockRegistry({
 				[recentDone.id]: recentDone,
 				[yesterdayDone.id]: yesterdayDone,
+				[lastWeekDone.id]: lastWeekDone,
+				[lastMonthDone.id]: lastMonthDone,
 				[olderDone.id]: olderDone,
 			});
 		provider.reload();
 
 		const doneGroup = getStatusGroupNode(provider.getChildren(), "done");
 		const doneChildren = provider.getChildren(doneGroup);
-		expect(doneChildren.map((node) => node.type)).toEqual([
-			"statusTimeGroup",
-			"statusTimeGroup",
-			"statusTimeGroup",
-		]);
+		expect(doneChildren).toHaveLength(5);
 
 		const todayGroup = getStatusTimeGroupNode(doneChildren, "today");
 		const yesterdayGroup = getStatusTimeGroupNode(doneChildren, "yesterday");
+		const last7DaysGroup = getStatusTimeGroupNode(doneChildren, "last7days");
+		const last30DaysGroup = getStatusTimeGroupNode(doneChildren, "last30days");
 		const olderGroup = getStatusTimeGroupNode(doneChildren, "older");
 		expect(todayGroup.label).toBe("Today (1)");
 		expect(yesterdayGroup.label).toBe("Yesterday (1)");
+		expect(last7DaysGroup.label).toBe("Last 7 Days (1)");
+		expect(last30DaysGroup.label).toBe("Last 30 Days (1)");
 		expect(olderGroup.label).toBe("Older (1)");
+		expect(provider.getTreeItem(todayGroup).collapsibleState).toBe(2);
+		expect(provider.getTreeItem(last30DaysGroup).collapsibleState).toBe(1);
 		expect(provider.getTreeItem(olderGroup).collapsibleState).toBe(1);
 	});
 

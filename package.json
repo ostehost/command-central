@@ -911,10 +911,10 @@
         "icon": "$(edit)"
       },
       {
-        "command": "commandCentral.clearTerminalTasks",
+        "command": "commandCentral.clearCompletedAgents",
         "title": "Clear Completed",
         "category": "Command Central",
-        "icon": "$(clear-all)"
+        "icon": "$(trash)"
       },
       {
         "command": "commandCentral.focusNextRunningAgent",
@@ -1852,7 +1852,7 @@
           "group": "navigation@5"
         },
         {
-          "command": "commandCentral.clearTerminalTasks",
+          "command": "commandCentral.clearCompletedAgents",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.hasTerminalTasks",
           "group": "navigation@6"
         },

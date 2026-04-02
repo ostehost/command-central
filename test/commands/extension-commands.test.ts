@@ -15,6 +15,10 @@ import {
 	getNextAgentStatusSortMode,
 	resolveAgentStatusSortMode,
 } from "../../src/providers/agent-status-tree-provider.js";
+import {
+	clearCompletedAgentEntries,
+	countClearableAgentEntries,
+} from "../../src/utils/agent-task-registry.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 let vscodeMock: ReturnType<typeof setupVSCodeMock>;
@@ -509,62 +513,43 @@ describe("removeAgentTask command", () => {
 	});
 });
 
-describe("clearTerminalTasks command", () => {
-	test("removes all non-running tasks from registry map", () => {
+describe("clearCompletedAgents command", () => {
+	test("removes only the requested terminal statuses from registry map", () => {
 		const tasks: Record<string, { id: string; status: string }> = {
 			running: { id: "running", status: "running" },
 			completed: { id: "completed", status: "completed" },
+			completedDirty: { id: "completedDirty", status: "completed_dirty" },
+			completedStale: { id: "completedStale", status: "completed_stale" },
 			failed: { id: "failed", status: "failed" },
 			stopped: { id: "stopped", status: "stopped" },
+			killed: { id: "killed", status: "killed" },
+			contractFailure: {
+				id: "contractFailure",
+				status: "contract_failure",
+			},
 		};
-		const terminalStatuses = new Set([
-			"completed",
-			"completed_dirty",
-			"failed",
-			"stopped",
-			"killed",
-			"completed_stale",
-			"contract_failure",
-		]);
 
-		let removed = 0;
-		for (const [key, value] of Object.entries(tasks)) {
-			if (terminalStatuses.has(value.status)) {
-				delete tasks[key];
-				removed += 1;
-			}
-		}
+		const removed = clearCompletedAgentEntries(tasks);
 
-		expect(removed).toBe(3);
-		expect(Object.keys(tasks)).toEqual(["running"]);
+		expect(removed).toBe(6);
+		expect(Object.keys(tasks)).toEqual(["running", "contractFailure"]);
 	});
 
-	test("shows info when there are no completed/failed/stopped tasks", () => {
+	test("shows info when there are no clearable completed agent entries", () => {
 		const tasks: Record<string, { status: string }> = {
 			running1: { status: "running" },
-			running2: { status: "running" },
+			contractFailure: { status: "contract_failure" },
 		};
-		const terminalStatuses = new Set([
-			"completed",
-			"completed_dirty",
-			"failed",
-			"stopped",
-			"killed",
-			"completed_stale",
-			"contract_failure",
-		]);
 
-		const terminalCount = Object.values(tasks).filter((task) =>
-			terminalStatuses.has(task.status),
-		).length;
+		const terminalCount = countClearableAgentEntries(tasks);
 		if (terminalCount === 0) {
 			vscodeMock.window.showInformationMessage(
-				"No completed, failed, or stopped agents to remove.",
+				"No completed agent entries to remove.",
 			);
 		}
 
 		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-			"No completed, failed, or stopped agents to remove.",
+			"No completed agent entries to remove.",
 		);
 	});
 });

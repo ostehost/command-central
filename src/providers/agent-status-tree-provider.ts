@@ -34,6 +34,7 @@ import {
 	countAgentStatuses,
 	formatCountSummary,
 } from "../utils/agent-counts.js";
+import { CLEARABLE_AGENT_TASK_STATUSES } from "../utils/agent-task-registry.js";
 import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
 import type { ListeningPort } from "../utils/port-detector.js";
 import { detectListeningPortsAsync } from "../utils/port-detector.js";
@@ -181,7 +182,7 @@ export interface StatusGroupNode {
 
 export type StatusTimeGroupPeriod = Extract<
 	TimePeriod,
-	"today" | "yesterday" | "older"
+	"today" | "yesterday" | "last7days" | "last30days" | "older"
 >;
 
 export interface StatusTimeGroupNode {
@@ -1564,8 +1565,8 @@ export class AgentStatusTreeProvider
 			Object.keys(this.registry.tasks).length > 0 ||
 			this._discoveredAgents.length > 0 ||
 			this.getNonLauncherOpenClawTasks().length > 0;
-		const hasTerminalTasks = this.getDisplayLauncherTasks().some(
-			(task) => task.status !== "running",
+		const hasTerminalTasks = this.getDisplayLauncherTasks().some((task) =>
+			CLEARABLE_AGENT_TASK_STATUSES.has(task.status),
 		);
 		void vscode.commands.executeCommand(
 			"setContext",
@@ -2719,7 +2720,10 @@ export class AgentStatusTreeProvider
 		status: AgentStatusGroup,
 		nodes: SortableAgentNode[],
 	): StatusTimeGroupNode[] {
-		const periods: StatusTimeGroupPeriod[] = ["today", "yesterday", "older"];
+		const periods: StatusTimeGroupPeriod[] =
+			this.getSortMode() === "status-recency"
+				? ["today", "yesterday", "last7days", "last30days", "older"]
+				: ["today", "yesterday", "older"];
 		const grouped = groupByTimePeriod(
 			nodes,
 			(node) => this.getNodeActivityTimeMs(node),
@@ -2738,7 +2742,7 @@ export class AgentStatusTreeProvider
 					label: `${TIME_PERIOD_LABELS[period]} (${periodNodes.length})`,
 					nodes: periodNodes,
 					collapsibleState:
-						period === "older"
+						period === "older" || period === "last30days"
 							? vscode.TreeItemCollapsibleState.Collapsed
 							: vscode.TreeItemCollapsibleState.Expanded,
 				};
@@ -4282,7 +4286,7 @@ export class AgentStatusTreeProvider
 			lines.push("  ⚠️ Discovery is disabled in settings.");
 			if (olderRegistryCount > 50 || displayTasks.length > 100) {
 				lines.push(
-					`  ⚠️ ${displayTasks.length} tasks in registry — consider: commandCentral.clearTerminalTasks`,
+					`  ⚠️ ${displayTasks.length} tasks in registry — consider: commandCentral.clearCompletedAgents`,
 				);
 			}
 			lines.push("");
@@ -4714,7 +4718,7 @@ export class AgentStatusTreeProvider
 
 		if (args.olderRegistryCount > 50 || args.displayTasks.length > 100) {
 			lines.push(
-				`  ⚠️ ${args.displayTasks.length} tasks in registry — consider: commandCentral.clearTerminalTasks`,
+				`  ⚠️ ${args.displayTasks.length} tasks in registry — consider: commandCentral.clearCompletedAgents`,
 			);
 		}
 

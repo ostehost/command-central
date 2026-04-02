@@ -72,6 +72,13 @@ import { TelemetryService } from "./services/telemetry-service.js";
 import type { OpenClawTask } from "./types/openclaw-task-types.js";
 import type { GitChangeItem } from "./types/tree-element.js";
 import { GroupingViewManager } from "./ui/grouping-view-manager.js";
+import {
+	clearCompletedAgentEntries,
+	countClearableAgentEntries,
+	parseTaskRegistry,
+	removeTaskFromRegistryMap,
+	serializeTaskRegistry,
+} from "./utils/agent-task-registry.js";
 import { buildOsteSpawnCommand, shellQuote } from "./utils/shell-command.js";
 
 let gitSorter: GitSorter | undefined;
@@ -932,16 +939,6 @@ export async function activate(
 			return length >= 1 && length <= 2;
 		};
 
-		const TERMINAL_TASK_STATUSES = new Set([
-			"completed",
-			"completed_dirty",
-			"failed",
-			"stopped",
-			"killed",
-			"completed_stale",
-			"contract_failure",
-		]);
-
 		const execFileAsync = async (
 			command: string,
 			args: string[],
@@ -1200,61 +1197,14 @@ export async function activate(
 			);
 		};
 
-		const parseRegistry = (rawRegistry: string) => {
-			const parsed = JSON.parse(rawRegistry) as {
-				version?: number;
-				tasks?: Record<string, unknown>;
-			};
-			const version =
-				parsed.version === 1 || parsed.version === 2 ? parsed.version : 2;
-			const tasks =
-				parsed.tasks && typeof parsed.tasks === "object"
-					? { ...parsed.tasks }
-					: {};
-			return { version, tasks };
-		};
-
-		const removeTaskFromMap = (
-			tasks: Record<string, unknown>,
-			taskId: string,
-		): boolean => {
-			if (taskId in tasks) {
-				delete tasks[taskId];
-				return true;
-			}
-			for (const [key, value] of Object.entries(tasks)) {
-				const valueId =
-					typeof value === "object" && value
-						? (value as { id?: unknown }).id
-						: undefined;
-				if (
-					typeof value === "object" &&
-					value &&
-					"id" in value &&
-					valueId === taskId
-				) {
-					delete tasks[key];
-					return true;
-				}
-			}
-			return false;
-		};
-
-		const removeTerminalTasksFromMap = (
-			tasks: Record<string, unknown>,
-		): number => {
-			let removed = 0;
-			for (const [key, value] of Object.entries(tasks)) {
-				const status =
-					typeof value === "object" && value
-						? (value as { status?: unknown }).status
-						: undefined;
-				if (typeof status === "string" && TERMINAL_TASK_STATUSES.has(status)) {
-					delete tasks[key];
-					removed += 1;
-				}
-			}
-			return removed;
+		const writeRegistryWithBackup = async (
+			tasksFilePath: string,
+			latestRaw: string,
+			registry: { version: number; tasks: Record<string, unknown> },
+		): Promise<void> => {
+			const fs = await import("node:fs");
+			fs.writeFileSync(`${tasksFilePath}.bak`, latestRaw, "utf-8");
+			fs.writeFileSync(tasksFilePath, serializeTaskRegistry(registry), "utf-8");
 		};
 
 		context.subscriptions.push(
@@ -1813,7 +1763,7 @@ export async function activate(
 				},
 			),
 			vscode.commands.registerCommand(
-				"commandCentral.clearTerminalTasks",
+				"commandCentral.clearCompletedAgents",
 				async () => {
 					const tasksFilePath = agentStatusProvider?.filePath;
 					if (!tasksFilePath) {
@@ -1826,28 +1776,20 @@ export async function activate(
 					try {
 						const fs = await import("node:fs");
 						const initialRaw = fs.readFileSync(tasksFilePath, "utf-8");
-						const initialRegistry = parseRegistry(initialRaw);
-						const initialTerminalCount = Object.values(
+						const initialRegistry = parseTaskRegistry(initialRaw);
+						const initialTerminalCount = countClearableAgentEntries(
 							initialRegistry.tasks,
-						).filter((entry) => {
-							const status =
-								typeof entry === "object" && entry
-									? (entry as { status?: unknown }).status
-									: undefined;
-							return (
-								typeof status === "string" && TERMINAL_TASK_STATUSES.has(status)
-							);
-						}).length;
+						);
 
 						if (initialTerminalCount === 0) {
 							vscode.window.showInformationMessage(
-								"No completed, failed, or stopped agents to remove.",
+								"No completed agent entries to remove.",
 							);
 							return;
 						}
 
 						const confirm = await vscode.window.showWarningMessage(
-							`Remove ${initialTerminalCount} completed/failed/stopped agents?`,
+							`Remove ${initialTerminalCount} completed agent ${initialTerminalCount === 1 ? "entry" : "entries"}?`,
 							{ modal: true },
 							"Remove",
 						);
@@ -1857,47 +1799,45 @@ export async function activate(
 						const registryToWrite =
 							latestRaw === initialRaw
 								? initialRegistry
-								: parseRegistry(latestRaw);
-						const removedCount = removeTerminalTasksFromMap(
+								: parseTaskRegistry(latestRaw);
+						const removedCount = clearCompletedAgentEntries(
 							registryToWrite.tasks,
 						);
 
 						if (removedCount === 0) {
 							vscode.window.showInformationMessage(
-								"No completed, failed, or stopped agents to remove.",
+								"No completed agent entries to remove.",
 							);
 							return;
 						}
 
-						fs.writeFileSync(
+						await writeRegistryWithBackup(
 							tasksFilePath,
-							`${JSON.stringify(
-								{
-									version: registryToWrite.version,
-									tasks: registryToWrite.tasks,
-								},
-								null,
-								2,
-							)}\n`,
-							"utf-8",
+							latestRaw,
+							registryToWrite,
 						);
 
 						agentStatusProvider?.reload();
 						vscode.window.showInformationMessage(
-							`Removed ${removedCount} completed/failed/stopped agents.`,
+							`Removed ${removedCount} completed agent ${removedCount === 1 ? "entry" : "entries"}.`,
 						);
 					} catch (err) {
 						if (err instanceof SyntaxError) {
 							vscode.window.showErrorMessage(
-								"Failed to clear agents: tasks.json is malformed.",
+								"Failed to clear completed agents: tasks.json is malformed.",
 							);
 							return;
 						}
 						vscode.window.showErrorMessage(
-							`Failed to clear agents: ${err instanceof Error ? err.message : String(err)}`,
+							`Failed to clear completed agents: ${err instanceof Error ? err.message : String(err)}`,
 						);
 					}
 				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.clearTerminalTasks",
+				async () =>
+					vscode.commands.executeCommand("commandCentral.clearCompletedAgents"),
 			),
 			vscode.commands.registerCommand(
 				"commandCentral.removeAgentTask",
@@ -1921,9 +1861,9 @@ export async function activate(
 					try {
 						const fs = await import("node:fs");
 						const initialRaw = fs.readFileSync(tasksFilePath, "utf-8");
-						const initialRegistry = parseRegistry(initialRaw);
+						const initialRegistry = parseTaskRegistry(initialRaw);
 
-						if (!removeTaskFromMap(initialRegistry.tasks, task.id)) {
+						if (!removeTaskFromRegistryMap(initialRegistry.tasks, task.id)) {
 							vscode.window.showInformationMessage(
 								`Agent "${task.id}" is already removed.`,
 							);
@@ -1937,8 +1877,10 @@ export async function activate(
 							latestRaw === initialRaw
 								? initialRegistry
 								: (() => {
-										const latestRegistry = parseRegistry(latestRaw);
-										if (!removeTaskFromMap(latestRegistry.tasks, task.id)) {
+										const latestRegistry = parseTaskRegistry(latestRaw);
+										if (
+											!removeTaskFromRegistryMap(latestRegistry.tasks, task.id)
+										) {
 											return null;
 										}
 										return latestRegistry;
@@ -1951,17 +1893,10 @@ export async function activate(
 							return;
 						}
 
-						fs.writeFileSync(
+						await writeRegistryWithBackup(
 							tasksFilePath,
-							`${JSON.stringify(
-								{
-									version: registryToWrite.version,
-									tasks: registryToWrite.tasks,
-								},
-								null,
-								2,
-							)}\n`,
-							"utf-8",
+							latestRaw,
+							registryToWrite,
 						);
 
 						agentStatusProvider?.reload();
