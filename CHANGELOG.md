@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-02: 1160+ tests across 83 files.
 
+## [0.5.1-54] - 2026-04-02
+
+### Added
+- **Per-agent model display** — Each agent task now shows its actual model alias in the sidebar description (e.g., `· opus`, `· codex-5.4`, `· gemini-pro`). Expanded task details show the full model name with explicit/inherited indicator.
+- **Model alias utility** — New `model-aliases.ts` maps 18+ provider/model strings to short display names with fuzzy fallbacks for unknown models.
+
 ## [0.5.1-53] - 2026-04-02
 
 ### Added
