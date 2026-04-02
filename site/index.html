@@ -73,7 +73,7 @@
     <div class="container nav-inner">
       <a href="https://cc.partnerai.dev" class="nav-brand">Command Central</a>
       <div class="nav-links">
-        <a href="releases/v0.5.1-47.html" class="nav-link" data-track="release_notes_clicked" data-source="nav">Release Notes</a>
+        <a href="releases/v0.5.1-54.html" class="nav-link" data-track="release_notes_clicked" data-source="nav">Release Notes</a>
         <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="nav-link" data-track="install_clicked" data-source="nav">Marketplace</a>
         <a href="https://github.com/ostehost/command-central" class="nav-link" data-track="github_clicked" data-source="nav">GitHub</a>
       </div>
@@ -85,21 +85,21 @@
       <div class="hero-logo" style="margin-bottom: 24px;">
         <img src="images/logo.svg" alt="Command Central" width="112" height="112" style="display:block;margin:0 auto;">
       </div>
-      <div class="hero-badge">VS Code sidebar for recent changes and active AI work</div>
-      <h1>See recent code changes<br>and AI agent progress</h1>
-      <p class="subtitle">Track what changed when, plus monitor AI coding assistants — all in your VS Code sidebar.</p>
+      <div class="hero-badge">VS Code sidebar for Claude · Codex · Gemini agents</div>
+      <h1>See every agent.<br>Click to focus. Know the model.</h1>
+      <p class="subtitle">Command Central auto-discovers Claude, Codex, and Gemini agents across all your terminals — and puts them in one VS Code sidebar.</p>
       <div class="hero-highlights">
-        <span class="hero-highlight">Recent changes stay at the top</span>
-        <span class="hero-highlight">Track AI assistant progress without leaving the editor</span>
-        <span class="hero-highlight">Give each project its own identifiable window</span>
+        <span class="hero-highlight">Auto-discovers agents across all terminals</span>
+        <span class="hero-highlight">Click any agent to focus the exact terminal window</span>
+        <span class="hero-highlight">Shows model, duration, and diff counts per agent</span>
       </div>
       <div class="cta-group">
         <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-primary" data-track="install_clicked" data-source="hero">Install from VS Code Marketplace</a>
         <a href="https://github.com/ostehost/command-central" class="btn btn-secondary" data-track="github_clicked" data-source="hero">View GitHub</a>
       </div>
-      <p class="hero-proof">1160 tests in suite. MIT licensed. Built by developers who run 10 agents daily.</p>
+      <p class="hero-proof">1160+ tests in suite. MIT licensed. Built by developers who run 10 agents daily.</p>
       <div class="hero-screenshot">
-        <img src="assets/workflow-unified-hero.svg" alt="Command Central showing an agent control tower in the VS Code sidebar alongside external terminal sessions" width="560" height="340" loading="eager">
+        <img src="assets/cc-hero-v3.svg" alt="Command Central sidebar showing running, completed, and failed agents across Claude, Codex, and Gemini, with per-agent model display and a macOS Dock with project emoji icons" width="560" height="340" loading="eager">
       </div>
     </div>
   </section>
@@ -197,20 +197,41 @@
         <article class="feature-card">
           <div class="feature-content">
             <div class="card-kicker">AI Agents</div>
-            <h3>Track your AI assistants</h3>
-            <p>When AI tools are writing code for you, see their progress without leaving your editor.</p>
+            <h3>Your agent control tower</h3>
+            <p>Running, completed, and failed agents grouped by project. Status, model, duration, and diff counts — all visible without leaving VS Code.</p>
           </div>
           <div class="feature-visual">
-            <img src="assets/feature-agents.svg" alt="A simple AI agent status panel showing active and completed work" width="340" height="200" loading="lazy">
+            <img src="assets/cc-agent-status-v2.svg" alt="Full Agent Status sidebar showing agents grouped by project with running, completed, and failed sections, per-agent model display, and time groupings" width="480" height="400" loading="lazy">
+          </div>
+        </article>
+        <article class="feature-card feature-card--reverse">
+          <div class="feature-content">
+            <div class="card-kicker">Model Visibility</div>
+            <h3>Know which model is driving each agent</h3>
+            <p>Each agent shows its model inline — <code>opus</code>, <code>codex-5.4</code>, <code>gemini-pro</code>. No guessing which backend is running what.</p>
+          </div>
+          <div class="feature-visual">
+            <img src="assets/cc-model-display.svg" alt="Three running agents each showing a different model: opus, codex-5.4, and gemini-pro with colored provider badges" width="480" height="200" loading="lazy">
+          </div>
+        </article>
+        <article class="feature-card">
+          <div class="feature-content">
+            <div class="card-kicker">One-Click Focus</div>
+            <h3>Click any agent. Land in the right terminal.</h3>
+            <p>Command Central routes you directly to the correct tmux window or terminal tab. No hunting, no guessing — the right session, instantly.</p>
+          </div>
+          <div class="feature-visual">
+            <img src="assets/cc-terminal-routing.svg" alt="Left panel shows the Agent Status sidebar with a cursor clicking a task, an arrow flows to a focused Ghostty terminal showing the same project emoji" width="480" height="200" loading="lazy">
           </div>
         </article>
       </div>
       <div class="features-also" aria-label="Additional capabilities">
         <span class="features-also-label">Also includes</span>
-        <span class="features-also-item">Works across Git views</span>
-        <span class="features-also-item">Fits inside the VS Code sidebar</span>
-        <span class="features-also-item">Keeps AI progress visible during edits</span>
-        <span class="features-also-item">Pairs with multi-project terminal workflows</span>
+        <span class="features-also-item">Stale agent detection</span>
+        <span class="features-also-item">Clear Completed toolbar button</span>
+        <span class="features-also-item">Dead-agent transcript access</span>
+        <span class="features-also-item">Per-project Dock icon launch</span>
+        <span class="features-also-item">Right-click quick actions</span>
       </div>
     </div>
   </section>
@@ -219,24 +240,24 @@
     <div class="container">
       <div class="section-heading-block">
         <p class="section-kicker">How it works</p>
-        <h2>Install once. Open the sidebar. Agents appear.</h2>
-        <p class="section-intro">No build step, no session naming ritual, no special terminal wrapper required for the main experience.</p>
+        <h2>See · Click · Know</h2>
+        <p class="section-intro">Install once. Open the sidebar. Agents appear. No build step, no session naming ritual.</p>
       </div>
       <div class="use-case-grid how-it-works-grid">
         <div class="use-case">
           <span class="use-case-emoji">1</span>
-          <p class="use-case-title">Install the extension</p>
-          <p class="use-case-desc">Get Command Central from the VS Code Marketplace and open the sidebar in your normal editor workflow.</p>
+          <p class="use-case-title">See — agents auto-discovered</p>
+          <p class="use-case-desc">Command Central finds Claude, Codex, and Gemini agents running anywhere — Ghostty, iTerm2, tmux, VS Code terminals. No setup required.</p>
         </div>
         <div class="use-case">
           <span class="use-case-emoji">2</span>
-          <p class="use-case-title">Run agents where you already work</p>
-          <p class="use-case-desc">Claude Code, Codex, and Gemini can keep running in Ghostty, iTerm2, Terminal.app, tmux, or VS Code terminals.</p>
+          <p class="use-case-title">Click — focus the right terminal</p>
+          <p class="use-case-desc">Click any agent row in the sidebar to jump directly to its terminal window or tmux pane. The right session, instantly.</p>
         </div>
         <div class="use-case">
           <span class="use-case-emoji">3</span>
-          <p class="use-case-title">Manage them from one sidebar</p>
-          <p class="use-case-desc">See prompts, detect stuck sessions, inspect output, restart work, and review diffs without leaving VS Code.</p>
+          <p class="use-case-title">Know — model, duration, diff</p>
+          <p class="use-case-desc">Each agent shows its model, how long it has been running, and a live diff count. Stale agents are flagged automatically.</p>
         </div>
       </div>
     </div>
@@ -331,11 +352,11 @@
       <div class="latest-release-card">
         <div class="latest-release-copy">
           <p class="section-kicker">Latest release</p>
-          <h2>v0.5.1-47 adds clearer discovery diagnostics and a native diff picker</h2>
-          <p class="section-intro">The latest release makes agent discovery easier to debug and moves `View Diff` onto VS Code’s native diff flow, on top of the background-task, resume, and launcher-fallback improvements already shipped in the current v0.5.1 line.</p>
+          <h2>v0.5.1-54 adds per-agent model display and stale launcher task reaping</h2>
+          <p class="section-intro">Every agent now shows its model alias inline — <code>opus</code>, <code>codex-5.4</code>, <code>gemini-pro</code>. Stale launcher tasks are automatically reaped. Archive, collapse, and Clear Completed shipped in the same v0.5.1 line.</p>
         </div>
         <div class="latest-release-actions">
-          <a href="releases/v0.5.1-47.html" class="btn btn-primary" data-track="release_notes_clicked" data-source="latest-release">Read release notes</a>
+          <a href="releases/v0.5.1-54.html" class="btn btn-primary" data-track="release_notes_clicked" data-source="latest-release">Read release notes</a>
           <a href="https://marketplace.visualstudio.com/items?itemName=oste.command-central" class="btn btn-secondary" data-track="install_clicked" data-source="latest-release">Install the update</a>
         </div>
       </div>
@@ -345,7 +366,7 @@
   <section class="stay-connected">
     <div class="container">
       <h2>Release notes</h2>
-      <p class="quiet-note">Latest: <a href="releases/v0.5.1-47.html" data-track="release_notes_clicked" data-source="email-section">v0.5.1-47 on April 1, 2026</a>. One email per release. Product updates only.</p>
+      <p class="quiet-note">Latest: <a href="releases/v0.5.1-54.html" data-track="release_notes_clicked" data-source="email-section">v0.5.1-54 on April 2, 2026</a>. One email per release. Product updates only.</p>
       <div class="email-form">
         <form action="https://buttondown.com/api/emails/embed-subscribe/ostehost" method="post" target="popupwindow" class="signup-form">
           <input type="email" name="email" placeholder="you@example.com" required aria-label="Email address">

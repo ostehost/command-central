@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 200" role="img" aria-labelledby="mdtitle mddesc">
+  <title id="mdtitle">Per-agent model visibility in Command Central</title>
+  <desc id="mddesc">Three running agents each showing their model — opus, codex-5.4, and gemini-pro — with an expanded detail view for one showing the full model ID.</desc>
+  <defs>
+    <style>
+      .bg { fill: #161b22; }
+      .section-bg { fill: #1c2128; }
+      .bright { fill: #e6edf3; font-family: "Space Grotesk", system-ui, sans-serif; }
+      .muted { fill: #8b949e; font-family: "Space Grotesk", system-ui, sans-serif; }
+      .accent { fill: #58a6ff; }
+      .green { fill: #3fb950; }
+      .mono { font-family: "Cascadia Code", Consolas, monospace; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="480" height="200" rx="12" class="bg" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Header -->
+  <rect x="0" y="0" width="480" height="28" rx="12" fill="#21262d"/>
+  <rect x="0" y="14" width="480" height="14" fill="#21262d"/>
+  <circle cx="16" cy="14" r="4" fill="#f85149"/>
+  <circle cx="30" cy="14" r="4" fill="#d29922"/>
+  <circle cx="44" cy="14" r="4" fill="#3fb950"/>
+  <text x="240" y="19" class="muted" font-size="10" text-anchor="middle">AGENT STATUS</text>
+
+  <!-- Section label -->
+  <rect x="0" y="28" width="480" height="16" fill="rgba(63,185,80,0.06)"/>
+  <text x="14" y="39" fill="#3fb950" font-size="8" letter-spacing="0.8" font-weight="600">RUNNING  ·  3 agents</text>
+
+  <!-- ── Agent 1: opus (Anthropic purple) ── -->
+  <rect x="8" y="50" width="140" height="62" rx="8" fill="rgba(139,92,246,0.06)" stroke="rgba(139,92,246,0.2)" stroke-width="1"/>
+  <circle cx="22" cy="63" r="4" fill="#3fb950"/>
+  <text x="32" y="67" class="bright" font-size="11" font-weight="600">planning</text>
+  <!-- model badge -->
+  <rect x="76" y="56" width="32" height="14" rx="7" fill="rgba(139,92,246,0.2)" stroke="rgba(139,92,246,0.45)" stroke-width="1"/>
+  <text x="92" y="66" fill="#a78bfa" font-size="9" text-anchor="middle">opus</text>
+  <!-- expanded detail -->
+  <text x="16" y="83" class="muted" font-size="9">Model:</text>
+  <text x="50" y="83" fill="#a78bfa" font-size="9" font-family="Cascadia Code, monospace">claude-opus-4-6</text>
+  <text x="16" y="97" class="muted" font-size="9">Provider:</text>
+  <text x="58" y="97" class="muted" font-size="9">anthropic</text>
+  <text x="16" y="108" class="muted" font-size="9">Running</text>
+  <text x="50" y="108" class="accent" font-size="9">6m 12s</text>
+
+  <!-- Anthropic logo accent bar -->
+  <rect x="8" y="50" width="3" height="62" rx="1.5" fill="#a78bfa"/>
+
+  <!-- ── Agent 2: codex-5.4 (OpenAI green) ── -->
+  <rect x="168" y="50" width="140" height="62" rx="8" fill="rgba(34,197,94,0.05)" stroke="rgba(34,197,94,0.18)" stroke-width="1"/>
+  <circle cx="182" cy="63" r="4" fill="#3fb950"/>
+  <text x="192" y="67" class="bright" font-size="11" font-weight="600">implementing</text>
+  <!-- model badge -->
+  <rect x="278" y="56" width="22" height="14" rx="7" fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.35)" stroke-width="1"/>
+  <text x="289" y="66" fill="#4ade80" font-size="7" text-anchor="middle">codex</text>
+  <text x="182" y="83" class="muted" font-size="9">Model:</text>
+  <text x="216" y="83" fill="#4ade80" font-size="9" font-family="Cascadia Code, monospace">codex-5.4</text>
+  <text x="182" y="97" class="muted" font-size="9">Provider:</text>
+  <text x="224" y="97" class="muted" font-size="9">openai</text>
+  <text x="182" y="108" class="muted" font-size="9">Running</text>
+  <text x="216" y="108" class="accent" font-size="9">14m 03s</text>
+
+  <!-- OpenAI green accent bar -->
+  <rect x="168" y="50" width="3" height="62" rx="1.5" fill="#4ade80"/>
+
+  <!-- ── Agent 3: gemini-pro (Google blue) ── -->
+  <rect x="328" y="50" width="140" height="62" rx="8" fill="rgba(59,130,246,0.05)" stroke="rgba(59,130,246,0.18)" stroke-width="1"/>
+  <circle cx="342" cy="63" r="4" fill="#3fb950"/>
+  <text x="352" y="67" class="bright" font-size="11" font-weight="600">reviewing</text>
+  <!-- model badge -->
+  <rect x="428" y="56" width="32" height="14" rx="7" fill="rgba(59,130,246,0.15)" stroke="rgba(59,130,246,0.35)" stroke-width="1"/>
+  <text x="444" y="66" fill="#60a5fa" font-size="8" text-anchor="middle">gemini</text>
+  <text x="342" y="83" class="muted" font-size="9">Model:</text>
+  <text x="376" y="83" fill="#60a5fa" font-size="9" font-family="Cascadia Code, monospace">gemini-pro</text>
+  <text x="342" y="97" class="muted" font-size="9">Provider:</text>
+  <text x="384" y="97" class="muted" font-size="9">google</text>
+  <text x="342" y="108" class="muted" font-size="9">Running</text>
+  <text x="376" y="108" class="accent" font-size="9">2m 47s</text>
+
+  <!-- Google blue accent bar -->
+  <rect x="328" y="50" width="3" height="62" rx="1.5" fill="#60a5fa"/>
+
+  <!-- Divider -->
+  <line x1="20" y1="126" x2="460" y2="126" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Caption -->
+  <text x="240" y="148" class="bright" font-size="13" text-anchor="middle" font-weight="600">See exactly which model is driving each agent</text>
+  <text x="240" y="166" class="muted" font-size="11" text-anchor="middle">Claude · Codex · Gemini — tracked automatically, no setup required</text>
+  <text x="240" y="184" class="muted" font-size="10" text-anchor="middle">Works across Ghostty, iTerm2, tmux, VS Code terminals</text>
+</svg>

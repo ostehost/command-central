@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 160" role="img" aria-labelledby="sdtitle sddesc">
+  <title id="sdtitle">Command Central stale agent detection</title>
+  <desc id="sddesc">A running agent row with a yellow warning indicator showing it has gone stale — the session ended without marking completion. A quick action menu offers "Mark as Failed".</desc>
+  <defs>
+    <style>
+      .bg { fill: #161b22; }
+      .section-bg { fill: #1c2128; }
+      .bright { fill: #e6edf3; font-family: "Space Grotesk", system-ui, sans-serif; }
+      .muted { fill: #8b949e; font-family: "Space Grotesk", system-ui, sans-serif; }
+      .accent { fill: #58a6ff; }
+      .yellow { fill: #d29922; }
+      .mono { font-family: "Cascadia Code", Consolas, monospace; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="480" height="160" rx="12" class="bg" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Header -->
+  <rect x="0" y="0" width="480" height="26" rx="12" fill="#21262d"/>
+  <rect x="0" y="13" width="480" height="13" fill="#21262d"/>
+  <circle cx="16" cy="13" r="4" fill="#f85149"/>
+  <circle cx="30" cy="13" r="4" fill="#d29922"/>
+  <circle cx="44" cy="13" r="4" fill="#3fb950"/>
+  <text x="240" y="17" class="muted" font-size="9" text-anchor="middle">AGENT STATUS</text>
+
+  <!-- Running section label -->
+  <rect x="0" y="26" width="480" height="14" fill="rgba(210,153,34,0.07)"/>
+  <text x="14" y="36" fill="#d29922" font-size="8" letter-spacing="0.8" font-weight="600">RUNNING  ·  1 stale</text>
+
+  <!-- Stale agent row -->
+  <rect x="8" y="40" width="320" height="44" rx="6" fill="rgba(210,153,34,0.06)" stroke="rgba(210,153,34,0.3)" stroke-width="1"/>
+  <!-- Warning icon -->
+  <text x="20" y="60" fill="#d29922" font-size="14">⚠️</text>
+  <text x="42" y="60" class="bright" font-size="12" font-weight="600">long-refactor</text>
+  <text x="118" y="60" class="muted" font-size="11"> · 47m</text>
+  <rect x="164" y="50" width="32" height="14" rx="7" fill="rgba(139,92,246,0.15)" stroke="rgba(139,92,246,0.3)" stroke-width="0.8"/>
+  <text x="180" y="60" fill="#a78bfa" font-size="9" text-anchor="middle">opus</text>
+
+  <!-- Stale badge -->
+  <rect x="206" y="50" width="112" height="14" rx="7" fill="rgba(210,153,34,0.12)" stroke="rgba(210,153,34,0.35)" stroke-width="0.8"/>
+  <text x="262" y="60" fill="#d29922" font-size="9" text-anchor="middle">Stale — session ended</text>
+
+  <text x="42" y="76" class="muted" font-size="9">No activity detected · session may have exited without completing</text>
+
+  <!-- Quick action menu -->
+  <rect x="336" y="36" width="136" height="90" rx="8" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="344" y="52" class="muted" font-size="9" font-weight="600">Quick Actions</text>
+  <line x1="336" y1="56" x2="472" y2="56" stroke="#30363d" stroke-width="1"/>
+
+  <rect x="338" y="58" width="132" height="18" rx="4" fill="rgba(248,81,73,0.08)"/>
+  <text x="348" y="70" fill="#f85149" font-size="10" font-weight="600">✗  Mark as Failed</text>
+
+  <text x="348" y="88" class="muted" font-size="10">↻  Restart Agent</text>
+  <text x="348" y="104" class="muted" font-size="10">⊞  View Transcript</text>
+  <text x="348" y="120" class="muted" font-size="10">🗑  Remove Entry</text>
+
+  <!-- Pointer arrow from row to menu -->
+  <path d="M328 62 L336 62" fill="none" stroke="#d29922" stroke-width="1" stroke-dasharray="3,2"/>
+
+  <!-- Caption -->
+  <text x="172" y="142" class="bright" font-size="12" text-anchor="middle" font-weight="600">Command Central catches zombie agents automatically</text>
+</svg>
