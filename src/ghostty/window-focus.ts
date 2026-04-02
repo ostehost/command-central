@@ -66,14 +66,45 @@ export async function focusGhosttyWindow(
 	// If we have a session name, try to get the precise bundle_id from the terminal map
 	let effectiveBundleId = isBundlePath(bundleTarget) ? null : bundleTarget;
 	const effectiveBundlePath = isBundlePath(bundleTarget) ? bundleTarget : null;
+	let exactTerminalId: string | null = null;
 	if (sessionName) {
 		try {
 			const mapping = await lookupGhosttyTerminal(sessionName);
 			if (mapping?.bundle_id) {
 				effectiveBundleId = mapping.bundle_id;
 			}
+			if (mapping?.terminal_id) {
+				exactTerminalId = mapping.terminal_id;
+			}
 		} catch {
 			// Use the provided bundleId
+		}
+	}
+
+	if (effectiveBundleId && exactTerminalId) {
+		try {
+			const script = `
+tell application id "${effectiveBundleId}"
+	repeat with w in windows
+		repeat with tb in tabs of w
+			repeat with t in terminals of tb
+				if (id of t as text) is "${exactTerminalId}" then
+					set active tab index of w to index of tb
+					focus t
+					activate
+					return "focused"
+				end if
+			end repeat
+		end repeat
+	end repeat
+	error "terminal not found"
+end tell`;
+			await execFileAsync("osascript", ["-e", script], {
+				timeout: WINDOW_FOCUS_TIMEOUT_MS,
+			});
+			return true;
+		} catch {
+			// Exact terminal targeting failed — fall through to bundle activation.
 		}
 	}
 

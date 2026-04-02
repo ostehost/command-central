@@ -193,6 +193,32 @@ describe("focusGhosttyWindow", () => {
 		expect(execFileCalls[0]?.args[1]).toContain("dev.partnerai.ghostty.custom");
 	});
 
+	test("focuses the exact mapped Ghostty terminal when a terminal id is known", async () => {
+		mockReadFileResult = {
+			data: JSON.stringify({
+				"agent-planner": {
+					terminal_id: "terminal-uuid-abc",
+					window_id: "window-id-123",
+					bundle_id: "dev.partnerai.ghostty.custom",
+				},
+			}),
+		};
+		execFileResults = [{ err: null, stdout: "" }];
+
+		const result = await focusGhosttyWindow(
+			"dev.partnerai.ghostty.command-central",
+			"agent-planner",
+		);
+
+		expect(result).toBe(true);
+		expect(execFileCalls[0]?.file).toBe("osascript");
+		expect(execFileCalls[0]?.args[1]).toContain(
+			'if (id of t as text) is "terminal-uuid-abc"',
+		);
+		expect(execFileCalls[0]?.args[1]).toContain("set active tab index of w");
+		expect(execFileCalls[0]?.args[1]).toContain("focus t");
+	});
+
 	test("uses provided bundleId when terminal map lookup fails", async () => {
 		mockReadFileResult = {
 			error: new Error("ENOENT"),

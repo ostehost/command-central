@@ -491,6 +491,25 @@ describe("AgentStatusTreeProvider", () => {
 		expect(taskNodes[0]?.type).toBe("task");
 	});
 
+	test("preserves tmux window metadata from launcher tasks", () => {
+		const task = createMockTask({
+			tmux_conf: "/tmp/project.tmux.conf",
+			tmux_socket: "/tmp/project.tmux.sock",
+			tmux_window_id: "@42",
+			tmux_window_name: "reviewer",
+			tmux_pane_id: "%7",
+		});
+		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.reload();
+
+		const loadedTask = provider.getTasks()[0];
+		expect(loadedTask?.tmux_conf).toBe("/tmp/project.tmux.conf");
+		expect(loadedTask?.tmux_socket).toBe("/tmp/project.tmux.sock");
+		expect(loadedTask?.tmux_window_id).toBe("@42");
+		expect(loadedTask?.tmux_window_name).toBe("reviewer");
+		expect(loadedTask?.tmux_pane_id).toBe("%7");
+	});
+
 	test("summary node has correct format", () => {
 		const t1 = createMockTask({ id: "t1", status: "running" });
 		const t2 = createMockTask({ id: "t2", status: "completed" });

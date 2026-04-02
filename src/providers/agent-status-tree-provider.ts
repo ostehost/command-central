@@ -92,7 +92,11 @@ export interface AgentTask {
 	cli_name?: string | null;
 	persist_socket?: string | null;
 	tmux_socket?: string | null;
+	tmux_conf?: string | null;
 	tmux_session?: string;
+	tmux_window_id?: string | null;
+	tmux_window_name?: string | null;
+	tmux_pane_id?: string | null;
 	bundle_path: string;
 	prompt_file: string;
 	started_at: string;
@@ -629,7 +633,11 @@ function normalizeTask(
 		cli_name: asString(raw["cli_name"]) ?? null,
 		persist_socket: asString(raw["persist_socket"]) ?? null,
 		tmux_socket: asString(raw["tmux_socket"]) ?? null,
+		tmux_conf: asString(raw["tmux_conf"]) ?? null,
 		tmux_session: asString(raw["tmux_session"]),
+		tmux_window_id: asString(raw["tmux_window_id"]) ?? null,
+		tmux_window_name: asString(raw["tmux_window_name"]) ?? null,
+		tmux_pane_id: asString(raw["tmux_pane_id"]) ?? null,
 		bundle_path: bundlePath,
 		prompt_file: promptFile,
 		started_at: asString(raw["started_at"]) ?? new Date().toISOString(),

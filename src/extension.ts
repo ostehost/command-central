@@ -18,6 +18,12 @@ import {
 	supportsInteractiveResume,
 } from "./commands/resume-session.js";
 import {
+	buildTaskTmuxArgs,
+	buildTaskTmuxAttachCommand,
+	resolveTaskInputTarget,
+	resolveTaskWindowTarget,
+} from "./commands/task-terminal-routing.js";
+import {
 	compareWithSelected,
 	copyPath,
 	copyRelativePath,
@@ -953,7 +959,29 @@ export async function activate(
 				return false;
 			}
 			try {
-				await execFileAsync("tmux", ["has-session", "-t", task.session_id]);
+				await execFileAsync(
+					"tmux",
+					buildTaskTmuxArgs(task, ["has-session", "-t", task.session_id]),
+				);
+				return true;
+			} catch {
+				return false;
+			}
+		};
+
+		const selectTaskTmuxWindow = async (
+			task: Pick<
+				AgentTask,
+				"session_id" | "tmux_conf" | "tmux_socket" | "tmux_window_id"
+			>,
+		): Promise<boolean> => {
+			const target = resolveTaskWindowTarget(task);
+			if (!target) return false;
+			try {
+				await execFileAsync(
+					"tmux",
+					buildTaskTmuxArgs(task, ["select-window", "-t", target]),
+				);
 				return true;
 			} catch {
 				return false;
@@ -1092,13 +1120,25 @@ export async function activate(
 		};
 
 		const openGhosttyTmuxAttach = async (
-			sessionId: string,
+			task: Pick<
+				AgentTask,
+				"session_id" | "tmux_conf" | "tmux_socket" | "tmux_window_id"
+			>,
 		): Promise<boolean> => {
+			if (!task.session_id || !isValidSessionId(task.session_id)) {
+				return false;
+			}
+
 			try {
-				await execFileAsync("tmux", ["has-session", "-t", sessionId]);
+				await execFileAsync(
+					"tmux",
+					buildTaskTmuxArgs(task, ["has-session", "-t", task.session_id]),
+				);
 			} catch {
 				return false;
 			}
+
+			await selectTaskTmuxWindow(task);
 
 			try {
 				await execFileAsync("open", [
@@ -1106,7 +1146,7 @@ export async function activate(
 					"Ghostty",
 					"--args",
 					"-e",
-					`tmux attach -t ${sessionId}`,
+					buildTaskTmuxAttachCommand(task),
 				]);
 				return true;
 			} catch {
@@ -1137,12 +1177,9 @@ export async function activate(
 						await terminalManager?.resolveLauncherHelperScriptPath(
 							"oste-steer.sh",
 						);
-					if (steerScript) {
-						await execFileAsync(steerScript, [
-							task.session_id,
-							"--raw",
-							command,
-						]);
+					const inputTarget = resolveTaskInputTarget(task);
+					if (steerScript && inputTarget) {
+						await execFileAsync(steerScript, [inputTarget, "--raw", command]);
 						return;
 					}
 				} catch {
@@ -1150,25 +1187,10 @@ export async function activate(
 				}
 			}
 
-			if (
-				task.bundle_path &&
-				task.bundle_path !== "(test-mode)" &&
-				task.bundle_path !== "(tmux-mode)"
-			) {
-				try {
-					await execFileAsync("open", [task.bundle_path], 5000);
-					return;
-				} catch {
-					// Fall through to tmux attach or integrated terminal resume.
-				}
-			}
-
-			if (
-				task.session_id &&
-				isValidSessionId(task.session_id) &&
-				(await openGhosttyTmuxAttach(task.session_id))
-			) {
-				return;
+			if (task.session_id && isValidSessionId(task.session_id)) {
+				vscode.window.showWarningMessage(
+					`Task session "${task.session_id}" is no longer live. Opening the project launcher and starting a new interactive resume.`,
+				);
 			}
 
 			await runCommandInProjectTerminalWithFallback(
@@ -1272,7 +1294,9 @@ export async function activate(
 						if (mapping) {
 							try {
 								await focusGhosttyWindow(mapping.bundlePath, sessionId);
-								if (sessionId && isValidSessionId(sessionId)) {
+								if (task) {
+									await selectTaskTmuxWindow(task);
+								} else if (sessionId && isValidSessionId(sessionId)) {
 									try {
 										await runExec("tmux", ["select-window", "-t", sessionId]);
 									} catch {
@@ -1298,18 +1322,7 @@ export async function activate(
 					if (task.terminal_backend === "tmux" && task.ghostty_bundle_id) {
 						try {
 							await focusGhosttyWindow(task.ghostty_bundle_id, task.session_id);
-							// M1-8: select the correct tmux window/tab after bringing Ghostty to front
-							if (task.session_id && isValidSessionId(task.session_id)) {
-								try {
-									await runExec("tmux", [
-										"select-window",
-										"-t",
-										task.session_id,
-									]);
-								} catch {
-									// Window selection failed — app still opened
-								}
-							}
+							await selectTaskTmuxWindow(task);
 							return;
 						} catch {
 							// Fall through to next strategy
@@ -1326,18 +1339,7 @@ export async function activate(
 							const fsModule = await import("node:fs");
 							if (fsModule.existsSync(task.bundle_path)) {
 								await focusGhosttyWindow(task.bundle_path, task.session_id);
-								// M1-8: select the correct tmux window/tab after bringing Ghostty to front
-								if (task.session_id && isValidSessionId(task.session_id)) {
-									try {
-										await runExec("tmux", [
-											"select-window",
-											"-t",
-											task.session_id,
-										]);
-									} catch {
-										// Window selection failed — app still opened
-									}
-								}
+								await selectTaskTmuxWindow(task);
 								return;
 							}
 						} catch {
@@ -1353,10 +1355,7 @@ export async function activate(
 						isValidSessionId(task.session_id)
 					) {
 						hasLiveTmuxSession = await isTaskTmuxSessionAlive(task);
-						if (
-							hasLiveTmuxSession &&
-							(await openGhosttyTmuxAttach(task.session_id))
-						) {
+						if (hasLiveTmuxSession && (await openGhosttyTmuxAttach(task))) {
 							return;
 						}
 					}
@@ -1364,11 +1363,17 @@ export async function activate(
 					if (task.terminal_backend === "tmux" && !hasLiveTmuxSession) {
 						const streamFile = agentStatusProvider?.resolveStreamFilePath(task);
 						if (streamFile) {
+							vscode.window.showInformationMessage(
+								`Task session "${task.session_id}" is no longer live. Opening the latest transcript instead.`,
+							);
 							await openTranscriptInEditor(streamFile);
 							return;
 						}
 
 						if (projectDir) {
+							vscode.window.showWarningMessage(
+								`Task session "${task.session_id}" is no longer live. Opening the project launcher instead.`,
+							);
 							await terminalManager?.runInProjectTerminal(projectDir);
 							return;
 						}
