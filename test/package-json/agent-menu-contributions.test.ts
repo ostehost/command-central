@@ -103,6 +103,20 @@ describe("package.json agent menu contributions", () => {
 		expect(exists).toBe(true);
 	});
 
+	test("registers stale agent command contributions", async () => {
+		const commands = await getCommands();
+		expect(
+			commands.some(
+				(item) => item.command === "commandCentral.markStaleAgentFailed",
+			),
+		).toBe(true);
+		expect(
+			commands.some(
+				(item) => item.command === "commandCentral.reapStaleAgents",
+			),
+		).toBe(true);
+	});
+
 	test("registers listWorktrees command contribution", async () => {
 		const commands = await getCommands();
 		const exists = commands.some(
@@ -264,6 +278,20 @@ describe("package.json agent menu contributions", () => {
 		expect(clearAction).toBeDefined();
 		expect(clearAction?.when).toContain("view == commandCentral.agentStatus");
 		expect(clearAction?.when).toContain(
+			"commandCentral.agentStatus.hasTerminalTasks",
+		);
+	});
+
+	test("adds stale-reap toolbar action gated by terminal-task context key", async () => {
+		const menu = await getViewTitleMenu();
+		const reapAction = menu.find(
+			(item) =>
+				item.command === "commandCentral.reapStaleAgents" &&
+				item.group === "navigation@7",
+		);
+		expect(reapAction).toBeDefined();
+		expect(reapAction?.when).toContain("view == commandCentral.agentStatus");
+		expect(reapAction?.when).toContain(
 			"commandCentral.agentStatus.hasTerminalTasks",
 		);
 	});

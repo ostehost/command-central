@@ -75,8 +75,11 @@ import { GroupingViewManager } from "./ui/grouping-view-manager.js";
 import {
 	clearCompletedAgentEntries,
 	countClearableAgentEntries,
+	markTaskFailedInRegistryMap,
+	markTasksFailedInRegistryMap,
 	parseTaskRegistry,
 	removeTaskFromRegistryMap,
+	STALE_AGENT_STATUS_DESCRIPTION,
 	serializeTaskRegistry,
 } from "./utils/agent-task-registry.js";
 import { buildOsteSpawnCommand, shellQuote } from "./utils/shell-command.js";
@@ -1207,6 +1210,41 @@ export async function activate(
 			fs.writeFileSync(tasksFilePath, serializeTaskRegistry(registry), "utf-8");
 		};
 
+		const mutateAgentTaskRegistry = async (
+			tasksFilePath: string,
+			mutateTasks: (tasks: Record<string, unknown>) => number,
+		): Promise<number> => {
+			const fs = await import("node:fs");
+			const initialRaw = fs.readFileSync(tasksFilePath, "utf-8");
+			const initialRegistry = parseTaskRegistry(initialRaw);
+			const initialUpdatedCount = mutateTasks(initialRegistry.tasks);
+			if (initialUpdatedCount === 0) {
+				return 0;
+			}
+
+			const latestRaw = fs.readFileSync(tasksFilePath, "utf-8");
+			let updatedCount = initialUpdatedCount;
+			const registryToWrite =
+				latestRaw === initialRaw
+					? initialRegistry
+					: (() => {
+							const latestRegistry = parseTaskRegistry(latestRaw);
+							const latestUpdatedCount = mutateTasks(latestRegistry.tasks);
+							if (latestUpdatedCount === 0) {
+								return null;
+							}
+							updatedCount = latestUpdatedCount;
+							return latestRegistry;
+						})();
+
+			if (!registryToWrite) {
+				return 0;
+			}
+
+			await writeRegistryWithBackup(tasksFilePath, latestRaw, registryToWrite);
+			return updatedCount;
+		};
+
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
 				"commandCentral.focusAgentTerminal",
@@ -1838,6 +1876,126 @@ export async function activate(
 				"commandCentral.clearTerminalTasks",
 				async () =>
 					vscode.commands.executeCommand("commandCentral.clearCompletedAgents"),
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.markStaleAgentFailed",
+				async (node?: { type: string; task?: AgentTask }) => {
+					const task = node?.task;
+					if (!task) {
+						vscode.window.showWarningMessage(
+							"No agent selected. Right-click an agent in the tree.",
+						);
+						return;
+					}
+					if (task.status !== "completed_stale") {
+						vscode.window.showInformationMessage(
+							`Agent "${task.id}" is not marked stale.`,
+						);
+						return;
+					}
+
+					const tasksFilePath = agentStatusProvider?.filePath;
+					if (!tasksFilePath) {
+						vscode.window.showErrorMessage(
+							"Agent tasks file not configured. Set commandCentral.agentTasksFile in settings.",
+						);
+						return;
+					}
+
+					try {
+						const updatedCount = await mutateAgentTaskRegistry(
+							tasksFilePath,
+							(tasks) =>
+								markTaskFailedInRegistryMap(
+									tasks,
+									task.id,
+									STALE_AGENT_STATUS_DESCRIPTION,
+								)
+									? 1
+									: 0,
+						);
+
+						if (updatedCount === 0) {
+							vscode.window.showInformationMessage(
+								`Agent "${task.id}" is already updated.`,
+							);
+							return;
+						}
+
+						agentStatusProvider?.reload();
+						vscode.window.showInformationMessage(
+							`Marked stale agent "${task.id}" as failed.`,
+						);
+					} catch (err) {
+						if (err instanceof SyntaxError) {
+							vscode.window.showErrorMessage(
+								"Failed to update stale agent: tasks.json is malformed.",
+							);
+							return;
+						}
+						vscode.window.showErrorMessage(
+							`Failed to update stale agent: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					}
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.reapStaleAgents",
+				async () => {
+					const tasksFilePath = agentStatusProvider?.filePath;
+					if (!tasksFilePath) {
+						vscode.window.showErrorMessage(
+							"Agent tasks file not configured. Set commandCentral.agentTasksFile in settings.",
+						);
+						return;
+					}
+
+					const staleTasks = agentStatusProvider?.getStaleLauncherTasks() ?? [];
+					if (staleTasks.length === 0) {
+						vscode.window.showInformationMessage("No stale agents found.");
+						return;
+					}
+
+					const confirm = await vscode.window.showWarningMessage(
+						`Found ${staleTasks.length} stale ${staleTasks.length === 1 ? "agent" : "agents"}. Mark as failed?`,
+						{ modal: true },
+						"Mark as Failed",
+					);
+					if (confirm !== "Mark as Failed") return;
+
+					try {
+						const staleTaskIds = staleTasks.map((task) => task.id);
+						const updatedCount = await mutateAgentTaskRegistry(
+							tasksFilePath,
+							(tasks) =>
+								markTasksFailedInRegistryMap(
+									tasks,
+									staleTaskIds,
+									STALE_AGENT_STATUS_DESCRIPTION,
+								),
+						);
+
+						if (updatedCount === 0) {
+							vscode.window.showInformationMessage("No stale agents found.");
+							return;
+						}
+
+						agentStatusProvider?.reload();
+						vscode.window.showInformationMessage(
+							`Marked ${updatedCount} stale ${updatedCount === 1 ? "agent" : "agents"} as failed.`,
+						);
+					} catch (err) {
+						if (err instanceof SyntaxError) {
+							vscode.window.showErrorMessage(
+								"Failed to reap stale agents: tasks.json is malformed.",
+							);
+							return;
+						}
+						vscode.window.showErrorMessage(
+							`Failed to reap stale agents: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					}
+				},
 			),
 			vscode.commands.registerCommand(
 				"commandCentral.removeAgentTask",

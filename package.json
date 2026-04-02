@@ -905,6 +905,12 @@
         "icon": "$(trash)"
       },
       {
+        "command": "commandCentral.markStaleAgentFailed",
+        "title": "Mark Stale Agent Failed",
+        "category": "Command Central",
+        "icon": "$(warning)"
+      },
+      {
         "command": "commandCentral.changeProjectIcon",
         "title": "Change Project Icon",
         "category": "Command Central",
@@ -915,6 +921,12 @@
         "title": "Clear Completed",
         "category": "Command Central",
         "icon": "$(trash)"
+      },
+      {
+        "command": "commandCentral.reapStaleAgents",
+        "title": "Reap Stale Agents",
+        "category": "Command Central",
+        "icon": "$(warning)"
       },
       {
         "command": "commandCentral.focusNextRunningAgent",
@@ -1411,6 +1423,11 @@
           "group": "inline"
         },
         {
+          "command": "commandCentral.markStaleAgentFailed",
+          "when": "viewItem == agentTask.completed_stale",
+          "group": "inline"
+        },
+        {
           "command": "commandCentral.viewAgentDiff",
           "when": "viewItem =~ /^agentTask\\./ || viewItem == discoveredAgent.running",
           "group": "inline"
@@ -1857,9 +1874,14 @@
           "group": "navigation@6"
         },
         {
+          "command": "commandCentral.reapStaleAgents",
+          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.hasTerminalTasks",
+          "group": "navigation@7"
+        },
+        {
           "command": "commandCentral.showDiscoveryDiagnostics",
           "when": "view == commandCentral.agentStatus",
-          "group": "navigation@7"
+          "group": "navigation@8"
         }
       ]
     },

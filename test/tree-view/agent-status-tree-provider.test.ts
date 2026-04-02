@@ -547,7 +547,7 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	describe("runtime health overlay for running status", () => {
-		test("downgrades unhealthy running tmux task to stopped for UI status/counts", () => {
+		test("overlays stuck dead running tmux task as completed_stale for UI status/counts", () => {
 			const task = createMockTask({
 				id: "ghost-running",
 				status: "running",
@@ -568,17 +568,23 @@ describe("AgentStatusTreeProvider", () => {
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
-			expect(provider.getTasks()[0]?.status).toBe("stopped");
+			expect(provider.getTasks()[0]?.status).toBe("completed_stale");
 
 			const children = provider.getChildren();
 			const summary = children.find((n) => n.type === "summary");
 			expect(summary).toBeDefined();
 			if (summary?.type === "summary") {
-				expect(summary.label).toContain("1 stopped");
+				expect(summary.label).toContain("1 done");
 				expect(summary.label).not.toContain("1 working");
 			}
 			const taskNode = getFirstTask(children);
 			const taskItem = provider.getTreeItem(taskNode);
+			expect(taskItem.description).toContain(
+				"Stale — session ended without completion signal",
+			);
+			const icon = taskItem.iconPath as { id: string; color?: { id: string } };
+			expect(icon.id).toBe("warning");
+			expect(icon.color?.id).toBe("charts.yellow");
 			expect(taskItem.command?.command).toBe(
 				"commandCentral.agentQuickActions",
 			);
@@ -600,6 +606,32 @@ describe("AgentStatusTreeProvider", () => {
 			provider.reload();
 
 			expect(provider.getTasks()[0]?.status).toBe("stopped");
+		});
+
+		test("getStaleLauncherTasks returns the display-overlay stale tasks", () => {
+			const task = createMockTask({
+				id: "stale-listing",
+				status: "running",
+				terminal_backend: "tmux",
+				started_at: new Date(Date.now() - 5 * 60 * 60_000).toISOString(),
+			});
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(
+				provider.getStaleLauncherTasks().map((candidate) => candidate.id),
+			).toEqual(["stale-listing"]);
 		});
 
 		test("uses terminal stream completion instead of stopped when session already finished", () => {
@@ -899,8 +931,7 @@ describe("AgentStatusTreeProvider", () => {
 				expect(summary).toBeDefined();
 				if (summary?.type === "summary") {
 					expect(summary.label).not.toContain("1 working");
-					expect(summary.label).toContain("1 stopped");
-					expect(summary.label).toContain("1 done");
+					expect(summary.label).toContain("2 done");
 				}
 
 				expect(vscodeMock.window.badge).toBeUndefined();
@@ -908,7 +939,7 @@ describe("AgentStatusTreeProvider", () => {
 				const staleTask = statusTasks.find(
 					(task) => task.id === "cc-screenshot-stale-running",
 				);
-				expect(staleTask?.status).toBe("stopped");
+				expect(staleTask?.status).toBe("completed_stale");
 				const statusBarItem = {
 					text: "",
 					tooltip: "",
@@ -921,8 +952,7 @@ describe("AgentStatusTreeProvider", () => {
 				vscodeMock.window.createStatusBarItem = mock(() => statusBarItem);
 				const statusBar = new AgentStatusBar();
 				statusBar.update(statusTasks);
-				expect(statusBarItem.text).toContain("1 attention");
-				expect(statusBarItem.text).toContain("1 done");
+				expect(statusBarItem.text).toContain("2 done");
 				expect(statusBarItem.text).not.toContain("working");
 				statusBar.dispose();
 			} finally {
@@ -2873,7 +2903,7 @@ describe("AgentStatusTreeProvider", () => {
 			["running", "sync~spin", "charts.yellow"],
 			["completed", "check", "charts.green"],
 			["completed_dirty", "check", "charts.green"],
-			["completed_stale", "check-all", "charts.green"],
+			["completed_stale", "warning", "charts.yellow"],
 			["failed", "error", "charts.red"],
 			["contract_failure", "warning", "charts.orange"],
 			["stopped", "debug-stop", "charts.purple"],

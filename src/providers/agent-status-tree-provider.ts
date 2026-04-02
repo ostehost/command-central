@@ -37,7 +37,10 @@ import {
 	countAgentStatuses,
 	formatCountSummary,
 } from "../utils/agent-counts.js";
-import { CLEARABLE_AGENT_TASK_STATUSES } from "../utils/agent-task-registry.js";
+import {
+	CLEARABLE_AGENT_TASK_STATUSES,
+	STALE_AGENT_STATUS_DESCRIPTION,
+} from "../utils/agent-task-registry.js";
 import { getModelAlias } from "../utils/model-aliases.js";
 import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
 import type { ListeningPort } from "../utils/port-detector.js";
@@ -771,6 +774,7 @@ export class AgentStatusTreeProvider
 	private _agentStatusView: vscode.TreeView<AgentNode> | null = null;
 	private previousStuckStates = new Map<string, boolean>();
 	private hasInitializedStuckState = false;
+	private staleTaskReasons = new Map<string, string>();
 	private readonly _tmuxSessionHealthCache = new Map<
 		string,
 		{ alive: boolean; checkedAt: number }
@@ -1172,6 +1176,13 @@ export class AgentStatusTreeProvider
 	}
 
 	private toDisplayTask(task: AgentTask): AgentTask {
+		const staleReason = this.staleTaskReasons.get(task.id);
+		if (staleReason) {
+			return this.applyRuntimeStatusOverlay(task, {
+				status: "completed_stale",
+				reason: staleReason,
+			});
+		}
 		if (task.status !== "running") return task;
 
 		const streamTerminalState = this.getStreamTerminalState(task);
@@ -1207,7 +1218,9 @@ export class AgentStatusTreeProvider
 						: task.exit_code
 					: overlay.exitCode,
 			error_message:
-				overlay.status === "stopped" || overlay.status === "failed"
+				overlay.status === "stopped" ||
+				overlay.status === "failed" ||
+				overlay.status === "completed_stale"
 					? (task.error_message ?? overlay.reason ?? null)
 					: task.error_message,
 		};
@@ -1602,6 +1615,7 @@ export class AgentStatusTreeProvider
 		this._discoveredAgents = this._agentRegistry
 			? this._agentRegistry.getDiscoveredAgents(this.getLauncherTasks())
 			: [];
+		this.checkStaleTransitions();
 		this.pruneDiffSummaryCache(
 			this.getDisplayLauncherTasks(),
 			this._allDiscoveredAgents,
@@ -1918,6 +1932,52 @@ export class AgentStatusTreeProvider
 		this.hasInitializedStuckState = true;
 	}
 
+	public checkStaleTransitions(): void {
+		const nextReasons = new Map<string, string>();
+		for (const task of Object.values(this.registry.tasks)) {
+			const reason = this.getStaleTransitionReason(task);
+			if (reason) {
+				nextReasons.set(task.id, reason);
+			}
+		}
+		this.staleTaskReasons = nextReasons;
+	}
+
+	public getStaleLauncherTasks(): AgentTask[] {
+		return this.getDisplayLauncherTasks().filter(
+			(task) => task.status === "completed_stale",
+		);
+	}
+
+	private getStaleTransitionReason(task: AgentTask): string | null {
+		if (task.status !== "running") return null;
+		if (this.getStreamTerminalState(task)) return null;
+		if (!this.isAgentStuck(task)) return null;
+		if (this.isRunningTaskHealthy(task)) return null;
+		if (!this.isTaskSessionConfirmedDead(task)) return null;
+		return STALE_AGENT_STATUS_DESCRIPTION;
+	}
+
+	private isTaskSessionConfirmedDead(task: AgentTask): boolean {
+		if (task.terminal_backend === "persist") {
+			return !this.isPersistTaskAlive(task);
+		}
+
+		if (
+			(task.terminal_backend === "tmux" ||
+				task.terminal_backend === undefined) &&
+			isValidSessionId(task.session_id)
+		) {
+			return !this.isTmuxSessionAlive(task.session_id, task.tmux_socket);
+		}
+
+		if (this.hasLiveDiscoveredSession(task)) {
+			return false;
+		}
+
+		return !this.isRunningTaskHealthy(task);
+	}
+
 	private revealTaskInSidebar(taskId: string): void {
 		if (!this._agentStatusView) return;
 		const taskElement = this.findTaskElement(taskId);
@@ -1942,6 +2002,7 @@ export class AgentStatusTreeProvider
 			const config = vscode.workspace.getConfiguration("commandCentral");
 			const intervalMs = config.get<number>("agentStatus.autoRefreshMs", 5000);
 			this.autoRefreshTimer = setInterval(() => {
+				this.checkStaleTransitions();
 				this.checkStuckTransitions();
 				this.scheduleTreeRefresh();
 			}, intervalMs);
@@ -3271,6 +3332,16 @@ export class AgentStatusTreeProvider
 				iconColor: "charts.yellow",
 			});
 		}
+		if (rawStatus === "running" && t.status === "completed_stale") {
+			details.push({
+				type: "detail",
+				label: STALE_AGENT_STATUS_DESCRIPTION,
+				value: "Mark as failed to persist the transition",
+				taskId: t.id,
+				icon: "alert",
+				iconColor: "charts.yellow",
+			});
+		}
 
 		if (this.isAgentStuck(t)) {
 			const thresholdMinutes = this.getStuckThresholdMinutes();
@@ -4216,8 +4287,8 @@ export class AgentStatusTreeProvider
 	/** Get launcher tasks with effective runtime status applied for UI display. */
 	getDisplayRegistryTasks(): Record<string, AgentTask> {
 		const displayTasks: Record<string, AgentTask> = {};
-		for (const [id, task] of Object.entries(this.registry.tasks)) {
-			displayTasks[id] = this.toDisplayTask(task);
+		for (const task of this.getDisplayLauncherTasks()) {
+			displayTasks[task.id] = task;
 		}
 		return displayTasks;
 	}
@@ -5079,11 +5150,15 @@ export class AgentStatusTreeProvider
 		const diffSummaryInline = this.getCachedDiffSummaryForTask(task);
 		const diffLoading =
 			!diffSummaryInline && this.isTaskDiffSummaryLoading(task);
-		const baseDescription = diffSummaryInline
-			? `${activityDesc} · ${task.project_name} · ${diffSummaryInline}`
+		const projectDescription = diffSummaryInline
+			? `${task.project_name} · ${diffSummaryInline}`
 			: diffLoading
-				? `${activityDesc} · ${task.project_name} · ${DIFF_LOADING_LABEL}`
-				: `${activityDesc} · ${task.project_name}`;
+				? `${task.project_name} · ${DIFF_LOADING_LABEL}`
+				: task.project_name;
+		const baseDescription =
+			task.status === "completed_stale"
+				? `${STALE_AGENT_STATUS_DESCRIPTION} · ${projectDescription}`
+				: `${activityDesc} · ${projectDescription}`;
 		const descriptionParts = [baseDescription];
 		if (modelDisplay?.alias) {
 			descriptionParts.push(modelDisplay.alias);
@@ -5115,9 +5190,13 @@ export class AgentStatusTreeProvider
 				.filter(Boolean)
 				.join("\n\n"),
 		);
-		item.iconPath = isStuck
-			? new vscode.ThemeIcon("warning", new vscode.ThemeColor("charts.yellow"))
-			: getStatusThemeIcon(task.status);
+		item.iconPath =
+			task.status === "completed_stale" || isStuck
+				? new vscode.ThemeIcon(
+						"warning",
+						new vscode.ThemeColor("charts.yellow"),
+					)
+				: getStatusThemeIcon(task.status);
 		item.contextValue = `agentTask.${task.status}`;
 		item.resourceUri = vscode.Uri.parse(`agent-task:${task.id}`);
 		const isRunning = task.status === "running";

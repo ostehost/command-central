@@ -18,6 +18,9 @@ import {
 import {
 	clearCompletedAgentEntries,
 	countClearableAgentEntries,
+	markTaskFailedInRegistryMap,
+	markTasksFailedInRegistryMap,
+	STALE_AGENT_STATUS_DESCRIPTION,
 } from "../../src/utils/agent-task-registry.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
@@ -551,6 +554,51 @@ describe("clearCompletedAgents command", () => {
 		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
 			"No completed agent entries to remove.",
 		);
+	});
+});
+
+describe("stale agent mutation commands", () => {
+	test("markStaleAgentFailed updates a stale task to failed", () => {
+		const tasks: Record<string, unknown> = {
+			stale: { id: "stale", status: "completed_stale" },
+			running: { id: "running", status: "running" },
+		};
+
+		const updated = markTaskFailedInRegistryMap(
+			tasks,
+			"stale",
+			STALE_AGENT_STATUS_DESCRIPTION,
+			"2026-04-02T18:10:00.000Z",
+		);
+
+		expect(updated).toBe(true);
+		expect(tasks["stale"]).toMatchObject({
+			status: "failed",
+			error_message: STALE_AGENT_STATUS_DESCRIPTION,
+			updated_at: "2026-04-02T18:10:00.000Z",
+		});
+		expect(tasks["running"]).toEqual({ id: "running", status: "running" });
+	});
+
+	test("reapStaleAgents marks all stale display tasks as failed", () => {
+		const tasks: Record<string, unknown> = {
+			staleOne: { id: "stale-1", status: "completed_stale" },
+			staleTwo: { id: "stale-2", status: "completed_stale" },
+			completed: { id: "done", status: "completed" },
+		};
+		const staleTaskIds = ["stale-1", "stale-2"];
+
+		const updated = markTasksFailedInRegistryMap(
+			tasks,
+			staleTaskIds,
+			STALE_AGENT_STATUS_DESCRIPTION,
+			"2026-04-02T18:11:00.000Z",
+		);
+
+		expect(updated).toBe(2);
+		expect(tasks["staleOne"]).toMatchObject({ status: "failed" });
+		expect(tasks["staleTwo"]).toMatchObject({ status: "failed" });
+		expect(tasks["completed"]).toEqual({ id: "done", status: "completed" });
 	});
 });
 

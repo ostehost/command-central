@@ -3,6 +3,9 @@ export interface ParsedTaskRegistry {
 	tasks: Record<string, unknown>;
 }
 
+export const STALE_AGENT_STATUS_DESCRIPTION =
+	"Stale — session ended without completion signal";
+
 export const CLEARABLE_AGENT_TASK_STATUSES = new Set([
 	"completed",
 	"completed_dirty",
@@ -39,28 +42,10 @@ export function removeTaskFromRegistryMap(
 	tasks: Record<string, unknown>,
 	taskId: string,
 ): boolean {
-	if (taskId in tasks) {
-		delete tasks[taskId];
-		return true;
-	}
-
-	for (const [key, value] of Object.entries(tasks)) {
-		const valueId =
-			typeof value === "object" && value
-				? (value as { id?: unknown }).id
-				: undefined;
-		if (
-			typeof value === "object" &&
-			value &&
-			"id" in value &&
-			valueId === taskId
-		) {
-			delete tasks[key];
-			return true;
-		}
-	}
-
-	return false;
+	const entryKey = findTaskRegistryEntryKey(tasks, taskId);
+	if (!entryKey) return false;
+	delete tasks[entryKey];
+	return true;
 }
 
 export function countClearableAgentEntries(
@@ -95,4 +80,74 @@ export function clearCompletedAgentEntries(
 		}
 	}
 	return removed;
+}
+
+export function markTaskFailedInRegistryMap(
+	tasks: Record<string, unknown>,
+	taskId: string,
+	message = STALE_AGENT_STATUS_DESCRIPTION,
+	timestamp = new Date().toISOString(),
+): boolean {
+	const entry = findTaskRegistryEntry(tasks, taskId);
+	if (!entry) return false;
+
+	entry.status = "failed";
+	entry.error_message = message;
+	entry.completed_at =
+		typeof entry.completed_at === "string" && entry.completed_at.length > 0
+			? entry.completed_at
+			: timestamp;
+	entry.updated_at = timestamp;
+	return true;
+}
+
+export function markTasksFailedInRegistryMap(
+	tasks: Record<string, unknown>,
+	taskIds: Iterable<string>,
+	message = STALE_AGENT_STATUS_DESCRIPTION,
+	timestamp = new Date().toISOString(),
+): number {
+	let updated = 0;
+	for (const taskId of taskIds) {
+		if (markTaskFailedInRegistryMap(tasks, taskId, message, timestamp)) {
+			updated += 1;
+		}
+	}
+	return updated;
+}
+
+function findTaskRegistryEntryKey(
+	tasks: Record<string, unknown>,
+	taskId: string,
+): string | null {
+	if (taskId in tasks) {
+		return taskId;
+	}
+
+	for (const [key, value] of Object.entries(tasks)) {
+		const valueId =
+			typeof value === "object" && value
+				? (value as { id?: unknown }).id
+				: undefined;
+		if (
+			typeof value === "object" &&
+			value &&
+			"id" in value &&
+			valueId === taskId
+		) {
+			return key;
+		}
+	}
+
+	return null;
+}
+
+function findTaskRegistryEntry(
+	tasks: Record<string, unknown>,
+	taskId: string,
+): Record<string, unknown> | null {
+	const entryKey = findTaskRegistryEntryKey(tasks, taskId);
+	if (!entryKey) return null;
+	const entry = tasks[entryKey];
+	return typeof entry === "object" && entry ? entry : null;
 }

@@ -6,6 +6,7 @@ export type AgentQuickActionId =
 	| "viewDiff"
 	| "showOutput"
 	| "focusTerminal"
+	| "markFailed"
 	| "restart"
 	| "remove";
 
@@ -38,6 +39,11 @@ const QUICK_ACTIONS: Record<AgentQuickActionId, AgentQuickActionDefinition> = {
 		label: "Focus Terminal",
 		command: "commandCentral.focusAgentTerminal",
 	},
+	markFailed: {
+		id: "markFailed",
+		label: "Mark as Failed",
+		command: "commandCentral.markStaleAgentFailed",
+	},
 	restart: {
 		id: "restart",
 		label: "Restart",
@@ -53,7 +59,13 @@ const QUICK_ACTIONS: Record<AgentQuickActionId, AgentQuickActionDefinition> = {
 const STATUS_ACTIONS: Partial<Record<AgentTaskStatus, AgentQuickActionId[]>> = {
 	completed: ["viewDiff", "showOutput", "focusTerminal", "restart"],
 	completed_dirty: ["viewDiff", "showOutput", "focusTerminal", "restart"],
-	completed_stale: ["viewDiff", "showOutput", "focusTerminal", "restart"],
+	completed_stale: [
+		"viewDiff",
+		"showOutput",
+		"focusTerminal",
+		"markFailed",
+		"restart",
+	],
 	failed: ["showOutput", "viewDiff", "restart", "remove"],
 	contract_failure: ["showOutput", "viewDiff", "restart", "remove"],
 	stopped: ["showOutput", "viewDiff", "restart", "remove"],

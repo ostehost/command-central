@@ -14,6 +14,19 @@ describe("agent quick action options", () => {
 		]);
 	});
 
+	test("completed stale tasks include mark-as-failed", () => {
+		const labels = getAgentQuickActions("completed_stale", false).map(
+			(action) => action.label,
+		);
+		expect(labels).toEqual([
+			"View Diff",
+			"Show Output",
+			"Focus Terminal",
+			"Mark as Failed",
+			"Restart",
+		]);
+	});
+
 	test("failed tasks include output/diff/restart/remove", () => {
 		const labels = getAgentQuickActions("failed", false).map(
 			(action) => action.label,
