@@ -605,7 +605,9 @@ export class TerminalManager {
 			if (info.tmuxSession && command) {
 				// Send command to existing launcher session via oste-steer.sh
 				try {
-					await this.execCommand("oste-steer.sh", [
+					const steerPath =
+						await this.resolveLauncherHelperScriptPath("oste-steer.sh");
+					await this.execCommand(steerPath, [
 						info.tmuxSession,
 						"--raw",
 						command,
@@ -641,7 +643,9 @@ export class TerminalManager {
 				try {
 					const newInfo = await this.getTerminalInfo(projectDir);
 					if (newInfo.tmuxSession) {
-						await this.execCommand("oste-steer.sh", [
+						const steerPath2 =
+							await this.resolveLauncherHelperScriptPath("oste-steer.sh");
+						await this.execCommand(steerPath2, [
 							newInfo.tmuxSession,
 							"--raw",
 							command,
