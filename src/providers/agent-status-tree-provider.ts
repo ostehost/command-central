@@ -119,6 +119,7 @@ export type AgentNode =
 	| DiscoveredNode
 	| OpenClawTaskNode
 	| BackgroundTasksNode
+	| StatusTimeGroupNode
 	| OlderRunsNode
 	| StateNode;
 
@@ -169,11 +170,23 @@ export interface StatusGroupNode {
 	nodes: SortableAgentNode[];
 }
 
+export type StatusTimeGroupPeriod = "today" | "yesterday" | "older";
+
+export interface StatusTimeGroupNode {
+	type: "statusTimeGroup";
+	status: AgentStatusGroup;
+	period: StatusTimeGroupPeriod;
+	label: string;
+	nodes: SortableAgentNode[];
+	collapsibleState: vscode.TreeItemCollapsibleState;
+}
+
 export type TreeElement =
 	| TaskNode
 	| ProjectGroupNode
 	| FolderGroupNode
-	| StatusGroupNode;
+	| StatusGroupNode
+	| StatusTimeGroupNode;
 
 export interface DetailNode {
 	type: "detail";
@@ -473,6 +486,7 @@ const SORT_MODE_INDICATOR_LABELS: Record<AgentStatusSortMode, string> = {
 
 const DIFF_LOADING_LABEL = "Loading diff...";
 const PORT_LOADING_LABEL = "Detecting ports...";
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const STATUS_GROUP_LABELS: Record<AgentStatusGroup, string> = {
 	running: "Running",
@@ -1955,6 +1969,9 @@ export class AgentStatusTreeProvider
 		if (element.type === "statusGroup") {
 			return this.createStatusGroupItem(element);
 		}
+		if (element.type === "statusTimeGroup") {
+			return this.createStatusTimeGroupItem(element);
+		}
 		if (element.type === "fileChange") {
 			return this.createFileChangeItem(element);
 		}
@@ -2168,7 +2185,11 @@ export class AgentStatusTreeProvider
 		}
 
 		if (element.type === "statusGroup") {
-			return this.applyAgentVisibilityCap(element.nodes);
+			return this.getStatusGroupChildren(element);
+		}
+
+		if (element.type === "statusTimeGroup") {
+			return element.nodes.map((node) => this.toAgentNode(node));
 		}
 
 		if (element.type === "olderRuns") {
@@ -2660,6 +2681,94 @@ export class AgentStatusTreeProvider
 				};
 			})
 			.filter((node): node is StatusGroupNode => Boolean(node));
+	}
+
+	private shouldUseStatusTimeGrouping(
+		status: AgentStatusGroup,
+		nodes: SortableAgentNode[],
+	): boolean {
+		if (status === "running") return false;
+		if (status === "done") return true;
+		return nodes.length > 3;
+	}
+
+	private getStatusGroupRecentThresholdMs(status: AgentStatusGroup): number {
+		if (status === "running") return Number.POSITIVE_INFINITY;
+		if (status === "attention") return 2 * DAY_MS;
+		return DAY_MS;
+	}
+
+	private getStatusTimeGroupPeriod(
+		node: SortableAgentNode,
+		_now: number = Date.now(),
+	): StatusTimeGroupPeriod {
+		const activityMs = this.getNodeActivityTimeMs(node);
+		if (activityMs <= 0) return "older";
+
+		const ageMs = Math.max(0, _now - activityMs);
+		if (ageMs <= DAY_MS) return "today";
+		if (ageMs <= 2 * DAY_MS) return "yesterday";
+		return "older";
+	}
+
+	private buildStatusTimeGroups(
+		status: AgentStatusGroup,
+		nodes: SortableAgentNode[],
+	): StatusTimeGroupNode[] {
+		const now = Date.now();
+		const grouped = new Map<StatusTimeGroupPeriod, SortableAgentNode[]>();
+
+		for (const node of nodes) {
+			const period = this.getStatusTimeGroupPeriod(node, now);
+			const bucket = grouped.get(period) ?? [];
+			bucket.push(node);
+			grouped.set(period, bucket);
+		}
+
+		return (["today", "yesterday", "older"] as StatusTimeGroupPeriod[])
+			.map((period) => {
+				const periodNodes = grouped.get(period) ?? [];
+				if (periodNodes.length === 0) return null;
+
+				const labelBase =
+					period === "today"
+						? "Today"
+						: period === "yesterday"
+							? "Yesterday"
+							: "Older";
+
+				return {
+					type: "statusTimeGroup" as const,
+					status,
+					period,
+					label: `${labelBase} (${periodNodes.length})`,
+					nodes: periodNodes,
+					collapsibleState:
+						period === "older"
+							? vscode.TreeItemCollapsibleState.Collapsed
+							: vscode.TreeItemCollapsibleState.Expanded,
+				};
+			})
+			.filter((group): group is StatusTimeGroupNode => Boolean(group));
+	}
+
+	private getStatusGroupChildren(node: StatusGroupNode): AgentNode[] {
+		if (!this.shouldUseStatusTimeGrouping(node.status, node.nodes)) {
+			return this.applyAgentVisibilityCap(node.nodes);
+		}
+
+		return this.buildStatusTimeGroups(node.status, node.nodes);
+	}
+
+	private statusGroupHasRecentItems(node: StatusGroupNode): boolean {
+		if (node.status === "running") return true;
+
+		const now = Date.now();
+		const thresholdMs = this.getStatusGroupRecentThresholdMs(node.status);
+		return node.nodes.some((child) => {
+			const activityMs = this.getNodeActivityTimeMs(child);
+			return activityMs > 0 && now - activityMs <= thresholdMs;
+		});
 	}
 
 	private isAlwaysVisibleAgentNode(node: SortableAgentNode): boolean {
@@ -3907,34 +4016,100 @@ export class AgentStatusTreeProvider
 			const visibleTasks = this.isRunningOnlyFilterEnabled()
 				? allTasks.filter((task) => task.status === "running")
 				: allTasks;
-			const showOpenClawInline = this.getSortMode() === "recency";
-			const flatRootNodes = this.applyAgentVisibilityCap(
-				this.sortAgentNodes([
-					...visibleTasks.map(
-						(task) =>
-							({ type: "task" as const, task }) satisfies SortableAgentNode,
-					),
-					...this.getScopedDiscoveredAgents().map(
-						(agent) =>
-							({
-								type: "discovered" as const,
-								agent,
-							}) satisfies SortableAgentNode,
-					),
-					...(showOpenClawInline
-						? openclawTasks.map(
-								(task) =>
-									({
-										type: "openclawTask" as const,
-										task,
-									}) satisfies SortableAgentNode,
-							)
-						: []),
-				]),
-			);
+			const sortMode = this.getSortMode();
+			const showOpenClawInline = sortMode === "recency";
+			const sortableNodes = this.sortAgentNodes([
+				...visibleTasks.map(
+					(task) =>
+						({ type: "task" as const, task }) satisfies SortableAgentNode,
+				),
+				...this.getScopedDiscoveredAgents().map(
+					(agent) =>
+						({
+							type: "discovered" as const,
+							agent,
+						}) satisfies SortableAgentNode,
+				),
+				...(showOpenClawInline
+					? openclawTasks.map(
+							(task) =>
+								({
+									type: "openclawTask" as const,
+									task,
+								}) satisfies SortableAgentNode,
+						)
+					: []),
+			]);
+			const flatRootNodes =
+				sortMode === "recency"
+					? this.applyAgentVisibilityCap(sortableNodes)
+					: this.buildStatusGroupNodes(sortableNodes);
 			const olderRuns = flatRootNodes.find(
 				(node): node is OlderRunsNode => node.type === "olderRuns",
 			);
+
+			if (sortMode !== "recency") {
+				const statusGroups = flatRootNodes.filter(
+					(node): node is StatusGroupNode => node.type === "statusGroup",
+				);
+
+				if (element.type === "statusTimeGroup") {
+					return statusGroups.find((group) => group.status === element.status);
+				}
+
+				if (
+					element.type === "task" ||
+					element.type === "discovered" ||
+					element.type === "openclawTask"
+				) {
+					const targetNode =
+						element.type === "task"
+							? ({
+									type: "task" as const,
+									task: element.task,
+								} satisfies SortableAgentNode)
+							: element.type === "discovered"
+								? ({
+										type: "discovered" as const,
+										agent: element.agent,
+									} satisfies SortableAgentNode)
+								: ({
+										type: "openclawTask" as const,
+										task: element.task,
+									} satisfies SortableAgentNode);
+
+					for (const group of statusGroups) {
+						const groupChildren = this.getStatusGroupChildren(group);
+						const nestedTimeGroup = groupChildren.find(
+							(node): node is StatusTimeGroupNode =>
+								node.type === "statusTimeGroup" &&
+								node.nodes.some((child) =>
+									this.matchesSortableNode(child, targetNode),
+								),
+						);
+						if (nestedTimeGroup) {
+							return nestedTimeGroup;
+						}
+
+						if (
+							groupChildren.some(
+								(node) =>
+									(node.type === "task" &&
+										targetNode.type === "task" &&
+										node.task.id === targetNode.task.id) ||
+									(node.type === "discovered" &&
+										targetNode.type === "discovered" &&
+										node.agent.pid === targetNode.agent.pid) ||
+									(node.type === "openclawTask" &&
+										targetNode.type === "openclawTask" &&
+										node.task.taskId === targetNode.task.taskId),
+							)
+						) {
+							return group;
+						}
+					}
+				}
+			}
 
 			if (olderRuns && element.type === "task") {
 				const sortableNode = { type: "task" as const, task: element.task };
@@ -4544,14 +4719,24 @@ export class AgentStatusTreeProvider
 	private createStatusGroupItem(node: StatusGroupNode): vscode.TreeItem {
 		const count = node.nodes.length;
 		const item = new vscode.TreeItem(
-			STATUS_GROUP_LABELS[node.status],
-			node.status === "done"
-				? vscode.TreeItemCollapsibleState.Collapsed
-				: vscode.TreeItemCollapsibleState.Expanded,
+			`${STATUS_GROUP_LABELS[node.status]} · ${count} ${count === 1 ? "agent" : "agents"}`,
+			this.statusGroupHasRecentItems(node)
+				? vscode.TreeItemCollapsibleState.Expanded
+				: vscode.TreeItemCollapsibleState.Collapsed,
 		);
-		item.description = count === 1 ? "1 agent" : `${count} agents`;
+		item.id = `status-group:${node.status}`;
 		item.contextValue = "statusGroup";
 		item.iconPath = STATUS_GROUP_ICONS[node.status];
+		return item;
+	}
+
+	private createStatusTimeGroupItem(
+		node: StatusTimeGroupNode,
+	): vscode.TreeItem {
+		const item = new vscode.TreeItem(node.label, node.collapsibleState);
+		item.id = `status-time-group:${node.status}:${node.period}`;
+		item.contextValue = "statusTimeGroup";
+		item.iconPath = new vscode.ThemeIcon("calendar");
 		return item;
 	}
 
@@ -4606,14 +4791,12 @@ export class AgentStatusTreeProvider
 		);
 	}
 
-	private getTaskStatusTimeDescription(task: AgentTask): string {
-		if (task.status === "running") {
-			return `running · ${formatElapsed(task.started_at)}`;
-		}
-
+	private getTaskActivityDescription(task: AgentTask): string {
 		const reference =
-			task.completed_at ?? task.updated_at ?? task.started_at ?? null;
-		return `${getStatusDisplayLabel(task.status)} · ${relativeTime(reference)}`;
+			task.status === "running"
+				? task.started_at
+				: (task.completed_at ?? task.updated_at ?? task.started_at ?? null);
+		return relativeTime(reference);
 	}
 
 	private getProjectGroupRelativeActivity(
@@ -4695,7 +4878,7 @@ export class AgentStatusTreeProvider
 
 	private createTaskItem(task: AgentTask): vscode.TreeItem {
 		const roleIcon = task.role ? ROLE_ICONS[task.role] : null;
-		const statusTimeDesc = this.getTaskStatusTimeDescription(task);
+		const activityDesc = this.getTaskActivityDescription(task);
 		const projectIcon = this.getProjectIcon(task.project_dir, {
 			launcherIcon: task.project_icon,
 		});
@@ -4706,10 +4889,10 @@ export class AgentStatusTreeProvider
 		const diffLoading =
 			!diffSummaryInline && this.isTaskDiffSummaryLoading(task);
 		const baseDescription = diffSummaryInline
-			? `${task.project_name} · ${statusTimeDesc} · ${diffSummaryInline}`
+			? `${activityDesc} · ${task.project_name} · ${diffSummaryInline}`
 			: diffLoading
-				? `${task.project_name} · ${statusTimeDesc} · ${DIFF_LOADING_LABEL}`
-				: `${task.project_name} · ${statusTimeDesc}`;
+				? `${activityDesc} · ${task.project_name} · ${DIFF_LOADING_LABEL}`
+				: `${activityDesc} · ${task.project_name}`;
 		const description = isStuck
 			? `${baseDescription} (possibly stuck)`
 			: baseDescription;

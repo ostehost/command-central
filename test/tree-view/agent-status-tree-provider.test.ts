@@ -191,6 +191,22 @@ function getStatusGroupNode(
 	return group;
 }
 
+function getStatusTimeGroupNode(
+	children: AgentNode[],
+	period: "today" | "yesterday" | "older",
+): Extract<AgentNode, { type: "statusTimeGroup" }> {
+	const group = children.find(
+		(
+			node,
+		): node is Extract<
+			AgentNode,
+			{ type: "statusTimeGroup"; period: "today" | "yesterday" | "older" }
+		> => node.type === "statusTimeGroup" && node.period === period,
+	);
+	if (!group) throw new Error(`No status time group found for ${period}`);
+	return group;
+}
+
 function setAgentStatusConfig(
 	vscodeMock: ReturnType<typeof setupVSCodeMock>,
 	options: {
@@ -1665,18 +1681,32 @@ describe("AgentStatusTreeProvider", () => {
 		expect(
 			(attentionChildren[0] as { type: "task"; task: AgentTask }).task.id,
 		).toBe("failed-middle");
-		expect((doneChildren[0] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"completed-latest",
-		);
+		expect(doneChildren[0]?.type).toBe("statusTimeGroup");
+		const doneTodayGroup = getStatusTimeGroupNode(doneChildren, "today");
+		const doneTodayChildren = provider.getChildren(doneTodayGroup);
+		expect(doneTodayChildren).toHaveLength(1);
+		expect(
+			(doneTodayChildren[0] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("completed-latest");
 		expect(getSummaryNode(children).label).toContain("▶ Active");
 	});
 
-	test("status sorting renders collapsible status groups with completed collapsed by default", () => {
+	test("status sorting renders count badges on group headers and collapses old completed groups by default", () => {
 		setAgentStatusConfig(vscodeMock, { sortMode: "status" });
 
 		const running = createMockTask({ id: "running", status: "running" });
-		const completed = createMockTask({ id: "completed", status: "completed" });
-		const stopped = createMockTask({ id: "stopped", status: "stopped" });
+		const completed = createMockTask({
+			id: "completed",
+			status: "completed",
+			started_at: new Date(Date.now() - 4 * 24 * 60 * 60_000).toISOString(),
+			completed_at: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString(),
+		});
+		const stopped = createMockTask({
+			id: "stopped",
+			status: "stopped",
+			started_at: new Date(Date.now() - 4 * 24 * 60 * 60_000).toISOString(),
+			completed_at: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString(),
+		});
 		provider.readRegistry = () =>
 			createMockRegistry({
 				[running.id]: running,
@@ -1689,9 +1719,103 @@ describe("AgentStatusTreeProvider", () => {
 		const runningGroup = getStatusGroupNode(children, "running");
 		const doneGroup = getStatusGroupNode(children, "done");
 		const attentionGroup = getStatusGroupNode(children, "attention");
-		expect(provider.getTreeItem(runningGroup).label).toBe("Running");
-		expect(provider.getTreeItem(attentionGroup).label).toBe("Failed & Stopped");
+		expect(provider.getTreeItem(runningGroup).label).toBe("Running · 1 agent");
+		expect(provider.getTreeItem(attentionGroup).label).toBe(
+			"Failed & Stopped · 1 agent",
+		);
 		expect(provider.getTreeItem(doneGroup).collapsibleState).toBe(1);
+	});
+
+	test("done groups create time sub-groups and collapse older buckets", () => {
+		setAgentStatusConfig(vscodeMock, { sortMode: "status" });
+		const now = Date.now();
+
+		const recentDone = createMockTask({
+			id: "done-recent",
+			status: "completed",
+			started_at: new Date(now - 3 * 60 * 60_000).toISOString(),
+			completed_at: new Date(now - 2 * 60 * 60_000).toISOString(),
+		});
+		const yesterdayDone = createMockTask({
+			id: "done-yesterday",
+			status: "completed",
+			started_at: new Date(now - 31 * 60 * 60_000).toISOString(),
+			completed_at: new Date(now - 30 * 60 * 60_000).toISOString(),
+		});
+		const olderDone = createMockTask({
+			id: "done-older",
+			status: "completed",
+			started_at: new Date(now - 5 * 24 * 60 * 60_000).toISOString(),
+			completed_at: new Date(now - 4 * 24 * 60 * 60_000).toISOString(),
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[recentDone.id]: recentDone,
+				[yesterdayDone.id]: yesterdayDone,
+				[olderDone.id]: olderDone,
+			});
+		provider.reload();
+
+		const doneGroup = getStatusGroupNode(provider.getChildren(), "done");
+		const doneChildren = provider.getChildren(doneGroup);
+		expect(doneChildren.map((node) => node.type)).toEqual([
+			"statusTimeGroup",
+			"statusTimeGroup",
+			"statusTimeGroup",
+		]);
+
+		const todayGroup = getStatusTimeGroupNode(doneChildren, "today");
+		const yesterdayGroup = getStatusTimeGroupNode(doneChildren, "yesterday");
+		const olderGroup = getStatusTimeGroupNode(doneChildren, "older");
+		expect(todayGroup.label).toBe("Today (1)");
+		expect(yesterdayGroup.label).toBe("Yesterday (1)");
+		expect(olderGroup.label).toBe("Older (1)");
+		expect(provider.getTreeItem(olderGroup).collapsibleState).toBe(1);
+	});
+
+	test("attention groups stay flat until they exceed three items", () => {
+		setAgentStatusConfig(vscodeMock, { sortMode: "status" });
+		const now = Date.now();
+		const failedTasks = Array.from({ length: 3 }, (_, index) =>
+			createMockTask({
+				id: `failed-${index + 1}`,
+				status: "failed",
+				completed_at: new Date(now - (index + 1) * 60 * 60_000).toISOString(),
+			}),
+		);
+		provider.readRegistry = () =>
+			createMockRegistry(
+				Object.fromEntries(failedTasks.map((task) => [task.id, task])),
+			);
+		provider.reload();
+
+		const attentionGroup = getStatusGroupNode(
+			provider.getChildren(),
+			"attention",
+		);
+		const attentionChildren = provider.getChildren(attentionGroup);
+		expect(attentionChildren.every((node) => node.type === "task")).toBe(true);
+	});
+
+	test("running groups stay flat even in status mode", () => {
+		setAgentStatusConfig(vscodeMock, { sortMode: "status" });
+		const now = Date.now();
+		const runningTasks = Array.from({ length: 2 }, (_, index) =>
+			createMockTask({
+				id: `running-${index + 1}`,
+				status: "running",
+				started_at: new Date(now - (index + 1) * 60_000).toISOString(),
+			}),
+		);
+		provider.readRegistry = () =>
+			createMockRegistry(
+				Object.fromEntries(runningTasks.map((task) => [task.id, task])),
+			);
+		provider.reload();
+
+		const runningGroup = getStatusGroupNode(provider.getChildren(), "running");
+		const runningChildren = provider.getChildren(runningGroup);
+		expect(runningChildren.every((node) => node.type === "task")).toBe(true);
 	});
 
 	test("reload preserves diff cache entries when task identity is unchanged", () => {
@@ -3116,13 +3240,13 @@ describe("AgentStatusTreeProvider", () => {
 	});
 
 	describe("task status time descriptions", () => {
-		test("running tasks show elapsed time since start", () => {
+		test("running tasks show relative time before the project name", () => {
 			const task = createMockTask({
 				status: "running",
 				started_at: new Date(Date.now() - 5 * 60_000).toISOString(),
 			});
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).toContain("running · 5m");
+			expect(item.description).toContain("5m ago · My App");
 		});
 
 		test("completed tasks show time since completion instead of duration", () => {
@@ -3132,7 +3256,7 @@ describe("AgentStatusTreeProvider", () => {
 				completed_at: new Date(Date.now() - 60 * 60_000).toISOString(),
 			});
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).toContain("completed · 1h ago");
+			expect(item.description).toContain("1h ago · My App");
 			expect(item.description).not.toContain("Completed 2h");
 			expect(item.description).not.toContain("Completed in");
 		});
@@ -3144,7 +3268,7 @@ describe("AgentStatusTreeProvider", () => {
 				completed_at: new Date(Date.now() - 30 * 60_000).toISOString(),
 			});
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).toContain("failed · 30m ago");
+			expect(item.description).toContain("30m ago · My App");
 			expect(item.description).not.toContain("Failed after");
 		});
 
@@ -3155,7 +3279,7 @@ describe("AgentStatusTreeProvider", () => {
 				completed_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
 			});
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).toContain("stopped · 2h ago");
+			expect(item.description).toContain("2h ago · My App");
 			expect(item.description).not.toContain("Stopped after");
 		});
 	});
@@ -4609,16 +4733,16 @@ describe("AgentStatusTreeProvider", () => {
 			expect(item.description).toContain("My App");
 		});
 
-		test("task item description format: project · elapsed · diff", () => {
+		test("task item description format: elapsed · project · diff", () => {
 			const task = createMockTask({
 				status: "running",
 				project_name: "my-project",
-				started_at: new Date().toISOString(),
+				started_at: new Date(Date.now() - 60_000).toISOString(),
 			});
 			provider.getDiffSummary = () => "1 files · +10 / -5";
 			const item = provider.getTreeItem({ type: "task", task });
 			const desc = item.description as string;
-			expect(desc).toContain("my-project");
+			expect(desc).toContain("1m ago · my-project");
 			expect(desc).toContain("1 files · +10 / -5");
 		});
 

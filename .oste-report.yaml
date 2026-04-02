@@ -1,0 +1,8 @@
+task_id: "cc-ui-consistency-v2"
+status: "success"
+summary: "Aligned Agent Status grouping, count badges, and descriptions with Git Sort patterns."
+files_changed:
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+tests_passing: true
+next_steps: "Verify the Agent Status sidebar behavior in VS Code against mixed recent and older task data."
