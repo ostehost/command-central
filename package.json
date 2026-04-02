@@ -213,57 +213,10 @@
           "description": "Minutes of inactivity before an agent is flagged as potentially stuck",
           "scope": "window"
         },
-        "commandCentral.agentStatus.showOnlyRunning": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show only running agents in the Agent Status tree",
-          "scope": "window"
-        },
-        "commandCentral.agentStatus.scope": {
-          "type": "string",
-          "enum": [
-            "all",
-            "currentProject"
-          ],
-          "default": "all",
-          "description": "Scope Agent Status to all tracked agents or only the current workspace folders.",
-          "scope": "window"
-        },
         "commandCentral.agentStatus.groupByProject": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Group agents by project in the Agent Status tree",
-          "scope": "window"
-        },
-        "commandCentral.agentStatus.sortMode": {
-          "type": "string",
-          "enum": [
-            "recency",
-            "status",
-            "status-recency"
-          ],
-          "default": "recency",
-          "enumDescriptions": [
-            "Sort all agents by most recent activity first",
-            "Sort by status order: running, then completed, then failed",
-            "Group by status, then sort each status group by recency"
-          ],
-          "markdownDescription": "Controls how agents are sorted in the Agent Status tree. `recency` shows the latest work first. `status` keeps the current running-then-completed-then-failed ordering. `status-recency` keeps that status grouping but sorts each group by most recent activity.",
-          "scope": "window"
-        },
-        "commandCentral.agentStatus.maxVisibleAgents": {
-          "type": "number",
-          "default": 50,
-          "minimum": 10,
-          "maximum": 500,
-          "description": "Maximum number of non-expanded agent runs shown before Agent Status moves older runs behind a Show older runs node. Running agents stay visible regardless of this cap.",
-          "scope": "window"
-        },
-        "commandCentral.agentStatus.sortByStatus": {
-          "type": "boolean",
-          "default": false,
-          "description": "Deprecated migration alias for the previous status-priority sort toggle. Use commandCentral.agentStatus.sortMode instead.",
-          "deprecationMessage": "Deprecated. Use commandCentral.agentStatus.sortMode instead.",
           "scope": "window"
         },
         "commandCentral.agentStatus.notifications": {
@@ -276,16 +229,6 @@
           "type": "boolean",
           "default": true,
           "description": "Bounce the VS Code Dock icon when agents complete, fail, or become stuck (macOS only)",
-          "scope": "window"
-        },
-        "commandCentral.agentStatus.defaultBackend": {
-          "type": "string",
-          "enum": [
-            "codex",
-            "gemini"
-          ],
-          "default": "codex",
-          "description": "Default agent backend for launched terminals. Claude Code is disabled for terminal spawns.",
           "scope": "window"
         },
         "commandCentral.notifications.onCompletion": {
@@ -828,41 +771,6 @@
         "icon": "$(pulse)"
       },
       {
-        "command": "commandCentral.cycleSortMode",
-        "title": "Agent Status: Cycle Sort Mode",
-        "category": "Command Central",
-        "icon": "$(clock)"
-      },
-      {
-        "command": "commandCentral.setSortMode",
-        "title": "Agent Status: Set Sort Mode",
-        "category": "Command Central"
-      },
-      {
-        "command": "commandCentral.toggleRunningFilter",
-        "title": "Show Running Only",
-        "category": "Command Central",
-        "icon": "$(filter)"
-      },
-      {
-        "command": "commandCentral.toggleRunningFilterActive",
-        "title": "Show All Agents",
-        "category": "Command Central",
-        "icon": "$(filter-filled)"
-      },
-      {
-        "command": "commandCentral.toggleAgentScopeCurrentProject",
-        "title": "Show Current Project Agents",
-        "category": "Command Central",
-        "icon": "$(globe)"
-      },
-      {
-        "command": "commandCentral.toggleAgentScopeAll",
-        "title": "Show All Agents",
-        "category": "Command Central",
-        "icon": "$(project)"
-      },
-      {
         "command": "commandCentral.toggleProjectGrouping",
         "title": "Show Flat List",
         "category": "Command Central",
@@ -878,12 +786,6 @@
         "command": "commandCentral.launchAgent",
         "title": "Launch Agent",
         "icon": "$(rocket)",
-        "category": "Command Central"
-      },
-      {
-        "command": "commandCentral.switchAgentBackend",
-        "title": "Switch Agent Backend",
-        "icon": "$(hubot)",
         "category": "Command Central"
       },
       {
@@ -1811,77 +1713,29 @@
           "group": "navigation@2"
         },
         {
-          "command": "commandCentral.launchAgent",
+          "command": "commandCentral.refreshAgentStatus",
           "when": "view == commandCentral.agentStatus",
           "group": "navigation@1"
         },
         {
-          "command": "commandCentral.refreshAgentStatus",
-          "when": "view == commandCentral.agentStatus",
-          "group": "navigation@2"
-        },
-        {
-          "command": "commandCentral.toggleRunningFilter",
-          "when": "view == commandCentral.agentStatus && !commandCentral.agentStatus.showOnlyRunning",
-          "group": "navigation@3"
-        },
-        {
-          "command": "commandCentral.toggleRunningFilterActive",
-          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.showOnlyRunning",
-          "group": "navigation@3"
-        },
-        {
-          "command": "commandCentral.cycleSortMode",
-          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.sortMode == 'recency'",
-          "group": "navigation@3.5",
-          "icon": "$(clock)"
-        },
-        {
-          "command": "commandCentral.cycleSortMode",
-          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.sortMode == 'status'",
-          "group": "navigation@3.5",
-          "icon": "$(list-ordered)"
-        },
-        {
-          "command": "commandCentral.cycleSortMode",
-          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.sortMode == 'status-recency'",
-          "group": "navigation@3.5",
-          "icon": "$(split-horizontal)"
-        },
-        {
-          "command": "commandCentral.toggleAgentScopeCurrentProject",
-          "when": "view == commandCentral.agentStatus && !commandCentral.agentStatus.scopeCurrentProject",
-          "group": "navigation@4"
-        },
-        {
-          "command": "commandCentral.toggleAgentScopeAll",
-          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.scopeCurrentProject",
-          "group": "navigation@4"
-        },
-        {
           "command": "commandCentral.toggleProjectGrouping",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.groupByProject",
-          "group": "navigation@5"
+          "group": "navigation@2"
         },
         {
           "command": "commandCentral.toggleProjectGroupingFlat",
           "when": "view == commandCentral.agentStatus && !commandCentral.agentStatus.groupByProject",
-          "group": "navigation@5"
+          "group": "navigation@2"
         },
         {
           "command": "commandCentral.clearCompletedAgents",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.hasTerminalTasks",
-          "group": "navigation@6"
+          "group": "navigation@3"
         },
         {
           "command": "commandCentral.reapStaleAgents",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.hasTerminalTasks",
-          "group": "navigation@7"
-        },
-        {
-          "command": "commandCentral.showDiscoveryDiagnostics",
-          "when": "view == commandCentral.agentStatus",
-          "group": "navigation@8"
+          "group": "navigation@4"
         }
       ]
     },

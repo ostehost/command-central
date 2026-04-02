@@ -79,14 +79,6 @@ describe("package.json agent menu contributions", () => {
 		expect(exists).toBe(true);
 	});
 
-	test("registers switchAgentBackend command contribution", async () => {
-		const commands = await getCommands();
-		const exists = commands.some(
-			(item) => item.command === "commandCentral.switchAgentBackend",
-		);
-		expect(exists).toBe(true);
-	});
-
 	test("registers agentQuickActions command contribution", async () => {
 		const commands = await getCommands();
 		const exists = commands.some(
@@ -125,39 +117,37 @@ describe("package.json agent menu contributions", () => {
 		expect(exists).toBe(true);
 	});
 
-	test("defines defaultBackend config with codex/gemini only", async () => {
+	test("keeps the reduced agent status configuration surface", async () => {
 		const properties = await getConfigProperties();
-		const setting = properties["commandCentral.agentStatus.defaultBackend"];
-		expect(setting).toBeDefined();
-		expect(setting?.default).toBe("codex");
-		expect(setting?.enum).toEqual(["codex", "gemini"]);
-	});
-
-	test("defines sort mode config with expected options and default", async () => {
-		const properties = await getConfigProperties();
-		const setting = properties["commandCentral.agentStatus.sortMode"] as
-			| {
-					default?: string;
-					enum?: string[];
-					markdownDescription?: string;
-			  }
-			| undefined;
-
-		expect(setting).toBeDefined();
-		expect(setting?.default).toBe("recency");
-		expect(setting?.enum).toEqual(["recency", "status", "status-recency"]);
-		expect(setting?.markdownDescription).toContain("latest work first");
-		expect(setting?.markdownDescription).toContain(
-			"running-then-completed-then-failed",
-		);
-	});
-
-	test("keeps legacy sortByStatus config as a deprecated migration alias", async () => {
-		const properties = await getConfigProperties();
-		const setting = properties["commandCentral.agentStatus.sortByStatus"];
-		expect(setting).toBeDefined();
-		expect(setting?.default).toBe(false);
-		expect(setting?.description).toContain("Deprecated");
+		expect(
+			properties["commandCentral.agentStatus.autoRefreshMs"],
+		).toBeDefined();
+		expect(
+			properties["commandCentral.agentStatus.groupByProject"],
+		).toBeDefined();
+		expect(
+			properties["commandCentral.agentStatus.stuckThresholdMinutes"],
+		).toBeDefined();
+		expect(
+			properties["commandCentral.agentStatus.notifications"],
+		).toBeDefined();
+		expect(
+			properties["commandCentral.agentStatus.groupByProject"]?.default,
+		).toBe(true);
+		expect(
+			properties["commandCentral.agentStatus.showOnlyRunning"],
+		).toBeUndefined();
+		expect(properties["commandCentral.agentStatus.scope"]).toBeUndefined();
+		expect(properties["commandCentral.agentStatus.sortMode"]).toBeUndefined();
+		expect(
+			properties["commandCentral.agentStatus.maxVisibleAgents"],
+		).toBeUndefined();
+		expect(
+			properties["commandCentral.agentStatus.sortByStatus"],
+		).toBeUndefined();
+		expect(
+			properties["commandCentral.agentStatus.defaultBackend"],
+		).toBeUndefined();
 	});
 
 	test("defines stuck threshold config with expected bounds", async () => {
@@ -180,39 +170,12 @@ describe("package.json agent menu contributions", () => {
 		expect(setting?.description).toContain("potentially stuck");
 	});
 
-	test("defines max visible agents config with expected bounds", async () => {
-		const properties = await getConfigProperties();
-		const setting = properties["commandCentral.agentStatus.maxVisibleAgents"] as
-			| {
-					default?: number;
-					minimum?: number;
-					maximum?: number;
-					description?: string;
-			  }
-			| undefined;
-
-		expect(setting).toBeDefined();
-		expect(setting?.default).toBe(50);
-		expect(setting?.minimum).toBe(10);
-		expect(setting?.maximum).toBe(500);
-		expect(setting?.description).toContain("Show older runs");
-	});
-
 	test("defines dock bounce config enabled by default", async () => {
 		const properties = await getConfigProperties();
 		const setting = properties["commandCentral.dockBounce"];
 		expect(setting).toBeDefined();
 		expect(setting?.default).toBe(true);
 		expect(setting?.description).toContain("Dock icon");
-	});
-
-	test("defines agent scope config with all/currentProject and all as default", async () => {
-		const properties = await getConfigProperties();
-		const setting = properties["commandCentral.agentStatus.scope"];
-		expect(setting).toBeDefined();
-		expect(setting?.default).toBe("all");
-		expect(setting?.enum).toEqual(["all", "currentProject"]);
-		expect(setting?.description).toContain("current workspace folders");
 	});
 
 	test("has inline restart action for failed launcher-managed tasks", async () => {
@@ -273,7 +236,7 @@ describe("package.json agent menu contributions", () => {
 		const clearAction = menu.find(
 			(item) =>
 				item.command === "commandCentral.clearCompletedAgents" &&
-				item.group === "navigation@6",
+				item.group === "navigation@3",
 		);
 		expect(clearAction).toBeDefined();
 		expect(clearAction?.when).toContain("view == commandCentral.agentStatus");
@@ -287,7 +250,7 @@ describe("package.json agent menu contributions", () => {
 		const reapAction = menu.find(
 			(item) =>
 				item.command === "commandCentral.reapStaleAgents" &&
-				item.group === "navigation@7",
+				item.group === "navigation@4",
 		);
 		expect(reapAction).toBeDefined();
 		expect(reapAction?.when).toContain("view == commandCentral.agentStatus");
@@ -296,63 +259,55 @@ describe("package.json agent menu contributions", () => {
 		);
 	});
 
-	test("registers cycleSortMode and setSortMode commands", async () => {
-		const commands = await getCommands();
-		expect(
-			commands.some((item) => item.command === "commandCentral.cycleSortMode"),
-		).toBe(true);
-		expect(
-			commands.some((item) => item.command === "commandCentral.setSortMode"),
-		).toBe(true);
-	});
-
-	test("adds mode-specific sort toolbar entries", async () => {
+	test("uses a four-button agent status toolbar", async () => {
 		const menu = await getViewTitleMenu();
-		const sortEntries = menu.filter(
-			(item) =>
-				item.command === "commandCentral.cycleSortMode" &&
-				item.group === "navigation@3.5",
-		);
-
-		expect(sortEntries).toHaveLength(3);
-		expect(
-			sortEntries.some((item) => item.when?.includes("== 'recency'")),
-		).toBe(true);
-		expect(sortEntries.some((item) => item.when?.includes("== 'status'"))).toBe(
-			true,
+		const toolbarEntries = menu.filter((item) =>
+			item.when?.includes("view == commandCentral.agentStatus"),
 		);
 		expect(
-			sortEntries.some((item) => item.when?.includes("== 'status-recency'")),
+			toolbarEntries.some(
+				(item) =>
+					item.command === "commandCentral.refreshAgentStatus" &&
+					item.group === "navigation@1",
+			),
 		).toBe(true);
-		expect(sortEntries.some((item) => item.icon === "$(clock)")).toBe(true);
-		expect(sortEntries.some((item) => item.icon === "$(list-ordered)")).toBe(
-			true,
-		);
 		expect(
-			sortEntries.some((item) => item.icon === "$(split-horizontal)"),
+			toolbarEntries.some(
+				(item) =>
+					item.command === "commandCentral.toggleProjectGrouping" &&
+					item.group === "navigation@2",
+			),
 		).toBe(true);
-	});
-
-	test("adds paired view-title scope toggle actions for all vs current project", async () => {
-		const menu = await getViewTitleMenu();
-		const currentProjectAction = menu.find(
-			(item) =>
-				item.command === "commandCentral.toggleAgentScopeCurrentProject" &&
-				item.group === "navigation@4",
-		);
-		const allAgentsAction = menu.find(
-			(item) =>
-				item.command === "commandCentral.toggleAgentScopeAll" &&
-				item.group === "navigation@4",
-		);
-
-		expect(currentProjectAction).toBeDefined();
-		expect(currentProjectAction?.when).toContain(
-			"!commandCentral.agentStatus.scopeCurrentProject",
-		);
-		expect(allAgentsAction).toBeDefined();
-		expect(allAgentsAction?.when).toContain(
-			"commandCentral.agentStatus.scopeCurrentProject",
-		);
+		expect(
+			toolbarEntries.some(
+				(item) =>
+					item.command === "commandCentral.toggleProjectGroupingFlat" &&
+					item.group === "navigation@2",
+			),
+		).toBe(true);
+		expect(
+			toolbarEntries.some(
+				(item) =>
+					item.command === "commandCentral.clearCompletedAgents" &&
+					item.group === "navigation@3",
+			),
+		).toBe(true);
+		expect(
+			toolbarEntries.some(
+				(item) =>
+					item.command === "commandCentral.reapStaleAgents" &&
+					item.group === "navigation@4",
+			),
+		).toBe(true);
+		expect(
+			toolbarEntries.some(
+				(item) => item.command === "commandCentral.launchAgent",
+			),
+		).toBe(false);
+		expect(
+			toolbarEntries.some(
+				(item) => item.command === "commandCentral.showDiscoveryDiagnostics",
+			),
+		).toBe(false);
 	});
 });

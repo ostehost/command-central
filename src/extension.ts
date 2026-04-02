@@ -49,16 +49,12 @@ import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provide
 import { AgentDashboardPanel } from "./providers/agent-dashboard-panel.js";
 import { AgentDecorationProvider } from "./providers/agent-decoration-provider.js";
 import {
-	type AgentStatusSortMode,
 	AgentStatusTreeProvider,
 	type AgentTask,
-	getNextAgentStatusSortMode,
 	isValidSessionId,
 	type ProjectGroupNode,
-	resolveAgentStatusSortMode,
 } from "./providers/agent-status-tree-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
-import { AgentBackendSwitcher } from "./services/agent-backend-switcher.js";
 import { AgentOutputChannels } from "./services/agent-output-channels.js";
 import { AgentStatusBar } from "./services/agent-status-bar.js";
 import { GroupingStateManager } from "./services/grouping-state-manager.js";
@@ -754,56 +750,15 @@ export async function activate(
 
 		const syncAgentStatusViewContexts = async (): Promise<void> => {
 			const config = vscode.workspace.getConfiguration("commandCentral");
-			const showOnlyRunning = config.get<boolean>(
-				"agentStatus.showOnlyRunning",
-				false,
-			);
-			const scope = config.get<"all" | "currentProject">(
-				"agentStatus.scope",
-				"all",
-			);
 			const groupByProject = config.get<boolean>(
 				"agentStatus.groupByProject",
-				false,
-			);
-			const sortMode = resolveAgentStatusSortMode(config);
-			await vscode.commands.executeCommand(
-				"setContext",
-				"commandCentral.agentStatus.showOnlyRunning",
-				showOnlyRunning,
-			);
-			await vscode.commands.executeCommand(
-				"setContext",
-				"commandCentral.agentStatus.scopeCurrentProject",
-				scope === "currentProject",
+				true,
 			);
 			await vscode.commands.executeCommand(
 				"setContext",
 				"commandCentral.agentStatus.groupByProject",
 				groupByProject,
 			);
-			await vscode.commands.executeCommand(
-				"setContext",
-				"commandCentral.agentStatus.sortMode",
-				sortMode,
-			);
-			await context.workspaceState.update(
-				"commandCentral.agentStatus.sortMode",
-				sortMode,
-			);
-		};
-		const setAgentStatusSortMode = async (
-			sortMode: AgentStatusSortMode,
-			target = vscode.ConfigurationTarget.Global,
-		): Promise<void> => {
-			const config = vscode.workspace.getConfiguration("commandCentral");
-			await config.update("agentStatus.sortMode", sortMode, target);
-			await context.workspaceState.update(
-				"commandCentral.agentStatus.sortMode",
-				sortMode,
-			);
-			await syncAgentStatusViewContexts();
-			agentStatusProvider?.reload();
 		};
 		await syncAgentStatusViewContexts();
 		context.subscriptions.push(agentStatusView);
@@ -811,13 +766,7 @@ export async function activate(
 		context.subscriptions.push(
 			vscode.workspace.onDidChangeConfiguration((e) => {
 				if (
-					e.affectsConfiguration(
-						"commandCentral.agentStatus.showOnlyRunning",
-					) ||
-					e.affectsConfiguration("commandCentral.agentStatus.scope") ||
-					e.affectsConfiguration("commandCentral.agentStatus.groupByProject") ||
-					e.affectsConfiguration("commandCentral.agentStatus.sortMode") ||
-					e.affectsConfiguration("commandCentral.agentStatus.sortByStatus")
+					e.affectsConfiguration("commandCentral.agentStatus.groupByProject")
 				) {
 					void syncAgentStatusViewContexts();
 				}
@@ -843,8 +792,6 @@ export async function activate(
 		// Agent Status Bar — shows running/total count
 		const agentStatusBar = new AgentStatusBar();
 		context.subscriptions.push(agentStatusBar);
-		const agentBackendSwitcher = new AgentBackendSwitcher();
-		context.subscriptions.push(agentBackendSwitcher);
 
 		// Update status bar + session store on tree data changes
 		agentStatusProvider.onDidChangeTreeData(() => {
@@ -928,12 +875,6 @@ export async function activate(
 		);
 		context.subscriptions.push(discoveryDiagnosticsChannel);
 
-		const getConfiguredAgentBackend = (): "codex" | "gemini" => {
-			const configured = vscode.workspace
-				.getConfiguration("commandCentral.agentStatus")
-				.get<string>("defaultBackend", "codex");
-			return configured === "gemini" ? "gemini" : "codex";
-		};
 		const isValidProjectIconInput = (value: string): boolean => {
 			const trimmed = value.trim();
 			if (!trimmed) return false;
@@ -1467,63 +1408,6 @@ export async function activate(
 				},
 			),
 			vscode.commands.registerCommand(
-				"commandCentral.cycleSortMode",
-				async () => {
-					const config = vscode.workspace.getConfiguration("commandCentral");
-					const currentSortMode = resolveAgentStatusSortMode(config);
-					const nextSortMode = getNextAgentStatusSortMode(currentSortMode);
-					await setAgentStatusSortMode(nextSortMode);
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.setSortMode",
-				async () => {
-					const config = vscode.workspace.getConfiguration("commandCentral");
-					const currentSortMode = resolveAgentStatusSortMode(config);
-					type SortModeQuickPickItem = vscode.QuickPickItem & {
-						sortMode: AgentStatusSortMode;
-					};
-					const baseSortModeItems: Array<
-						Omit<SortModeQuickPickItem, "detail">
-					> = [
-						{
-							label: "Recent",
-							description: "Newest activity first",
-							sortMode: "recency",
-						},
-						{
-							label: "Status",
-							description: "Running, then completed, then failed",
-							sortMode: "status",
-						},
-						{
-							label: "Status + Recent",
-							description: "Status groups with recency inside each group",
-							sortMode: "status-recency",
-						},
-					];
-					const sortModeItems: SortModeQuickPickItem[] = baseSortModeItems.map(
-						(item): SortModeQuickPickItem => ({
-							...item,
-							detail:
-								item.sortMode === currentSortMode ? "Current mode" : undefined,
-						}),
-					);
-					const selection =
-						await vscode.window.showQuickPick<SortModeQuickPickItem>(
-							sortModeItems,
-							{
-								placeHolder: "Select Agent Status sort mode",
-							},
-						);
-					if (!selection || selection.sortMode === currentSortMode) {
-						return;
-					}
-
-					await setAgentStatusSortMode(selection.sortMode);
-				},
-			),
-			vscode.commands.registerCommand(
 				"commandCentral.changeProjectIcon",
 				async (node?: ProjectGroupNode) => {
 					if (!node) {
@@ -1574,56 +1458,12 @@ export async function activate(
 				},
 			),
 			vscode.commands.registerCommand(
-				"commandCentral.switchAgentBackend",
-				async () => {
-					const selection = await vscode.window.showQuickPick(
-						["codex", "gemini"] as const,
-						{
-							placeHolder: "Select default backend for launched agents",
-						},
-					);
-					if (!selection) return;
-					await vscode.workspace
-						.getConfiguration("commandCentral.agentStatus")
-						.update(
-							"defaultBackend",
-							selection,
-							vscode.ConfigurationTarget.Global,
-						);
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.toggleRunningFilter",
-				async () => {
-					const config = vscode.workspace.getConfiguration("commandCentral");
-					const current = config.get<boolean>(
-						"agentStatus.showOnlyRunning",
-						false,
-					);
-					await config.update(
-						"agentStatus.showOnlyRunning",
-						!current,
-						vscode.ConfigurationTarget.Global,
-					);
-					await syncAgentStatusViewContexts();
-					agentStatusProvider?.reload();
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.toggleRunningFilterActive",
-				async () => {
-					await vscode.commands.executeCommand(
-						"commandCentral.toggleRunningFilter",
-					);
-				},
-			),
-			vscode.commands.registerCommand(
 				"commandCentral.toggleProjectGrouping",
 				async () => {
 					const config = vscode.workspace.getConfiguration("commandCentral");
 					const current = config.get<boolean>(
 						"agentStatus.groupByProject",
-						false,
+						true,
 					);
 					await config.update(
 						"agentStatus.groupByProject",
@@ -1640,32 +1480,6 @@ export async function activate(
 					await vscode.commands.executeCommand(
 						"commandCentral.toggleProjectGrouping",
 					);
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.toggleAgentScopeCurrentProject",
-				async () => {
-					const config = vscode.workspace.getConfiguration("commandCentral");
-					await config.update(
-						"agentStatus.scope",
-						"currentProject",
-						vscode.ConfigurationTarget.Workspace,
-					);
-					await syncAgentStatusViewContexts();
-					agentStatusProvider?.reload();
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.toggleAgentScopeAll",
-				async () => {
-					const config = vscode.workspace.getConfiguration("commandCentral");
-					await config.update(
-						"agentStatus.scope",
-						"all",
-						vscode.ConfigurationTarget.Workspace,
-					);
-					await syncAgentStatusViewContexts();
-					agentStatusProvider?.reload();
 				},
 			),
 			vscode.commands.registerCommand(
@@ -2767,15 +2581,15 @@ export async function activate(
 
 					// Re-spawn via launcher if prompt_file exists
 					if (task.prompt_file) {
-						const backend =
-							task.agent_backend === "codex" || task.agent_backend === "gemini"
-								? task.agent_backend
-								: getConfiguredAgentBackend();
 						const command = buildOsteSpawnCommand({
 							projectDir: task.project_dir,
 							promptFile: task.prompt_file,
 							taskId: task.id,
-							backend,
+							backend:
+								task.agent_backend === "codex" ||
+								task.agent_backend === "gemini"
+									? task.agent_backend
+									: undefined,
 						});
 						await terminalManager?.runInProjectTerminal(
 							task.project_dir,
@@ -2832,14 +2646,11 @@ export async function activate(
 					const path = await import("node:path");
 					const dirName = path.basename(projectDir);
 					const taskId = `cc-${dirName}-${timestamp}`;
-					const backend = getConfiguredAgentBackend();
-
 					try {
 						const command = buildOsteSpawnCommand({
 							projectDir,
 							promptFile,
 							taskId,
-							backend,
 							role: "developer",
 						});
 						await terminalManager?.runInProjectTerminal(projectDir, command);

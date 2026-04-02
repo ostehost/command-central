@@ -9,11 +9,7 @@ describe("OpenClaw task nodes", () => {
 		setupVSCodeMock();
 	});
 
-	function setConfig(options: {
-		sortMode?: "recency" | "status" | "status-recency";
-		groupByProject?: boolean;
-		showOnlyRunning?: boolean;
-	}): void {
+	function setConfig(options: { groupByProject?: boolean }): void {
 		const vscodeMock = setupVSCodeMock();
 		const getConfigurationMock = mock((_section?: string) => ({
 			update: mock(),
@@ -23,21 +19,9 @@ describe("OpenClaw task nodes", () => {
 				if (key === "agentStatus.groupByProject") {
 					return options.groupByProject ?? false;
 				}
-				if (key === "agentStatus.sortMode") {
-					return options.sortMode ?? "recency";
-				}
-				if (key === "agentStatus.showOnlyRunning") {
-					return options.showOnlyRunning ?? false;
-				}
-				if (key === "agentStatus.scope") {
-					return "all";
-				}
 				return defaultValue;
 			}),
-			inspect: mock(() => ({
-				defaultValue: "recency",
-				globalValue: options.sortMode ?? "recency",
-			})),
+			inspect: mock(() => undefined),
 			has: mock(() => true),
 		}));
 
@@ -85,7 +69,7 @@ describe("OpenClaw task nodes", () => {
 	async function createProvider(
 		openclawTasks: ReturnType<typeof createTask>[],
 	) {
-		setConfig({ sortMode: "status", groupByProject: false });
+		setConfig({ groupByProject: false });
 		const { AgentStatusTreeProvider } = await import(
 			"../../src/providers/agent-status-tree-provider.js"
 		);
@@ -135,10 +119,10 @@ describe("OpenClaw task nodes", () => {
 		return provider;
 	}
 
-	test("OpenClaw tasks appear under Background Tasks group", async () => {
+	test("OpenClaw tasks appear inline in flat mode", async () => {
 		const provider = await createProvider([createTask()]);
 		const root = provider.getChildren();
-		expect(root.some((node) => node.type === "backgroundTasks")).toBe(true);
+		expect(root.some((node) => node.type === "openclawTask")).toBe(true);
 	});
 
 	test("dedups OpenClaw tasks that match launcher session ids", async () => {

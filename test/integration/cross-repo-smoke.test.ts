@@ -49,7 +49,6 @@ describe("smoke: spawn — oste-spawn.sh argument shapes", () => {
 			projectDir: "/tmp/my-project",
 			promptFile: "/tmp/prompt.md",
 			taskId: "task-abc-123",
-			backend: "claude-code",
 		});
 
 		// Must start with the script name
@@ -60,6 +59,17 @@ describe("smoke: spawn — oste-spawn.sh argument shapes", () => {
 		// Flags
 		expect(cmd).toContain("'--task-id'");
 		expect(cmd).toContain("'task-abc-123'");
+		expect(cmd).not.toContain("'--agent'");
+	});
+
+	test("buildOsteSpawnCommand includes --agent when backend is explicit", () => {
+		const cmd = buildOsteSpawnCommand({
+			projectDir: "/tmp/my-project",
+			promptFile: "/tmp/prompt.md",
+			taskId: "task-abc-123",
+			backend: "claude-code",
+		});
+
 		expect(cmd).toContain("'--agent'");
 		expect(cmd).toContain("'claude-code'");
 	});

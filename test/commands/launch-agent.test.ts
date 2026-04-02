@@ -98,17 +98,11 @@ describe("launchAgent command", () => {
 			const dirName = path.basename(projectDir);
 			const taskId = `cc-${dirName}-${timestamp}`;
 
-			const configuredBackend = vscode.workspace
-				.getConfiguration("commandCentral.agentStatus")
-				.get("defaultBackend", "codex");
-			const backend = configuredBackend === "gemini" ? "gemini" : "codex";
-
 			try {
 				const command = buildOsteSpawnCommand({
 					projectDir,
 					promptFile,
 					taskId,
-					backend,
 					role: "developer",
 				});
 				await terminalManager.runInProjectTerminal(projectDir, command);
@@ -301,35 +295,8 @@ describe("launchAgent command", () => {
 		expect(command).toContain("'oste-spawn.sh' '/projects/my-app'");
 		expect(command).toContain("'--task-id' 'cc-my-app-");
 		expect(command).toContain("'--role' 'developer'");
-		expect(command).toContain("'--agent' 'codex'");
+		expect(command).not.toContain("'--agent'");
 		expect(command).not.toContain("--no-bundle");
-	});
-
-	test("uses configured gemini backend when set", async () => {
-		vscodeMock.workspace.workspaceFolders = [
-			{ uri: { fsPath: "/projects/my-app" }, name: "my-app", index: 0 },
-		];
-		vscodeMock.workspace.getConfiguration = mock((section?: string) => ({
-			get: mock((key: string, defaultValue?: unknown) => {
-				if (
-					section === "commandCentral.agentStatus" &&
-					key === "defaultBackend"
-				) {
-					return "gemini";
-				}
-				return defaultValue;
-			}),
-			update: mock(() => Promise.resolve()),
-		}));
-
-		registerCommand();
-		await commandHandler();
-
-		const [, command] = mockRunInProjectTerminal.mock.calls[0] as [
-			string,
-			string,
-		];
-		expect(command).toContain("'--agent' 'gemini'");
 	});
 
 	test("escapes workspace-derived values containing spaces and double quotes", async () => {

@@ -85,8 +85,8 @@ export type AgentTaskStatus =
 	| "contract_failure";
 
 export type AgentRole = "developer" | "planner" | "reviewer" | "test";
-export type AgentStatusScope = "all" | "currentProject";
-export type AgentStatusSortMode = "recency" | "status" | "status-recency";
+export type AgentStatusScope = "all";
+export type AgentStatusSortMode = "status-recency";
 
 export interface AgentTask {
 	id: string;
@@ -185,6 +185,9 @@ export interface StatusGroupNode {
 	type: "statusGroup";
 	status: AgentStatusGroup;
 	nodes: SortableAgentNode[];
+	parentProjectName?: string;
+	parentProjectDir?: string;
+	parentGroupKey?: string;
 }
 
 export type StatusTimeGroupPeriod = Extract<
@@ -481,27 +484,10 @@ const VALID_TASK_STATUSES = new Set<AgentTaskStatus>([
 	"contract_failure",
 ]);
 
-const TASK_STATUS_PRIORITY: Record<AgentTaskStatus, number> = {
-	failed: 0,
-	killed: 1,
-	contract_failure: 2,
-	running: 3,
-	stopped: 4,
-	completed: 5,
-	completed_dirty: 6,
-	completed_stale: 7,
-};
-
-const AGENT_STATUS_SORT_MODES: AgentStatusSortMode[] = [
-	"recency",
-	"status",
-	"status-recency",
-];
-
-const SORT_MODE_INDICATOR_LABELS: Record<AgentStatusSortMode, string> = {
-	recency: "↓ Recent",
-	status: "⚠ Status",
-	"status-recency": "▶ Active",
+const TASK_STATUS_PRIORITY: Record<AgentStatusGroup, number> = {
+	running: 0,
+	attention: 1,
+	done: 2,
 };
 
 const DIFF_LOADING_LABEL = "Loading diff...";
@@ -523,71 +509,8 @@ const STATUS_GROUP_ICONS: Record<AgentStatusGroup, vscode.ThemeIcon> = {
 	),
 };
 
-type SortModeConfig = Pick<vscode.WorkspaceConfiguration, "get"> & {
-	inspect?: vscode.WorkspaceConfiguration["inspect"];
-};
-
-function isAgentStatusSortMode(value: unknown): value is AgentStatusSortMode {
-	return (
-		typeof value === "string" &&
-		AGENT_STATUS_SORT_MODES.includes(value as AgentStatusSortMode)
-	);
-}
-
-function getExplicitSortMode(
-	config: SortModeConfig,
-): AgentStatusSortMode | undefined {
-	const rawValue = config.get<unknown>("agentStatus.sortMode");
-	if (typeof config.inspect === "function") {
-		const inspected = config.inspect("agentStatus.sortMode");
-		const explicitValue =
-			inspected?.workspaceFolderValue ??
-			inspected?.workspaceValue ??
-			inspected?.globalValue;
-		if (isAgentStatusSortMode(explicitValue)) {
-			return explicitValue;
-		}
-
-		const defaultValue = inspected?.defaultValue;
-		if (
-			isAgentStatusSortMode(rawValue) &&
-			(!isAgentStatusSortMode(defaultValue) || rawValue !== defaultValue)
-		) {
-			return rawValue;
-		}
-		return undefined;
-	}
-
-	return isAgentStatusSortMode(rawValue) ? rawValue : undefined;
-}
-
-export function resolveAgentStatusSortMode(
-	config: SortModeConfig,
-): AgentStatusSortMode {
-	const rawSortMode = config.get<unknown>("agentStatus.sortMode");
-	if (rawSortMode === "status" || rawSortMode === "status-recency") {
-		return rawSortMode;
-	}
-
-	const explicitSortMode = getExplicitSortMode(config);
-	if (explicitSortMode) {
-		return explicitSortMode;
-	}
-
-	return config.get<boolean>("agentStatus.sortByStatus", false)
-		? "status"
-		: "recency";
-}
-
-export function getNextAgentStatusSortMode(
-	currentMode: AgentStatusSortMode,
-): AgentStatusSortMode {
-	const currentIndex = AGENT_STATUS_SORT_MODES.indexOf(currentMode);
-	const nextIndex =
-		currentIndex === -1
-			? 0
-			: (currentIndex + 1) % AGENT_STATUS_SORT_MODES.length;
-	return AGENT_STATUS_SORT_MODES[nextIndex] ?? "recency";
+export function resolveAgentStatusSortMode(): AgentStatusSortMode {
+	return "status-recency";
 }
 
 function asString(value: unknown): string | undefined {
@@ -723,8 +646,6 @@ export class AgentStatusTreeProvider
 	private static readonly STUCK_THRESHOLD_MIN_MINUTES = 5;
 	private static readonly STUCK_THRESHOLD_MAX_MINUTES = 60;
 	private static readonly MAX_VISIBLE_AGENTS_DEFAULT = 50;
-	private static readonly MAX_VISIBLE_AGENTS_MIN = 10;
-	private static readonly MAX_VISIBLE_AGENTS_MAX = 500;
 	private static readonly STREAM_BACKEND_PREFIXES = [
 		"claude",
 		"codex",
@@ -797,16 +718,7 @@ export class AgentStatusTreeProvider
 					void this.reload();
 				}
 				if (
-					e.affectsConfiguration(
-						"commandCentral.agentStatus.showOnlyRunning",
-					) ||
-					e.affectsConfiguration("commandCentral.agentStatus.scope") ||
 					e.affectsConfiguration("commandCentral.agentStatus.groupByProject") ||
-					e.affectsConfiguration("commandCentral.agentStatus.sortMode") ||
-					e.affectsConfiguration(
-						"commandCentral.agentStatus.maxVisibleAgents",
-					) ||
-					e.affectsConfiguration("commandCentral.agentStatus.sortByStatus") ||
 					e.affectsConfiguration("commandCentral.project.group") ||
 					e.affectsConfiguration("commandCentral.project.icon") ||
 					e.affectsConfiguration("commandCentral.projects")
@@ -1351,49 +1263,16 @@ export class AgentStatusTreeProvider
 		return this.getDisplayLauncherTasks().find((task) => task.id === taskId);
 	}
 
-	private getAgentStatusScope(): AgentStatusScope {
-		const config = vscode.workspace.getConfiguration("commandCentral");
-		return config.get<AgentStatusScope>("agentStatus.scope", "all");
-	}
-
-	private getOpenWorkspaceFolders(): readonly vscode.WorkspaceFolder[] {
-		return vscode.workspace.workspaceFolders ?? [];
-	}
-
-	private matchesCurrentWorkspaceFolder(projectDir: string): boolean {
-		if (this.getAgentStatusScope() !== "currentProject") {
-			return true;
-		}
-		if (!projectDir || !path.isAbsolute(projectDir)) {
-			return false;
-		}
-
-		const normalizedProjectDir = path.resolve(projectDir);
-		return this.getOpenWorkspaceFolders().some(
-			(folder) => path.resolve(folder.uri.fsPath) === normalizedProjectDir,
-		);
-	}
-
 	private getScopedLauncherTasks(
 		tasks = this.getDisplayLauncherTasks(),
 	): AgentTask[] {
-		if (this.getAgentStatusScope() === "all") {
-			return tasks;
-		}
-		return tasks.filter((task) =>
-			this.matchesCurrentWorkspaceFolder(task.project_dir),
-		);
+		return tasks;
 	}
 
 	private getScopedDiscoveredAgents(
 		agents = this._discoveredAgents,
 	): DiscoveredAgent[] {
-		if (this.getAgentStatusScope() === "all") {
-			return agents;
-		}
-		return agents.filter((agent) =>
-			this.matchesCurrentWorkspaceFolder(agent.projectDir),
-		);
+		return agents;
 	}
 
 	private mapOpenClawTaskToAgentStatus(task: OpenClawTask): AgentTaskStatus {
@@ -1446,10 +1325,6 @@ export class AgentStatusTreeProvider
 		return (
 			task.lastEventAt ?? task.endedAt ?? task.startedAt ?? task.createdAt ?? 0
 		);
-	}
-
-	private getOpenClawTaskStartedTimeMs(task: OpenClawTask): number {
-		return task.startedAt ?? task.createdAt ?? 0;
 	}
 
 	private getOpenClawTaskDisplayTitle(task: OpenClawTask): string {
@@ -1534,22 +1409,6 @@ export class AgentStatusTreeProvider
 			max_attempts: 0,
 		}));
 		return [...tasks, ...syntheticDiscovered];
-	}
-
-	private getScopeIndicatorLabel(): string {
-		if (this.getAgentStatusScope() === "all") {
-			return "All";
-		}
-
-		const workspaceFolders = this.getOpenWorkspaceFolders();
-		if (workspaceFolders.length === 0) {
-			return "Current Project";
-		}
-		if (workspaceFolders.length === 1) {
-			const [folder] = workspaceFolders;
-			return folder?.name?.trim() || path.basename(folder?.uri.fsPath ?? "");
-		}
-		return `${workspaceFolders.length} projects`;
 	}
 
 	private formatScopedAgentCount(total: number): string {
@@ -2144,32 +2003,6 @@ export class AgentStatusTreeProvider
 						},
 					];
 				}
-				if (this.getAgentStatusScope() === "currentProject") {
-					const hasAnyTrackedAgents =
-						this.getDisplayLauncherTasks().length > 0 ||
-						this._discoveredAgents.length > 0;
-					if (this.getOpenWorkspaceFolders().length === 0) {
-						return [
-							{
-								type: "state",
-								label: "No workspace folders open",
-								description: "Open a folder or switch scope to All Agents.",
-								icon: "folder-opened",
-							},
-						];
-					}
-					if (hasAnyTrackedAgents) {
-						return [
-							{
-								type: "state",
-								label: "No agents in current project",
-								description:
-									"Switch scope to All Agents to see cross-project tasks.",
-								icon: "project",
-							},
-						];
-					}
-				}
 				return [
 					{
 						type: "state",
@@ -2180,29 +2013,9 @@ export class AgentStatusTreeProvider
 				];
 			}
 
-			const runningOnly = this.isRunningOnlyFilterEnabled();
-			const tasks = runningOnly
-				? allTasks.filter((task) => task.status === "running")
-				: allTasks;
-			if (
-				runningOnly &&
-				tasks.length === 0 &&
-				discovered.length === 0 &&
-				openclawTasks.length === 0
-			) {
-				return [
-					{
-						type: "state",
-						label: "No running agents",
-						description: "Disable the Running filter to show completed agents.",
-						icon: "debug-pause",
-					},
-				];
-			}
-
+			const tasks = allTasks;
 			const groupedByProject = this.isProjectGroupingEnabled();
-			const showOpenClawInline =
-				!groupedByProject && this.getSortMode() === "recency";
+			const showOpenClawInline = !groupedByProject;
 			const sortableFlatNodes = this.sortAgentNodes([
 				...tasks.map(
 					(task) =>
@@ -2230,27 +2043,17 @@ export class AgentStatusTreeProvider
 				: [];
 			const flatNodes: AgentNode[] = groupedByProject
 				? []
-				: this.getSortMode() === "recency"
-					? this.applyAgentVisibilityCap(sortableFlatNodes)
-					: this.buildStatusGroupNodes(sortableFlatNodes);
+				: this.applyAgentVisibilityCap(sortableFlatNodes);
 
 			const agentCounts = countAgentStatuses(
-				this.getScopedAgentTasksForSummary(
-					runningOnly ? tasks : allTasks,
-					discovered,
-				),
+				this.getScopedAgentTasksForSummary(tasks, discovered),
 			);
 			const counts = countAgentStatuses(
-				this.getScopedTasksForSummary(
-					runningOnly ? tasks : allTasks,
-					discovered,
-				),
+				this.getScopedTasksForSummary(tasks, discovered),
 			);
 			const backgroundTaskCount = openclawTasks.length;
 			const stuckCount = this.getStuckRunningCount(allTasks);
 			const summaryLabel = [
-				this.getSortModeIndicatorLabel(),
-				this.getScopeIndicatorLabel(),
 				this.formatScopedAgentCount(agentCounts.total),
 				this.formatSummaryCounts(counts),
 				...(backgroundTaskCount > 0
@@ -2289,26 +2092,7 @@ export class AgentStatusTreeProvider
 		}
 
 		if (element.type === "projectGroup") {
-			return this.applyAgentVisibilityCap(
-				this.sortAgentNodes([
-					...element.tasks.map(
-						(task) =>
-							({ type: "task" as const, task }) satisfies SortableAgentNode,
-					),
-					...(element.discoveredAgents ?? []).map(
-						(agent) =>
-							({
-								type: "discovered" as const,
-								agent,
-							}) satisfies SortableAgentNode,
-					),
-				]),
-				{
-					parentProjectName: element.projectName,
-					parentProjectDir: element.projectDir,
-					parentGroupKey: element.parentGroupKey,
-				},
-			);
+			return this.getProjectGroupChildren(element);
 		}
 
 		if (element.type === "statusGroup") {
@@ -2595,8 +2379,7 @@ export class AgentStatusTreeProvider
 	}
 
 	private isRunningOnlyFilterEnabled(): boolean {
-		const config = vscode.workspace.getConfiguration("commandCentral");
-		return config.get<boolean>("agentStatus.showOnlyRunning", false);
+		return false;
 	}
 
 	private isProjectGroupingEnabled(): boolean {
@@ -2604,44 +2387,16 @@ export class AgentStatusTreeProvider
 		return config.get<boolean>("agentStatus.groupByProject", false);
 	}
 
-	private getSortMode(): AgentStatusSortMode {
-		const config = vscode.workspace.getConfiguration("commandCentral");
-		return resolveAgentStatusSortMode(config);
-	}
-
 	private getMaxVisibleAgents(): number {
-		const config = vscode.workspace.getConfiguration("commandCentral");
-		const raw = config.get<number>(
-			"agentStatus.maxVisibleAgents",
-			AgentStatusTreeProvider.MAX_VISIBLE_AGENTS_DEFAULT,
-		);
-		const numeric = Number.isFinite(raw)
-			? raw
-			: AgentStatusTreeProvider.MAX_VISIBLE_AGENTS_DEFAULT;
-		return Math.max(
-			AgentStatusTreeProvider.MAX_VISIBLE_AGENTS_MIN,
-			Math.min(AgentStatusTreeProvider.MAX_VISIBLE_AGENTS_MAX, numeric),
-		);
-	}
-
-	private getSortModeIndicatorLabel(): string {
-		return SORT_MODE_INDICATOR_LABELS[this.getSortMode()];
+		return AgentStatusTreeProvider.MAX_VISIBLE_AGENTS_DEFAULT;
 	}
 
 	private formatSummaryCounts(counts: AgentCounts): string {
-		const sortMode = this.getSortMode();
-		const parts =
-			sortMode === "status"
-				? [
-						counts.attention > 0 ? `${counts.attention} stopped` : null,
-						counts.working > 0 ? `${counts.working} working` : null,
-						counts.done > 0 ? `${counts.done} done` : null,
-					]
-				: [
-						counts.working > 0 ? `${counts.working} working` : null,
-						counts.done > 0 ? `${counts.done} done` : null,
-						counts.attention > 0 ? `${counts.attention} stopped` : null,
-					];
+		const parts = [
+			counts.working > 0 ? `${counts.working} working` : null,
+			counts.attention > 0 ? `${counts.attention} stopped` : null,
+			counts.done > 0 ? `${counts.done} done` : null,
+		];
 
 		return (
 			parts.filter((part): part is string => Boolean(part)).join(" · ") ||
@@ -2670,16 +2425,6 @@ export class AgentStatusTreeProvider
 	private getDiscoveredActivityTimeMs(agent: DiscoveredAgent): number {
 		const startedAtMs = agent.startTime.getTime();
 		return Number.isFinite(startedAtMs) ? startedAtMs : 0;
-	}
-
-	private getNodeStartedTimeMs(node: SortableAgentNode): number {
-		if (node.type === "task") {
-			return this.getTaskStartedTimeMs(node.task);
-		}
-		if (node.type === "discovered") {
-			return this.getDiscoveredActivityTimeMs(node.agent);
-		}
-		return this.getOpenClawTaskStartedTimeMs(node.task);
 	}
 
 	private getNodeActivityTimeMs(node: SortableAgentNode): number {
@@ -2713,31 +2458,16 @@ export class AgentStatusTreeProvider
 		left: SortableAgentNode,
 		right: SortableAgentNode,
 	): number {
-		const sortMode = this.getSortMode();
-		if (sortMode === "status") {
-			const priorityDiff =
-				TASK_STATUS_PRIORITY[this.getNodeStatus(left)] -
-				TASK_STATUS_PRIORITY[this.getNodeStatus(right)];
-			if (priorityDiff !== 0) {
-				return priorityDiff;
-			}
-		}
-
-		if (sortMode === "status-recency") {
-			const leftRunning = this.getNodeStatus(left) === "running";
-			const rightRunning = this.getNodeStatus(right) === "running";
-			if (leftRunning !== rightRunning) {
-				return leftRunning ? -1 : 1;
-			}
+		const priorityDiff =
+			TASK_STATUS_PRIORITY[this.getNodeStatusGroup(left)] -
+			TASK_STATUS_PRIORITY[this.getNodeStatusGroup(right)];
+		if (priorityDiff !== 0) {
+			return priorityDiff;
 		}
 
 		const activityDiff = this.compareActivityTimeDesc(
-			sortMode === "status"
-				? this.getNodeStartedTimeMs(left)
-				: this.getNodeActivityTimeMs(left),
-			sortMode === "status"
-				? this.getNodeStartedTimeMs(right)
-				: this.getNodeActivityTimeMs(right),
+			this.getNodeActivityTimeMs(left),
+			this.getNodeActivityTimeMs(right),
 		);
 		if (activityDiff !== 0) {
 			return activityDiff;
@@ -2788,7 +2518,14 @@ export class AgentStatusTreeProvider
 		return "attention";
 	}
 
-	private buildStatusGroupNodes(nodes: SortableAgentNode[]): AgentNode[] {
+	private buildStatusGroupNodes(
+		nodes: SortableAgentNode[],
+		options?: {
+			parentProjectName?: string;
+			parentProjectDir?: string;
+			parentGroupKey?: string;
+		},
+	): AgentNode[] {
 		const grouped = new Map<AgentStatusGroup, SortableAgentNode[]>();
 		for (const node of nodes) {
 			const statusGroup = this.getNodeStatusGroup(node);
@@ -2801,11 +2538,21 @@ export class AgentStatusTreeProvider
 			.map((status) => {
 				const groupNodes = grouped.get(status) ?? [];
 				if (groupNodes.length === 0) return null;
-				return {
-					type: "statusGroup" as const,
+				const groupNode: StatusGroupNode = {
+					type: "statusGroup",
 					status,
 					nodes: groupNodes,
 				};
+				if (options?.parentProjectName) {
+					groupNode.parentProjectName = options.parentProjectName;
+				}
+				if (options?.parentProjectDir) {
+					groupNode.parentProjectDir = options.parentProjectDir;
+				}
+				if (options?.parentGroupKey) {
+					groupNode.parentGroupKey = options.parentGroupKey;
+				}
+				return groupNode;
 			})
 			.filter((node): node is StatusGroupNode => Boolean(node));
 	}
@@ -2829,10 +2576,13 @@ export class AgentStatusTreeProvider
 		status: AgentStatusGroup,
 		nodes: SortableAgentNode[],
 	): StatusTimeGroupNode[] {
-		const periods: StatusTimeGroupPeriod[] =
-			this.getSortMode() === "status-recency"
-				? ["today", "yesterday", "last7days", "last30days", "older"]
-				: ["today", "yesterday", "older"];
+		const periods: StatusTimeGroupPeriod[] = [
+			"today",
+			"yesterday",
+			"last7days",
+			"last30days",
+			"older",
+		];
 		const grouped = groupByTimePeriod(
 			nodes,
 			(node) => this.getNodeActivityTimeMs(node),
@@ -2861,10 +2611,37 @@ export class AgentStatusTreeProvider
 
 	private getStatusGroupChildren(node: StatusGroupNode): AgentNode[] {
 		if (!this.shouldUseStatusTimeGrouping(node.status, node.nodes)) {
-			return this.applyAgentVisibilityCap(node.nodes);
+			return this.applyAgentVisibilityCap(node.nodes, {
+				parentProjectName: node.parentProjectName,
+				parentProjectDir: node.parentProjectDir,
+				parentGroupKey: node.parentGroupKey,
+			});
 		}
 
 		return this.buildStatusTimeGroups(node.status, node.nodes);
+	}
+
+	private getProjectGroupChildren(node: ProjectGroupNode): AgentNode[] {
+		return this.buildStatusGroupNodes(
+			this.sortAgentNodes([
+				...node.tasks.map(
+					(task) =>
+						({ type: "task" as const, task }) satisfies SortableAgentNode,
+				),
+				...(node.discoveredAgents ?? []).map(
+					(agent) =>
+						({
+							type: "discovered" as const,
+							agent,
+						}) satisfies SortableAgentNode,
+				),
+			]),
+			{
+				parentProjectName: node.projectName,
+				parentProjectDir: node.projectDir,
+				parentGroupKey: node.parentGroupKey,
+			},
+		);
 	}
 
 	private statusGroupHasRecentItems(node: StatusGroupNode): boolean {
@@ -2982,13 +2759,10 @@ export class AgentStatusTreeProvider
 		left: ProjectGroupNode,
 		right: ProjectGroupNode,
 	): number {
-		const sortMode = this.getSortMode();
-		if (sortMode === "status-recency") {
-			const leftHasRunning = this.projectGroupHasRunning(left);
-			const rightHasRunning = this.projectGroupHasRunning(right);
-			if (leftHasRunning !== rightHasRunning) {
-				return leftHasRunning ? -1 : 1;
-			}
+		const leftHasRunning = this.projectGroupHasRunning(left);
+		const rightHasRunning = this.projectGroupHasRunning(right);
+		if (leftHasRunning !== rightHasRunning) {
+			return leftHasRunning ? -1 : 1;
 		}
 
 		const activityDiff = this.compareActivityTimeDesc(
@@ -3014,27 +2788,20 @@ export class AgentStatusTreeProvider
 		left: ProjectGroupNode | FolderGroupNode,
 		right: ProjectGroupNode | FolderGroupNode,
 	): number {
-		const sortMode = this.getSortMode();
 		const leftLabel =
 			left.type === "folderGroup" ? left.groupName : left.projectName;
 		const rightLabel =
 			right.type === "folderGroup" ? right.groupName : right.projectName;
-		if (sortMode === "status-recency") {
-			const leftHasRunning =
-				left.type === "folderGroup"
-					? left.projects.some((project) =>
-							this.projectGroupHasRunning(project),
-						)
-					: this.projectGroupHasRunning(left);
-			const rightHasRunning =
-				right.type === "folderGroup"
-					? right.projects.some((project) =>
-							this.projectGroupHasRunning(project),
-						)
-					: this.projectGroupHasRunning(right);
-			if (leftHasRunning !== rightHasRunning) {
-				return leftHasRunning ? -1 : 1;
-			}
+		const leftHasRunning =
+			left.type === "folderGroup"
+				? left.projects.some((project) => this.projectGroupHasRunning(project))
+				: this.projectGroupHasRunning(left);
+		const rightHasRunning =
+			right.type === "folderGroup"
+				? right.projects.some((project) => this.projectGroupHasRunning(project))
+				: this.projectGroupHasRunning(right);
+		if (leftHasRunning !== rightHasRunning) {
+			return leftHasRunning ? -1 : 1;
 		}
 
 		const activityDiff = this.compareActivityTimeDesc(
@@ -4003,93 +3770,36 @@ export class AgentStatusTreeProvider
 	}
 
 	getParent(element: AgentNode): AgentNode | undefined {
+		const toSortableNode = (
+			node: TaskNode | DiscoveredNode | OpenClawTaskNode,
+		): SortableAgentNode => {
+			if (node.type === "task") {
+				return { type: "task", task: node.task };
+			}
+			if (node.type === "discovered") {
+				return { type: "discovered", agent: node.agent };
+			}
+			return { type: "openclawTask", task: node.task };
+		};
+
 		if (this.isProjectGroupingEnabled()) {
-			const allTasks = this.getScopedLauncherTasks();
 			const openclawTasks = this.getVisibleOpenClawTasks();
-			const visibleTasks = this.isRunningOnlyFilterEnabled()
-				? allTasks.filter((task) => task.status === "running")
-				: allTasks;
 			const groupedRoots = this.buildGroupedRootNodes(
-				visibleTasks,
+				this.getScopedLauncherTasks(),
 				this.getScopedDiscoveredAgents(),
+			);
+			const projects = groupedRoots.flatMap((root) =>
+				root.type === "projectGroup" ? [root] : root.projects,
 			);
 
 			const findProjectParent = (
 				matcher: (project: ProjectGroupNode) => boolean,
-			): ProjectGroupNode | undefined => {
-				for (const root of groupedRoots) {
-					if (root.type === "projectGroup") {
-						if (matcher(root)) return root;
-						continue;
-					}
-					const nested = root.projects.find((project) => matcher(project));
-					if (nested) return nested;
-				}
-				return undefined;
-			};
-
-			if (element.type === "task") {
-				const sortableNode = { type: "task" as const, task: element.task };
-				for (const root of groupedRoots) {
-					const projects =
-						root.type === "projectGroup" ? [root] : root.projects;
-					for (const project of projects) {
-						const olderRuns = this.getChildren(project).find(
-							(node): node is OlderRunsNode => node.type === "olderRuns",
-						);
-						if (
-							olderRuns &&
-							this.olderRunsContainsNode(olderRuns, sortableNode)
-						) {
-							return olderRuns;
-						}
-					}
-				}
-				return findProjectParent((project) =>
-					project.tasks.some((task) => task.id === element.task.id),
-				);
-			}
+			): ProjectGroupNode | undefined => projects.find(matcher);
 
 			if (element.type === "openclawTask") {
 				if (openclawTasks.some((task) => task.taskId === element.task.taskId)) {
 					return { type: "backgroundTasks", tasks: openclawTasks };
 				}
-			}
-
-			if (element.type === "discovered") {
-				const sortableNode = {
-					type: "discovered" as const,
-					agent: element.agent,
-				};
-				for (const root of groupedRoots) {
-					const projects =
-						root.type === "projectGroup" ? [root] : root.projects;
-					for (const project of projects) {
-						const olderRuns = this.getChildren(project).find(
-							(node): node is OlderRunsNode => node.type === "olderRuns",
-						);
-						if (
-							olderRuns &&
-							this.olderRunsContainsNode(olderRuns, sortableNode)
-						) {
-							return olderRuns;
-						}
-					}
-				}
-				return findProjectParent((project) =>
-					(project.discoveredAgents ?? []).some(
-						(agent) => agent.pid === element.agent.pid,
-					),
-				);
-			}
-
-			if (element.type === "olderRuns") {
-				return findProjectParent((project) => {
-					const sameDir =
-						(project.projectDir ?? "") === (element.parentProjectDir ?? "");
-					if (sameDir && element.parentProjectDir) return true;
-					return project.projectName === element.parentProjectName;
-				});
 			}
 
 			if (element.type === "projectGroup") {
@@ -4112,16 +3822,93 @@ export class AgentStatusTreeProvider
 					if (match) return root;
 				}
 			}
+
+			if (element.type === "statusGroup") {
+				return findProjectParent((project) =>
+					this.getProjectGroupChildren(project).some(
+						(node) =>
+							node.type === "statusGroup" && node.status === element.status,
+					),
+				);
+			}
+
+			for (const project of projects) {
+				const projectChildren = this.getProjectGroupChildren(project);
+				const statusGroups = projectChildren.filter(
+					(node): node is StatusGroupNode => node.type === "statusGroup",
+				);
+
+				for (const statusGroup of statusGroups) {
+					const statusChildren = this.getStatusGroupChildren(statusGroup);
+
+					if (
+						element.type === "statusTimeGroup" &&
+						statusChildren.some(
+							(node) =>
+								node.type === "statusTimeGroup" &&
+								node.status === element.status &&
+								node.period === element.period,
+						)
+					) {
+						return statusGroup;
+					}
+
+					if (
+						element.type === "olderRuns" &&
+						statusChildren.some(
+							(node) =>
+								node.type === "olderRuns" &&
+								node.label === element.label &&
+								node.parentProjectDir === element.parentProjectDir &&
+								node.parentProjectName === element.parentProjectName,
+						)
+					) {
+						return statusGroup;
+					}
+
+					if (element.type === "task" || element.type === "discovered") {
+						const targetNode = toSortableNode(element);
+						const olderRuns = statusChildren.find(
+							(node): node is OlderRunsNode =>
+								node.type === "olderRuns" &&
+								this.olderRunsContainsNode(node, targetNode),
+						);
+						if (olderRuns) {
+							return olderRuns;
+						}
+
+						const timeGroup = statusChildren.find(
+							(node): node is StatusTimeGroupNode =>
+								node.type === "statusTimeGroup" &&
+								node.nodes.some((child) =>
+									this.matchesSortableNode(child, targetNode),
+								),
+						);
+						if (timeGroup) {
+							return timeGroup;
+						}
+
+						if (
+							statusChildren.some(
+								(node) =>
+									(node.type === "task" &&
+										targetNode.type === "task" &&
+										node.task.id === targetNode.task.id) ||
+									(node.type === "discovered" &&
+										targetNode.type === "discovered" &&
+										node.agent.pid === targetNode.agent.pid),
+							)
+						) {
+							return statusGroup;
+						}
+					}
+				}
+			}
 		} else {
-			const allTasks = this.getScopedLauncherTasks();
 			const openclawTasks = this.getVisibleOpenClawTasks();
-			const visibleTasks = this.isRunningOnlyFilterEnabled()
-				? allTasks.filter((task) => task.status === "running")
-				: allTasks;
-			const sortMode = this.getSortMode();
-			const showOpenClawInline = sortMode === "recency";
+			const showOpenClawInline = true;
 			const sortableNodes = this.sortAgentNodes([
-				...visibleTasks.map(
+				...this.getScopedLauncherTasks().map(
 					(task) =>
 						({ type: "task" as const, task }) satisfies SortableAgentNode,
 				),
@@ -4142,110 +3929,20 @@ export class AgentStatusTreeProvider
 						)
 					: []),
 			]);
-			const flatRootNodes =
-				sortMode === "recency"
-					? this.applyAgentVisibilityCap(sortableNodes)
-					: this.buildStatusGroupNodes(sortableNodes);
+			const flatRootNodes = this.applyAgentVisibilityCap(sortableNodes);
 			const olderRuns = flatRootNodes.find(
 				(node): node is OlderRunsNode => node.type === "olderRuns",
 			);
-
-			if (sortMode !== "recency") {
-				const statusGroups = flatRootNodes.filter(
-					(node): node is StatusGroupNode => node.type === "statusGroup",
-				);
-
-				if (element.type === "statusTimeGroup") {
-					return statusGroups.find((group) => group.status === element.status);
-				}
-
-				if (
-					element.type === "task" ||
-					element.type === "discovered" ||
-					element.type === "openclawTask"
-				) {
-					const targetNode =
-						element.type === "task"
-							? ({
-									type: "task" as const,
-									task: element.task,
-								} satisfies SortableAgentNode)
-							: element.type === "discovered"
-								? ({
-										type: "discovered" as const,
-										agent: element.agent,
-									} satisfies SortableAgentNode)
-								: ({
-										type: "openclawTask" as const,
-										task: element.task,
-									} satisfies SortableAgentNode);
-
-					for (const group of statusGroups) {
-						const groupChildren = this.getStatusGroupChildren(group);
-						const nestedTimeGroup = groupChildren.find(
-							(node): node is StatusTimeGroupNode =>
-								node.type === "statusTimeGroup" &&
-								node.nodes.some((child) =>
-									this.matchesSortableNode(child, targetNode),
-								),
-						);
-						if (nestedTimeGroup) {
-							return nestedTimeGroup;
-						}
-
-						if (
-							groupChildren.some(
-								(node) =>
-									(node.type === "task" &&
-										targetNode.type === "task" &&
-										node.task.id === targetNode.task.id) ||
-									(node.type === "discovered" &&
-										targetNode.type === "discovered" &&
-										node.agent.pid === targetNode.agent.pid) ||
-									(node.type === "openclawTask" &&
-										targetNode.type === "openclawTask" &&
-										node.task.taskId === targetNode.task.taskId),
-							)
-						) {
-							return group;
-						}
-					}
-				}
-			}
-
-			if (olderRuns && element.type === "task") {
-				const sortableNode = { type: "task" as const, task: element.task };
-				if (this.olderRunsContainsNode(olderRuns, sortableNode)) {
-					return olderRuns;
-				}
-			}
-
-			if (olderRuns && element.type === "discovered") {
-				const sortableNode = {
-					type: "discovered" as const,
-					agent: element.agent,
-				};
-				if (this.olderRunsContainsNode(olderRuns, sortableNode)) {
-					return olderRuns;
-				}
-			}
-
-			if (olderRuns && element.type === "openclawTask") {
-				const sortableNode = {
-					type: "openclawTask" as const,
-					task: element.task,
-				};
-				if (this.olderRunsContainsNode(olderRuns, sortableNode)) {
-					return olderRuns;
-				}
-			}
-
 			if (
-				!showOpenClawInline &&
-				element.type === "openclawTask" &&
-				openclawTasks.some((task) => task.taskId === element.task.taskId)
+				olderRuns &&
+				(element.type === "task" ||
+					element.type === "discovered" ||
+					element.type === "openclawTask")
 			) {
-				return { type: "backgroundTasks", tasks: openclawTasks };
+				const sortableNode = toSortableNode(element);
+				if (this.olderRunsContainsNode(olderRuns, sortableNode)) {
+					return olderRuns;
+				}
 			}
 		}
 		if (element.type === "backgroundTasks") {
@@ -4948,22 +4645,31 @@ export class AgentStatusTreeProvider
 		const icon = this.getProjectIcon(projectDir, { launcherIcon });
 		const latestActivity = this.getProjectGroupRelativeActivity(node);
 		const item = new vscode.TreeItem(
-			latestActivity
-				? `${icon} ${node.projectName} · ${latestActivity}`
-				: `${icon} ${node.projectName}`,
+			`${icon} ${node.projectName}`,
 			vscode.TreeItemCollapsibleState.Expanded,
 		);
 		const discoveredCount = node.discoveredAgents?.length ?? 0;
 		const counts = countAgentStatuses(node.tasks);
 		counts.working += discoveredCount;
 		counts.total += discoveredCount;
-		item.description = formatCountSummary(counts, {
+		const description = formatCountSummary(counts, {
 			includeAttention: true,
 		});
+		item.description = latestActivity
+			? `${description} · ${latestActivity}`
+			: description;
 		const attentionCount = counts.attention;
-		if (attentionCount > 0) {
-			item.tooltip = `${attentionCount} stopped ${attentionCount === 1 ? "agent" : "agents"} in ${node.projectName}.`;
-		}
+		item.tooltip = new vscode.MarkdownString(
+			[
+				`**${node.projectName}**`,
+				projectDir ? `Dir: \`${projectDir}\`` : null,
+				`Agents: ${description}`,
+				latestActivity ? `Latest activity: ${latestActivity}` : null,
+				attentionCount > 0 ? `${attentionCount} needs attention` : null,
+			]
+				.filter(Boolean)
+				.join("\n\n"),
+		);
 		item.contextValue = "projectGroup";
 		return item;
 	}
@@ -4988,6 +4694,7 @@ export class AgentStatusTreeProvider
 		item.id = `status-group:${node.status}`;
 		item.contextValue = "statusGroup";
 		item.iconPath = STATUS_GROUP_ICONS[node.status];
+		item.tooltip = `${STATUS_GROUP_LABELS[node.status]} • ${count} ${count === 1 ? "agent" : "agents"}`;
 		return item;
 	}
 
@@ -4998,6 +4705,7 @@ export class AgentStatusTreeProvider
 		item.id = `status-time-group:${node.status}:${node.period}`;
 		item.contextValue = "statusTimeGroup";
 		item.iconPath = new vscode.ThemeIcon("calendar");
+		item.tooltip = `${STATUS_GROUP_LABELS[node.status]} • ${node.label}`;
 		return item;
 	}
 
@@ -5058,6 +4766,20 @@ export class AgentStatusTreeProvider
 				? task.started_at
 				: (task.completed_at ?? task.updated_at ?? task.started_at ?? null);
 		return relativeTime(reference);
+	}
+
+	private getTaskDuration(task: AgentTask): string | null {
+		if (!task.started_at) return null;
+		const startedAt = new Date(task.started_at).getTime();
+		if (!Number.isFinite(startedAt)) return null;
+		const endedAt = task.completed_at
+			? new Date(task.completed_at).getTime()
+			: Date.now();
+		if (!Number.isFinite(endedAt)) return null;
+		return formatElapsed(
+			task.started_at,
+			new Date(Math.max(startedAt, endedAt)),
+		);
 	}
 
 	private getProjectGroupRelativeActivity(
@@ -5139,7 +4861,6 @@ export class AgentStatusTreeProvider
 
 	private createTaskItem(task: AgentTask): vscode.TreeItem {
 		const roleIcon = task.role ? ROLE_ICONS[task.role] : null;
-		const activityDesc = this.getTaskActivityDescription(task);
 		const modelDisplay = this.resolveTaskModelDisplay(task);
 		const projectIcon = this.getProjectIcon(task.project_dir, {
 			launcherIcon: task.project_icon,
@@ -5150,22 +4871,28 @@ export class AgentStatusTreeProvider
 		const diffSummaryInline = this.getCachedDiffSummaryForTask(task);
 		const diffLoading =
 			!diffSummaryInline && this.isTaskDiffSummaryLoading(task);
-		const projectDescription = diffSummaryInline
-			? `${task.project_name} · ${diffSummaryInline}`
-			: diffLoading
-				? `${task.project_name} · ${DIFF_LOADING_LABEL}`
-				: task.project_name;
-		const baseDescription =
-			task.status === "completed_stale"
-				? `${STALE_AGENT_STATUS_DESCRIPTION} · ${projectDescription}`
-				: `${activityDesc} · ${projectDescription}`;
-		const descriptionParts = [baseDescription];
+		const descriptionParts: string[] = [];
+		if (!this.isProjectGroupingEnabled()) {
+			descriptionParts.push(task.project_name);
+		}
+		if (task.status === "completed_stale") {
+			descriptionParts.push(STALE_AGENT_STATUS_DESCRIPTION);
+		}
+		if (diffSummaryInline) {
+			descriptionParts.push(diffSummaryInline);
+		} else if (diffLoading) {
+			descriptionParts.push(DIFF_LOADING_LABEL);
+		}
 		if (modelDisplay?.alias) {
 			descriptionParts.push(modelDisplay.alias);
+		}
+		if (descriptionParts.length === 0) {
+			descriptionParts.push(this.getTaskActivityDescription(task));
 		}
 		const description = isStuck
 			? `${descriptionParts.join(" · ")} (possibly stuck)`
 			: descriptionParts.join(" · ");
+		const duration = this.getTaskDuration(task);
 
 		const item = new vscode.TreeItem(
 			label,
@@ -5174,18 +4901,11 @@ export class AgentStatusTreeProvider
 		item.description = description;
 		item.tooltip = new vscode.MarkdownString(
 			[
-				`**${task.id}** — ${getStatusDisplayLabel(task.status)}`,
-				task.role ? `Role: ${task.role}` : null,
-				`Project: ${task.project_name}`,
-				`Dir: \`${task.project_dir}\``,
-				`Started: ${task.started_at}`,
-				`Attempts: ${task.attempts}/${task.max_attempts}`,
-				task.terminal_backend ? `Terminal: ${task.terminal_backend}` : null,
-				modelDisplay
-					? `Model: ${modelDisplay.fullName} (${modelDisplay.isExplicit ? "explicit" : "inherited"})`
-					: null,
-				task.exit_code != null ? `Exit code: ${task.exit_code}` : null,
-				task.pr_number ? `PR: #${task.pr_number}` : null,
+				`**${task.id}**`,
+				`Status: ${getStatusDisplayLabel(task.status)}`,
+				modelDisplay ? `Model: ${modelDisplay.fullName}` : null,
+				duration ? `Duration: ${duration}` : null,
+				task.project_dir ? `Dir: \`${task.project_dir}\`` : null,
 			]
 				.filter(Boolean)
 				.join("\n\n"),

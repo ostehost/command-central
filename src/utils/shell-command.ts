@@ -23,7 +23,7 @@ export interface BuildOsteSpawnCommandOptions {
 	projectDir: string;
 	promptFile: string;
 	taskId: string;
-	backend: string;
+	backend?: string;
 	role?: string;
 }
 
@@ -45,6 +45,8 @@ export function buildOsteSpawnCommand(
 		args.push("--role", options.role);
 	}
 
-	args.push("--agent", options.backend);
+	if (options.backend) {
+		args.push("--agent", options.backend);
+	}
 	return joinShellArgs(args);
 }
