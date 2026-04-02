@@ -4969,7 +4969,7 @@ export class AgentStatusTreeProvider
 		return clamped;
 	}
 
-	private getStreamFileCandidates(task: AgentTask): string[] {
+	public getStreamFileCandidates(task: AgentTask): string[] {
 		const explicitStreamFile = (
 			task as AgentTask & { stream_file?: string | null }
 		).stream_file;
@@ -4987,7 +4987,7 @@ export class AgentStatusTreeProvider
 		return candidates;
 	}
 
-	private resolveStreamFilePath(task: AgentTask): string | null {
+	public resolveStreamFilePath(task: AgentTask): string | null {
 		for (const candidate of this.getStreamFileCandidates(task)) {
 			if (fs.existsSync(candidate)) {
 				return candidate;

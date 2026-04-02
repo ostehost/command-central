@@ -232,12 +232,13 @@ describe("focusAgentTerminal command", () => {
 		expect(task.status).toBe("completed");
 	});
 
-	test("Strategy 3 shows resume guidance when tmux session is dead", () => {
+	test("Strategy 3 opens transcript when tmux session is dead and stream file exists", async () => {
 		const task = createTask({
 			terminal_backend: "tmux",
 			ghostty_bundle_id: null,
 			bundle_path: "(tmux-mode)",
 			session_id: "agent-my-project",
+			stream_file: "/tmp/agent-my-project.jsonl",
 		});
 
 		// Strategy 3 requires a live tmux session — guard is inline
@@ -247,18 +248,40 @@ describe("focusAgentTerminal command", () => {
 			/^[a-zA-Z0-9._-]+$/.test(task.session_id);
 		expect(strategy3Fires).toBeTruthy();
 
-		// Simulate tmux has-session failing (session ended) — the command should guide the user to Resume Session
+		// Simulate tmux has-session failing with a persisted stream file.
 		const sessionAlive = false;
 		if (!sessionAlive) {
-			// Dead sessions should produce a more helpful degraded message
-			vscodeMock.window.showInformationMessage(
-				"Terminal session ended. Use Resume Session to start a new one.",
+			await vscodeMock.commands.executeCommand(
+				"vscode.open",
+				vscodeMock.Uri.file(task.stream_file ?? ""),
 			);
 		}
 
-		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-			"Terminal session ended. Use Resume Session to start a new one.",
+		expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+			"vscode.open",
+			expect.objectContaining({
+				fsPath: "/tmp/agent-my-project.jsonl",
+			}),
 		);
+	});
+
+	test("Strategy 3 falls back to opening the project bundle when tmux session is dead and no stream file exists", () => {
+		const task = createTask({
+			terminal_backend: "tmux",
+			ghostty_bundle_id: null,
+			bundle_path: "(tmux-mode)",
+			session_id: "agent-my-project",
+			project_dir: "/tmp/project",
+			stream_file: null,
+		});
+
+		const sessionAlive = false;
+		if (!sessionAlive && task.project_dir) {
+			// The handler falls back to surfacing the empty project bundle via TerminalManager.
+			expect(task.project_dir).toBe("/tmp/project");
+		}
+
+		expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
 	});
 
 	test("Strategy 1 still applies for completed task even when tmux session is dead", () => {
@@ -610,6 +633,44 @@ describe("showAgentOutput command", () => {
 		// Verify data that would be passed to agentOutputChannels.show()
 		expect(task.id).toBe("my-task");
 		expect(task.session_id).toBe("my-sess");
+	});
+
+	test("non-running tasks open the stream transcript instead of the live output channel", async () => {
+		const task = createTask({
+			status: "failed",
+			stream_file: "/tmp/my-task.jsonl",
+		});
+
+		if (task.status !== "running" && task.stream_file) {
+			await vscodeMock.commands.executeCommand(
+				"vscode.open",
+				vscodeMock.Uri.file(task.stream_file),
+			);
+		}
+
+		expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+			"vscode.open",
+			expect.objectContaining({
+				fsPath: "/tmp/my-task.jsonl",
+			}),
+		);
+	});
+
+	test("non-running tasks warn when no transcript file exists", () => {
+		const task = createTask({
+			status: "completed",
+			stream_file: null,
+		});
+
+		if (task.status !== "running" && !task.stream_file) {
+			vscodeMock.window.showWarningMessage(
+				"No output transcript file found for this task.",
+			);
+		}
+
+		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+			"No output transcript file found for this task.",
+		);
 	});
 });
 

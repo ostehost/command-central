@@ -1361,16 +1361,17 @@ export async function activate(
 						}
 					}
 
-					if (
-						task.terminal_backend === "tmux" &&
-						task.session_id &&
-						isValidSessionId(task.session_id) &&
-						!hasLiveTmuxSession
-					) {
-						vscode.window.showInformationMessage(
-							"Terminal session ended. Use Resume Session to start a new one.",
-						);
-						return;
+					if (task.terminal_backend === "tmux" && !hasLiveTmuxSession) {
+						const streamFile = agentStatusProvider?.resolveStreamFilePath(task);
+						if (streamFile) {
+							await openTranscriptInEditor(streamFile);
+							return;
+						}
+
+						if (projectDir) {
+							await terminalManager?.runInProjectTerminal(projectDir);
+							return;
+						}
 					}
 
 					vscode.window.showInformationMessage(
@@ -2202,7 +2203,20 @@ export async function activate(
 						);
 						return;
 					}
-					agentOutputChannels.show(task.id, task.session_id);
+					if (task.status === "running") {
+						agentOutputChannels.show(task.id, task.session_id);
+						return;
+					}
+
+					const streamFile = agentStatusProvider?.resolveStreamFilePath(task);
+					if (!streamFile) {
+						vscode.window.showWarningMessage(
+							"No output transcript file found for this task.",
+						);
+						return;
+					}
+
+					await openTranscriptInEditor(streamFile);
 				},
 			),
 		);
