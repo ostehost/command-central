@@ -71,6 +71,7 @@ import {
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
 import { AgentStatusBar } from "../../src/services/agent-status-bar.js";
+import { OpenClawConfigService } from "../../src/services/openclaw-config-service.js";
 import { PerformanceTestHelper } from "../helpers/performance-test-helper.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
@@ -3287,6 +3288,47 @@ describe("AgentStatusTreeProvider", () => {
 		}
 	});
 
+	test("readRegistry preserves model from tasks.json", () => {
+		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
+		const tasksFile = path.join(tmpDir, "tasks.json");
+		fs.writeFileSync(
+			tasksFile,
+			JSON.stringify({
+				version: 2,
+				tasks: {
+					explicitModel: {
+						id: "explicitModel",
+						status: "running",
+						project_dir: "/Users/test/projects/my-app",
+						project_name: "My App",
+						session_id: "agent-my-app-model",
+						bundle_path: "/Applications/Projects/My App.app",
+						prompt_file: "/tmp/task.md",
+						started_at: "2026-02-25T08:00:00Z",
+						attempts: 1,
+						max_attempts: 3,
+						model: "anthropic/claude-opus-4-6",
+					},
+				},
+			}),
+		);
+
+		try {
+			(
+				provider as unknown as {
+					_filePath: string | null;
+				}
+			)._filePath = tasksFile;
+			const registry =
+				AgentStatusTreeProvider.prototype.readRegistry.call(provider);
+			expect(registry.tasks["explicitModel"]?.model).toBe(
+				"anthropic/claude-opus-4-6",
+			);
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
 	test("normalizes v1 tmux_session to session_id", () => {
 		// Simulate normalized output: readRegistry converts tmux_session → session_id
 		provider.readRegistry = () => ({
@@ -4858,6 +4900,50 @@ describe("AgentStatusTreeProvider", () => {
 			expect(desc).toContain("1 files · +10 / -5");
 		});
 
+		test("task item description appends explicit model alias", () => {
+			const task = createMockTask({
+				status: "running",
+				model: "anthropic/claude-opus-4-6",
+			});
+			provider.getDiffSummary = () => "2 files · +30 / -10";
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("2 files · +30 / -10 · opus");
+		});
+
+		test("task item description appends inherited model alias", () => {
+			const tmpDir = fs.mkdtempSync("/tmp/cc-openclaw-config-");
+			const configPath = path.join(tmpDir, "openclaw.json");
+			fs.writeFileSync(
+				configPath,
+				JSON.stringify({
+					agents: {
+						defaults: {
+							model: {
+								primary: "openai-codex/gpt-5.4",
+							},
+						},
+						list: [{ id: "developer" }],
+					},
+				}),
+			);
+
+			try {
+				const configService = new OpenClawConfigService(configPath);
+				configService.reload();
+				provider.setOpenClawConfigService(configService);
+
+				const task = createMockTask({
+					status: "running",
+					role: "developer",
+				});
+				provider.getDiffSummary = () => null;
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(item.description).toContain("codex-5.4");
+			} finally {
+				fs.rmSync(tmpDir, { recursive: true, force: true });
+			}
+		});
+
 		test("discovered item description includes diff summary when available", () => {
 			const agent = {
 				pid: 55555,
@@ -4981,6 +5067,77 @@ describe("AgentStatusTreeProvider", () => {
 				projectName: string;
 			};
 			expect(group.projectName).toBe("my-app");
+		});
+	});
+
+	describe("task model details", () => {
+		test("expanded task view shows explicit model detail", () => {
+			const task = createMockTask({
+				status: "running",
+				model: "anthropic/claude-opus-4-6",
+			});
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getGitInfo = () => null;
+			provider.getDiffSummary = () => null;
+			provider.reload();
+
+			const root = provider.getChildren();
+			const firstTask = getFirstTask(root);
+			const details = provider.getChildren(firstTask);
+			const modelDetail = details.find(
+				(d) => d.type === "detail" && d.label === "Model",
+			);
+			expect(modelDetail).toBeDefined();
+			if (modelDetail?.type === "detail") {
+				expect(modelDetail.value).toBe("anthropic/claude-opus-4-6 (explicit)");
+			}
+		});
+
+		test("expanded task view shows inherited model detail", () => {
+			const tmpDir = fs.mkdtempSync("/tmp/cc-openclaw-config-");
+			const configPath = path.join(tmpDir, "openclaw.json");
+			fs.writeFileSync(
+				configPath,
+				JSON.stringify({
+					agents: {
+						defaults: {
+							model: {
+								primary: "openai-codex/gpt-5.4",
+							},
+						},
+						list: [{ id: "developer" }],
+					},
+				}),
+			);
+
+			try {
+				const configService = new OpenClawConfigService(configPath);
+				configService.reload();
+				provider.setOpenClawConfigService(configService);
+
+				const task = createMockTask({
+					status: "running",
+					role: "developer",
+				});
+				provider.readRegistry = () =>
+					createMockRegistry({ "test-task-1": task });
+				provider.getGitInfo = () => null;
+				provider.getDiffSummary = () => null;
+				provider.reload();
+
+				const root = provider.getChildren();
+				const firstTask = getFirstTask(root);
+				const details = provider.getChildren(firstTask);
+				const modelDetail = details.find(
+					(d) => d.type === "detail" && d.label === "Model",
+				);
+				expect(modelDetail).toBeDefined();
+				if (modelDetail?.type === "detail") {
+					expect(modelDetail.value).toBe("openai-codex/gpt-5.4 (inherited)");
+				}
+			} finally {
+				fs.rmSync(tmpDir, { recursive: true, force: true });
+			}
 		});
 	});
 });

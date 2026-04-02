@@ -21,7 +21,10 @@ import type {
 } from "../discovery/process-scanner.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
-import type { OpenClawConfigService } from "../services/openclaw-config-service.js";
+import type {
+	OpenClawAgentModel,
+	OpenClawConfigService,
+} from "../services/openclaw-config-service.js";
 import type { OpenClawTaskService } from "../services/openclaw-task-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
 import {
@@ -35,6 +38,7 @@ import {
 	formatCountSummary,
 } from "../utils/agent-counts.js";
 import { CLEARABLE_AGENT_TASK_STATUSES } from "../utils/agent-task-registry.js";
+import { getModelAlias } from "../utils/model-aliases.js";
 import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
 import type { ListeningPort } from "../utils/port-detector.js";
 import { detectListeningPortsAsync } from "../utils/port-detector.js";
@@ -672,6 +676,7 @@ function normalizeTask(
 		error_message: asString(raw["error_message"]) ?? null,
 		completed_at: asString(raw["completed_at"]) ?? null,
 		updated_at: asString(raw["updated_at"]) ?? null,
+		model: asString(raw["model"]) ?? null,
 		prompt_summary: asString(raw["prompt_summary"]) ?? null,
 	};
 }
@@ -1806,6 +1811,49 @@ export class AgentStatusTreeProvider
 		if (detected !== "unknown") return detected;
 		const explicit = (task.agent_backend ?? task.cli_name ?? "").trim();
 		return explicit.length > 0 ? explicit.toLowerCase() : "unknown";
+	}
+
+	private getTaskAgentIdentities(task: AgentTask): string[] {
+		return [task.role, task.agent_backend, task.cli_name]
+			.map((value) => value?.trim())
+			.filter((value): value is string => Boolean(value));
+	}
+
+	private resolveInheritedTaskModel(
+		task: AgentTask,
+	): OpenClawAgentModel | null {
+		if (!this._openclawConfigService) return null;
+
+		for (const agentId of this.getTaskAgentIdentities(task)) {
+			const model = this._openclawConfigService.getAgentModel(agentId);
+			if (model?.model?.trim()) return model;
+		}
+
+		return null;
+	}
+
+	private resolveTaskModelDisplay(task: AgentTask): {
+		fullName: string;
+		alias: string;
+		isExplicit: boolean;
+	} | null {
+		const explicitModel = task.model?.trim();
+		if (explicitModel) {
+			return {
+				fullName: explicitModel,
+				alias: getModelAlias(explicitModel),
+				isExplicit: true,
+			};
+		}
+
+		const inheritedModel = this.resolveInheritedTaskModel(task);
+		if (!inheritedModel) return null;
+
+		return {
+			fullName: inheritedModel.model,
+			alias: getModelAlias(inheritedModel.model),
+			isExplicit: inheritedModel.isExplicit,
+		};
 	}
 
 	private truncateErrorMessage(errorMessage?: string | null): string | null {
@@ -3309,29 +3357,14 @@ export class AgentStatusTreeProvider
 		}
 
 		// Model — from tasks.json (spawn-time) or OpenClaw config (policy)
-		const taskModel = t.model;
-		if (taskModel) {
+		const modelDisplay = this.resolveTaskModelDisplay(t);
+		if (modelDisplay) {
 			details.push({
 				type: "detail",
 				label: "Model",
-				value: taskModel,
+				value: `${modelDisplay.fullName} (${modelDisplay.isExplicit ? "explicit" : "inherited"})`,
 				taskId: t.id,
 			});
-		}
-		if (this._openclawConfigService && !taskModel) {
-			const allModels = this._openclawConfigService.getAllAgentModels();
-			if (allModels.length > 0) {
-				const globalModel = allModels.find((m) => !m.isExplicit);
-				const displayModel = globalModel ?? allModels[0];
-				if (displayModel) {
-					details.push({
-						type: "detail",
-						label: "OpenClaw Default",
-						value: displayModel.model,
-						taskId: t.id,
-					});
-				}
-			}
 		}
 
 		// Port detection — only for running tasks with a valid session (non-blocking)
@@ -5036,6 +5069,7 @@ export class AgentStatusTreeProvider
 	private createTaskItem(task: AgentTask): vscode.TreeItem {
 		const roleIcon = task.role ? ROLE_ICONS[task.role] : null;
 		const activityDesc = this.getTaskActivityDescription(task);
+		const modelDisplay = this.resolveTaskModelDisplay(task);
 		const projectIcon = this.getProjectIcon(task.project_dir, {
 			launcherIcon: task.project_icon,
 		});
@@ -5050,9 +5084,13 @@ export class AgentStatusTreeProvider
 			: diffLoading
 				? `${activityDesc} · ${task.project_name} · ${DIFF_LOADING_LABEL}`
 				: `${activityDesc} · ${task.project_name}`;
+		const descriptionParts = [baseDescription];
+		if (modelDisplay?.alias) {
+			descriptionParts.push(modelDisplay.alias);
+		}
 		const description = isStuck
-			? `${baseDescription} (possibly stuck)`
-			: baseDescription;
+			? `${descriptionParts.join(" · ")} (possibly stuck)`
+			: descriptionParts.join(" · ");
 
 		const item = new vscode.TreeItem(
 			label,
@@ -5068,6 +5106,9 @@ export class AgentStatusTreeProvider
 				`Started: ${task.started_at}`,
 				`Attempts: ${task.attempts}/${task.max_attempts}`,
 				task.terminal_backend ? `Terminal: ${task.terminal_backend}` : null,
+				modelDisplay
+					? `Model: ${modelDisplay.fullName} (${modelDisplay.isExplicit ? "explicit" : "inherited"})`
+					: null,
 				task.exit_code != null ? `Exit code: ${task.exit_code}` : null,
 				task.pr_number ? `PR: #${task.pr_number}` : null,
 			]
