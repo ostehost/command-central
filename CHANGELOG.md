@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-02: 1160+ tests across 83 files.
 
+## [0.5.1-52] - 2026-04-02
+
+### Fixed
+- **Resume/Focus routes to exact task terminal** — Clicking Focus Terminal or Resume Session now selects the exact tmux window and pane for that task instead of just activating the Ghostty app. Multiple tasks in the same project now land in their own tabs. New `task-terminal-routing.ts` module resolves the precise target; `window-focus.ts` uses AppleScript terminal-ID lookup for targeted activation.
+
 ## [0.5.1-51] - 2026-04-02
 
 ### Changed
