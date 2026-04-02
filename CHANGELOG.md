@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-02: 1160+ tests across 83 files.
 
+## [0.5.1-53] - 2026-04-02
+
+### Added
+- **Clear Completed Agents** toolbar action — One-click removal of all completed/failed/stopped/killed agent entries from the sidebar, with confirmation dialog.
+- **5 time sub-groups in status+recency mode** — Today, Yesterday, Last 7 Days, Last 30 Days, Older (previously only 3).
+
+### Changed
+- **Smart collapse defaults** — "Older" and "Last 30 Days" groups auto-collapse on load so active work stays visible. Today/Yesterday/Last 7 Days remain expanded.
+- **Extracted `agent-task-registry.ts`** — Shared task registry parsing, serialization, and cleanup logic extracted from extension.ts into a dedicated module with full test coverage.
+
 ## [0.5.1-52] - 2026-04-02
 
 ### Fixed
