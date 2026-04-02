@@ -5,7 +5,25 @@ All notable changes to the Command Central extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-01: 1160 tests across 83 files.
+**Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-02: 1160+ tests across 83 files.
+
+## [0.5.1-49] - 2026-04-02
+
+### Changed
+- **Faster sidebar with 100+ agents** — Tree refreshes are now debounced and batched instead of cascading on every async diff/port resolution. With 166 tasks in the registry, the sidebar no longer stutters.
+- **Smarter cache management** — Diff summary cache is pruned (stale entries removed) instead of nuked on every reload, so resolved diffs persist across refreshes.
+- **Status-grouped agent view** — When using the Status or Status+Recency sort modes, agents are grouped into collapsible **Running**, **Failed & Stopped**, and **Completed** sections — matching the Source Control panel pattern.
+- **Targeted tree updates** — Individual tree items refresh when their data changes, instead of always redrawing the entire list.
+
+### Fixed
+- **`oste-steer.sh` not found on resume** — The "Resume Session" command now resolves helper scripts via the launcher path resolver instead of relying on PATH, fixing `ENOENT` errors when steering launcher sessions.
+- **PATH init corruption on Codex spawns** — The 108-line PATH initialization snippet that was sent inline via tmux `send-keys` (and getting mangled) is now written to a temp file and sourced cleanly.
+
+## [0.5.1-48] - 2026-04-02
+
+### Fixed
+- **Agent health checks use correct tmux socket** — Dead agents no longer show as "working" because health checks now use the task-specific tmux socket instead of the default socket.
+- **Global task registry enforced** — The sidebar now always reads from the global `~/.config/ghostty-launcher/tasks.json` instead of stale local copies, fixing the "CC shows 4 agents while launcher shows 163" discrepancy.
 
 ## [0.5.1-47] - 2026-04-01
 
