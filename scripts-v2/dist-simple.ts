@@ -242,6 +242,21 @@ async function main() {
 			console.log(`   → Share: code --install-extension releases/${prodVsixName}`);
 		}
 		
+		// Generate release digest
+		try {
+			const digestProc = Bun.spawnSync({
+				cmd: ["bun", "run", "scripts-v2/release-digest.ts", "--format", "discord"],
+				cwd: process.cwd(),
+			});
+			const digest = digestProc.stdout.toString().trim();
+			if (digest && digestProc.exitCode === 0) {
+				const digestPath = path.join("releases", `digest-v${currentVersion}.md`);
+				await fs.writeFile(digestPath, digest + "\n", "utf-8");
+				console.log(`\n📝 Release digest: ${digestPath}`);
+				console.log("   → Post to Discord: cat " + digestPath);
+			}
+		} catch { /* digest is optional */ }
+
 		// Show releases inventory
 		const releases = await getReleases();
 		if (releases.length > 0) {
