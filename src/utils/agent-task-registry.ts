@@ -91,13 +91,14 @@ export function markTaskFailedInRegistryMap(
 	const entry = findTaskRegistryEntry(tasks, taskId);
 	if (!entry) return false;
 
-	entry.status = "failed";
-	entry.error_message = message;
-	entry.completed_at =
-		typeof entry.completed_at === "string" && entry.completed_at.length > 0
-			? entry.completed_at
+	entry["status"] = "failed";
+	entry["error_message"] = message;
+	entry["completed_at"] =
+		typeof entry["completed_at"] === "string" &&
+		(entry["completed_at"] as string).length > 0
+			? entry["completed_at"]
 			: timestamp;
-	entry.updated_at = timestamp;
+	entry["updated_at"] = timestamp;
 	return true;
 }
 
@@ -149,5 +150,7 @@ function findTaskRegistryEntry(
 	const entryKey = findTaskRegistryEntryKey(tasks, taskId);
 	if (!entryKey) return null;
 	const entry = tasks[entryKey];
-	return typeof entry === "object" && entry ? entry : null;
+	return typeof entry === "object" && entry
+		? (entry as Record<string, unknown>)
+		: null;
 }
