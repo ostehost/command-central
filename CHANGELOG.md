@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-02: 1160+ tests across 83 files.
 
+## [0.5.1-50] - 2026-04-02
+
+### Changed
+- **Time-grouped completed agents** — When using status grouping, completed and failed agents are sub-grouped into Today, Yesterday, and Older buckets — matching the Git Sort panel's time-grouping pattern. The Older bucket starts collapsed so recent work stays visible.
+- **Count badges on status groups** — Group headers now show agent counts: "Completed · 161 agents" instead of bare labels.
+- **Consistent description format** — Agent item descriptions now follow the same `name · time ago · project` pattern used in Git Sort.
+
 ## [0.5.1-49] - 2026-04-02
 
 ### Changed
