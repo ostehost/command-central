@@ -86,6 +86,7 @@ export interface AgentTask {
 	claude_session_id?: string | null;
 	cli_name?: string | null;
 	persist_socket?: string | null;
+	tmux_socket?: string | null;
 	tmux_session?: string;
 	bundle_path: string;
 	prompt_file: string;
@@ -575,6 +576,7 @@ function normalizeTask(
 		claude_session_id: asString(raw["claude_session_id"]) ?? null,
 		cli_name: asString(raw["cli_name"]) ?? null,
 		persist_socket: asString(raw["persist_socket"]) ?? null,
+		tmux_socket: asString(raw["tmux_socket"]) ?? null,
 		tmux_session: asString(raw["tmux_session"]),
 		bundle_path: bundlePath,
 		prompt_file: promptFile,
@@ -908,9 +910,20 @@ export class AgentStatusTreeProvider
 		);
 	}
 
-	private isTmuxSessionAlive(sessionId: string): boolean {
+	private getTmuxSessionHealthCacheKey(
+		sessionId: string,
+		socketPath?: string | null,
+	): string {
+		return `${socketPath ?? "__default__"}::${sessionId}`;
+	}
+
+	private isTmuxSessionAlive(
+		sessionId: string,
+		socketPath?: string | null,
+	): boolean {
 		const cacheTtlMs = 5_000;
-		const cached = this._tmuxSessionHealthCache.get(sessionId);
+		const cacheKey = this.getTmuxSessionHealthCacheKey(sessionId, socketPath);
+		const cached = this._tmuxSessionHealthCache.get(cacheKey);
 		const now = Date.now();
 		if (cached && now - cached.checkedAt < cacheTtlMs) {
 			return cached.alive;
@@ -918,12 +931,15 @@ export class AgentStatusTreeProvider
 
 		let alive = false;
 		try {
-			execFileSync("tmux", ["has-session", "-t", sessionId], { timeout: 500 });
+			const args = socketPath
+				? ["-S", socketPath, "has-session", "-t", sessionId]
+				: ["has-session", "-t", sessionId];
+			execFileSync("tmux", args, { timeout: 500 });
 			alive = true;
 		} catch {
 			alive = false;
 		}
-		this._tmuxSessionHealthCache.set(sessionId, { alive, checkedAt: now });
+		this._tmuxSessionHealthCache.set(cacheKey, { alive, checkedAt: now });
 		return alive;
 	}
 
@@ -981,7 +997,8 @@ export class AgentStatusTreeProvider
 				task.terminal_backend === undefined) &&
 			isValidSessionId(task.session_id)
 		) {
-			if (!this.isTmuxSessionAlive(task.session_id)) return false;
+			if (!this.isTmuxSessionAlive(task.session_id, task.tmux_socket))
+				return false;
 			return !looksStale;
 		}
 
@@ -1128,7 +1145,11 @@ export class AgentStatusTreeProvider
 					this._persistSessionHealthCache.delete(persistSocketPath);
 				}
 			}
-			this._tmuxSessionHealthCache.delete(sessionId);
+			for (const cacheKey of this._tmuxSessionHealthCache.keys()) {
+				if (cacheKey.endsWith(`::${sessionId}`)) {
+					this._tmuxSessionHealthCache.delete(cacheKey);
+				}
+			}
 			this._persistSessionHealthCache.delete(sessionId);
 		}
 

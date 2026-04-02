@@ -99,6 +99,12 @@ function getPersistSocketPath(
 	);
 }
 
+function getTmuxHealthCacheKey(
+	task: Pick<AgentTask, "session_id" | "tmux_socket">,
+): string {
+	return `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
+}
+
 function createMockRegistry(
 	tasks: Record<string, AgentTask> = {},
 ): TaskRegistry {
@@ -355,7 +361,7 @@ describe("AgentStatusTreeProvider", () => {
 		mock.restore();
 		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
 			const [cmd, args] = fnArgs as [string, string[] | undefined];
-			if (cmd === "tmux" && args?.[0] === "has-session") return "";
+			if (cmd === "tmux" && args?.includes("has-session")) return "";
 			if (cmd === "persist" && args?.[0] === "-s") return "";
 			return realChildProcess.execFileSync(
 				cmd,
@@ -458,7 +464,7 @@ describe("AgentStatusTreeProvider", () => {
 						{ alive: boolean; checkedAt: number }
 					>;
 				}
-			)._tmuxSessionHealthCache.set(task.session_id, {
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -522,7 +528,7 @@ describe("AgentStatusTreeProvider", () => {
 						{ alive: boolean; checkedAt: number }
 					>;
 				}
-			)._tmuxSessionHealthCache.set(task.session_id, {
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -609,7 +615,7 @@ describe("AgentStatusTreeProvider", () => {
 						{ alive: boolean; checkedAt: number }
 					>;
 				}
-			)._tmuxSessionHealthCache.set(task.session_id, {
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: true,
 				checkedAt: Date.now(),
 			});
@@ -644,7 +650,7 @@ describe("AgentStatusTreeProvider", () => {
 						{ alive: boolean; checkedAt: number }
 					>;
 				}
-			)._tmuxSessionHealthCache.set(task.session_id, {
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -683,6 +689,27 @@ describe("AgentStatusTreeProvider", () => {
 			expect(provider.getTasks()[0]?.status).toBe("running");
 			// Cache should not have grown (no duplicate entries)
 			expect(persistCache.size).toBe(sizeBeforeReload);
+		});
+
+		test("uses task tmux_socket for tmux health checks instead of the default socket", () => {
+			const socketPath =
+				"/Users/ostemini/.local/state/ghostty-launcher/tmux/test-task.sock";
+			const task = createMockTask({
+				id: "tmux-dedicated-socket",
+				status: "running",
+				terminal_backend: "tmux",
+				tmux_socket: socketPath,
+			});
+			execFileSyncMock.mockClear();
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("running");
+			expect(execFileSyncMock).toHaveBeenCalledWith(
+				"tmux",
+				["-S", socketPath, "has-session", "-t", task.session_id],
+				{ timeout: 500 },
+			);
 		});
 
 		test("keeps only newest running task per reused session id", () => {
@@ -940,7 +967,7 @@ describe("AgentStatusTreeProvider", () => {
 				}
 			)._tmuxSessionHealthCache = new Map(
 				tmuxRunning.map((task) => [
-					task.session_id,
+					getTmuxHealthCacheKey(task),
 					{ alive: true, checkedAt: Date.now() },
 				]),
 			);
@@ -1000,7 +1027,7 @@ describe("AgentStatusTreeProvider", () => {
 				}
 			)._tmuxSessionHealthCache = new Map(
 				tmuxRunning.map((task) => [
-					task.session_id,
+					getTmuxHealthCacheKey(task),
 					{ alive: true, checkedAt: Date.now() },
 				]),
 			);

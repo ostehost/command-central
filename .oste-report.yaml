@@ -1,10 +1,9 @@
-task_id: "cc-tasks-registry-fix-v1"
+task_id: "cc-tmux-socket-health-v1"
 status: "success"
-summary: "Forced global Ghostty Launcher task registry resolution and removed stale workspace-local task registries."
+summary: "Fixed tmux session health checks to use task-specific tmux sockets and added regression coverage."
 files_changed:
-  - "src/ghostty/TerminalManager.ts"
-  - "src/utils/tasks-file-resolver.ts"
-  - "test/utils/tasks-file-resolver.test.ts"
-  - ".ghostty-launcher/tasks.json"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - ".oste-report.yaml"
 tests_passing: true
-next_steps: "Optional: fix the shell arithmetic bug in just test-quality so wrapper scripts fail loudly when quality checks regress."
+next_steps: "None."
