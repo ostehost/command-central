@@ -23,6 +23,22 @@ const execFileSyncMock = mock((...fnArgs: unknown[]) =>
 		fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
 	),
 );
+let openclawAuditJson = JSON.stringify({
+	summary: {
+		total: 0,
+		warnings: 0,
+		errors: 0,
+		byCode: {
+			stale_queued: 0,
+			stale_running: 0,
+			lost: 0,
+			delivery_failed: 0,
+			missing_cleanup: 0,
+			inconsistent_timestamps: 0,
+		},
+	},
+	findings: [],
+});
 mock.module("node:child_process", () => ({
 	...realChildProcess,
 	execFileSync: execFileSyncMock,
@@ -393,10 +409,34 @@ describe("AgentStatusTreeProvider", () => {
 
 	beforeEach(() => {
 		mock.restore();
+		openclawAuditJson = JSON.stringify({
+			summary: {
+				total: 0,
+				warnings: 0,
+				errors: 0,
+				byCode: {
+					stale_queued: 0,
+					stale_running: 0,
+					lost: 0,
+					delivery_failed: 0,
+					missing_cleanup: 0,
+					inconsistent_timestamps: 0,
+				},
+			},
+			findings: [],
+		});
 		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
 			const [cmd, args] = fnArgs as [string, string[] | undefined];
 			if (cmd === "tmux" && args?.includes("has-session")) return "";
 			if (cmd === "persist" && args?.[0] === "-s") return "";
+			if (
+				cmd === "openclaw" &&
+				args?.[0] === "tasks" &&
+				args[1] === "audit" &&
+				args[2] === "--json"
+			) {
+				return openclawAuditJson;
+			}
 			return realChildProcess.execFileSync(
 				cmd,
 				args,
@@ -1132,6 +1172,7 @@ describe("AgentStatusTreeProvider", () => {
 			(
 				provider as unknown as {
 					_openclawTaskService: {
+						isInstalled?: boolean;
 						getTasks: () => Array<{
 							taskId: string;
 							runtime: "cli";
@@ -1198,6 +1239,7 @@ describe("AgentStatusTreeProvider", () => {
 					}>;
 				}
 			)._openclawTaskService = {
+				isInstalled: true,
 				getTasks: () => [
 					{
 						taskId: "bg-1",
@@ -1240,6 +1282,22 @@ describe("AgentStatusTreeProvider", () => {
 					},
 				],
 			};
+			openclawAuditJson = JSON.stringify({
+				summary: {
+					total: 153,
+					warnings: 152,
+					errors: 1,
+					byCode: {
+						stale_queued: 0,
+						stale_running: 1,
+						lost: 0,
+						delivery_failed: 0,
+						missing_cleanup: 0,
+						inconsistent_timestamps: 152,
+					},
+				},
+				findings: [],
+			});
 			(
 				provider as unknown as {
 					_agentRegistry: {
@@ -1436,7 +1494,23 @@ describe("AgentStatusTreeProvider", () => {
 			expect(report).toContain(
 				"✅ All running agents have healthy tmux sessions",
 			);
+			expect(report).toContain("OpenClaw Task Ledger:");
+			expect(report).toContain("Total: 3 tasks (7-day window)");
+			expect(report).toContain("Running: 1 (stale_running error detected)");
+			expect(report).toContain("Succeeded: 2");
+			expect(report).toContain("Failed: 0");
+			expect(report).toContain(
+				"⚠️ 1 stale running task — may need manual cleanup",
+			);
+			expect(report).toContain(
+				"ℹ️ 152 inconsistent timestamps (OpenClaw-side, cosmetic)",
+			);
 		});
+	});
+
+	test("discovery diagnostics report notes when OpenClaw is not detected", () => {
+		const report = provider.getDiscoveryDiagnosticsReport();
+		expect(report).toContain("OpenClaw: not detected (task audit skipped)");
 	});
 
 	test("summary includes stuck count and stopped tooltip guidance", () => {

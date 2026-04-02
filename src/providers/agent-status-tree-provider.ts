@@ -39,6 +39,11 @@ import type { ListeningPort } from "../utils/port-detector.js";
 import { detectListeningPortsAsync } from "../utils/port-detector.js";
 import { relativeTime } from "../utils/relative-time.js";
 import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
+import {
+	groupByTimePeriod,
+	TIME_PERIOD_LABELS,
+	type TimePeriod,
+} from "../utils/time-grouping.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
 
@@ -170,7 +175,10 @@ export interface StatusGroupNode {
 	nodes: SortableAgentNode[];
 }
 
-export type StatusTimeGroupPeriod = "today" | "yesterday" | "older";
+export type StatusTimeGroupPeriod = Extract<
+	TimePeriod,
+	"today" | "yesterday" | "older"
+>;
 
 export interface StatusTimeGroupNode {
 	type: "statusTimeGroup";
@@ -693,6 +701,7 @@ export class AgentStatusTreeProvider
 	implements vscode.TreeDataProvider<AgentNode>, vscode.Disposable
 {
 	private static readonly GIT_DIFF_TIMEOUT_MS = 1_500;
+	private static readonly OPENCLAW_AUDIT_TIMEOUT_MS = 5_000;
 	private static readonly STUCK_THRESHOLD_DEFAULT_MINUTES = 15;
 	private static readonly STUCK_THRESHOLD_MIN_MINUTES = 5;
 	private static readonly STUCK_THRESHOLD_MAX_MINUTES = 60;
@@ -2698,50 +2707,27 @@ export class AgentStatusTreeProvider
 		return DAY_MS;
 	}
 
-	private getStatusTimeGroupPeriod(
-		node: SortableAgentNode,
-		_now: number = Date.now(),
-	): StatusTimeGroupPeriod {
-		const activityMs = this.getNodeActivityTimeMs(node);
-		if (activityMs <= 0) return "older";
-
-		const ageMs = Math.max(0, _now - activityMs);
-		if (ageMs <= DAY_MS) return "today";
-		if (ageMs <= 2 * DAY_MS) return "yesterday";
-		return "older";
-	}
-
 	private buildStatusTimeGroups(
 		status: AgentStatusGroup,
 		nodes: SortableAgentNode[],
 	): StatusTimeGroupNode[] {
-		const now = Date.now();
-		const grouped = new Map<StatusTimeGroupPeriod, SortableAgentNode[]>();
+		const periods: StatusTimeGroupPeriod[] = ["today", "yesterday", "older"];
+		const grouped = groupByTimePeriod(
+			nodes,
+			(node) => this.getNodeActivityTimeMs(node),
+			periods,
+		);
 
-		for (const node of nodes) {
-			const period = this.getStatusTimeGroupPeriod(node, now);
-			const bucket = grouped.get(period) ?? [];
-			bucket.push(node);
-			grouped.set(period, bucket);
-		}
-
-		return (["today", "yesterday", "older"] as StatusTimeGroupPeriod[])
+		return periods
 			.map((period) => {
 				const periodNodes = grouped.get(period) ?? [];
 				if (periodNodes.length === 0) return null;
-
-				const labelBase =
-					period === "today"
-						? "Today"
-						: period === "yesterday"
-							? "Yesterday"
-							: "Older";
 
 				return {
 					type: "statusTimeGroup" as const,
 					status,
 					period,
-					label: `${labelBase} (${periodNodes.length})`,
+					label: `${TIME_PERIOD_LABELS[period]} (${periodNodes.length})`,
 					nodes: periodNodes,
 					collapsibleState:
 						period === "older"
@@ -4291,6 +4277,10 @@ export class AgentStatusTreeProvider
 					`  ⚠️ ${displayTasks.length} tasks in registry — consider: commandCentral.clearTerminalTasks`,
 				);
 			}
+			lines.push("");
+			for (const line of this.getOpenClawTaskLedgerLines()) {
+				lines.push(line);
+			}
 			return lines.join("\n");
 		}
 
@@ -4346,7 +4336,162 @@ export class AgentStatusTreeProvider
 			lines.push(line);
 		}
 
+		lines.push("");
+		for (const line of this.getOpenClawTaskLedgerLines()) {
+			lines.push(line);
+		}
+
 		return lines.join("\n");
+	}
+
+	private getOpenClawTaskLedgerLines(): string[] {
+		const taskService = this._openclawTaskService;
+		if (!taskService || taskService.isInstalled === false) {
+			return ["OpenClaw: not detected (task audit skipped)"];
+		}
+
+		const tasks = taskService.getTasks();
+		const runningCount = tasks.filter(
+			(task) => task.status === "queued" || task.status === "running",
+		).length;
+		const succeededCount = tasks.filter(
+			(task) => task.status === "succeeded",
+		).length;
+		const failedCount = tasks.length - runningCount - succeededCount;
+		const audit = this.getOpenClawTaskAuditData();
+		const staleRunningCount = audit.summary.byCode["stale_running"] ?? 0;
+
+		const lines = [
+			"OpenClaw Task Ledger:",
+			` Total: ${tasks.length} tasks (7-day window)`,
+			` Running: ${runningCount}${staleRunningCount > 0 ? ` (${this.formatOpenClawAuditStatusLabel("stale_running", staleRunningCount)})` : ""}`,
+			` Succeeded: ${succeededCount}`,
+			` Failed: ${failedCount}`,
+			"",
+			"Audit findings:",
+		];
+
+		if (audit.error) {
+			lines.push(` ⚠️ Task audit failed: ${audit.error}`);
+			return lines;
+		}
+
+		const staleLabel =
+			staleRunningCount === 1 ? "stale running task" : "stale running tasks";
+		if (staleRunningCount > 0) {
+			lines.push(
+				` ⚠️ ${staleRunningCount} ${staleLabel} — may need manual cleanup`,
+			);
+		}
+
+		const inconsistentTimestamps =
+			audit.summary.byCode["inconsistent_timestamps"] ?? 0;
+		if (inconsistentTimestamps > 0) {
+			const label =
+				inconsistentTimestamps === 1
+					? "inconsistent timestamp"
+					: "inconsistent timestamps";
+			lines.push(
+				` ℹ️ ${inconsistentTimestamps} ${label} (OpenClaw-side, cosmetic)`,
+			);
+		}
+
+		const remainingErrors = Math.max(
+			0,
+			audit.summary.errors - staleRunningCount,
+		);
+		const remainingWarnings = Math.max(
+			0,
+			audit.summary.warnings - inconsistentTimestamps,
+		);
+		if (remainingErrors > 0) {
+			lines.push(
+				` ⚠️ ${remainingErrors} additional audit error${remainingErrors === 1 ? "" : "s"}`,
+			);
+		}
+		if (remainingWarnings > 0) {
+			lines.push(
+				` ℹ️ ${remainingWarnings} additional audit warning${remainingWarnings === 1 ? "" : "s"}`,
+			);
+		}
+		if (audit.summary.total === 0) {
+			lines.push(" ✅ No audit findings");
+		}
+
+		return lines;
+	}
+
+	private getOpenClawTaskAuditData(): {
+		summary: {
+			total: number;
+			warnings: number;
+			errors: number;
+			byCode: Record<string, number>;
+		};
+		error?: string;
+	} {
+		const emptySummary = {
+			total: 0,
+			warnings: 0,
+			errors: 0,
+			byCode: {
+				stale_queued: 0,
+				stale_running: 0,
+				lost: 0,
+				delivery_failed: 0,
+				missing_cleanup: 0,
+				inconsistent_timestamps: 0,
+			} satisfies Record<string, number>,
+		};
+
+		try {
+			const stdout = execFileSync("openclaw", ["tasks", "audit", "--json"], {
+				encoding: "utf-8",
+				timeout: AgentStatusTreeProvider.OPENCLAW_AUDIT_TIMEOUT_MS,
+			});
+			const parsed = JSON.parse(stdout) as {
+				summary?: {
+					total?: number;
+					warnings?: number;
+					errors?: number;
+					byCode?: Record<string, number>;
+				};
+			};
+			return {
+				summary: {
+					total: Number(parsed.summary?.total ?? 0),
+					warnings: Number(parsed.summary?.warnings ?? 0),
+					errors: Number(parsed.summary?.errors ?? 0),
+					byCode: {
+						...emptySummary.byCode,
+						...(parsed.summary?.byCode ?? {}),
+					},
+				},
+			};
+		} catch (error) {
+			const err = error as NodeJS.ErrnoException & {
+				stdout?: string | Buffer;
+				stderr?: string | Buffer;
+			};
+			if (err.code === "ENOENT") {
+				return { summary: emptySummary, error: "OpenClaw is not installed" };
+			}
+
+			const detail =
+				typeof err.stderr === "string" && err.stderr.trim().length > 0
+					? err.stderr.trim()
+					: err.message;
+			return { summary: emptySummary, error: detail };
+		}
+	}
+
+	private formatOpenClawAuditStatusLabel(code: string, count: number): string {
+		if (code === "stale_running") {
+			return count === 1
+				? "stale_running error detected"
+				: "stale_running errors detected";
+		}
+		return count === 1 ? `${code} detected` : `${code} findings detected`;
 	}
 
 	private formatAgentTypeSummary(

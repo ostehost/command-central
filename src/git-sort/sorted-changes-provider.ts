@@ -24,16 +24,10 @@ import type {
 } from "../types/tree-element.js";
 import { findRepositoryForFile as findRepoForFile } from "../utils/git-repo-utils.js";
 import { formatRelativeTime } from "../utils/relative-time.js";
+import { groupByTimePeriod } from "../utils/time-grouping.js";
 import { DeletedFileTracker } from "./deleted-file-tracker.js";
 import { getGitAwareTimestamps } from "./git-timestamps.js";
 import type { StorageAdapter } from "./storage/storage-adapter.js";
-
-// Time period constants (in milliseconds)
-const TIME_PERIODS = {
-	DAY: 24 * 60 * 60 * 1000,
-	WEEK: 7 * 24 * 60 * 60 * 1000,
-	MONTH: 30 * 24 * 60 * 60 * 1000,
-} as const;
 
 export class SortedGitChangesProvider
 	implements vscode.TreeDataProvider<TreeElement>
@@ -2009,14 +2003,6 @@ export class SortedGitChangesProvider
 	 */
 	private groupChangesByTime(changes: GitChangeItem[]): TimeGroup[] {
 		const now = new Date();
-		const todayStart = new Date(
-			now.getFullYear(),
-			now.getMonth(),
-			now.getDate(),
-		).getTime();
-		const yesterdayStart = todayStart - TIME_PERIODS.DAY;
-		const last7DaysStart = todayStart - TIME_PERIODS.WEEK;
-		const last30DaysStart = todayStart - TIME_PERIODS.MONTH;
 
 		// Get month boundaries
 		const currentMonth = new Date(
@@ -2030,42 +2016,41 @@ export class SortedGitChangesProvider
 			1,
 		).getTime();
 
-		// Initialize file groups
-		const today: GitChangeItem[] = [];
-		const yesterday: GitChangeItem[] = [];
-		const last7Days: GitChangeItem[] = [];
-		const last30Days: GitChangeItem[] = [];
+		const groupedByPeriod = groupByTimePeriod(changes, (change) =>
+			change.timestamp &&
+			!Number.isNaN(change.timestamp) &&
+			change.timestamp > 0
+				? change.timestamp
+				: 0,
+		);
+
+		const today = groupedByPeriod.get("today") ?? [];
+		const yesterday = groupedByPeriod.get("yesterday") ?? [];
 		const thisMonth: GitChangeItem[] = [];
 		const lastMonthFiles: GitChangeItem[] = [];
-		const older: GitChangeItem[] = [];
+		const last7Days: GitChangeItem[] = [];
+		const last30Days: GitChangeItem[] = [];
+		const older = [...(groupedByPeriod.get("older") ?? [])];
 
-		// Categorize files
-		for (const change of changes) {
-			// Validate timestamp
-			const timestamp =
-				change.timestamp &&
-				!Number.isNaN(change.timestamp) &&
-				change.timestamp > 0
-					? change.timestamp
-					: 0;
-
-			if (timestamp === 0) {
-				// Files with invalid timestamps go to older
-				older.push(change);
-			} else if (timestamp >= todayStart) {
-				today.push(change);
-			} else if (timestamp >= yesterdayStart) {
-				yesterday.push(change);
-			} else if (timestamp >= currentMonth) {
+		for (const change of groupedByPeriod.get("last7days") ?? []) {
+			const timestamp = change.timestamp ?? 0;
+			if (timestamp >= currentMonth) {
 				thisMonth.push(change);
 			} else if (timestamp >= lastMonth) {
 				lastMonthFiles.push(change);
-			} else if (timestamp >= last7DaysStart) {
-				last7Days.push(change);
-			} else if (timestamp >= last30DaysStart) {
-				last30Days.push(change);
 			} else {
-				older.push(change);
+				last7Days.push(change);
+			}
+		}
+
+		for (const change of groupedByPeriod.get("last30days") ?? []) {
+			const timestamp = change.timestamp ?? 0;
+			if (timestamp >= currentMonth) {
+				thisMonth.push(change);
+			} else if (timestamp >= lastMonth) {
+				lastMonthFiles.push(change);
+			} else {
+				last30Days.push(change);
 			}
 		}
 
