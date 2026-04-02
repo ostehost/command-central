@@ -10,14 +10,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type * as vscode from "vscode";
 
-/** Well-known auto-detect search locations (relative to home dir or workspace). */
+/** Well-known auto-detect search locations (relative to home dir). */
 const AUTO_DETECT_CANDIDATES = [
-	// 1. Project-local (per-workspace)
-	(workspaceFolder: string) =>
-		path.join(workspaceFolder, ".ghostty-launcher", "tasks.json"),
-	// 2. XDG config standard
+	// 1. XDG config standard
 	() => path.join(os.homedir(), ".config", "ghostty-launcher", "tasks.json"),
-	// 3. Simple home dir
+	// 2. Simple home dir
 	() => path.join(os.homedir(), ".ghostty-launcher", "tasks.json"),
 ];
 
@@ -25,35 +22,25 @@ const AUTO_DETECT_CANDIDATES = [
  * Resolve the tasks file path from configuration or auto-detection.
  *
  * @param configValue - The value of `commandCentral.agentTasksFile` (may be empty).
- * @param workspaceFolders - Current VS Code workspace folders (for project-local detection).
+ * @param workspaceFolders - Current VS Code workspace folders (unused for auto-detect).
  * @returns The resolved absolute path, or `null` if no tasks file was found.
  */
 export function resolveTasksFilePath(
 	configValue: string,
 	workspaceFolders?: readonly vscode.WorkspaceFolder[],
 ): string | null {
+	void workspaceFolders;
+
 	// If the user configured an explicit path, use it (with ~ expansion)
 	if (configValue && configValue.trim() !== "") {
 		return expandHome(configValue.trim());
 	}
 
-	// Auto-detect: check each candidate in priority order
-	const workspacePaths = workspaceFolders?.map((f) => f.uri.fsPath) ?? [];
-
+	// Auto-detect: check each global candidate in priority order.
 	for (const candidateFn of AUTO_DETECT_CANDIDATES) {
-		// For workspace-local candidates, check each workspace folder
-		if (candidateFn.length > 0) {
-			for (const wsPath of workspacePaths) {
-				const candidate = candidateFn(wsPath);
-				if (fs.existsSync(candidate)) {
-					return candidate;
-				}
-			}
-		} else {
-			const candidate = (candidateFn as () => string)();
-			if (fs.existsSync(candidate)) {
-				return candidate;
-			}
+		const candidate = candidateFn();
+		if (fs.existsSync(candidate)) {
+			return candidate;
 		}
 	}
 

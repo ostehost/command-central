@@ -1,6 +1,6 @@
 /**
  * Tests for tasks-file-resolver utility.
- * Verifies: explicit config path, ~ expansion, auto-detect priority, null when missing.
+ * Verifies: explicit config path, ~ expansion, global auto-detect priority, null when missing.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -75,16 +75,7 @@ describe("resolveTasksFilePath", () => {
 		expect(result).toBe(homePath);
 	});
 
-	test("auto-detects workspace-local path", () => {
-		const wsPath = "/Users/test/my-project";
-		const wsLocalPath = path.join(wsPath, ".ghostty-launcher", "tasks.json");
-		mockExistsSync.mockImplementation((p: unknown) => p === wsLocalPath);
-
-		const result = resolveTasksFilePath("", [mockWorkspaceFolder(wsPath)]);
-		expect(result).toBe(wsLocalPath);
-	});
-
-	test("workspace-local takes priority over XDG", () => {
+	test("never returns a workspace-local path when a global path exists", () => {
 		const wsPath = "/Users/test/my-project";
 		const wsLocalPath = path.join(wsPath, ".ghostty-launcher", "tasks.json");
 		const xdgPath = path.join(
@@ -98,7 +89,8 @@ describe("resolveTasksFilePath", () => {
 		);
 
 		const result = resolveTasksFilePath("", [mockWorkspaceFolder(wsPath)]);
-		expect(result).toBe(wsLocalPath);
+		expect(result).toBe(xdgPath);
+		expect(result).not.toBe(wsLocalPath);
 	});
 
 	test("configured path takes precedence over auto-detect", () => {

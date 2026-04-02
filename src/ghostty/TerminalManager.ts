@@ -241,9 +241,13 @@ export class TerminalManager {
 		}
 
 		const launcherPath = await this.resolvedLauncherPath();
-		const scriptCandidates = this.getHelperScriptSearchDirs(launcherPath).map(
-			(dir) => path.join(dir, scriptName),
-		);
+		const anchoredScriptsDir = path.join(path.dirname(launcherPath), "scripts");
+		const scriptCandidates = [
+			path.join(path.dirname(launcherPath), "scripts", scriptName),
+			...this.getHelperScriptSearchDirs(launcherPath)
+				.filter((dir) => dir !== anchoredScriptsDir)
+				.map((dir) => path.join(dir, scriptName)),
+		];
 
 		for (const scriptPath of scriptCandidates) {
 			if (fs.existsSync(scriptPath)) {
