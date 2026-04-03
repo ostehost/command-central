@@ -48,7 +48,6 @@ import { detectListeningPortsAsync } from "../utils/port-detector.js";
 import { relativeTime } from "../utils/relative-time.js";
 import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
 import {
-	formatRelativeTime,
 	groupByTimePeriod,
 	TIME_PERIOD_LABELS,
 	type TimePeriod,
@@ -4890,9 +4889,7 @@ export class AgentStatusTreeProvider
 				descriptionParts.push(this.getTaskActivityDescription(task));
 			}
 		} else {
-			descriptionParts.push(
-				formatRelativeTime(this.getTaskActivityTimeMs(task)),
-			);
+			descriptionParts.push(relativeTime(this.getTaskActivityTimeMs(task)));
 		}
 		const description = isStuck
 			? `${descriptionParts.join(" · ")} (possibly stuck)`

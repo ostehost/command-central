@@ -1069,7 +1069,7 @@ export class SortedGitChangesProvider
 			// Add deletion indicator to description
 			const timeAgo = formatRelativeTime(element.timestamp);
 
-			const description = dirName === "." ? timeAgo : `${timeAgo} • ${dirName}`;
+			const description = dirName === "." ? timeAgo : `${timeAgo} · ${dirName}`;
 
 			// Use trash icon for deleted files
 			item.iconPath = new vscode.ThemeIcon("trash");
@@ -1121,7 +1121,7 @@ export class SortedGitChangesProvider
 			// Use relative time instead of status text
 			const timeAgo = formatRelativeTime(element.timestamp);
 
-			const description = dirName === "." ? timeAgo : `${timeAgo} • ${dirName}`;
+			const description = dirName === "." ? timeAgo : `${timeAgo} · ${dirName}`;
 			item.description = description;
 
 			// Add enhanced tooltip with full path, timestamp, and status
