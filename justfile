@@ -26,7 +26,7 @@ default:
     @echo "  just pre-commit  Fix → verify (one-command workflow)"
     @echo ""
     @echo "Testing (Enterprise-Grade):"
-    @echo "  just test                Run all tests (593 tests, ~7-8s)"
+    @echo "  just test                Run all tests (575 tests, ~8s)"
     @echo "  just test-quality        Check for test anti-patterns (CI gate)"
     @echo "  just test-validate       Prevent orphaned tests"
     @echo "  just test-unit           Fast unit tests only"

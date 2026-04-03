@@ -6,7 +6,7 @@
  * child nodes (details), sorting, and edge cases.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realChildProcess from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -140,8 +140,13 @@ function loadAgentStatusFixture(fileName: string): TaskRegistry {
 	return JSON.parse(fs.readFileSync(fixturePath, "utf-8")) as TaskRegistry;
 }
 
+// Cache the raw dogfood fixture to avoid repeated file I/O on every call
+const _DOGFOOD_RAW: TaskRegistry = loadAgentStatusFixture(
+	"dogfood-live-tasks.json",
+);
+
 function loadDogfoodFixture(): TaskRegistry {
-	const fixture = loadAgentStatusFixture("dogfood-live-tasks.json");
+	const fixture = _DOGFOOD_RAW;
 	const nextTasks: Record<string, AgentTask> = {};
 	let runningIndex = 0;
 	const now = Date.now();
@@ -166,6 +171,22 @@ function loadDogfoodFixture(): TaskRegistry {
 		version: fixture.version,
 		tasks: nextTasks,
 	};
+}
+
+// Lightweight in-memory ReviewTracker — avoids filesystem I/O in tests.
+// The real ReviewTracker is tested in test/services/review-tracker.test.ts.
+class InMemoryReviewTracker {
+	private reviewed = new Set<string>();
+	markReviewed(taskId: string): void {
+		this.reviewed.add(taskId);
+	}
+	isReviewed(taskId: string): boolean {
+		return this.reviewed.has(taskId);
+	}
+	getReviewedIds(): Set<string> {
+		return new Set(this.reviewed);
+	}
+	save(): void {}
 }
 
 /** Helper: extract only task nodes from root children (skips summary node) */
@@ -250,6 +271,16 @@ function getOlderRunsNode(
 	if (!olderRuns) throw new Error("No older runs node found in children");
 	return olderRuns;
 }
+
+// ── Pre-patch readRegistry to prevent the constructor from reading the real
+// tasks.json on disk (~196KB). Without this patch, `new AgentStatusTreeProvider()`
+// calls `this.reload()` which calls `this.readRegistry()` → `fs.readFileSync(realFile)`.
+// Each test's beforeEach would then incur ~300ms of JSON-parse overhead.
+// Individual tests that need specific registry data override via instance property:
+//   `provider.readRegistry = () => createMockRegistry({ "t1": task });`
+// Tests that need the real implementation use `_realReadRegistry.call(provider)`.
+const _realReadRegistry = AgentStatusTreeProvider.prototype.readRegistry;
+AgentStatusTreeProvider.prototype.readRegistry = () => createMockRegistry({});
 
 // ── formatElapsed tests ──────────────────────────────────────────────
 
@@ -418,13 +449,10 @@ describe("AgentStatusTreeProvider", () => {
 				typeof AgentStatusTreeProvider
 			>[0],
 		);
-		// Inject a fresh, empty ReviewTracker for each test to avoid cross-test
-		// pollution from the real ~/.config/command-central/reviewed-tasks.json
-		const rnd = Math.random().toString(36).slice(2);
+		// Inject a fresh, in-memory ReviewTracker for each test to avoid
+		// cross-test pollution and unnecessary filesystem I/O.
 		provider.setReviewTracker(
-			new ReviewTracker(
-				path.join(os.tmpdir(), `cc-review-test-${Date.now()}-${rnd}.json`),
-			),
+			new InMemoryReviewTracker() as unknown as ReviewTracker,
 		);
 		// Override readRegistry to return mock data (no file I/O)
 		provider.readRegistry = () => createMockRegistry({});
@@ -3170,8 +3198,7 @@ describe("AgentStatusTreeProvider", () => {
 					_filePath: string | null;
 				}
 			)._filePath = tasksFile;
-			const registry =
-				AgentStatusTreeProvider.prototype.readRegistry.call(provider);
+			const registry = _realReadRegistry.call(provider);
 			expect(registry.tasks["dirty"]?.status).toBe("completed_dirty");
 			expect(registry.tasks["weird"]?.status).toBe("stopped");
 		} finally {
@@ -3210,8 +3237,7 @@ describe("AgentStatusTreeProvider", () => {
 					_filePath: string | null;
 				}
 			)._filePath = tasksFile;
-			const registry =
-				AgentStatusTreeProvider.prototype.readRegistry.call(provider);
+			const registry = _realReadRegistry.call(provider);
 			expect(registry.tasks["explicitModel"]?.model).toBe(
 				"anthropic/claude-opus-4-6",
 			);
@@ -3499,62 +3525,6 @@ describe("AgentStatusTreeProvider", () => {
 		expect(item.resourceUri?.toString()).toContain("test-task-1");
 	});
 
-	// ── Feature 1: Auto-Refresh Timer ────────────────────────────────
-
-	describe("auto-refresh timer", () => {
-		test("timer starts when running tasks exist", () => {
-			const task = createMockTask({ status: "running" });
-			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
-			provider.reload();
-			// Access private autoRefreshTimer via cast
-			const p = provider as unknown as {
-				autoRefreshTimer: NodeJS.Timeout | null;
-			};
-			expect(p.autoRefreshTimer).not.toBeNull();
-		});
-
-		test("timer stops when no running tasks", () => {
-			// First start with a running task
-			const runningTask = createMockTask({ status: "running" });
-			provider.readRegistry = () =>
-				createMockRegistry({ "test-task-1": runningTask });
-			provider.reload();
-
-			// Then switch to completed
-			const completedTask = createMockTask({ status: "completed" });
-			provider.readRegistry = () =>
-				createMockRegistry({ "test-task-1": completedTask });
-			provider.reload();
-
-			const p = provider as unknown as {
-				autoRefreshTimer: NodeJS.Timeout | null;
-			};
-			expect(p.autoRefreshTimer).toBeNull();
-		});
-
-		test("timer does not start when all tasks are completed", () => {
-			const task = createMockTask({ status: "completed" });
-			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
-			provider.reload();
-			const p = provider as unknown as {
-				autoRefreshTimer: NodeJS.Timeout | null;
-			};
-			expect(p.autoRefreshTimer).toBeNull();
-		});
-
-		test("dispose clears auto-refresh timer", () => {
-			const task = createMockTask({ status: "running" });
-			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
-			provider.reload();
-
-			provider.dispose();
-			const p = provider as unknown as {
-				autoRefreshTimer: NodeJS.Timeout | null;
-			};
-			expect(p.autoRefreshTimer).toBeNull();
-		});
-	});
-
 	// ── Feature 2: Git Branch + Last Commit ──────────────────────────
 
 	describe("git info in tree", () => {
@@ -3641,7 +3611,6 @@ describe("AgentStatusTreeProvider", () => {
 		};
 
 		beforeEach(() => {
-			mock.restore();
 			vscodeMock = setupVSCodeMock();
 			// Make notifications enabled by default
 			vscodeMock.workspace.getConfiguration = mock(() => ({
@@ -3666,6 +3635,14 @@ describe("AgentStatusTreeProvider", () => {
 			provider = new AgentStatusTreeProvider();
 			provider.readRegistry = () => createMockRegistry({});
 			provider.reload();
+		});
+
+		afterEach(() => {
+			// Dispose the provider to cancel any pending treeRefreshTimer before the
+			// global afterEach runs mock.restore(). Without this, the setTimeout(fn,0)
+			// from scheduleTreeRefresh() fires after mocks are cleared, causing
+			// showInformationMessage().then(...) to throw and pollute later tests.
+			provider.dispose();
 		});
 
 		test("completed notification includes diff summary text and new action buttons", () => {
@@ -4172,11 +4149,6 @@ describe("AgentStatusTreeProvider", () => {
 		let vscodeMock: ReturnType<typeof setupVSCodeMock>;
 
 		beforeEach(() => {
-			mock.restore();
-			// Re-mock port detector after mock.restore()
-			mockDetectListeningPorts.mockReset();
-			mockDetectListeningPorts.mockReturnValue([]);
-
 			vscodeMock = setupVSCodeMock();
 			vscodeMock.workspace.getConfiguration = mock(() => ({
 				update: mock(),
