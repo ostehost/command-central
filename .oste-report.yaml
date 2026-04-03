@@ -1,0 +1,8 @@
+task_id: "cc-stale-reaper-v2"
+status: "success"
+summary: "Fixed stale task detection by adding window-aware tmux health checks and fixing reconciler deduplication for multi-window sessions"
+files_changed:
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+tests_passing: true
+next_steps: "The 3 stale tasks (cc-ux-vision-svgs-v1, cc-agent-status-ux-v1, cc-review-lifecycle-v1) will show as completed/failed after extension reload since their stream files contain terminal result events. A future improvement could check tmux pane_dead status to detect tasks where the agent exited without writing a terminal stream event."
