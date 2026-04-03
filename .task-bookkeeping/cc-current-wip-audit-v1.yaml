@@ -1,4 +1,0 @@
-task_id: "cc-current-wip-audit-v1"
-subject: "cc-current-wip-audit-v1"
-status: "completed"
-progress: "Audit report and completion report written. just fix passed. just verify surfaced 2 failing cross-repo smoke tests unrelated to the report-only change set."

@@ -1,4 +1,0 @@
-task_id: "cc-settings-migration-v2"
-subject: "cc-settings-migration-v2"
-status: "completed"
-progress: "One-time Agent Status settings migration implemented on activation, focused tests added, `just fix` applied, and targeted tests plus `bunx tsc --noEmit` passed."
