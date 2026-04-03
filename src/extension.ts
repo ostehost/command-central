@@ -68,6 +68,7 @@ import { TelemetryService } from "./services/telemetry-service.js";
 import type { OpenClawTask } from "./types/openclaw-task-types.js";
 import type { GitChangeItem } from "./types/tree-element.js";
 import { GroupingViewManager } from "./ui/grouping-view-manager.js";
+import { migrateLegacyAgentStatusSettings } from "./utils/agent-status-settings-migration.js";
 import {
 	clearCompletedAgentEntries,
 	countClearableAgentEntries,
@@ -137,6 +138,8 @@ export async function activate(
 			telemetry.track("cc_extension_first_activation");
 			context.globalState.update("commandCentral.hasActivatedBefore", true);
 		}
+
+		await migrateLegacyAgentStatusSettings(context);
 
 		// Initialize Project Icon Service
 		projectIconService = new ProjectIconService(mainLogger, context);
