@@ -329,9 +329,7 @@ export class AgentRegistry implements vscode.Disposable {
 		const sid = agent.sessionId;
 		if (!sid) return false;
 		return acpTasks.some(
-			(task) =>
-				task.childSessionKey &&
-				(task.childSessionKey === sid || task.childSessionKey.includes(sid)),
+			(task) => task.childSessionKey && task.childSessionKey === sid,
 		);
 	}
 

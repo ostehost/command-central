@@ -126,6 +126,7 @@ export interface AgentTask {
 	completed_at?: string | null;
 	updated_at?: string | null;
 	model?: string | null;
+	thinking_budget?: number | null;
 	prompt_summary?: string | null;
 }
 
@@ -607,6 +608,7 @@ function normalizeTask(
 		completed_at: asString(raw["completed_at"]) ?? null,
 		updated_at: asString(raw["updated_at"]) ?? null,
 		model: asString(raw["model"]) ?? null,
+		thinking_budget: asNullableNumber(raw["thinking_budget"]) ?? null,
 		prompt_summary: asString(raw["prompt_summary"]) ?? null,
 	};
 }
