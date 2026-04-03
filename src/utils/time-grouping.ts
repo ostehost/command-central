@@ -71,6 +71,40 @@ function resolveRequestedPeriod(
 	return null;
 }
 
+/**
+ * Formats a timestamp as a compact relative time string for sidebar descriptions.
+ *
+ * Rules:
+ * - < 1 minute  → "just now"
+ * - < 60 minutes → "Nm ago"  (e.g. "5m ago")
+ * - < 24 hours   → "Nh ago"  (e.g. "2h ago")
+ * - < 7 days     → "Nd ago"  (e.g. "3d ago")
+ * - < 30 days    → "Nw ago"  (e.g. "2w ago")
+ * - ≥ 30 days    → "Nd ago"  (e.g. "45d ago")
+ */
+export function formatRelativeTime(
+	timestampMs: number,
+	nowMs: number = Date.now(),
+): string {
+	if (!Number.isFinite(timestampMs) || timestampMs <= 0) {
+		return "just now";
+	}
+	const diffMs = nowMs - timestampMs;
+	if (diffMs <= 0) return "just now";
+
+	const minutes = Math.floor(diffMs / 60_000);
+	if (minutes < 1) return "just now";
+	if (minutes < 60) return `${minutes}m ago`;
+
+	const hours = Math.floor(diffMs / 3_600_000);
+	if (hours < 24) return `${hours}h ago`;
+
+	const days = Math.floor(diffMs / 86_400_000);
+	if (days < 7) return `${days}d ago`;
+	if (days < 30) return `${Math.floor(days / 7)}w ago`;
+	return `${days}d ago`;
+}
+
 export function groupByTimePeriod<T>(
 	items: T[],
 	getTimestamp: (item: T) => number,

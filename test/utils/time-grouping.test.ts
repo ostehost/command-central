@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	classifyTimePeriod,
+	formatRelativeTime,
 	groupByTimePeriod,
 	TIME_PERIOD_LABELS,
 } from "../../src/utils/time-grouping.js";
@@ -110,6 +111,50 @@ describe("groupByTimePeriod", () => {
 		} finally {
 			Date.now = originalNow;
 		}
+	});
+});
+
+describe("formatRelativeTime", () => {
+	const now = new Date("2026-04-03T12:00:00Z").getTime();
+
+	test("returns 'just now' for timestamps less than 1 minute ago", () => {
+		expect(formatRelativeTime(now - 30_000, now)).toBe("just now");
+		expect(formatRelativeTime(now - 59_000, now)).toBe("just now");
+	});
+
+	test("returns 'just now' for invalid or zero timestamps", () => {
+		expect(formatRelativeTime(0, now)).toBe("just now");
+		expect(formatRelativeTime(Number.NaN, now)).toBe("just now");
+	});
+
+	test("returns 'just now' for future timestamps", () => {
+		expect(formatRelativeTime(now + 5_000, now)).toBe("just now");
+	});
+
+	test("returns minutes ago for 1-59 minutes", () => {
+		expect(formatRelativeTime(now - 5 * 60_000, now)).toBe("5m ago");
+		expect(formatRelativeTime(now - 59 * 60_000, now)).toBe("59m ago");
+	});
+
+	test("returns hours ago for 1-23 hours", () => {
+		expect(formatRelativeTime(now - 2 * 3_600_000, now)).toBe("2h ago");
+		expect(formatRelativeTime(now - 23 * 3_600_000, now)).toBe("23h ago");
+	});
+
+	test("returns days ago for 1-6 days", () => {
+		expect(formatRelativeTime(now - 3 * 86_400_000, now)).toBe("3d ago");
+		expect(formatRelativeTime(now - 6 * 86_400_000, now)).toBe("6d ago");
+	});
+
+	test("returns weeks ago for 7-29 days", () => {
+		expect(formatRelativeTime(now - 7 * 86_400_000, now)).toBe("1w ago");
+		expect(formatRelativeTime(now - 14 * 86_400_000, now)).toBe("2w ago");
+		expect(formatRelativeTime(now - 29 * 86_400_000, now)).toBe("4w ago");
+	});
+
+	test("returns days ago for 30+ days", () => {
+		expect(formatRelativeTime(now - 30 * 86_400_000, now)).toBe("30d ago");
+		expect(formatRelativeTime(now - 45 * 86_400_000, now)).toBe("45d ago");
 	});
 });
 

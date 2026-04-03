@@ -48,6 +48,7 @@ import { detectListeningPortsAsync } from "../utils/port-detector.js";
 import { relativeTime } from "../utils/relative-time.js";
 import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
 import {
+	formatRelativeTime,
 	groupByTimePeriod,
 	TIME_PERIOD_LABELS,
 	type TimePeriod,
@@ -2558,12 +2559,10 @@ export class AgentStatusTreeProvider
 	}
 
 	private shouldUseStatusTimeGrouping(
-		status: AgentStatusGroup,
-		nodes: SortableAgentNode[],
+		_status: AgentStatusGroup,
+		_nodes: SortableAgentNode[],
 	): boolean {
-		if (status === "running") return false;
-		if (status === "done") return true;
-		return nodes.length > 3;
+		return false;
 	}
 
 	private getStatusGroupRecentThresholdMs(status: AgentStatusGroup): number {
@@ -4886,8 +4885,14 @@ export class AgentStatusTreeProvider
 		if (modelDisplay?.alias) {
 			descriptionParts.push(modelDisplay.alias);
 		}
-		if (descriptionParts.length === 0) {
-			descriptionParts.push(this.getTaskActivityDescription(task));
+		if (task.status === "running") {
+			if (descriptionParts.length === 0) {
+				descriptionParts.push(this.getTaskActivityDescription(task));
+			}
+		} else {
+			descriptionParts.push(
+				formatRelativeTime(this.getTaskActivityTimeMs(task)),
+			);
 		}
 		const description = isStuck
 			? `${descriptionParts.join(" · ")} (possibly stuck)`
