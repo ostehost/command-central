@@ -695,6 +695,118 @@ describe("AgentStatusTreeProvider", () => {
 			expect(provider.getTasks()[0]?.status).toBe("stopped");
 		});
 
+		test("displays completed instead of stopped when exit_code is 0 on dead persist task", () => {
+			const task = createMockTask({
+				id: "persist-completed-evidence",
+				status: "running",
+				terminal_backend: "persist",
+				exit_code: 0,
+			});
+			(
+				provider as unknown as {
+					_persistSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("completed");
+		});
+
+		test("displays failed instead of stopped when exit_code is non-zero on dead persist task", () => {
+			const task = createMockTask({
+				id: "persist-failed-evidence",
+				status: "running",
+				terminal_backend: "persist",
+				exit_code: 1,
+			});
+			(
+				provider as unknown as {
+					_persistSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("failed");
+		});
+
+		test("displays completed instead of stopped when completed_at is set on dead tmux task", () => {
+			const task = createMockTask({
+				id: "tmux-completed-at",
+				status: "running",
+				terminal_backend: "tmux",
+				completed_at: new Date(Date.now() - 60_000).toISOString(),
+			});
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("completed");
+		});
+
+		test("displays stopped when no completion evidence on dead persist task", () => {
+			const task = createMockTask({
+				id: "persist-no-evidence",
+				status: "running",
+				terminal_backend: "persist",
+				// no exit_code, no completed_at
+			});
+			(
+				provider as unknown as {
+					_persistSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("stopped");
+		});
+
+		test("tasks.json completed status is preserved regardless of session health", () => {
+			const task = createMockTask({
+				id: "already-completed",
+				status: "completed",
+				terminal_backend: "persist",
+				exit_code: 0,
+				completed_at: new Date(Date.now() - 60_000).toISOString(),
+			});
+			// Even though session is dead, status should stay completed
+			// (the guard at the top of toDisplayTask handles this)
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("completed");
+		});
+
 		test("persist-backed running task shows as running when socket is alive", () => {
 			const task = createMockTask({
 				id: "persist-alive",

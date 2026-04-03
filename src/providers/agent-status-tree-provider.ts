@@ -1174,6 +1174,25 @@ export class AgentStatusTreeProvider
 		}
 
 		if (this.isRunningTaskHealthy(task)) return task;
+
+		// The process is dead, but check for completion evidence before
+		// defaulting to "stopped".  Many tasks finish successfully but the
+		// completion hook doesn't fire (race / Ghostty lifecycle), leaving
+		// tasks.json stuck at "running".  Exit code and completed_at are
+		// ground-truth signals that should override the inference.
+		if (task.exit_code === 0 || (task.exit_code == null && task.completed_at)) {
+			return this.applyRuntimeStatusOverlay(task, {
+				status: "completed",
+				reason: "Session ended with completion evidence.",
+			});
+		}
+		if (task.exit_code != null && task.exit_code !== 0) {
+			return this.applyRuntimeStatusOverlay(task, {
+				status: "failed",
+				reason: `Session ended with exit code ${task.exit_code}.`,
+			});
+		}
+
 		return this.applyRuntimeStatusOverlay(task, {
 			status: "stopped",
 			reason: "Session no longer appears active. Showing as stopped.",
