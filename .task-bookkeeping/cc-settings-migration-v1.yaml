@@ -1,0 +1,4 @@
+task_id: "cc-settings-migration-v1"
+subject: "cc-settings-migration-v1"
+status: "completed"
+progress: "Agent Status settings migration verified. just fix, just check, focused migration tests, and full bun test suite all passed."

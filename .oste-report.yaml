@@ -1,0 +1,11 @@
+task_id: "cc-settings-migration-v1"
+status: "success"
+summary: "Added one-time Agent Status settings migration on activation and verified the stale settings are cleaned up."
+files_changed:
+  - "src/extension.ts"
+  - "src/utils/agent-status-settings-migration.ts"
+  - "test/utils/agent-status-settings-migration.test.ts"
+  - ".task-bookkeeping/cc-settings-migration-v1.yaml"
+  - ".oste-report.yaml"
+tests_passing: true
+next_steps: ""
