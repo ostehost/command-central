@@ -96,6 +96,9 @@ let testCountStatusBar:
 let mainLogger: LoggerService;
 let gitSortLogger: LoggerService;
 
+/** Tracks temp directories created for file diffs so they can be cleaned up on deactivate. */
+const activeDiffTempDirs = new Set<string>();
+
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
@@ -125,6 +128,32 @@ export async function activate(
 
 		mainLogger.info(`Extension starting... (v${version})`);
 		mainLogger.info(`Command Central v${version}`);
+
+		// Clean up any leftover diff temp dirs from previous sessions
+		{
+			const os = await import("node:os");
+			const fs = await import("node:fs");
+			const tmpBase = os.tmpdir();
+			try {
+				for (const entry of fs.readdirSync(tmpBase)) {
+					if (
+						entry.startsWith("command-central-file-diff-") ||
+						entry.startsWith("command-central-diff-")
+					) {
+						try {
+							fs.rmSync(path.join(tmpBase, entry), {
+								recursive: true,
+								force: true,
+							});
+						} catch {
+							// Silent — stale cleanup must never block activation
+						}
+					}
+				}
+			} catch {
+				// Silent — tmpdir scan must never block activation
+			}
+		}
 
 		// Initialize Telemetry (lightweight — no SDK, no deps)
 		const telemetry = TelemetryService.getInstance(version);
@@ -2314,6 +2343,7 @@ export async function activate(
 				async (node?: {
 					projectDir?: string;
 					filePath?: string;
+					taskId?: string;
 					taskStatus?: AgentTask["status"];
 					startCommit?: string;
 					additions?: number;
@@ -2418,13 +2448,17 @@ export async function activate(
 							return;
 						}
 
-						const tempDir = fs.mkdtempSync(
-							path.join(os.tmpdir(), "command-central-file-diff-"),
+						const taskTempDir = path.join(
+							os.tmpdir(),
+							`command-central-diff-${node.taskId ?? "unknown"}`,
 						);
-						const beforePath = path.join(
-							tempDir,
-							`before-${path.basename(relativePath)}`,
-						);
+						if (!fs.existsSync(taskTempDir)) {
+							fs.mkdirSync(taskTempDir, { recursive: true });
+						}
+						activeDiffTempDirs.add(taskTempDir);
+
+						const safeRelPath = relativePath.replace(/\//g, "__");
+						const beforePath = path.join(taskTempDir, `before-${safeRelPath}`);
 						fs.writeFileSync(
 							beforePath,
 							beforeFile.kind === "text" ? beforeFile.content : "",
@@ -2432,10 +2466,7 @@ export async function activate(
 						);
 						const beforeUri = vscode.Uri.file(beforePath);
 
-						const afterPath = path.join(
-							tempDir,
-							`after-${path.basename(relativePath)}`,
-						);
+						const afterPath = path.join(taskTempDir, `after-${safeRelPath}`);
 						fs.writeFileSync(
 							afterPath,
 							afterFile.kind === "text" ? afterFile.content : "",
@@ -2905,6 +2936,19 @@ export async function activate(
 }
 
 export async function deactivate(): Promise<void> {
+	// Clean up diff temp directories created during this session
+	{
+		const fs = await import("node:fs");
+		for (const dir of activeDiffTempDirs) {
+			try {
+				fs.rmSync(dir, { recursive: true, force: true });
+			} catch {
+				// Silent — cleanup must never block deactivation
+			}
+		}
+		activeDiffTempDirs.clear();
+	}
+
 	// Clean up Git Sorter
 	if (gitSorter) {
 		gitSorter.disable();
