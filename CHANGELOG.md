@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-02: 1160+ tests across 83 files.
 
+## [0.5.1-58] - 2026-04-02
+
+### Fixed
+- **Automatic settings migration** — On activation, detects and removes stale Agent Status settings from pre-simplification versions (`sortMode`, `sortByStatus`, `showOnlyRunning`, `maxVisibleAgents`, `scope`, `defaultBackend`). Flips `groupByProject` to `true` if it was explicitly `false`. Runs once, shows a one-time migration message. The upgrade path is now part of the product.
+
 ## [0.5.1-57] - 2026-04-02
 
 ### Fixed
