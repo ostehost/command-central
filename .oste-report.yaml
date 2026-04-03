@@ -1,8 +1,7 @@
-task_id: "fix-agent-diff-view-temp-files"
+task_id: "diff-attribution-research-2026-04-03"
 status: "success"
-summary: "Fixed temp file leak in agent diff view: stable per-task dirs, startup cleanup, deactivate cleanup"
+summary: "Researched diff attribution drift in agent status sidebar; documented root causes, failure modes, and phased implementation recommendation"
 files_changed:
-  - "src/extension.ts"
-  - "test/commands/file-diff-temp-dir.test.ts"
+  - "research/DIFF-ATTRIBUTION-RESEARCH-2026-04-03.md"
 tests_passing: true
-next_steps: "No further action needed. The git URI scheme approach can be revisited in the future for even cleaner tab headers."
+next_steps: "Add end_commit field to AgentTask schema and launcher completion hook; update getPerFileDiffs to use start_commit..end_commit for terminal-state tasks instead of start_commit..HEAD"
