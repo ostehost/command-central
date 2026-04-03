@@ -1,12 +1,9 @@
-task_id: "agent-status-blocked-review-lifecycle"
+task_id: "fix-click-to-focus"
 status: "success"
-summary: "Added reviewed badge, removed diff loading flicker, added markAgentReviewed command"
+summary: "Add focusGhosttyBundleAndTmuxWindow — two-step focus via open -a + tmux select-window, eliminating System Events dependency and restoring correct tmux window targeting in Strategies 0 and 1"
 files_changed:
-  - "src/services/review-tracker.ts"
-  - "src/providers/agent-status-tree-provider.ts"
+  - "src/ghostty/window-focus.ts"
   - "src/extension.ts"
-  - "package.json"
-  - "test/services/review-tracker.test.ts"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - "test/ghostty/window-focus.test.ts"
 tests_passing: true
-next_steps: "Blocked status display (spec item A) was deferred — no blocked/waiting_input statuses exist in the current tasks.json schema yet. Wire it up when OpenClaw task flows expose those states."
+next_steps: "Pre-existing tree provider test failure (AgentStatusTreeProvider > inline diff summary > task item description excludes diff when getDiffSummary returns null) from commit 6e4e18c needs investigation by the review-tracker task owner"
