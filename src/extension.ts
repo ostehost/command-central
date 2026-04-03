@@ -1006,6 +1006,7 @@ export async function activate(
 			noChangesMessage: string,
 			startCommit?: string,
 			taskStatus?: AgentTask["status"],
+			endCommit?: string,
 		): Promise<void> => {
 			const { execFileSync } = await import("node:child_process");
 			let numstat: string;
@@ -1054,6 +1055,7 @@ export async function activate(
 					projectDir,
 					filePath: files[0].filePath,
 					startCommit: startCommit,
+					endCommit: endCommit,
 					taskStatus: taskStatus ?? "completed",
 					additions: files[0].additions,
 					deletions: files[0].deletions,
@@ -1086,6 +1088,7 @@ export async function activate(
 				projectDir,
 				filePath: selected.filePath,
 				startCommit: startCommit,
+				endCommit: endCommit,
 				taskStatus: taskStatus ?? "completed",
 				additions: selected.additions,
 				deletions: selected.deletions,
@@ -2324,13 +2327,18 @@ export async function activate(
 						}
 					}
 
+					const endRef =
+						task.end_commit && task.end_commit !== "unknown"
+							? task.end_commit
+							: "HEAD";
 					await showGitDiffAsFilePicker(
 						task.project_dir,
-						[`${sinceRef}..HEAD`],
+						[`${sinceRef}..${endRef}`],
 						`Diff: ${task.id}`,
 						"No changes found for this agent.",
 						task.start_sha ?? sinceRef,
 						task.status,
+						task.end_commit ?? undefined,
 					);
 				},
 			),
@@ -2346,6 +2354,7 @@ export async function activate(
 					taskId?: string;
 					taskStatus?: AgentTask["status"];
 					startCommit?: string;
+					endCommit?: string;
 					additions?: number;
 					deletions?: number;
 				}) => {
@@ -2368,7 +2377,9 @@ export async function activate(
 							? "HEAD"
 							: (node.startCommit ?? "HEAD~1");
 					const afterRef =
-						node.taskStatus === "running" ? "Working Tree" : "HEAD";
+						node.taskStatus === "running"
+							? "Working Tree"
+							: (node.endCommit ?? "HEAD");
 
 					try {
 						const fs = await import("node:fs");
@@ -2429,7 +2440,7 @@ export async function activate(
 											content: fs.readFileSync(absolutePath, "utf-8"),
 										} as const)
 									: ({ kind: "missing" } as const)
-								: readFileAtRef("HEAD");
+								: readFileAtRef(afterRef);
 
 						if (beforeFile.kind === "binary" || afterFile.kind === "binary") {
 							const opened = await openFileIfPresent();

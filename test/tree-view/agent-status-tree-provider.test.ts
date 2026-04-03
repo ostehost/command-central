@@ -5082,4 +5082,170 @@ describe("AgentStatusTreeProvider", () => {
 			}
 		});
 	});
+
+	// ── end_commit / bounded diff tests ──────────────────────────────────
+
+	describe("end_commit bounded diff attribution", () => {
+		test("getPerFileDiffs uses start_commit..end_commit for completed tasks with end_commit", () => {
+			const gitArgs: string[][] = [];
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (cmd === "git" && args?.includes("--numstat")) {
+					gitArgs.push(args);
+					return "5\t2\tsrc/foo.ts\n";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			const diffs = provider.getPerFileDiffs(
+				"/some/project",
+				"abc123",
+				"def456",
+			);
+
+			expect(diffs).toHaveLength(1);
+			expect(diffs[0]?.filePath).toBe("src/foo.ts");
+			// Should use start_commit..end_commit, not start_commit..HEAD
+			expect(gitArgs.some((a) => a.includes("abc123..def456"))).toBe(true);
+			expect(gitArgs.some((a) => a.includes("abc123..HEAD"))).toBe(false);
+		});
+
+		test("getPerFileDiffs uses start_commit..HEAD when no end_commit", () => {
+			const gitArgs: string[][] = [];
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (cmd === "git" && args?.includes("--numstat")) {
+					gitArgs.push(args);
+					return "3\t1\tsrc/bar.ts\n";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			const diffs = provider.getPerFileDiffs("/some/project", "abc123");
+
+			expect(diffs).toHaveLength(1);
+			expect(gitArgs.some((a) => a.includes("abc123..HEAD"))).toBe(true);
+		});
+
+		test("getPerFileDiffs diffs working tree (no range) for running tasks", () => {
+			const gitArgs: string[][] = [];
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (cmd === "git" && args?.includes("--numstat")) {
+					gitArgs.push(args);
+					return "1\t0\tsrc/wip.ts\n";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			// No startCommit, no endCommit → working tree diff
+			const diffs = provider.getPerFileDiffs("/some/project");
+
+			expect(diffs).toHaveLength(1);
+			// Should not contain any ".." range
+			expect(gitArgs.some((a) => a.some((s) => s.includes("..")))).toBe(false);
+		});
+
+		test("getDiffSummary uses end_commit for completed task with end_commit set", () => {
+			const gitArgs: string[][] = [];
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (cmd === "git" && args?.includes("--numstat")) {
+					gitArgs.push(args);
+					return "2\t1\tsrc/feature.ts\n";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			const task = createMockTask({
+				status: "completed",
+				start_commit: "start111",
+				end_commit: "end222",
+			});
+
+			const summary = provider.getDiffSummary(task.project_dir, task);
+
+			expect(summary).not.toBeNull();
+			expect(gitArgs.some((a) => a.includes("start111..end222"))).toBe(true);
+		});
+
+		test("getDiffSummary falls back to HEAD for completed task without end_commit", () => {
+			const gitArgs: string[][] = [];
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (cmd === "git" && args?.includes("--numstat")) {
+					gitArgs.push(args);
+					return "1\t0\tsrc/thing.ts\n";
+				}
+				// For completed_at timestamp lookup (log --before=...)
+				if (
+					cmd === "git" &&
+					args?.includes("log") &&
+					args?.some((a) => a.startsWith("--before="))
+				) {
+					return "";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			const task = createMockTask({
+				status: "completed",
+				start_commit: "startabc",
+				end_commit: null,
+				completed_at: null,
+			});
+
+			const summary = provider.getDiffSummary(task.project_dir, task);
+
+			expect(summary).not.toBeNull();
+			// Should fall back to HEAD since no end_commit and no completed_at
+			expect(gitArgs.some((a) => a.includes("startabc..HEAD"))).toBe(true);
+		});
+
+		test("running task getDiffSummary diffs working tree (no commit range)", () => {
+			const gitArgs: string[][] = [];
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (cmd === "git" && args?.includes("--numstat")) {
+					gitArgs.push(args);
+					return "1\t1\tsrc/running.ts\n";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			const task = createMockTask({
+				status: "running",
+				start_commit: "somesha",
+			});
+
+			provider.getDiffSummary(task.project_dir, task);
+
+			// Running task: no range args, just working tree diff
+			expect(gitArgs.some((a) => a.some((s) => s.includes("..")))).toBe(false);
+		});
+	});
 });

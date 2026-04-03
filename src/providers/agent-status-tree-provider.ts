@@ -111,6 +111,7 @@ export interface AgentTask {
 	started_at: string;
 	start_sha?: string | null;
 	start_commit?: string | null;
+	end_commit?: string | null;
 	attempts: number;
 	max_attempts: number;
 	pr_number?: number | null;
@@ -237,6 +238,7 @@ export interface FileChangeNode {
 	deletions: number;
 	taskStatus: AgentTask["status"];
 	startCommit?: string;
+	endCommit?: string;
 }
 
 export interface DiscoveredNode {
@@ -574,6 +576,7 @@ function normalizeTask(
 		started_at: asString(raw["started_at"]) ?? new Date().toISOString(),
 		start_sha: asString(raw["start_sha"]) ?? null,
 		start_commit: asString(raw["start_commit"]) ?? null,
+		end_commit: asString(raw["end_commit"]) ?? null,
 		attempts: Math.max(0, asNumber(raw["attempts"], 0)),
 		max_attempts: Math.max(0, asNumber(raw["max_attempts"], 0)),
 		pr_number: asNullableNumber(raw["pr_number"]) ?? null,
@@ -3293,7 +3296,12 @@ export class AgentStatusTreeProvider
 
 	private getFileChangeChildren(t: AgentTask): FileChangeNode[] {
 		const startCommit = this.getTaskDiffStartCommit(t);
-		const fileDiffs = this.getPerFileDiffs(t.project_dir, startCommit);
+		const endCommit = this.getTaskDiffEndCommit(t);
+		const fileDiffs = this.getPerFileDiffs(
+			t.project_dir,
+			startCommit,
+			endCommit,
+		);
 		return fileDiffs.map((diff) => ({
 			type: "fileChange",
 			taskId: t.id,
@@ -3303,6 +3311,7 @@ export class AgentStatusTreeProvider
 			deletions: diff.deletions,
 			taskStatus: t.status,
 			startCommit,
+			endCommit,
 		}));
 	}
 
@@ -3433,6 +3442,36 @@ export class AgentStatusTreeProvider
 		}
 
 		return "HEAD~1";
+	}
+
+	private getTaskDiffEndCommit(t: AgentTask): string | undefined {
+		if (t.status === "running") return undefined;
+		if (t.end_commit && t.end_commit !== "unknown") {
+			return t.end_commit;
+		}
+		if (t.completed_at) {
+			try {
+				const commitHash = execFileSync(
+					"git",
+					[
+						"-C",
+						t.project_dir,
+						"log",
+						`--before=${t.completed_at}`,
+						"-1",
+						"--format=%H",
+					],
+					{
+						encoding: "utf-8",
+						timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
+					},
+				).trim();
+				if (commitHash) return commitHash;
+			} catch {
+				// Fallback to HEAD below
+			}
+		}
+		return "HEAD";
 	}
 
 	/** Kick off async port detection; fires onDidChangeTreeData when done */
@@ -3717,7 +3756,11 @@ export class AgentStatusTreeProvider
 	/** Get a formatted diff summary for an agent's working directory */
 	getDiffSummary(projectDir: string, task: AgentTask): string | null {
 		return this.formatPerFileDiffSummary(
-			this.getPerFileDiffs(projectDir, this.getTaskDiffStartCommit(task)),
+			this.getPerFileDiffs(
+				projectDir,
+				this.getTaskDiffStartCommit(task),
+				this.getTaskDiffEndCommit(task),
+			),
 		);
 	}
 
@@ -3750,17 +3793,28 @@ export class AgentStatusTreeProvider
 	 * Get per-file diff stats via `git diff --numstat`.
 	 *
 	 * - Running agents: compare working tree vs HEAD (`startCommit` undefined)
-	 * - Completed/stopped/failed: compare `startCommit..HEAD` (fallback: HEAD~1..HEAD)
+	 * - Completed/stopped/failed: compare `startCommit..endCommit` (fallback: HEAD~1..HEAD)
 	 */
-	getPerFileDiffs(projectDir: string, startCommit?: string): PerFileDiff[] {
+	getPerFileDiffs(
+		projectDir: string,
+		startCommit?: string,
+		endCommit?: string,
+	): PerFileDiff[] {
 		const runNumstat = (args: string[]): string =>
 			execFileSync("git", args, {
 				encoding: "utf-8",
 				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
 			}).trim();
 		try {
+			const resolvedEnd = endCommit ?? "HEAD";
 			const primaryArgs = startCommit
-				? ["-C", projectDir, "diff", "--numstat", `${startCommit}..HEAD`]
+				? [
+						"-C",
+						projectDir,
+						"diff",
+						"--numstat",
+						`${startCommit}..${resolvedEnd}`,
+					]
 				: ["-C", projectDir, "diff", "--numstat"];
 			let output = "";
 			try {
