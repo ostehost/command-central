@@ -30,9 +30,7 @@ export type TaskFlowStatus =
 	| "cancelled"
 	| "lost";
 
-export function taskflowStatusToIcon(
-	status: TaskFlowStatus,
-): vscode.ThemeIcon {
+export function taskflowStatusToIcon(status: TaskFlowStatus): vscode.ThemeIcon {
 	switch (status) {
 		case "queued":
 			return new vscode.ThemeIcon(
