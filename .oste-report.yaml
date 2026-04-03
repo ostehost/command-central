@@ -1,9 +1,8 @@
-task_id: "fix-click-to-focus"
+task_id: "fix-agent-diff-view-temp-files"
 status: "success"
-summary: "Add focusGhosttyBundleAndTmuxWindow — two-step focus via open -a + tmux select-window, eliminating System Events permission dialog and restoring correct tmux window targeting"
+summary: "Fixed temp file leak in agent diff view: stable per-task dirs, startup cleanup, deactivate cleanup"
 files_changed:
-  - "src/ghostty/window-focus.ts"
   - "src/extension.ts"
-  - "test/ghostty/window-focus.test.ts"
+  - "test/commands/file-diff-temp-dir.test.ts"
 tests_passing: true
-next_steps: "Pre-existing tree provider test failure (AgentStatusTreeProvider > inline diff summary > task item description excludes diff when getDiffSummary returns null) from commit 6e4e18c needs investigation by the review-tracker task owner"
+next_steps: "No further action needed. The git URI scheme approach can be revisited in the future for even cleaner tab headers."
