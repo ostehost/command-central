@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-02: 1160+ tests across 83 files.
 
+## [0.5.1-57] - 2026-04-02
+
+### Fixed
+- **Group by Project now defaults to ON** — The code fallback was `false` even though package.json said `true`, causing the sidebar to show a flat list instead of the project → status → time hierarchy. One-line fix with massive UX impact.
+
 ## [0.5.1-56] - 2026-04-02
 
 ### Changed
