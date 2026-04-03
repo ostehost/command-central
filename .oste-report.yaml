@@ -1,9 +1,7 @@
-task_id: "fix-click-to-focus"
+task_id: "TEST-SUITE-AUDIT-2026-04-03"
 status: "success"
-summary: "Add focusGhosttyBundleAndTmuxWindow — two-step focus via open -a + tmux select-window, eliminating System Events dependency and restoring correct tmux window targeting in Strategies 0 and 1"
+summary: "Audited test suite: identified 43s bottleneck in agent-status-tree-provider.test.ts (mock.restore() x 182 + double-restore in 3 nested beforeEach blocks), documented 10 root causes, 7 low-value test patterns, 4 Justfile mismatches, and 4 surgical fix opportunities"
 files_changed:
-  - "src/ghostty/window-focus.ts"
-  - "src/extension.ts"
-  - "test/ghostty/window-focus.test.ts"
+  - "research/TEST-SUITE-AUDIT-2026-04-03.md"
 tests_passing: true
-next_steps: "Pre-existing tree provider test failure (AgentStatusTreeProvider > inline diff summary > task item description excludes diff when getDiffSummary returns null) from commit 6e4e18c needs investigation by the review-tracker task owner"
+next_steps: "Highest-ROI fixes in order: (1) cache dogfood fixture at module scope (low-risk, 1-2s), (2) replace new ReviewTracker(unique-tmp-path) with in-memory mock (medium effort, 2-5s), (3) split agent-status-tree-provider.test.ts into unit+integration files to enable fast-path skipping, (4) update Justfile help text and test-unit/test-integration commands to reflect actual test counts and correct categorizations"
