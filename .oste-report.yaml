@@ -1,0 +1,10 @@
+task_id: "unify-sorted-changes-agent-status-ux"
+status: "success"
+summary: "Removed duplicate formatRelativeTime from time-grouping.ts, updated Agent Status to use canonical relativeTime(), unified description separator to · in Sorted Changes"
+files_changed:
+  - "src/utils/time-grouping.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "src/git-sort/sorted-changes-provider.ts"
+  - "test/utils/time-grouping.test.ts"
+tests_passing: true
+next_steps: "No further changes needed; both views now share the same time formatter and separator"
