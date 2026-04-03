@@ -1055,7 +1055,15 @@ export class AgentStatusTreeProvider
 		let alive = false;
 		try {
 			const args = socketPath
-				? ["-S", socketPath, "list-windows", "-t", sessionId, "-F", "#{window_id}"]
+				? [
+						"-S",
+						socketPath,
+						"list-windows",
+						"-t",
+						sessionId,
+						"-F",
+						"#{window_id}",
+					]
 				: ["list-windows", "-t", sessionId, "-F", "#{window_id}"];
 			const output = execFileSync("tmux", args, { timeout: 500 }).toString();
 			alive = output.split("\n").some((line) => line.trim() === windowId);

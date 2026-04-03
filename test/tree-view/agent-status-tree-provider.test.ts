@@ -807,6 +807,7 @@ describe("AgentStatusTreeProvider", () => {
 			// reconciler must not mark the older windows as stopped.
 			const now = Date.now();
 			const tmuxSocket = "/tmp/test-tmux.sock";
+			// Use short started_at values (< stuckThreshold) so none are "looksStale".
 			const window1 = createMockTask({
 				id: "window-1",
 				status: "running",
@@ -814,7 +815,7 @@ describe("AgentStatusTreeProvider", () => {
 				terminal_backend: "tmux",
 				tmux_window_id: "@1",
 				tmux_socket: tmuxSocket,
-				started_at: new Date(now - 2 * 60 * 60_000).toISOString(),
+				started_at: new Date(now - 5 * 60_000).toISOString(),
 			});
 			const window2 = createMockTask({
 				id: "window-2",
@@ -823,7 +824,7 @@ describe("AgentStatusTreeProvider", () => {
 				terminal_backend: "tmux",
 				tmux_window_id: "@2",
 				tmux_socket: tmuxSocket,
-				started_at: new Date(now - 60 * 60_000).toISOString(),
+				started_at: new Date(now - 3 * 60_000).toISOString(),
 			});
 			const window3 = createMockTask({
 				id: "window-3",
@@ -832,7 +833,7 @@ describe("AgentStatusTreeProvider", () => {
 				terminal_backend: "tmux",
 				tmux_window_id: "@3",
 				tmux_socket: tmuxSocket,
-				started_at: new Date(now - 5 * 60_000).toISOString(),
+				started_at: new Date(now - 1 * 60_000).toISOString(),
 			});
 			// Mark all windows as alive in the cache.
 			const cacheType = provider as unknown as {
