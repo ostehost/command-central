@@ -3358,6 +3358,50 @@ describe("AgentStatusTreeProvider", () => {
 		}
 	});
 
+	test("readRegistry preserves actual_model from tasks.json", () => {
+		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
+		const tasksFile = path.join(tmpDir, "tasks.json");
+		fs.writeFileSync(
+			tasksFile,
+			JSON.stringify({
+				version: 2,
+				tasks: {
+					fallbackTask: {
+						id: "fallbackTask",
+						status: "running",
+						project_dir: "/Users/test/projects/my-app",
+						project_name: "My App",
+						session_id: "agent-my-app-fallback",
+						bundle_path: "/Applications/Projects/My App.app",
+						prompt_file: "/tmp/task.md",
+						started_at: "2026-02-25T08:00:00Z",
+						attempts: 1,
+						max_attempts: 3,
+						model: "anthropic/claude-opus-4-6",
+						actual_model: "google/gemini-2.5-flash-lite",
+					},
+				},
+			}),
+		);
+
+		try {
+			(
+				provider as unknown as {
+					_filePath: string | null;
+				}
+			)._filePath = tasksFile;
+			const registry = _realReadRegistry.call(provider);
+			expect(registry.tasks["fallbackTask"]?.model).toBe(
+				"anthropic/claude-opus-4-6",
+			);
+			expect(registry.tasks["fallbackTask"]?.actual_model).toBe(
+				"google/gemini-2.5-flash-lite",
+			);
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
 	test("normalizes v1 tmux_session to session_id", () => {
 		// Simulate normalized output: readRegistry converts tmux_session → session_id
 		provider.readRegistry = () => ({
@@ -5191,6 +5235,67 @@ describe("AgentStatusTreeProvider", () => {
 				}
 			} finally {
 				fs.rmSync(tmpDir, { recursive: true, force: true });
+			}
+		});
+
+		test("task description shows fallback when actual_model differs from model", () => {
+			const task = createMockTask({
+				status: "running",
+				model: "anthropic/claude-opus-4-6",
+				actual_model: "google/gemini-2.5-flash-lite",
+			});
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("(fallback)");
+			// Should show the actual model alias, not the requested one
+			expect(item.description).not.toContain("opus");
+		});
+
+		test("task description shows normal model when actual_model matches model", () => {
+			const task = createMockTask({
+				status: "running",
+				model: "anthropic/claude-opus-4-6",
+				actual_model: "anthropic/claude-opus-4-6",
+			});
+			provider.getDiffSummary = () => "2 files · +30 / -10";
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).not.toContain("fallback");
+			expect(item.description).toContain("opus");
+		});
+
+		test("task description shows normal model when actual_model is absent", () => {
+			const task = createMockTask({
+				status: "running",
+				model: "anthropic/claude-opus-4-6",
+			});
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).not.toContain("fallback");
+			expect(item.description).toContain("opus");
+		});
+
+		test("expanded task detail shows fallback model info", () => {
+			const task = createMockTask({
+				status: "running",
+				model: "anthropic/claude-opus-4-6",
+				actual_model: "google/gemini-2.5-flash-lite",
+			});
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getGitInfo = () => null;
+			provider.getDiffSummary = () => null;
+			provider.reload();
+
+			const root = provider.getChildren();
+			const firstTask = getFirstTask(root);
+			const details = provider.getChildren(firstTask);
+			const modelDetail = details.find(
+				(d) => d.type === "detail" && d.label === "Model",
+			);
+			expect(modelDetail).toBeDefined();
+			if (modelDetail?.type === "detail") {
+				expect(modelDetail.value).toBe(
+					"google/gemini-2.5-flash-lite (fallback from anthropic/claude-opus-4-6)",
+				);
 			}
 		});
 	});

@@ -132,6 +132,7 @@ export interface AgentTask {
 	completed_at?: string | null;
 	updated_at?: string | null;
 	model?: string | null;
+	actual_model?: string | null;
 	thinking_budget?: number | null;
 	prompt_summary?: string | null;
 }
@@ -640,6 +641,7 @@ function normalizeTask(
 		completed_at: asString(raw["completed_at"]) ?? null,
 		updated_at: asString(raw["updated_at"]) ?? null,
 		model: asString(raw["model"]) ?? null,
+		actual_model: asString(raw["actual_model"]) ?? null,
 		thinking_budget: asNullableNumber(raw["thinking_budget"]) ?? null,
 		prompt_summary: asString(raw["prompt_summary"]) ?? null,
 	};
@@ -1870,6 +1872,26 @@ export class AgentStatusTreeProvider
 			fullName: inheritedModel.model,
 			alias: getModelAlias(inheritedModel.model),
 			isExplicit: inheritedModel.isExplicit,
+		};
+	}
+
+	/**
+	 * Detect provider fallback: actual_model differs from requested model.
+	 */
+	private getTaskFallbackInfo(task: AgentTask): {
+		actualFull: string;
+		actualAlias: string;
+		requestedFull: string;
+		requestedAlias: string;
+	} | null {
+		const actual = task.actual_model?.trim();
+		const requested = task.model?.trim();
+		if (!actual || !requested || actual === requested) return null;
+		return {
+			actualFull: actual,
+			actualAlias: getModelAlias(actual),
+			requestedFull: requested,
+			requestedAlias: getModelAlias(requested),
 		};
 	}
 
@@ -3355,8 +3377,16 @@ export class AgentStatusTreeProvider
 		}
 
 		// Model — from tasks.json (spawn-time) or OpenClaw config (policy)
+		const detailFallback = this.getTaskFallbackInfo(t);
 		const modelDisplay = this.resolveTaskModelDisplay(t);
-		if (modelDisplay) {
+		if (detailFallback) {
+			details.push({
+				type: "detail",
+				label: "Model",
+				value: `${detailFallback.actualFull} (fallback from ${detailFallback.requestedFull})`,
+				taskId: t.id,
+			});
+		} else if (modelDisplay) {
 			details.push({
 				type: "detail",
 				label: "Model",
@@ -5242,7 +5272,10 @@ export class AgentStatusTreeProvider
 			descriptionParts.push(diffSummaryInline);
 		}
 		// Omit diff loading placeholder — show nothing until ready (no flicker)
-		if (modelDisplay?.alias) {
+		const fallback = this.getTaskFallbackInfo(task);
+		if (fallback) {
+			descriptionParts.push(`${fallback.actualAlias} (fallback)`);
+		} else if (modelDisplay?.alias) {
 			descriptionParts.push(modelDisplay.alias);
 		}
 		const isDoneStatus =
@@ -5278,7 +5311,11 @@ export class AgentStatusTreeProvider
 			[
 				`**${task.id}**`,
 				`Status: ${getStatusDisplayLabel(task.status)}`,
-				modelDisplay ? `Model: ${modelDisplay.fullName}` : null,
+				fallback
+					? `Model: ${fallback.actualFull} (fallback from ${fallback.requestedFull})`
+					: modelDisplay
+						? `Model: ${modelDisplay.fullName}`
+						: null,
 				duration ? `Duration: ${duration}` : null,
 				task.project_dir ? `Dir: \`${task.project_dir}\`` : null,
 			]
