@@ -801,6 +801,101 @@ describe("AgentStatusTreeProvider", () => {
 			);
 		});
 
+		test("does not deduplicate tmux tasks with different window IDs in shared session", () => {
+			// Real-world scenario: multiple agents share one tmux session but each
+			// occupies a distinct window (@N).  They must all remain "running" — the
+			// reconciler must not mark the older windows as stopped.
+			const now = Date.now();
+			const tmuxSocket = "/tmp/test-tmux.sock";
+			const window1 = createMockTask({
+				id: "window-1",
+				status: "running",
+				session_id: "agent-command-central",
+				terminal_backend: "tmux",
+				tmux_window_id: "@1",
+				tmux_socket: tmuxSocket,
+				started_at: new Date(now - 2 * 60 * 60_000).toISOString(),
+			});
+			const window2 = createMockTask({
+				id: "window-2",
+				status: "running",
+				session_id: "agent-command-central",
+				terminal_backend: "tmux",
+				tmux_window_id: "@2",
+				tmux_socket: tmuxSocket,
+				started_at: new Date(now - 60 * 60_000).toISOString(),
+			});
+			const window3 = createMockTask({
+				id: "window-3",
+				status: "running",
+				session_id: "agent-command-central",
+				terminal_backend: "tmux",
+				tmux_window_id: "@3",
+				tmux_socket: tmuxSocket,
+				started_at: new Date(now - 5 * 60_000).toISOString(),
+			});
+			// Mark all windows as alive in the cache.
+			const cacheType = provider as unknown as {
+				_tmuxSessionHealthCache: Map<
+					string,
+					{ alive: boolean; checkedAt: number }
+				>;
+			};
+			for (const w of [window1, window2, window3]) {
+				cacheType._tmuxSessionHealthCache.set(
+					`${tmuxSocket}::agent-command-central::${w.tmux_window_id}`,
+					{ alive: true, checkedAt: Date.now() },
+				);
+			}
+			provider.readRegistry = () =>
+				createMockRegistry({
+					[window1.id]: window1,
+					[window2.id]: window2,
+					[window3.id]: window3,
+				});
+			provider.reload();
+
+			const displayStatuses = new Map(
+				provider.getTasks().map((task) => [task.id, task.status]),
+			);
+			// All three windows are in independent windows — none should be stopped.
+			expect(displayStatuses.get("window-1")).toBe("running");
+			expect(displayStatuses.get("window-2")).toBe("running");
+			expect(displayStatuses.get("window-3")).toBe("running");
+		});
+
+		test("marks tmux task as stale when its specific window is dead (shared session)", () => {
+			// Even though the tmux SESSION is alive (other windows still running),
+			// a task whose window has been killed should be detected as dead.
+			const now = Date.now();
+			const tmuxSocket = "/tmp/test-tmux2.sock";
+			const deadWindow = createMockTask({
+				id: "dead-window",
+				status: "running",
+				session_id: "agent-command-central",
+				terminal_backend: "tmux",
+				tmux_window_id: "@10",
+				tmux_socket: tmuxSocket,
+				started_at: new Date(now - 5 * 60 * 60_000).toISOString(),
+			});
+			// Window @10 is dead; the session is still alive (other windows exist).
+			const cacheType = provider as unknown as {
+				_tmuxSessionHealthCache: Map<
+					string,
+					{ alive: boolean; checkedAt: number }
+				>;
+			};
+			cacheType._tmuxSessionHealthCache.set(
+				`${tmuxSocket}::agent-command-central::@10`,
+				{ alive: false, checkedAt: Date.now() },
+			);
+			provider.readRegistry = () =>
+				createMockRegistry({ [deadWindow.id]: deadWindow });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("completed_stale");
+		});
+
 		test("keeps only newest running task per reused session id", () => {
 			const now = Date.now();
 			const older = createMockTask({

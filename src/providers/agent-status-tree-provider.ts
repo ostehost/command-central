@@ -1034,6 +1034,38 @@ export class AgentStatusTreeProvider
 		return alive;
 	}
 
+	/**
+	 * Checks whether a specific tmux window (by `@N` ID) still exists.
+	 * More accurate than `isTmuxSessionAlive` for multi-window sessions where
+	 * multiple tasks share a single session but occupy distinct windows.
+	 */
+	private isTmuxWindowAlive(
+		sessionId: string,
+		windowId: string,
+		socketPath?: string | null,
+	): boolean {
+		const cacheTtlMs = 5_000;
+		const cacheKey = `${socketPath ?? "__default__"}::${sessionId}::${windowId}`;
+		const cached = this._tmuxSessionHealthCache.get(cacheKey);
+		const now = Date.now();
+		if (cached && now - cached.checkedAt < cacheTtlMs) {
+			return cached.alive;
+		}
+
+		let alive = false;
+		try {
+			const args = socketPath
+				? ["-S", socketPath, "list-windows", "-t", sessionId, "-F", "#{window_id}"]
+				: ["list-windows", "-t", sessionId, "-F", "#{window_id}"];
+			const output = execFileSync("tmux", args, { timeout: 500 }).toString();
+			alive = output.split("\n").some((line) => line.trim() === windowId);
+		} catch {
+			alive = false;
+		}
+		this._tmuxSessionHealthCache.set(cacheKey, { alive, checkedAt: now });
+		return alive;
+	}
+
 	private getPersistSocketPath(task: AgentTask): string | null {
 		if (task.persist_socket) return task.persist_socket;
 		if (!isValidSessionId(task.session_id)) return null;
@@ -1088,8 +1120,16 @@ export class AgentStatusTreeProvider
 				task.terminal_backend === undefined) &&
 			isValidSessionId(task.session_id)
 		) {
-			if (!this.isTmuxSessionAlive(task.session_id, task.tmux_socket))
-				return false;
+			// Use window-level check when available — more accurate for multi-window
+			// sessions where all tasks share the same session ID.
+			const windowAlive = task.tmux_window_id
+				? this.isTmuxWindowAlive(
+						task.session_id,
+						task.tmux_window_id,
+						task.tmux_socket,
+					)
+				: this.isTmuxSessionAlive(task.session_id, task.tmux_socket);
+			if (!windowAlive) return false;
 			return !looksStale;
 		}
 
@@ -1220,11 +1260,19 @@ export class AgentStatusTreeProvider
 		const runningBySession = new Map<string, AgentTask[]>();
 		for (const task of tasks) {
 			if (task.status !== "running" || !task.session_id) continue;
-			const existing = runningBySession.get(task.session_id);
+			// Tmux tasks with a unique window ID are independent processes in the
+			// same session — don't treat them as duplicate sessions.
+			const sessionKey =
+				(task.terminal_backend === "tmux" ||
+					task.terminal_backend === undefined) &&
+				task.tmux_window_id
+					? `${task.session_id}::${task.tmux_window_id}`
+					: task.session_id;
+			const existing = runningBySession.get(sessionKey);
 			if (existing) {
 				existing.push(task);
 			} else {
-				runningBySession.set(task.session_id, [task]);
+				runningBySession.set(sessionKey, [task]);
 			}
 		}
 
@@ -1839,6 +1887,14 @@ export class AgentStatusTreeProvider
 				task.terminal_backend === undefined) &&
 			isValidSessionId(task.session_id)
 		) {
+			// Use window-level check when available for multi-window sessions.
+			if (task.tmux_window_id) {
+				return !this.isTmuxWindowAlive(
+					task.session_id,
+					task.tmux_window_id,
+					task.tmux_socket,
+				);
+			}
 			return !this.isTmuxSessionAlive(task.session_id, task.tmux_socket);
 		}
 
