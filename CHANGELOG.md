@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-02: 1160+ tests across 83 files.
 
+## [0.5.1-56] - 2026-04-02
+
+### Changed
+- **Simplified Agent Status to one sort mode** — Removed 3-mode sort cycling (recency/status/status-recency). Now hardcoded to `status-recency` — the best mode that combines status grouping with time sub-groups. Removed 6 MVP-excess settings (`sortMode`, `sortByStatus`, `showOnlyRunning`, `maxVisibleAgents`, `scope`, `defaultBackend`). Keep only 4: autoRefreshMs, groupByProject, stuckThresholdMinutes, notifications.
+- **Deleted `agent-backend-switcher.ts`** — Removed the entire backend switching service and its 159-line test file. Auto-detection handles this now.
+- **Updated site SVGs** — 6 new mockups reflecting v0.5.1-54 capabilities: hero, agent status, model display, terminal routing, stale detection, clear completed. Site copy updated to center on See · Click · Know.
+
+### Removed
+- 1381 net lines deleted. Fewer settings, fewer code paths, fewer tests for removed features.
+
 ## [0.5.1-55] - 2026-04-02
 
 ### Added
