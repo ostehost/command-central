@@ -149,3 +149,61 @@ export async function focusGhosttyWindow(
 ): Promise<boolean> {
 	return focusGhosttyWindowBySession(bundleTarget, sessionId);
 }
+
+/**
+ * Focus the Ghostty app without System Events, then select a tmux window.
+ *
+ * Unlike `focusGhosttyWindowBySession`, this function never calls
+ * `oste-focus.applescript` and therefore never triggers the macOS
+ * System Events permission dialog.  It uses `open -a <appPath>` to bring
+ * the Ghostty bundle to the foreground, then runs
+ * `tmux select-window -t <windowId>` to land on the correct agent window.
+ */
+export async function focusGhosttyBundleAndTmuxWindow(
+	bundleIdOrPath: string,
+	tmuxTarget?: {
+		socket?: string | null;
+		windowId?: string | null;
+		sessionId?: string | null;
+	},
+): Promise<boolean> {
+	// Resolve the path to open:
+	//   launcher bundle ID  → /Applications/Projects/<projectId>.app
+	//   bundle path         → use as-is
+	//   stock bundle ID     → use as-is (open -a accepts bundle IDs too)
+	let appTarget: string;
+	if (isBundlePath(bundleIdOrPath)) {
+		appTarget = bundleIdOrPath;
+	} else if (isLauncherBundleId(bundleIdOrPath)) {
+		appTarget = launcherAppPathFromBundleId(bundleIdOrPath) ?? bundleIdOrPath;
+	} else {
+		appTarget = bundleIdOrPath;
+	}
+
+	// Step 1: bring Ghostty to the foreground — no System Events required
+	const focused = await activateGhosttyTarget(appTarget);
+	if (!focused) return false;
+
+	// Step 2: select the right tmux window (non-fatal if it fails)
+	if (tmuxTarget) {
+		const windowTarget =
+			tmuxTarget.windowId?.trim() || tmuxTarget.sessionId?.trim();
+		if (windowTarget) {
+			const args: string[] = [];
+			const socket = tmuxTarget.socket?.trim();
+			if (socket) {
+				args.push("-S", socket);
+			}
+			args.push("select-window", "-t", windowTarget);
+			try {
+				await execFileAsync("tmux", args, {
+					timeout: WINDOW_FOCUS_TIMEOUT_MS,
+				});
+			} catch {
+				// tmux select-window failure is non-fatal; app is already focused
+			}
+		}
+	}
+
+	return true;
+}

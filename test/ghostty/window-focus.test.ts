@@ -62,8 +62,11 @@ const windowFocusModulePath = [
 	"../../src/ghostty/window-focus.js",
 	"window-focus-test",
 ].join("?");
-const { focusGhosttyWindowBySession, lookupLauncherFocusScript } =
-	(await import(windowFocusModulePath)) as WindowFocusModule;
+const {
+	focusGhosttyWindowBySession,
+	focusGhosttyBundleAndTmuxWindow,
+	lookupLauncherFocusScript,
+} = (await import(windowFocusModulePath)) as WindowFocusModule;
 
 beforeEach(() => {
 	existingPaths = new Set();
@@ -165,7 +168,7 @@ describe("focusGhosttyWindowBySession", () => {
 		});
 	});
 
-	test("falls back to opening the launcher app when osascript fails", async () => {
+	test("falls back to opening the launcher app when osascript fails (legacy)", async () => {
 		const scriptPath =
 			"/Users/ostemini/projects/ghostty-launcher/scripts/oste-focus.applescript";
 		existingPaths.add(scriptPath);
@@ -186,5 +189,148 @@ describe("focusGhosttyWindowBySession", () => {
 			file: "open",
 			args: ["-a", "/Applications/Projects/command-central.app"],
 		});
+	});
+});
+
+describe("focusGhosttyBundleAndTmuxWindow", () => {
+	test("launcher bundle ID → open -a /Applications/Projects/<id>.app + tmux select-window", async () => {
+		execFileResults = [
+			{ err: null, stdout: "" }, // open -a
+			{ err: null, stdout: "" }, // tmux select-window
+		];
+
+		const result = await focusGhosttyBundleAndTmuxWindow(
+			"dev.partnerai.ghostty.command-central",
+			{ windowId: "@22", sessionId: "agent-command-central" },
+		);
+
+		expect(result).toBe(true);
+		expect(execFileCalls).toHaveLength(2);
+		expect(execFileCalls[0]).toEqual({
+			file: "open",
+			args: ["-a", "/Applications/Projects/command-central.app"],
+		});
+		expect(execFileCalls[1]).toEqual({
+			file: "tmux",
+			args: ["select-window", "-t", "@22"],
+		});
+	});
+
+	test("uses tmux socket when provided", async () => {
+		execFileResults = [
+			{ err: null, stdout: "" }, // open -a
+			{ err: null, stdout: "" }, // tmux select-window
+		];
+
+		const result = await focusGhosttyBundleAndTmuxWindow(
+			"dev.partnerai.ghostty.command-central",
+			{
+				socket:
+					"/home/user/.local/state/ghostty-launcher/tmux/command-central.sock",
+				windowId: "@22",
+			},
+		);
+
+		expect(result).toBe(true);
+		expect(execFileCalls[1]).toEqual({
+			file: "tmux",
+			args: [
+				"-S",
+				"/home/user/.local/state/ghostty-launcher/tmux/command-central.sock",
+				"select-window",
+				"-t",
+				"@22",
+			],
+		});
+	});
+
+	test("falls back to sessionId when no windowId provided", async () => {
+		execFileResults = [
+			{ err: null, stdout: "" }, // open -a
+			{ err: null, stdout: "" }, // tmux select-window
+		];
+
+		const result = await focusGhosttyBundleAndTmuxWindow(
+			"dev.partnerai.ghostty.command-central",
+			{ sessionId: "agent-command-central" },
+		);
+
+		expect(result).toBe(true);
+		expect(execFileCalls[1]).toEqual({
+			file: "tmux",
+			args: ["select-window", "-t", "agent-command-central"],
+		});
+	});
+
+	test("skips tmux when no target provided", async () => {
+		execFileResults = [{ err: null, stdout: "" }]; // open -a only
+
+		const result = await focusGhosttyBundleAndTmuxWindow(
+			"dev.partnerai.ghostty.command-central",
+		);
+
+		expect(result).toBe(true);
+		expect(execFileCalls).toHaveLength(1);
+		expect(execFileCalls[0]?.file).toBe("open");
+	});
+
+	test("returns false and skips tmux when app focus fails", async () => {
+		execFileResults = [{ err: new Error("open failed"), stdout: "" }];
+
+		const result = await focusGhosttyBundleAndTmuxWindow(
+			"dev.partnerai.ghostty.command-central",
+			{ windowId: "@22" },
+		);
+
+		expect(result).toBe(false);
+		expect(execFileCalls).toHaveLength(1);
+		expect(execFileCalls[0]?.file).toBe("open");
+	});
+
+	test("returns true even when tmux select-window fails", async () => {
+		execFileResults = [
+			{ err: null, stdout: "" }, // open -a succeeds
+			{ err: new Error("tmux failed"), stdout: "" }, // tmux fails
+		];
+
+		const result = await focusGhosttyBundleAndTmuxWindow(
+			"dev.partnerai.ghostty.command-central",
+			{ windowId: "@22" },
+		);
+
+		expect(result).toBe(true); // app was focused; tmux failure is non-fatal
+	});
+
+	test("bundle path → open -a with path directly + tmux select-window", async () => {
+		execFileResults = [
+			{ err: null, stdout: "" }, // open -a
+			{ err: null, stdout: "" }, // tmux select-window
+		];
+
+		const result = await focusGhosttyBundleAndTmuxWindow(
+			"/Applications/Projects/my-project.app",
+			{ windowId: "@5" },
+		);
+
+		expect(result).toBe(true);
+		expect(execFileCalls[0]).toEqual({
+			file: "open",
+			args: ["-a", "/Applications/Projects/my-project.app"],
+		});
+		expect(execFileCalls[1]).toEqual({
+			file: "tmux",
+			args: ["select-window", "-t", "@5"],
+		});
+	});
+
+	test("does NOT invoke osascript (no System Events dependency)", async () => {
+		execFileResults = [{ err: null, stdout: "" }];
+
+		await focusGhosttyBundleAndTmuxWindow(
+			"dev.partnerai.ghostty.command-central",
+			{ sessionId: "agent-command-central" },
+		);
+
+		expect(execFileCalls.every((c) => c.file !== "osascript")).toBe(true);
 	});
 });

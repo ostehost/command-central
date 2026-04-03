@@ -41,8 +41,8 @@ import { BinaryManager } from "./ghostty/BinaryManager.js";
 import { refreshGhosttyBundleAfterProjectIconChange } from "./ghostty/project-icon-bundle-refresh.js";
 import { TerminalManager } from "./ghostty/TerminalManager.js";
 import {
+	focusGhosttyBundleAndTmuxWindow,
 	focusGhosttyWindow,
-	focusGhosttyWindowBySession,
 } from "./ghostty/window-focus.js";
 import { GitSorter } from "./git-sort/scm-sorter.js";
 import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provider.js";
@@ -1212,13 +1212,22 @@ export async function activate(
 					telemetry.track("cc_agent_focused");
 
 					// Strategy 0: Session store lookup (works for discovered agents too)
+					// Uses open -a (no System Events) + tmux select-window for precise targeting.
 					if (projectDir) {
 						const mapping = sessionStore.lookup(projectDir);
 						if (mapping) {
 							if (
-								await focusGhosttyWindowBySession(
+								await focusGhosttyBundleAndTmuxWindow(
 									mapping.bundleId || mapping.bundlePath,
-									sessionId,
+									task
+										? {
+												socket: task.tmux_socket,
+												windowId: task.tmux_window_id,
+												sessionId: task.session_id,
+											}
+										: sessionId
+											? { sessionId }
+											: undefined,
 								)
 							) {
 								return;
@@ -1235,12 +1244,14 @@ export async function activate(
 					}
 
 					// Strategy 1: tmux backend with ghostty bundle
+					// Uses open -a (no System Events) + tmux select-window.
 					if (task.terminal_backend === "tmux" && task.ghostty_bundle_id) {
 						if (
-							await focusGhosttyWindowBySession(
-								task.ghostty_bundle_id,
-								task.session_id,
-							)
+							await focusGhosttyBundleAndTmuxWindow(task.ghostty_bundle_id, {
+								socket: task.tmux_socket,
+								windowId: task.tmux_window_id,
+								sessionId: task.session_id,
+							})
 						) {
 							return;
 						}
