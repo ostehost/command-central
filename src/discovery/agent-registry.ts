@@ -1,20 +1,22 @@
 /**
- * AgentRegistry — Unified agent list merging three discovery sources.
+ * AgentRegistry — Unified agent list merging four discovery sources.
  *
  * Sources (in priority order):
- *   1. Launcher tasks.json   — richest metadata (status, role, PR, etc.)
- *   2. SessionWatcher         — ~/.claude/sessions/ (sessionId, cwd, pid)
- *   3. ProcessScanner         — ps/lsof (pid, cwd, command args)
+ *   1. ACP sessions            — openclaw tasks --runtime acp (sessionKey match)
+ *   2. Launcher tasks.json     — richest metadata (status, role, PR, etc.)
+ *   3. SessionWatcher          — ~/.claude/sessions/ (sessionId, cwd, pid)
+ *   4. ProcessScanner          — ps/lsof (pid, cwd, command args)
  *
  * Dedup rules:
- *   - Match by PID first
- *   - Then by projectDir + sessionId
+ *   - ACP: match by childSessionKey against discovered agent sessionId
+ *   - Launcher: match by PID first, then by projectDir + sessionId
  *   - Higher-priority source wins on conflict
  */
 
 import * as fs from "node:fs";
 import * as vscode from "vscode";
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
+import type { OpenClawTask } from "../types/openclaw-task-types.js";
 import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
 import {
 	type ProcessScanDiagnostics,
@@ -37,6 +39,7 @@ const DISCOVERY_TASK_START_MATCH_WINDOW_MS = 15 * 60_000;
 
 interface AgentRegistryOptions {
 	launcherTasksProvider?: () => AgentTask[];
+	acpTasksProvider?: () => OpenClawTask[];
 	idleStreamThresholdMs?: number;
 }
 
@@ -51,6 +54,7 @@ export class AgentRegistry implements vscode.Disposable {
 	private readonly processScanner: ProcessScanner;
 	private readonly sessionWatcher: SessionWatcher;
 	private readonly launcherTasksProvider: () => AgentTask[];
+	private readonly acpTasksProvider: () => OpenClawTask[];
 	private readonly idleStreamThresholdMs: number;
 
 	private discoveredAgents: DiscoveredAgent[] = [];
@@ -71,6 +75,7 @@ export class AgentRegistry implements vscode.Disposable {
 		this.sessionWatcher = new SessionWatcher(sessionsDir);
 		this.launcherTasksProvider =
 			options?.launcherTasksProvider ?? (() => this.readLauncherTasks());
+		this.acpTasksProvider = options?.acpTasksProvider ?? (() => []);
 		this.idleStreamThresholdMs = Math.max(
 			60_000,
 			options?.idleStreamThresholdMs ?? DISCOVERY_IDLE_STREAM_THRESHOLD_MS,
@@ -260,6 +265,8 @@ export class AgentRegistry implements vscode.Disposable {
 
 	private sourcePriority(source: string): number {
 		switch (source) {
+			case "acp":
+				return 4;
 			case "launcher":
 				return 3;
 			case "session-file":
@@ -302,10 +309,29 @@ export class AgentRegistry implements vscode.Disposable {
 
 	private filterLiveAgents(agents: DiscoveredAgent[]): DiscoveredAgent[] {
 		const launcherTasks = this.launcherTasksProvider();
+		const acpTasks = this.acpTasksProvider();
 		return agents.filter(
 			(agent) =>
 				this.isPidAlive(agent.pid) &&
+				!this.isSuppressedByAcpTask(agent, acpTasks) &&
 				!this.isSuppressedByLauncherTask(agent, launcherTasks),
+		);
+	}
+
+	/**
+	 * ACP tasks win over discovered agents when the agent's sessionId matches
+	 * an ACP task's childSessionKey (the harness session spawned by ACP).
+	 */
+	private isSuppressedByAcpTask(
+		agent: DiscoveredAgent,
+		acpTasks: OpenClawTask[],
+	): boolean {
+		const sid = agent.sessionId;
+		if (!sid) return false;
+		return acpTasks.some(
+			(task) =>
+				task.childSessionKey &&
+				(task.childSessionKey === sid || task.childSessionKey.includes(sid)),
 		);
 	}
 

@@ -21,6 +21,7 @@ import type {
 } from "../discovery/process-scanner.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
+import type { AcpSessionService } from "../services/acp-session-service.js";
 import type {
 	OpenClawAgentModel,
 	OpenClawConfigService,
@@ -710,6 +711,7 @@ export class AgentStatusTreeProvider
 	private projectIconManager: ProjectIconManager;
 	private _openclawConfigService: OpenClawConfigService | null = null;
 	private _openclawTaskService: OpenClawTaskService | null = null;
+	private _acpSessionService: AcpSessionService | null = null;
 	private _reviewTracker: ReviewTracker = new ReviewTracker();
 
 	constructor(projectIconManager?: ProjectIconManager) {
@@ -810,6 +812,10 @@ export class AgentStatusTreeProvider
 
 	setOpenClawTaskService(service: OpenClawTaskService): void {
 		this._openclawTaskService = service;
+	}
+
+	setAcpSessionService(service: AcpSessionService): void {
+		this._acpSessionService = service;
 	}
 
 	setReviewTracker(tracker: ReviewTracker): void {
@@ -1424,8 +1430,17 @@ export class AgentStatusTreeProvider
 	}
 
 	private getNonLauncherOpenClawTasks(): OpenClawTask[] {
-		const tasks = this._openclawTaskService?.getTasks() ?? [];
-		return tasks.filter((task) => !this.shouldDedupOpenClawTask(task));
+		// Merge tasks from both sources. ACP source wins on taskId conflict.
+		const taskMap = new Map<string, OpenClawTask>();
+		for (const task of this._openclawTaskService?.getTasks() ?? []) {
+			taskMap.set(task.taskId, task);
+		}
+		for (const task of this._acpSessionService?.getTasks() ?? []) {
+			taskMap.set(task.taskId, task);
+		}
+		return Array.from(taskMap.values()).filter(
+			(task) => !this.shouldDedupOpenClawTask(task),
+		);
 	}
 
 	private getVisibleOpenClawTasks(

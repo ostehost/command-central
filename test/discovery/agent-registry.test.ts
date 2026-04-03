@@ -562,6 +562,150 @@ describe("AgentRegistry", () => {
 		});
 	});
 
+	// ── ACP session suppression (4th discovery source) ──────────────
+
+	describe("ACP session suppression", () => {
+		test("suppresses discovered agent when sessionId matches ACP task childSessionKey", () => {
+			sessionFiles["2000.json"] = JSON.stringify({
+				pid: 2000,
+				sessionId: "acp-harness-session",
+				cwd: "/acp-project",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["2000.json"];
+			alivePids.add(2000);
+
+			registry = new AgentRegistry("/tmp/test-sessions", {
+				launcherTasksProvider: () => trackedLauncherTasks,
+				acpTasksProvider: () => [
+					{
+						taskId: "acp-task-1",
+						runtime: "acp" as const,
+						ownerKey: "main",
+						scopeKind: "workspace",
+						childSessionKey: "acp-harness-session",
+						task: "Agent task",
+						status: "running" as const,
+						deliveryStatus: "pending",
+						notifyPolicy: "silent",
+						createdAt: 1704067200000,
+					},
+				],
+				idleStreamThresholdMs: 5 * 60_000,
+			});
+			registry.start();
+
+			const all = registry.getAllDiscovered();
+			expect(all.find((a) => a.pid === 2000)).toBeUndefined();
+		});
+
+		test("does not suppress agent when sessionId does not match any ACP childSessionKey", () => {
+			sessionFiles["2001.json"] = JSON.stringify({
+				pid: 2001,
+				sessionId: "independent-session",
+				cwd: "/independent-project",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["2001.json"];
+			alivePids.add(2001);
+
+			registry = new AgentRegistry("/tmp/test-sessions", {
+				launcherTasksProvider: () => trackedLauncherTasks,
+				acpTasksProvider: () => [
+					{
+						taskId: "acp-task-2",
+						runtime: "acp" as const,
+						ownerKey: "main",
+						scopeKind: "workspace",
+						childSessionKey: "different-session-key",
+						task: "Agent task",
+						status: "running" as const,
+						deliveryStatus: "pending",
+						notifyPolicy: "silent",
+						createdAt: 1704067200000,
+					},
+				],
+				idleStreamThresholdMs: 5 * 60_000,
+			});
+			registry.start();
+
+			const all = registry.getAllDiscovered();
+			expect(all.find((a) => a.pid === 2001)).toBeDefined();
+		});
+
+		test("does not suppress agent without sessionId even when ACP tasks exist", () => {
+			sessionFiles["2002.json"] = JSON.stringify({
+				pid: 2002,
+				// No sessionId
+				cwd: "/no-session-project",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["2002.json"];
+			alivePids.add(2002);
+
+			registry = new AgentRegistry("/tmp/test-sessions", {
+				launcherTasksProvider: () => trackedLauncherTasks,
+				acpTasksProvider: () => [
+					{
+						taskId: "acp-task-3",
+						runtime: "acp" as const,
+						ownerKey: "main",
+						scopeKind: "workspace",
+						childSessionKey: "some-session",
+						task: "Agent task",
+						status: "running" as const,
+						deliveryStatus: "pending",
+						notifyPolicy: "silent",
+						createdAt: 1704067200000,
+					},
+				],
+				idleStreamThresholdMs: 5 * 60_000,
+			});
+			registry.start();
+
+			const all = registry.getAllDiscovered();
+			expect(all.find((a) => a.pid === 2002)).toBeDefined();
+		});
+
+		test("empty acpTasksProvider does not suppress any agents", () => {
+			sessionFiles["2003.json"] = JSON.stringify({
+				pid: 2003,
+				sessionId: "free-session",
+				cwd: "/free-project",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["2003.json"];
+			alivePids.add(2003);
+
+			registry = new AgentRegistry("/tmp/test-sessions", {
+				launcherTasksProvider: () => trackedLauncherTasks,
+				acpTasksProvider: () => [],
+				idleStreamThresholdMs: 5 * 60_000,
+			});
+			registry.start();
+
+			const all = registry.getAllDiscovered();
+			expect(all.find((a) => a.pid === 2003)).toBeDefined();
+		});
+
+		test("default registry (no acpTasksProvider) does not suppress agents", () => {
+			sessionFiles["2004.json"] = JSON.stringify({
+				pid: 2004,
+				sessionId: "default-session",
+				cwd: "/default-project",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["2004.json"];
+			alivePids.add(2004);
+
+			// Use the beforeEach-constructed registry (no acpTasksProvider)
+			registry.start();
+
+			const all = registry.getAllDiscovered();
+			expect(all.find((a) => a.pid === 2004)).toBeDefined();
+		});
+	});
+
 	// ── Polling lifecycle ────────────────────────────────────────────
 
 	describe("polling lifecycle", () => {
