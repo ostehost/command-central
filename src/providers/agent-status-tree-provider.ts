@@ -2384,7 +2384,7 @@ export class AgentStatusTreeProvider
 
 	private isProjectGroupingEnabled(): boolean {
 		const config = vscode.workspace.getConfiguration("commandCentral");
-		return config.get<boolean>("agentStatus.groupByProject", false);
+		return config.get<boolean>("agentStatus.groupByProject", true);
 	}
 
 	private getMaxVisibleAgents(): number {
