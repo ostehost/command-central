@@ -27,6 +27,7 @@ import type {
 } from "../services/openclaw-config-service.js";
 import type { OpenClawTaskService } from "../services/openclaw-task-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
+import { ReviewTracker } from "../services/review-tracker.js";
 import {
 	type OpenClawTask,
 	openclawStatusToIcon,
@@ -490,7 +491,6 @@ const TASK_STATUS_PRIORITY: Record<AgentStatusGroup, number> = {
 	done: 2,
 };
 
-const DIFF_LOADING_LABEL = "Loading diff...";
 const PORT_LOADING_LABEL = "Detecting ports...";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -707,6 +707,7 @@ export class AgentStatusTreeProvider
 	private projectIconManager: ProjectIconManager;
 	private _openclawConfigService: OpenClawConfigService | null = null;
 	private _openclawTaskService: OpenClawTaskService | null = null;
+	private _reviewTracker: ReviewTracker = new ReviewTracker();
 
 	constructor(projectIconManager?: ProjectIconManager) {
 		this.projectIconManager = projectIconManager ?? new ProjectIconManager();
@@ -806,6 +807,17 @@ export class AgentStatusTreeProvider
 
 	setOpenClawTaskService(service: OpenClawTaskService): void {
 		this._openclawTaskService = service;
+	}
+
+	setReviewTracker(tracker: ReviewTracker): void {
+		this._reviewTracker = tracker;
+	}
+
+	markTaskReviewed(taskId: string): void {
+		this._reviewTracker.markReviewed(taskId);
+		// Refresh the specific task node so the badge appears immediately
+		const element = this.getTaskRefreshElement(taskId);
+		this.scheduleTreeRefresh(element);
 	}
 
 	findTaskElement(taskId: string): TreeElement | undefined {
@@ -2186,10 +2198,6 @@ export class AgentStatusTreeProvider
 		return null;
 	}
 
-	private isTaskDiffSummaryLoading(task: AgentTask): boolean {
-		return this._diffSummaryDetecting.has(this.getTaskDiffCacheKey(task));
-	}
-
 	private getCachedDiffSummaryForDiscovered(
 		agent: DiscoveredAgent,
 	): string | null {
@@ -2220,12 +2228,6 @@ export class AgentStatusTreeProvider
 				});
 		}
 		return null;
-	}
-
-	private isDiscoveredDiffSummaryLoading(agent: DiscoveredAgent): boolean {
-		return this._diffSummaryDetecting.has(
-			this.getDiscoveredDiffCacheKey(agent),
-		);
 	}
 
 	private formatPerFileDiffSummary(fileDiffs: PerFileDiff[]): string | null {
@@ -2346,14 +2348,8 @@ export class AgentStatusTreeProvider
 				value: diffSummary,
 				taskId: `discovered-${agent.pid}`,
 			});
-		} else if (this.isDiscoveredDiffSummaryLoading(agent)) {
-			details.push({
-				type: "detail",
-				label: "Changes",
-				value: DIFF_LOADING_LABEL,
-				taskId: `discovered-${agent.pid}`,
-			});
 		}
+		// Omit diff loading placeholder — show nothing until ready
 		if (agent.model) {
 			details.push({
 				type: "detail",
@@ -3143,14 +3139,8 @@ export class AgentStatusTreeProvider
 				value: diffSummary,
 				taskId: t.id,
 			});
-		} else if (this.isTaskDiffSummaryLoading(t)) {
-			details.push({
-				type: "detail",
-				label: "Changes",
-				value: DIFF_LOADING_LABEL,
-				taskId: t.id,
-			});
 		}
+		// Omit diff loading placeholder — show nothing until ready
 
 		// Git info — merged branch + hash
 		const gitInfo = this.getGitInfo(t.project_dir);
@@ -4867,8 +4857,6 @@ export class AgentStatusTreeProvider
 		const label = labelParts.join(" ");
 		const isStuck = this.isAgentStuck(task);
 		const diffSummaryInline = this.getCachedDiffSummaryForTask(task);
-		const diffLoading =
-			!diffSummaryInline && this.isTaskDiffSummaryLoading(task);
 		const descriptionParts: string[] = [];
 		if (!this.isProjectGroupingEnabled()) {
 			descriptionParts.push(task.project_name);
@@ -4878,18 +4866,29 @@ export class AgentStatusTreeProvider
 		}
 		if (diffSummaryInline) {
 			descriptionParts.push(diffSummaryInline);
-		} else if (diffLoading) {
-			descriptionParts.push(DIFF_LOADING_LABEL);
 		}
+		// Omit diff loading placeholder — show nothing until ready (no flicker)
 		if (modelDisplay?.alias) {
 			descriptionParts.push(modelDisplay.alias);
 		}
+		const isDoneStatus =
+			task.status === "completed" ||
+			task.status === "completed_dirty" ||
+			task.status === "completed_stale" ||
+			task.status === "failed" ||
+			task.status === "contract_failure" ||
+			task.status === "stopped" ||
+			task.status === "killed";
+		const isReviewed = isDoneStatus && this._reviewTracker.isReviewed(task.id);
 		if (task.status === "running") {
 			if (descriptionParts.length === 0) {
 				descriptionParts.push(this.getTaskActivityDescription(task));
 			}
 		} else {
 			descriptionParts.push(relativeTime(this.getTaskActivityTimeMs(task)));
+		}
+		if (isReviewed) {
+			descriptionParts.push("✓ reviewed");
 		}
 		const description = isStuck
 			? `${descriptionParts.join(" · ")} (possibly stuck)`
@@ -4918,8 +4917,12 @@ export class AgentStatusTreeProvider
 						"warning",
 						new vscode.ThemeColor("charts.yellow"),
 					)
-				: getStatusThemeIcon(task.status);
-		item.contextValue = `agentTask.${task.status}`;
+				: isReviewed
+					? new vscode.ThemeIcon("pass", new vscode.ThemeColor("charts.green"))
+					: getStatusThemeIcon(task.status);
+		item.contextValue = isReviewed
+			? `agentTask.${task.status}.reviewed`
+			: `agentTask.${task.status}`;
 		item.resourceUri = vscode.Uri.parse(`agent-task:${task.id}`);
 		const isRunning = task.status === "running";
 		item.command = {
@@ -5055,15 +5058,12 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		const discoveredDiff = this.getCachedDiffSummaryForDiscovered(agent);
-		const discoveredDiffLoading =
-			!discoveredDiff && this.isDiscoveredDiffSummaryLoading(agent);
 		const descriptionParts = ["running", uptime];
 		if (worktreeLabel) descriptionParts.push(worktreeLabel);
 		if (discoveredDiff) {
 			descriptionParts.push(discoveredDiff);
-		} else if (discoveredDiffLoading) {
-			descriptionParts.push(DIFF_LOADING_LABEL);
 		}
+		// Omit diff loading placeholder — show nothing until ready (no flicker)
 		item.description = descriptionParts.join(" · ");
 		item.iconPath = getStatusThemeIcon("running");
 		item.contextValue = "discoveredAgent.running";

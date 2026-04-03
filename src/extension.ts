@@ -1873,6 +1873,22 @@ export async function activate(
 				},
 			),
 		);
+		// Mark Agent Reviewed
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.markAgentReviewed",
+				(node?: { type: string; task?: AgentTask }) => {
+					const task = node?.task;
+					if (!task) {
+						vscode.window.showWarningMessage(
+							"No agent selected. Right-click an agent in the tree.",
+						);
+						return;
+					}
+					agentStatusProvider?.markTaskReviewed(task.id);
+				},
+			),
+		);
 		// Jump to Next Running Agent
 		context.subscriptions.push(
 			vscode.commands.registerCommand(

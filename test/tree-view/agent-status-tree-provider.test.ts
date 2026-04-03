@@ -70,6 +70,7 @@ import {
 } from "../../src/providers/agent-status-tree-provider.js";
 import { AgentStatusBar } from "../../src/services/agent-status-bar.js";
 import { OpenClawConfigService } from "../../src/services/openclaw-config-service.js";
+import { ReviewTracker } from "../../src/services/review-tracker.js";
 import { PerformanceTestHelper } from "../helpers/performance-test-helper.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
@@ -416,6 +417,14 @@ describe("AgentStatusTreeProvider", () => {
 			projectIconManagerMock as unknown as ConstructorParameters<
 				typeof AgentStatusTreeProvider
 			>[0],
+		);
+		// Inject a fresh, empty ReviewTracker for each test to avoid cross-test
+		// pollution from the real ~/.config/command-central/reviewed-tasks.json
+		const rnd = Math.random().toString(36).slice(2);
+		provider.setReviewTracker(
+			new ReviewTracker(
+				path.join(os.tmpdir(), `cc-review-test-${Date.now()}-${rnd}.json`),
+			),
 		);
 		// Override readRegistry to return mock data (no file I/O)
 		provider.readRegistry = () => createMockRegistry({});
@@ -4834,6 +4843,104 @@ describe("AgentStatusTreeProvider", () => {
 				projectName: string;
 			};
 			expect(group.projectName).toBe("my-app");
+		});
+	});
+
+	describe("reviewed state integration", () => {
+		test("completed task shows reviewed badge in description after markTaskReviewed", () => {
+			const task = createMockTask({
+				status: "completed",
+				completed_at: new Date(Date.now() - 120_000).toISOString(),
+			});
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getDiffSummary = () => null;
+			provider.reload();
+
+			// Before marking reviewed — no badge
+			let item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).not.toContain("✓ reviewed");
+			expect(item.contextValue).toBe("agentTask.completed");
+
+			// Mark reviewed
+			provider.markTaskReviewed("test-task-1");
+
+			item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("✓ reviewed");
+			expect(item.contextValue).toBe("agentTask.completed.reviewed");
+		});
+
+		test("reviewed completed task uses pass icon", () => {
+			const task = createMockTask({
+				status: "completed",
+				completed_at: new Date(Date.now() - 120_000).toISOString(),
+			});
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getDiffSummary = () => null;
+			provider.reload();
+
+			provider.markTaskReviewed("test-task-1");
+
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.iconPath).toBeDefined();
+			const icon = item.iconPath as import("vscode").ThemeIcon;
+			expect(icon.id).toBe("pass");
+		});
+
+		test("running task is not affected by markTaskReviewed", () => {
+			const task = createMockTask({ status: "running" });
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getDiffSummary = () => null;
+			provider.reload();
+
+			provider.markTaskReviewed("test-task-1");
+
+			// Running tasks don't get the reviewed badge
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).not.toContain("✓ reviewed");
+			expect(item.contextValue).toBe("agentTask.running");
+		});
+
+		test("setReviewTracker uses injected tracker instance", () => {
+			const tmpDir = fs.mkdtempSync("/tmp/cc-review-tracker-");
+			const storePath = path.join(tmpDir, "reviewed-tasks.json");
+			try {
+				const tracker = new ReviewTracker(storePath);
+				tracker.markReviewed("test-task-1");
+				provider.setReviewTracker(tracker);
+
+				const task = createMockTask({
+					status: "failed",
+					completed_at: new Date(Date.now() - 60_000).toISOString(),
+				});
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(item.description).toContain("✓ reviewed");
+			} finally {
+				fs.rmSync(tmpDir, { recursive: true, force: true });
+			}
+		});
+	});
+
+	describe("diff loading UX", () => {
+		test("task item omits diff loading placeholder when diff is loading", () => {
+			const task = createMockTask({ status: "running" });
+			// Simulate diff loading: getDiffSummary returns null, but async loading is in progress
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).not.toContain("Loading diff");
+			expect(item.description).not.toContain("...");
+		});
+
+		test("discovered item omits diff loading placeholder", () => {
+			const agent = {
+				pid: 99001,
+				projectDir: "/Users/test/projects/my-app",
+				startTime: new Date("2026-02-25T08:00:00Z"),
+				source: "process" as const,
+				command: "claude",
+			};
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "discovered", agent });
+			expect(item.description).not.toContain("Loading diff");
 		});
 	});
 

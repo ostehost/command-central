@@ -807,6 +807,12 @@
         "icon": "$(trash)"
       },
       {
+        "command": "commandCentral.markAgentReviewed",
+        "title": "Mark as Reviewed",
+        "category": "Command Central",
+        "icon": "$(pass)"
+      },
+      {
         "command": "commandCentral.markStaleAgentFailed",
         "title": "Mark Stale Agent Failed",
         "category": "Command Central",
@@ -1368,6 +1374,11 @@
         {
           "command": "commandCentral.removeAgentTask",
           "when": "viewItem =~ /agentTask\\.(failed|stopped|killed|completed|completed_dirty|completed_stale|contract_failure)/",
+          "group": "2_actions"
+        },
+        {
+          "command": "commandCentral.markAgentReviewed",
+          "when": "viewItem =~ /agentTask\\.(failed|stopped|killed|completed|completed_dirty|completed_stale|contract_failure)/ && !(viewItem =~ /\\.reviewed$/)",
           "group": "2_actions"
         },
         {
