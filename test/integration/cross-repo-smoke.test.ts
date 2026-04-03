@@ -7,14 +7,14 @@
  *   2. Steer: oste-steer.sh invocation uses positional session + --raw
  *   3. Capture: helper resolved from launcher binary dir, not tasks.json
  *   4. Kill: helper resolved from launcher binary dir, not tasks.json
- *   5. Focus: /tmp/ghostty-terminals.json reading + window activation
+ *   5. Focus: launcher AppleScript helper lookup + window activation
  *   6. Completion: status transitions fire correct notifications
  *
  * Where the real launcher repo is available, also validates dynamic
  * contract alignment (flag sets, help text, script existence).
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
@@ -188,94 +188,24 @@ describe("smoke: kill — oste-kill.sh resolution", () => {
 	});
 });
 
-// ─── 5. Focus — ghostty-terminals.json ──────────────────────
-describe("smoke: focus — /tmp/ghostty-terminals.json reading", () => {
-	// Mock node:fs/promises before importing window-focus
-	const mockReadFile = mock(
-		async (_path: string, _encoding: string): Promise<string> => "",
-	);
-
-	mock.module("node:fs/promises", () => ({
-		readFile: mockReadFile,
-	}));
-
-	// Must import AFTER mock setup for the mock to take effect
-	let lookupGhosttyTerminal: (sessionName: string) => Promise<{
-		terminal_id: string;
-		window_id: string;
-		bundle_id: string;
-	} | null>;
+// ─── 5. Focus — launcher AppleScript lookup ─────────────────
+describe("smoke: focus — launcher script lookup", () => {
+	let lookupLauncherFocusScript: () => string | null;
 
 	beforeEach(async () => {
-		mock.restore();
-		mock.module("node:fs/promises", () => ({
-			readFile: mockReadFile,
-		}));
-		const mod = await import("../../src/ghostty/window-focus.js");
-		lookupGhosttyTerminal = mod.lookupGhosttyTerminal;
+		const modulePath = [
+			"../../src/ghostty/window-focus.js",
+			"focus-smoke",
+		].join("?");
+		const mod = await import(modulePath);
+		lookupLauncherFocusScript = mod.lookupLauncherFocusScript;
 	});
 
-	test("lookupGhosttyTerminal returns mapping for known session", async () => {
-		const terminalData = {
-			"session-abc": {
-				terminal_id: "term-1",
-				window_id: "win-1",
-				bundle_id: "com.mitchellh.ghostty.abc",
-			},
-		};
-		mockReadFile.mockImplementation(async () => JSON.stringify(terminalData));
-
-		const result = await lookupGhosttyTerminal("session-abc");
-		expect(result).toEqual({
-			terminal_id: "term-1",
-			window_id: "win-1",
-			bundle_id: "com.mitchellh.ghostty.abc",
-		});
-	});
-
-	test("lookupGhosttyTerminal returns null for unknown session", async () => {
-		const terminalData = {
-			"session-abc": {
-				terminal_id: "term-1",
-				window_id: "win-1",
-				bundle_id: "com.mitchellh.ghostty.abc",
-			},
-		};
-		mockReadFile.mockImplementation(async () => JSON.stringify(terminalData));
-
-		const result = await lookupGhosttyTerminal("nonexistent");
-		expect(result).toBeNull();
-	});
-
-	test("lookupGhosttyTerminal returns null when file is missing", async () => {
-		mockReadFile.mockImplementation(async () => {
-			throw new Error("ENOENT");
-		});
-
-		const result = await lookupGhosttyTerminal("session-abc");
-		expect(result).toBeNull();
-	});
-
-	test("lookupGhosttyTerminal returns null for malformed entries", async () => {
-		const badData = {
-			"session-abc": {
-				terminal_id: "term-1",
-				// missing window_id and bundle_id
-			},
-		};
-		mockReadFile.mockImplementation(async () => JSON.stringify(badData));
-
-		const result = await lookupGhosttyTerminal("session-abc");
-		expect(result).toBeNull();
-	});
-
-	test("lookupGhosttyTerminal reads from /tmp/ghostty-terminals.json", async () => {
-		mockReadFile.mockImplementation(async () => "{}");
-		await lookupGhosttyTerminal("any");
-		expect(mockReadFile).toHaveBeenCalledWith(
-			"/tmp/ghostty-terminals.json",
-			"utf-8",
-		);
+	test("lookupLauncherFocusScript resolves the launcher repo helper script", () => {
+		const expected =
+			"/Users/ostemini/projects/ghostty-launcher/scripts/oste-focus.applescript";
+		expect(fs.existsSync(expected)).toBe(true);
+		expect(lookupLauncherFocusScript()).toBe(expected);
 	});
 });
 

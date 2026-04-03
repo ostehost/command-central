@@ -1,139 +1,151 @@
 /**
- * Ghostty Window Focus — targeted window activation via AppleScript
+ * Ghostty Window Focus — launcher-aware activation via AppleScript.
  *
- * Reads /tmp/ghostty-terminals.json for terminal mappings and uses
- * `application id` (bundle identifier) to activate specific Ghostty instances.
+ * Uses the ghostty-launcher `oste-focus.applescript` helper when we have a
+ * launcher-managed bundle ID so Command Central can raise the exact project
+ * window by session ID. Non-launcher targets fall back to plain `open -a`.
  */
 
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import * as fs from "node:fs";
+import { createRequire } from "node:module";
+import * as os from "node:os";
+import * as path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const require = createRequire(import.meta.url);
 
-const TERMINALS_JSON_PATH = "/tmp/ghostty-terminals.json";
-const WINDOW_FOCUS_TIMEOUT_MS = 4_000;
-
-export interface GhosttyTerminalMapping {
-	terminal_id: string;
-	window_id: string;
-	bundle_id: string;
-}
+const WINDOW_FOCUS_TIMEOUT_MS = 12_000;
+const LAUNCHER_BUNDLE_PREFIX = "dev.partnerai.ghostty.";
+const STOCK_GHOSTTY_BUNDLE_ID = "com.mitchellh.ghostty";
+const LAUNCHER_FOCUS_SCRIPT_NAME = "oste-focus.applescript";
+const DEFAULT_LAUNCHER_FOCUS_SCRIPT = path.join(
+	os.homedir(),
+	"projects",
+	"ghostty-launcher",
+	"scripts",
+	LAUNCHER_FOCUS_SCRIPT_NAME,
+);
 
 function isBundlePath(target: string): boolean {
 	return target.includes("/") || target.endsWith(".app");
 }
 
-/**
- * Read /tmp/ghostty-terminals.json and find mapping for a session name.
- * Returns the mapping or null if not found / file missing / malformed.
- */
-export async function lookupGhosttyTerminal(
-	sessionName: string,
-): Promise<GhosttyTerminalMapping | null> {
-	try {
-		const raw = await readFile(TERMINALS_JSON_PATH, "utf-8");
-		const data = JSON.parse(raw);
-		const entry = data?.[sessionName];
-		if (
-			entry &&
-			typeof entry.terminal_id === "string" &&
-			typeof entry.window_id === "string" &&
-			typeof entry.bundle_id === "string"
-		) {
-			return entry as GhosttyTerminalMapping;
-		}
+function isLauncherBundleId(bundleId: string): boolean {
+	return (
+		bundleId.startsWith(LAUNCHER_BUNDLE_PREFIX) &&
+		bundleId.length > LAUNCHER_BUNDLE_PREFIX.length &&
+		bundleId !== STOCK_GHOSTTY_BUNDLE_ID
+	);
+}
+
+function launcherAppPathFromBundleId(bundleId: string): string | null {
+	if (!isLauncherBundleId(bundleId)) {
 		return null;
+	}
+
+	const projectId = bundleId.slice(LAUNCHER_BUNDLE_PREFIX.length);
+	return path.join("/Applications/Projects", `${projectId}.app`);
+}
+
+function lookupConfiguredLauncherPath(): string | null {
+	try {
+		const vscode = require("vscode") as typeof import("vscode");
+		const configured = vscode.workspace
+			.getConfiguration("commandCentral")
+			.get<string>("ghostty.launcherPath");
+		const trimmed = configured?.trim();
+		return trimmed ? trimmed : null;
 	} catch {
 		return null;
 	}
 }
 
-/**
- * Focus a specific Ghostty window using AppleScript.
- *
- * Strategy:
- * 1. If sessionName provided, look up terminal map for bundle_id override
- * 2. Use `tell application id "<bundle_id>" to activate` + bring window 1 to front
- * 3. Fallback: `open -a <bundleId>` (current behavior)
- *
- * Returns true if focused successfully.
- */
-export async function focusGhosttyWindow(
-	bundleTarget: string,
-	sessionName?: string,
-): Promise<boolean> {
-	// If we have a session name, try to get the precise bundle_id from the terminal map
-	let effectiveBundleId = isBundlePath(bundleTarget) ? null : bundleTarget;
-	const effectiveBundlePath = isBundlePath(bundleTarget) ? bundleTarget : null;
-	let exactTerminalId: string | null = null;
-	if (sessionName) {
-		try {
-			const mapping = await lookupGhosttyTerminal(sessionName);
-			if (mapping?.bundle_id) {
-				effectiveBundleId = mapping.bundle_id;
-			}
-			if (mapping?.terminal_id) {
-				exactTerminalId = mapping.terminal_id;
-			}
-		} catch {
-			// Use the provided bundleId
+function configuredFocusScriptCandidates(): string[] {
+	const launcherPath = lookupConfiguredLauncherPath();
+	if (!launcherPath) {
+		return [];
+	}
+
+	const resolvedLauncherPath = path.resolve(launcherPath);
+	const launcherDir = path.dirname(resolvedLauncherPath);
+	const parentDir = path.dirname(launcherDir);
+	const candidates = [
+		path.join(launcherDir, "scripts", LAUNCHER_FOCUS_SCRIPT_NAME),
+		path.basename(launcherDir) === "scripts"
+			? path.join(launcherDir, LAUNCHER_FOCUS_SCRIPT_NAME)
+			: null,
+		path.join(parentDir, "scripts", LAUNCHER_FOCUS_SCRIPT_NAME),
+	];
+
+	return candidates.filter((candidate): candidate is string =>
+		Boolean(candidate),
+	);
+}
+
+export function lookupLauncherFocusScript(): string | null {
+	const candidates = [
+		DEFAULT_LAUNCHER_FOCUS_SCRIPT,
+		...configuredFocusScriptCandidates(),
+	];
+
+	for (const candidate of new Set(candidates)) {
+		if (fs.existsSync(candidate)) {
+			return candidate;
 		}
 	}
 
-	if (effectiveBundleId && exactTerminalId) {
-		try {
-			const script = `
-tell application id "${effectiveBundleId}"
-	repeat with w in windows
-		repeat with tb in tabs of w
-			repeat with t in terminals of tb
-				if (id of t as text) is "${exactTerminalId}" then
-					set active tab index of w to index of tb
-					focus t
-					activate
-					return "focused"
-				end if
-			end repeat
-		end repeat
-	end repeat
-	error "terminal not found"
-end tell`;
-			await execFileAsync("osascript", ["-e", script], {
-				timeout: WINDOW_FOCUS_TIMEOUT_MS,
-			});
-			return true;
-		} catch {
-			// Exact terminal targeting failed — fall through to bundle activation.
-		}
-	}
+	return null;
+}
 
-	// Primary: AppleScript with application id for targeted activation
-	if (effectiveBundleId) {
-		try {
-			const script = `
-tell application id "${effectiveBundleId}"
-	activate
-	if (count of windows) > 0 then
-		set index of window 1 to 1
-	end if
-end tell`;
-			await execFileAsync("osascript", ["-e", script], {
-				timeout: WINDOW_FOCUS_TIMEOUT_MS,
-			});
-			return true;
-		} catch {
-			// AppleScript failed — fall back to open -a
-		}
-	}
-
-	// Fallback: open -a (activates the app but may not target the right window)
+async function activateGhosttyTarget(target: string): Promise<boolean> {
 	try {
-		await execFileAsync("open", ["-a", effectiveBundlePath ?? bundleTarget], {
+		await execFileAsync("open", ["-a", target], {
 			timeout: WINDOW_FOCUS_TIMEOUT_MS,
 		});
 		return true;
 	} catch {
 		return false;
 	}
+}
+
+export async function focusGhosttyWindowBySession(
+	bundleTarget: string,
+	sessionId?: string,
+): Promise<boolean> {
+	if (isBundlePath(bundleTarget)) {
+		return activateGhosttyTarget(bundleTarget);
+	}
+
+	if (!isLauncherBundleId(bundleTarget)) {
+		return activateGhosttyTarget(bundleTarget);
+	}
+
+	const focusScriptPath = lookupLauncherFocusScript();
+	const appPath = launcherAppPathFromBundleId(bundleTarget) ?? bundleTarget;
+	if (!focusScriptPath) {
+		return activateGhosttyTarget(appPath);
+	}
+
+	try {
+		const args = [focusScriptPath, bundleTarget];
+		const trimmedSessionId = sessionId?.trim();
+		if (trimmedSessionId) {
+			args.push(trimmedSessionId);
+		}
+		await execFileAsync("osascript", args, {
+			timeout: WINDOW_FOCUS_TIMEOUT_MS,
+		});
+		return true;
+	} catch {
+		return activateGhosttyTarget(appPath);
+	}
+}
+
+export async function focusGhosttyWindow(
+	bundleTarget: string,
+	sessionId?: string,
+): Promise<boolean> {
+	return focusGhosttyWindowBySession(bundleTarget, sessionId);
 }

@@ -42,7 +42,7 @@ import { refreshGhosttyBundleAfterProjectIconChange } from "./ghostty/project-ic
 import { TerminalManager } from "./ghostty/TerminalManager.js";
 import {
 	focusGhosttyWindow,
-	lookupGhosttyTerminal,
+	focusGhosttyWindowBySession,
 } from "./ghostty/window-focus.js";
 import { GitSorter } from "./git-sort/scm-sorter.js";
 import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provider.js";
@@ -1210,34 +1210,18 @@ export async function activate(
 						return;
 					}
 					telemetry.track("cc_agent_focused");
-					const { execFile } = await import("node:child_process");
-					const { promisify } = await import("node:util");
-					const execFileAsync = promisify(execFile);
-					const runExec = (
-						command: string,
-						args: string[],
-						timeout = 4000,
-					): Promise<{ stdout: string; stderr: string }> =>
-						execFileAsync(command, args, { timeout });
 
 					// Strategy 0: Session store lookup (works for discovered agents too)
 					if (projectDir) {
 						const mapping = sessionStore.lookup(projectDir);
 						if (mapping) {
-							try {
-								await focusGhosttyWindow(mapping.bundlePath, sessionId);
-								if (task) {
-									await selectTaskTmuxWindow(task);
-								} else if (sessionId && isValidSessionId(sessionId)) {
-									try {
-										await runExec("tmux", ["select-window", "-t", sessionId]);
-									} catch {
-										// Window selection failed — app still opened
-									}
-								}
+							if (
+								await focusGhosttyWindowBySession(
+									mapping.bundleId || mapping.bundlePath,
+									sessionId,
+								)
+							) {
 								return;
-							} catch {
-								// Bundle not running — fall through
 							}
 						}
 					}
@@ -1252,12 +1236,13 @@ export async function activate(
 
 					// Strategy 1: tmux backend with ghostty bundle
 					if (task.terminal_backend === "tmux" && task.ghostty_bundle_id) {
-						try {
-							await focusGhosttyWindow(task.ghostty_bundle_id, task.session_id);
-							await selectTaskTmuxWindow(task);
+						if (
+							await focusGhosttyWindowBySession(
+								task.ghostty_bundle_id,
+								task.session_id,
+							)
+						) {
 							return;
-						} catch {
-							// Fall through to next strategy
 						}
 					}
 
@@ -1267,15 +1252,13 @@ export async function activate(
 						task.bundle_path !== "(test-mode)" &&
 						task.bundle_path !== "(tmux-mode)"
 					) {
-						try {
-							const fsModule = await import("node:fs");
-							if (fsModule.existsSync(task.bundle_path)) {
-								await focusGhosttyWindow(task.bundle_path, task.session_id);
-								await selectTaskTmuxWindow(task);
-								return;
-							}
-						} catch {
-							// Fall through to next strategy
+						const fsModule = await import("node:fs");
+						if (
+							fsModule.existsSync(task.bundle_path) &&
+							(await focusGhosttyWindow(task.bundle_path, task.session_id))
+						) {
+							await selectTaskTmuxWindow(task);
+							return;
 						}
 					}
 
@@ -1965,8 +1948,12 @@ export async function activate(
 						: null;
 					const transcriptPath = await resolveTaskTranscriptPath(task);
 					const hasLiveTmuxSession = await isTaskTmuxSessionAlive(task);
-					const hasGhosttyMapping = Boolean(
-						task.session_id && (await lookupGhosttyTerminal(task.session_id)),
+					const hasGhosttyFocusTarget = Boolean(
+						(projectDir && sessionStore.lookup(projectDir)) ||
+							task.ghostty_bundle_id ||
+							(task.bundle_path &&
+								task.bundle_path !== "(test-mode)" &&
+								task.bundle_path !== "(tmux-mode)"),
 					);
 
 					type ResumeQuickPickItem = vscode.QuickPickItem & {
@@ -1985,7 +1972,7 @@ export async function activate(
 							action: "resume",
 						});
 					}
-					if (hasLiveTmuxSession || hasGhosttyMapping) {
+					if (hasLiveTmuxSession || hasGhosttyFocusTarget) {
 						items.push({
 							label: "Focus Existing Terminal",
 							description: "Bring the project terminal to the front",
