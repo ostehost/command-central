@@ -1,8 +1,0 @@
-task_id: "cc-acp-review-polish"
-status: "success"
-summary: "Reviewed ACP Phase 1 implementation, fixed substring match bug in isSuppressedByAcpTask, added thinking_budget field to AgentTask type"
-files_changed:
-  - "src/discovery/agent-registry.ts"
-  - "src/providers/agent-status-tree-provider.ts"
-tests_passing: true
-next_steps: "Wire up commandCentral.cancelAcpTask command handler in extension.ts to use the cancelAcpTask function. Model passthrough pipeline is already complete in oste-spawn.sh."
