@@ -1,0 +1,221 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 380" role="img" aria-labelledby="hutitle hudesc">
+  <title id="hutitle">Command Central unified sidebar — Sorted Changes and Agent Status in one VS Code panel</title>
+  <desc id="hudesc">VS Code sidebar showing Sorted Changes panel on top with recent file edits, Agent Status panel below with running, completed, and failed agents across Claude, Codex, and Gemini, and a macOS Dock on the right with project emoji icons.</desc>
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a2235"/>
+      <stop offset="60%" stop-color="#111820"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
+    <filter id="shadow" x="-15%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="greenGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#3fb950" flood-opacity="0.7"/>
+    </filter>
+    <style>
+      text { font-family: system-ui, -apple-system, sans-serif; }
+      .mono { font-family: 'Cascadia Code', Consolas, monospace; }
+    </style>
+  </defs>
+
+  <!-- Outer background -->
+  <rect width="600" height="380" rx="16" fill="url(#bgGrad)"/>
+  <!-- Ambient glows -->
+  <circle cx="90" cy="55" r="90" fill="#58a6ff" opacity="0.07"/>
+  <circle cx="480" cy="60" r="70" fill="#3fb950" opacity="0.05"/>
+  <circle cx="520" cy="320" r="80" fill="#58a6ff" opacity="0.04"/>
+
+  <!-- ═══ VS Code sidebar window ═══ -->
+  <g filter="url(#shadow)">
+    <rect x="12" y="12" width="428" height="356" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+
+    <!-- Titlebar -->
+    <rect x="12" y="12" width="428" height="28" rx="12" fill="#21262d"/>
+    <rect x="12" y="26" width="428" height="14" fill="#21262d"/>
+    <circle cx="28" cy="26" r="4" fill="#f85149"/>
+    <circle cx="42" cy="26" r="4" fill="#d29922"/>
+    <circle cx="56" cy="26" r="4" fill="#3fb950"/>
+    <text x="228" y="31" fill="#8b949e" font-size="11" text-anchor="middle">command-central</text>
+
+    <!-- Activity bar -->
+    <rect x="12" y="40" width="20" height="328" fill="#0d1117"/>
+    <rect x="15" y="48" width="14" height="14" rx="3" fill="#58a6ff" opacity="0.2"/>
+    <text x="22" y="58" fill="#58a6ff" font-size="8" text-anchor="middle" font-weight="700">CC</text>
+    <rect x="15" y="70" width="14" height="14" rx="3" fill="#30363d" opacity="0.5"/>
+    <rect x="15" y="90" width="14" height="14" rx="3" fill="#30363d" opacity="0.5"/>
+
+    <!-- Sidebar background -->
+    <rect x="32" y="40" width="408" height="328" fill="#161b22"/>
+
+    <!-- ═══ SORTED CHANGES panel ═══ -->
+
+    <!-- Panel header -->
+    <rect x="32" y="40" width="408" height="22" fill="#21262d"/>
+    <text x="44" y="55" fill="#8b949e" font-size="9" letter-spacing="1.2" font-weight="600">SORTED CHANGES</text>
+    <text x="408" y="55" fill="#8b949e" font-size="13" text-anchor="middle">↻</text>
+    <text x="428" y="54" fill="#8b949e" font-size="11" text-anchor="middle">⊞</text>
+
+    <!-- Staged (2) section header -->
+    <rect x="32" y="62" width="408" height="16" fill="#1c2128"/>
+    <line x1="46" y1="62" x2="46" y2="78" stroke="#30363d" stroke-width="1"/>
+    <text x="50" y="73" fill="#8b949e" font-size="10">▾ Staged</text>
+    <rect x="100" y="65" width="14" height="10" rx="5" fill="rgba(88,166,255,0.12)"/>
+    <text x="107" y="73" fill="#58a6ff" font-size="8" text-anchor="middle">2</text>
+
+    <!-- auth.ts row -->
+    <rect x="32" y="78" width="408" height="24" fill="transparent"/>
+    <line x1="46" y1="78" x2="46" y2="102" stroke="#30363d" stroke-width="1"/>
+    <rect x="54" y="84" width="10" height="12" rx="2" fill="rgba(88,166,255,0.12)"/>
+    <text x="59" y="93" fill="#58a6ff" font-size="7" text-anchor="middle" font-weight="700">M</text>
+    <text x="70" y="94" fill="#e6edf3" font-size="12">auth.ts</text>
+    <text x="120" y="94" fill="#8b949e" font-size="10">2m ago</text>
+    <text x="368" y="94" fill="#3fb950" font-size="10" class="mono">+12</text>
+    <text x="390" y="94" fill="#8b949e" font-size="10">/</text>
+    <text x="397" y="94" fill="#f85149" font-size="10" class="mono">-3</text>
+
+    <!-- user.service.ts row -->
+    <rect x="32" y="102" width="408" height="24" fill="transparent"/>
+    <line x1="46" y1="102" x2="46" y2="126" stroke="#30363d" stroke-width="1"/>
+    <rect x="54" y="108" width="10" height="12" rx="2" fill="rgba(88,166,255,0.12)"/>
+    <text x="59" y="117" fill="#58a6ff" font-size="7" text-anchor="middle" font-weight="700">M</text>
+    <text x="70" y="118" fill="#e6edf3" font-size="12">user.service.ts</text>
+    <text x="178" y="118" fill="#8b949e" font-size="10">8m ago</text>
+    <text x="368" y="118" fill="#3fb950" font-size="10" class="mono">+5</text>
+    <text x="381" y="118" fill="#8b949e" font-size="10">/</text>
+    <text x="388" y="118" fill="#f85149" font-size="10" class="mono">-1</text>
+
+    <!-- Working (3) section header -->
+    <rect x="32" y="126" width="408" height="16" fill="#1c2128"/>
+    <line x1="46" y1="126" x2="46" y2="142" stroke="#30363d" stroke-width="1"/>
+    <text x="50" y="137" fill="#8b949e" font-size="10">▾ Working</text>
+    <rect x="110" y="129" width="14" height="10" rx="5" fill="rgba(88,166,255,0.08)"/>
+    <text x="117" y="137" fill="#8b949e" font-size="8" text-anchor="middle">3</text>
+
+    <!-- schema.sql row -->
+    <rect x="32" y="142" width="408" height="24" fill="transparent"/>
+    <line x1="46" y1="142" x2="46" y2="166" stroke="#30363d" stroke-width="1"/>
+    <rect x="54" y="148" width="10" height="12" rx="2" fill="rgba(88,166,255,0.12)"/>
+    <text x="59" y="157" fill="#58a6ff" font-size="7" text-anchor="middle" font-weight="700">M</text>
+    <text x="70" y="158" fill="#e6edf3" font-size="12">schema.sql</text>
+    <text x="150" y="158" fill="#8b949e" font-size="10">15m ago</text>
+    <text x="364" y="158" fill="#3fb950" font-size="10" class="mono">+45</text>
+    <text x="390" y="158" fill="#8b949e" font-size="10">/</text>
+    <text x="397" y="158" fill="#f85149" font-size="10" class="mono">-8</text>
+
+    <!-- index.ts row -->
+    <rect x="32" y="166" width="408" height="24" fill="transparent"/>
+    <line x1="46" y1="166" x2="46" y2="190" stroke="#30363d" stroke-width="1"/>
+    <rect x="54" y="172" width="10" height="12" rx="2" fill="rgba(88,166,255,0.12)"/>
+    <text x="59" y="181" fill="#58a6ff" font-size="7" text-anchor="middle" font-weight="700">M</text>
+    <text x="70" y="182" fill="#e6edf3" font-size="12">index.ts</text>
+    <text x="120" y="182" fill="#8b949e" font-size="10">1h ago</text>
+    <text x="368" y="182" fill="#3fb950" font-size="10" class="mono">+2</text>
+    <text x="381" y="182" fill="#8b949e" font-size="10">/</text>
+    <text x="388" y="182" fill="#f85149" font-size="10" class="mono">-0</text>
+
+    <!-- Panel divider -->
+    <line x1="32" y1="193" x2="440" y2="193" stroke="#30363d" stroke-width="1"/>
+
+    <!-- ═══ AGENT STATUS panel ═══ -->
+
+    <!-- Panel header -->
+    <rect x="32" y="194" width="408" height="22" fill="#21262d"/>
+    <text x="44" y="209" fill="#8b949e" font-size="9" letter-spacing="1.2" font-weight="600">AGENT STATUS</text>
+    <text x="408" y="209" fill="#8b949e" font-size="13" text-anchor="middle">↻</text>
+    <text x="428" y="208" fill="#8b949e" font-size="11" text-anchor="middle">✕</text>
+
+    <!-- Project: 🚀 my-app -->
+    <rect x="32" y="216" width="408" height="24" fill="#1c2128"/>
+    <text x="44" y="232" font-size="13">🚀</text>
+    <text x="61" y="232" fill="#e6edf3" font-size="12" font-weight="700">my-app</text>
+    <text x="102" y="231" fill="#8b949e" font-size="10">▼</text>
+    <rect x="356" y="219" width="18" height="16" rx="4" fill="rgba(88,166,255,0.12)" stroke="#58a6ff" stroke-width="0.8"/>
+    <text x="365" y="230" fill="#58a6ff" font-size="9" text-anchor="middle">▶</text>
+    <rect x="378" y="220" width="26" height="14" rx="7" fill="rgba(88,166,255,0.1)" stroke="rgba(88,166,255,0.3)" stroke-width="0.8"/>
+    <text x="391" y="230" fill="#58a6ff" font-size="9" text-anchor="middle">(3)</text>
+
+    <!-- RUNNING section -->
+    <rect x="32" y="240" width="408" height="15" fill="rgba(63,185,80,0.06)"/>
+    <text x="44" y="251" fill="#3fb950" font-size="9" letter-spacing="0.8" font-weight="600">RUNNING</text>
+    <rect x="92" y="243" width="14" height="9" rx="4" fill="rgba(63,185,80,0.15)"/>
+    <text x="99" y="250" fill="#3fb950" font-size="7" text-anchor="middle">1</text>
+
+    <!-- auth-refactor agent -->
+    <rect x="32" y="255" width="408" height="24" fill="rgba(63,185,80,0.03)"/>
+    <circle cx="50" cy="267" r="4" fill="#3fb950" filter="url(#greenGlow)"/>
+    <text x="60" y="271" fill="#e6edf3" font-size="12">auth-refactor</text>
+    <text x="148" y="271" fill="#8b949e" font-size="10">· 4m ·</text>
+    <rect x="183" y="262" width="28" height="12" rx="6" fill="rgba(163,113,247,0.15)" stroke="rgba(163,113,247,0.35)" stroke-width="0.8"/>
+    <text x="197" y="271" fill="#a371f7" font-size="8" text-anchor="middle">opus</text>
+    <text x="218" y="271" fill="#8b949e" font-size="10">· 6 files ·</text>
+    <text x="277" y="271" fill="#3fb950" font-size="10" class="mono">+81</text>
+    <text x="300" y="271" fill="#8b949e" font-size="10">/</text>
+    <text x="307" y="271" fill="#f85149" font-size="10" class="mono">-15</text>
+
+    <!-- COMPLETED section -->
+    <rect x="32" y="279" width="408" height="15" fill="rgba(88,166,255,0.04)"/>
+    <text x="44" y="290" fill="#8b949e" font-size="9" letter-spacing="0.8" font-weight="600">COMPLETED</text>
+    <text x="116" y="290" fill="#8b949e" font-size="9">Today</text>
+
+    <!-- test-coverage agent -->
+    <rect x="32" y="294" width="408" height="24" fill="transparent"/>
+    <text x="50" y="309" fill="#3fb950" font-size="11">✓</text>
+    <text x="62" y="310" fill="#e6edf3" font-size="12">test-coverage</text>
+    <text x="162" y="309" fill="#8b949e" font-size="10">· 12m ·</text>
+    <rect x="203" y="301" width="42" height="12" rx="6" fill="rgba(63,185,80,0.1)" stroke="rgba(63,185,80,0.25)" stroke-width="0.8"/>
+    <text x="224" y="310" fill="#4ade80" font-size="8" text-anchor="middle">codex-5.4</text>
+    <text x="253" y="309" fill="#8b949e" font-size="10">· 8 files ·</text>
+    <text x="303" y="309" fill="#3fb950" font-size="10" class="mono">+120</text>
+    <text x="331" y="309" fill="#8b949e" font-size="10">/</text>
+    <text x="338" y="309" fill="#f85149" font-size="10" class="mono">-30</text>
+
+    <!-- FAILED section -->
+    <rect x="32" y="318" width="408" height="15" fill="rgba(248,81,73,0.05)"/>
+    <text x="44" y="329" fill="#f85149" font-size="9" letter-spacing="0.8" font-weight="600">FAILED</text>
+
+    <!-- db-migration agent -->
+    <rect x="32" y="333" width="408" height="24" fill="rgba(248,81,73,0.03)"/>
+    <text x="50" y="348" fill="#f85149" font-size="11">✗</text>
+    <text x="62" y="349" fill="#e6edf3" font-size="12">db-migration</text>
+    <text x="155" y="348" fill="#8b949e" font-size="10">·</text>
+    <rect x="165" y="341" width="48" height="12" rx="6" fill="rgba(88,166,255,0.1)" stroke="rgba(88,166,255,0.25)" stroke-width="0.8"/>
+    <text x="189" y="350" fill="#60a5fa" font-size="8" text-anchor="middle">gemini-pro</text>
+    <text x="222" y="348" fill="#f85149" font-size="10">Error: timeout</text>
+  </g>
+
+  <!-- ═══ Dock panel ═══ -->
+  <g filter="url(#shadow)">
+    <rect x="452" y="38" width="136" height="316" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <!-- Titlebar -->
+    <rect x="452" y="38" width="136" height="26" rx="12" fill="#21262d"/>
+    <rect x="452" y="51" width="136" height="13" fill="#21262d"/>
+    <circle cx="466" cy="51" r="4" fill="#f85149"/>
+    <circle cx="480" cy="51" r="4" fill="#d29922"/>
+    <circle cx="494" cy="51" r="4" fill="#3fb950"/>
+
+    <!-- 🚀 my-app (active, glowing) -->
+    <rect x="467" y="76" width="54" height="54" rx="14" fill="rgba(88,166,255,0.15)" stroke="#58a6ff" stroke-width="1.5"/>
+    <text x="494" y="113" font-size="28" text-anchor="middle">🚀</text>
+    <text x="494" y="145" fill="#58a6ff" font-size="9" text-anchor="middle" font-weight="600">my-app</text>
+    <circle cx="494" cy="152" r="2.5" fill="#58a6ff"/>
+    <!-- Agent count badge -->
+    <rect x="513" y="72" width="16" height="14" rx="7" fill="#3fb950"/>
+    <text x="521" y="82" fill="#000" font-size="8" text-anchor="middle" font-weight="700">3</text>
+
+    <!-- ⚙️ api-server -->
+    <rect x="467" y="167" width="54" height="54" rx="14" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+    <text x="494" y="202" font-size="28" text-anchor="middle">⚙️</text>
+    <text x="494" y="234" fill="#8b949e" font-size="9" text-anchor="middle">api-server</text>
+
+    <!-- 📊 dashboard -->
+    <rect x="467" y="256" width="54" height="54" rx="14" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+    <text x="494" y="291" font-size="28" text-anchor="middle">📊</text>
+    <text x="494" y="323" fill="#8b949e" font-size="9" text-anchor="middle">dashboard</text>
+
+    <!-- Hint label -->
+    <text x="520" y="342" fill="#8b949e" font-size="8" text-anchor="middle">per-project</text>
+    <text x="520" y="352" fill="#8b949e" font-size="8" text-anchor="middle">windows</text>
+  </g>
+
+</svg>

@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 240" role="img" aria-labelledby="fctitle fcdesc">
+  <title id="fctitle">Click any agent in the sidebar to focus its terminal window</title>
+  <desc id="fcdesc">Left panel shows Agent Status sidebar with a cursor clicking on the auth-refactor agent row. An arrow connects to a Ghostty terminal window on the right, showing the auth module work in progress.</desc>
+  <defs>
+    <linearGradient id="arrowGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#58a6ff" stop-opacity="0.15"/>
+      <stop offset="50%" stop-color="#58a6ff" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#58a6ff" stop-opacity="0.15"/>
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a2235"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
+    <filter id="shadow" x="-15%" y="-10%" width="140%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#3fb950" flood-opacity="0.7"/>
+    </filter>
+    <style>
+      text { font-family: system-ui, -apple-system, sans-serif; }
+      .mono { font-family: 'Cascadia Code', Consolas, monospace; }
+    </style>
+  </defs>
+
+  <rect width="520" height="240" rx="14" fill="url(#bgGrad)"/>
+  <circle cx="260" cy="100" r="80" fill="#58a6ff" opacity="0.04"/>
+
+  <!-- ═══ Left: Agent Status panel ═══ -->
+  <g filter="url(#shadow)">
+    <rect x="12" y="12" width="196" height="216" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+
+    <!-- Titlebar -->
+    <rect x="12" y="12" width="196" height="24" rx="10" fill="#21262d"/>
+    <rect x="12" y="24" width="196" height="12" fill="#21262d"/>
+    <circle cx="25" cy="24" r="4" fill="#f85149"/>
+    <circle cx="37" cy="24" r="4" fill="#d29922"/>
+    <circle cx="49" cy="24" r="4" fill="#3fb950"/>
+    <text x="120" y="29" fill="#8b949e" font-size="10" text-anchor="middle">command-central</text>
+
+    <!-- Panel header -->
+    <rect x="12" y="36" width="196" height="18" fill="#21262d"/>
+    <text x="22" y="48" fill="#8b949e" font-size="8" letter-spacing="1.2" font-weight="600">AGENT STATUS</text>
+
+    <!-- Project header -->
+    <rect x="12" y="54" width="196" height="20" fill="#1c2128"/>
+    <text x="22" y="68" font-size="12">🚀</text>
+    <text x="38" y="68" fill="#e6edf3" font-size="11" font-weight="700">my-app</text>
+    <text x="78" y="67" fill="#8b949e" font-size="9">▼ (3)</text>
+
+    <!-- RUNNING header -->
+    <rect x="12" y="74" width="196" height="13" fill="rgba(63,185,80,0.06)"/>
+    <text x="22" y="83" fill="#3fb950" font-size="8" letter-spacing="0.8" font-weight="600">RUNNING</text>
+
+    <!-- auth-refactor row — highlighted (being clicked) -->
+    <rect x="12" y="87" width="196" height="36" fill="rgba(88,166,255,0.1)" stroke="rgba(88,166,255,0.35)" stroke-width="1"/>
+    <circle cx="28" cy="100" r="4" fill="#3fb950" filter="url(#glow)"/>
+    <text x="37" y="104" fill="#e6edf3" font-size="11">auth-refactor</text>
+    <rect x="138" y="93" width="26" height="11" rx="5" fill="rgba(163,113,247,0.15)" stroke="rgba(163,113,247,0.35)" stroke-width="0.8"/>
+    <text x="151" y="101" fill="#a371f7" font-size="7" text-anchor="middle">opus</text>
+    <text x="22" y="118" fill="#8b949e" font-size="9">4m · 6 files ·</text>
+    <text x="97" y="118" fill="#3fb950" font-size="9" class="mono">+81</text>
+    <text x="115" y="118" fill="#f85149" font-size="9" class="mono">-15</text>
+
+    <!-- Cursor / hand pointer icon -->
+    <path d="M171,91 L171,107 L174,103 L177.5,110.5 L180,109 L176.5,101.5 L182,101.5 Z"
+          fill="#e6edf3" stroke="#161b22" stroke-width="1" stroke-linejoin="round"/>
+    <!-- Click ripple -->
+    <circle cx="176" cy="106" r="9" fill="none" stroke="#58a6ff" stroke-width="1" opacity="0.5"/>
+    <circle cx="176" cy="106" r="14" fill="none" stroke="#58a6ff" stroke-width="0.5" opacity="0.25"/>
+
+    <!-- COMPLETED header -->
+    <rect x="12" y="123" width="196" height="13" fill="rgba(88,166,255,0.04)"/>
+    <text x="22" y="132" fill="#8b949e" font-size="8" font-weight="600">COMPLETED</text>
+    <text x="95" y="132" fill="#8b949e" font-size="8">Today</text>
+
+    <!-- test-coverage row -->
+    <rect x="12" y="136" width="196" height="28" fill="transparent"/>
+    <text x="28" y="151" fill="#3fb950" font-size="10">✓</text>
+    <text x="38" y="152" fill="#8b949e" font-size="11">test-coverage</text>
+    <rect x="130" y="144" width="38" height="11" rx="5" fill="rgba(63,185,80,0.1)" stroke="rgba(63,185,80,0.25)" stroke-width="0.8"/>
+    <text x="149" y="152" fill="#4ade80" font-size="7" text-anchor="middle">codex-5.4</text>
+
+    <!-- FAILED header -->
+    <rect x="12" y="164" width="196" height="13" fill="rgba(248,81,73,0.05)"/>
+    <text x="22" y="173" fill="#f85149" font-size="8" font-weight="600">FAILED</text>
+
+    <!-- db-migration row -->
+    <rect x="12" y="177" width="196" height="28" fill="transparent"/>
+    <text x="28" y="192" fill="#f85149" font-size="10">✗</text>
+    <text x="38" y="193" fill="#8b949e" font-size="11">db-migration</text>
+    <rect x="130" y="186" width="44" height="11" rx="5" fill="rgba(88,166,255,0.08)" stroke="rgba(88,166,255,0.2)" stroke-width="0.8"/>
+    <text x="152" y="194" fill="#60a5fa" font-size="7" text-anchor="middle">gemini-pro</text>
+  </g>
+
+  <!-- ═══ Center: connection arrow ═══ -->
+  <line x1="212" y1="120" x2="308" y2="120" stroke="url(#arrowGrad)" stroke-width="2"/>
+  <!-- Arrowhead -->
+  <polygon points="304,114 316,120 304,126" fill="#58a6ff"/>
+  <!-- Connecting dot at source -->
+  <circle cx="212" cy="120" r="3" fill="#58a6ff" opacity="0.6"/>
+  <!-- Label -->
+  <text x="260" y="108" fill="#8b949e" font-size="9" text-anchor="middle">one click</text>
+  <text x="260" y="138" fill="#58a6ff" font-size="9" text-anchor="middle">right terminal</text>
+
+  <!-- ═══ Right: Ghostty terminal ═══ -->
+  <g filter="url(#shadow)">
+    <rect x="312" y="12" width="196" height="216" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+
+    <!-- Titlebar -->
+    <rect x="312" y="12" width="196" height="24" rx="10" fill="#21262d"/>
+    <rect x="312" y="24" width="196" height="12" fill="#21262d"/>
+    <circle cx="325" cy="24" r="4" fill="#f85149"/>
+    <circle cx="337" cy="24" r="4" fill="#d29922"/>
+    <circle cx="349" cy="24" r="4" fill="#3fb950"/>
+    <!-- 🚀 emoji and project name in titlebar -->
+    <text x="372" y="29" font-size="12" text-anchor="middle">🚀</text>
+    <text x="415" y="29" fill="#8b949e" font-size="10" text-anchor="middle">auth-refactor</text>
+
+    <!-- Terminal content area -->
+    <rect x="312" y="36" width="196" height="192" fill="#0d1117" rx="0"/>
+    <rect x="312" y="36" width="196" height="192" rx="0" fill="transparent"/>
+
+    <!-- Terminal output -->
+    <text x="322" y="58" fill="#8b949e" font-size="10" class="mono">❯</text>
+    <text x="332" y="58" fill="#e6edf3" font-size="10" class="mono">Implementing auth module...</text>
+
+    <text x="322" y="76" fill="#3fb950" font-size="10" class="mono">  ✓</text>
+    <text x="338" y="76" fill="#8b949e" font-size="10" class="mono">Updated auth/provider.ts</text>
+
+    <text x="322" y="92" fill="#3fb950" font-size="10" class="mono">  ✓</text>
+    <text x="338" y="92" fill="#8b949e" font-size="10" class="mono">Added 12 test cases</text>
+
+    <text x="322" y="108" fill="#3fb950" font-size="10" class="mono">  ✓</text>
+    <text x="338" y="108" fill="#8b949e" font-size="10" class="mono">Updated auth/types.ts</text>
+
+    <text x="322" y="124" fill="#d29922" font-size="10" class="mono">  ▸</text>
+    <text x="338" y="124" fill="#e6edf3" font-size="10" class="mono">Running type checks...</text>
+
+    <!-- Blinking cursor block -->
+    <rect x="322" y="132" width="7" height="12" fill="#58a6ff" opacity="0.85"/>
+  </g>
+
+</svg>
