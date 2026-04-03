@@ -780,6 +780,14 @@ export async function activate(
 		agentStatusProvider.setOpenClawTaskService(openclawTaskService);
 		context.subscriptions.push(openclawTaskService);
 
+		const { TaskFlowService } = await import("./services/taskflow-service.js");
+		const taskFlowService = new TaskFlowService();
+		taskFlowService.start(() => {
+			agentStatusProvider?.reload();
+		});
+		agentStatusProvider.setTaskFlowService(taskFlowService);
+		context.subscriptions.push(taskFlowService);
+
 		const syncAgentStatusViewContexts = async (): Promise<void> => {
 			const config = vscode.workspace.getConfiguration("commandCentral");
 			const groupByProject = config.get<boolean>(

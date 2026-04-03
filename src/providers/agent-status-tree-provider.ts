@@ -29,11 +29,17 @@ import type {
 import type { OpenClawTaskService } from "../services/openclaw-task-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
 import { ReviewTracker } from "../services/review-tracker.js";
+import type { TaskFlowService } from "../services/taskflow-service.js";
 import {
 	type OpenClawTask,
 	openclawStatusToIcon,
 	openclawStatusToLabel,
 } from "../types/openclaw-task-types.js";
+import {
+	type TaskFlow,
+	taskflowStatusToIcon,
+	taskflowStatusToLabel,
+} from "../types/taskflow-types.js";
 import {
 	type AgentCounts,
 	countAgentStatuses,
@@ -140,9 +146,35 @@ export type AgentNode =
 	| DiscoveredNode
 	| OpenClawTaskNode
 	| BackgroundTasksNode
+	| TaskFlowGroupNode
+	| TaskFlowChildNode
+	| TaskFlowsContainerNode
 	| StatusTimeGroupNode
 	| OlderRunsNode
 	| StateNode;
+
+export interface TaskFlowGroupNode {
+	type: "taskFlowGroup";
+	flow: TaskFlow;
+}
+
+export interface TaskFlowChildNode {
+	type: "taskFlowChild";
+	taskId: string;
+	flowId: string;
+	label: string;
+	status: string;
+}
+
+export interface TaskFlowsContainerNode {
+	type: "taskflows";
+	flows: TaskFlow[];
+}
+
+export interface TaskFlowSingleNode {
+	type: "taskflow";
+	flow: TaskFlow;
+}
 
 export interface SummaryNode {
 	type: "summary";
@@ -714,6 +746,7 @@ export class AgentStatusTreeProvider
 	private _openclawConfigService: OpenClawConfigService | null = null;
 	private _openclawTaskService: OpenClawTaskService | null = null;
 	private _acpSessionService: AcpSessionService | null = null;
+	private _taskFlowService: TaskFlowService | null = null;
 	private _reviewTracker: ReviewTracker = new ReviewTracker();
 
 	constructor(projectIconManager?: ProjectIconManager) {
@@ -818,6 +851,10 @@ export class AgentStatusTreeProvider
 
 	setAcpSessionService(service: AcpSessionService): void {
 		this._acpSessionService = service;
+	}
+
+	setTaskFlowService(service: TaskFlowService): void {
+		this._taskFlowService = service;
 	}
 
 	setReviewTracker(tracker: ReviewTracker): void {
@@ -2061,6 +2098,12 @@ export class AgentStatusTreeProvider
 		if (element.type === "backgroundTasks") {
 			return this.createBackgroundTasksItem(element);
 		}
+		if (element.type === "taskFlowGroup") {
+			return this.createTaskFlowItem(element.flow);
+		}
+		if (element.type === "taskflows") {
+			return this.createTaskFlowsItem(element);
+		}
 		if (element.type === "projectGroup") {
 			return this.createProjectGroupItem(element);
 		}
@@ -2085,6 +2128,12 @@ export class AgentStatusTreeProvider
 		if (element.type === "state") {
 			return this.createStateItem(element);
 		}
+		if (element.type === "taskFlowChild") {
+			const item = new vscode.TreeItem(element.label);
+			item.description = element.status;
+			item.iconPath = new vscode.ThemeIcon("circle-outline");
+			return item;
+		}
 		return this.createDetailItem(element);
 	}
 
@@ -2093,10 +2142,12 @@ export class AgentStatusTreeProvider
 			const allTasks = this.getScopedLauncherTasks();
 			const discovered = this.getScopedDiscoveredAgents();
 			const openclawTasks = this.getVisibleOpenClawTasks();
+			const taskFlows = this.getVisibleTaskFlows();
 			const hasAnyAgents =
 				allTasks.length > 0 ||
 				discovered.length > 0 ||
-				openclawTasks.length > 0;
+				openclawTasks.length > 0 ||
+				taskFlows.length > 0;
 			if (!hasAnyAgents) {
 				if (this._initialReadInProgress && this._filePath) {
 					return [
@@ -2198,6 +2249,14 @@ export class AgentStatusTreeProvider
 							},
 						]
 					: []),
+				...(taskFlows.length > 0
+					? [
+							{
+								type: "taskflows" as const,
+								flows: taskFlows,
+							},
+						]
+					: []),
 				...(groupedByProject ? groupedNodes : flatNodes),
 			];
 		}
@@ -2232,6 +2291,16 @@ export class AgentStatusTreeProvider
 
 		if (element.type === "openclawTask") {
 			return this.getOpenClawTaskDetailChildren(element.task);
+		}
+
+		if (element.type === "taskflows") {
+			return element.flows.map(
+				(flow): TaskFlowGroupNode => ({ type: "taskFlowGroup", flow }),
+			);
+		}
+
+		if (element.type === "taskFlowGroup") {
+			return this.getTaskFlowDetailChildren(element.flow);
 		}
 
 		if (element.type === "backgroundTasks") {
@@ -4777,6 +4846,157 @@ export class AgentStatusTreeProvider
 		item.contextValue = "backgroundTasks";
 		item.iconPath = new vscode.ThemeIcon("pulse");
 		return item;
+	}
+
+	private createTaskFlowsItem(node: TaskFlowsContainerNode): vscode.TreeItem {
+		const count = node.flows.length;
+		const activeCount = node.flows.filter(
+			(f) =>
+				f.status === "queued" ||
+				f.status === "running" ||
+				f.status === "waiting",
+		).length;
+		const item = new vscode.TreeItem(
+			count === 1 ? "Task Flows · 1" : `Task Flows · ${count}`,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description =
+			activeCount > 0
+				? `${activeCount} active`
+				: count === 1
+					? "1 flow"
+					: `${count} flows`;
+		item.contextValue = "taskflows";
+		item.iconPath = new vscode.ThemeIcon("layers");
+		return item;
+	}
+
+	private createTaskFlowItem(flow: TaskFlow): vscode.TreeItem {
+		const title = flow.label?.trim() || flow.flowId;
+		const progressPart =
+			flow.taskCount > 0
+				? `${flow.completedCount}/${flow.taskCount} tasks`
+				: undefined;
+		const descriptionParts = [
+			taskflowStatusToLabel(flow.status),
+			progressPart,
+			flow.failedCount > 0 ? `${flow.failedCount} failed` : undefined,
+		].filter((part): part is string => Boolean(part));
+		const item = new vscode.TreeItem(
+			title,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description = descriptionParts.join(" · ");
+		item.tooltip = new vscode.MarkdownString(
+			[
+				`**${title}**`,
+				`Flow ID: \`${flow.flowId}\``,
+				`Status: ${taskflowStatusToLabel(flow.status)}`,
+				flow.agentId ? `Agent: ${flow.agentId}` : null,
+				flow.taskCount > 0
+					? `Progress: ${flow.completedCount}/${flow.taskCount} completed`
+					: null,
+				flow.failedCount > 0 ? `Failed: ${flow.failedCount}` : null,
+				flow.error ? `Error: ${flow.error}` : null,
+			]
+				.filter(Boolean)
+				.join("\n\n"),
+		);
+		item.iconPath = taskflowStatusToIcon(flow.status);
+		item.contextValue = `taskflow.${flow.status}`;
+		item.resourceUri = vscode.Uri.parse(`taskflow:${flow.flowId}`);
+		return item;
+	}
+
+	private getTaskFlowDetailChildren(flow: TaskFlow): DetailNode[] {
+		const flowId = `taskflow-${flow.flowId}`;
+		const details: DetailNode[] = [
+			{
+				type: "detail",
+				label: "Status",
+				value: taskflowStatusToLabel(flow.status),
+				taskId: flowId,
+				icon: taskflowStatusToIcon(flow.status).id,
+				iconColor: taskflowStatusToIcon(flow.status).color?.id,
+			},
+		];
+
+		if (flow.agentId) {
+			details.push({
+				type: "detail",
+				label: "Agent",
+				value: flow.agentId,
+				taskId: flowId,
+				icon: "hubot",
+			});
+		}
+
+		if (flow.taskCount > 0) {
+			details.push({
+				type: "detail",
+				label: "Progress",
+				value: `${flow.completedCount}/${flow.taskCount} completed`,
+				taskId: flowId,
+				icon: "checklist",
+			});
+		}
+
+		if (flow.failedCount > 0) {
+			details.push({
+				type: "detail",
+				label: "Failed",
+				value: `${flow.failedCount}`,
+				taskId: flowId,
+				icon: "error",
+				iconColor: "charts.red",
+			});
+		}
+
+		const duration = this.formatTaskFlowDuration(flow);
+		if (duration) {
+			details.push({
+				type: "detail",
+				label: "Duration",
+				value: duration,
+				taskId: flowId,
+				icon: "watch",
+			});
+		}
+
+		if (flow.error) {
+			details.push({
+				type: "detail",
+				label: "Error",
+				value: flow.error,
+				taskId: flowId,
+				icon: "error",
+				iconColor: "charts.red",
+			});
+		}
+
+		return details;
+	}
+
+	private formatTaskFlowDuration(flow: TaskFlow): string | null {
+		const start = flow.startedAt ?? flow.createdAt;
+		if (!start) return null;
+		const end = flow.endedAt ?? Date.now();
+		const durationMs = Math.max(0, end - start);
+		const totalMinutes = Math.floor(durationMs / 60_000);
+		const hours = Math.floor(totalMinutes / 60);
+		const minutes = totalMinutes % 60;
+		if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+		if (hours > 0) return `${hours}h`;
+		return `${minutes}m`;
+	}
+
+	private getVisibleTaskFlows(): TaskFlow[] {
+		const flows = this._taskFlowService?.getFlows() ?? [];
+		return [...flows].sort(
+			(left, right) =>
+				(right.endedAt ?? right.startedAt ?? right.createdAt ?? 0) -
+				(left.endedAt ?? left.startedAt ?? left.createdAt ?? 0),
+		);
 	}
 
 	private createProjectGroupItem(node: ProjectGroupNode): vscode.TreeItem {
