@@ -791,6 +791,24 @@
         "icon": "$(list-flat)"
       },
       {
+        "command": "commandCentral.filterToProject",
+        "title": "Filter to This Project",
+        "category": "Command Central",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "commandCentral.filterCurrentProject",
+        "title": "Filter to Current Project",
+        "category": "Command Central",
+        "icon": "$(home)"
+      },
+      {
+        "command": "commandCentral.clearProjectFilter",
+        "title": "Show All Projects",
+        "category": "Command Central",
+        "icon": "$(close)"
+      },
+      {
         "command": "commandCentral.launchAgent",
         "title": "Launch Agent",
         "icon": "$(rocket)",
@@ -1399,6 +1417,11 @@
           "group": "inline"
         },
         {
+          "command": "commandCentral.filterToProject",
+          "when": "view == commandCentral.agentStatus && viewItem == projectGroup",
+          "group": "inline"
+        },
+        {
           "command": "commandCentral.cancelOpenClawTask",
           "when": "viewItem =~ /^openclawTask\\.(running|queued)$/",
           "group": "inline"
@@ -1741,14 +1764,24 @@
           "group": "navigation@2"
         },
         {
+          "command": "commandCentral.filterCurrentProject",
+          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.groupByProject && !commandCentral.agentStatus.projectFilterActive",
+          "group": "navigation@3"
+        },
+        {
+          "command": "commandCentral.clearProjectFilter",
+          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.projectFilterActive",
+          "group": "navigation@3"
+        },
+        {
           "command": "commandCentral.clearCompletedAgents",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.hasTerminalTasks",
-          "group": "navigation@3"
+          "group": "navigation@4"
         },
         {
           "command": "commandCentral.reapStaleAgents",
           "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.hasTerminalTasks",
-          "group": "navigation@4"
+          "group": "navigation@5"
         }
       ]
     },

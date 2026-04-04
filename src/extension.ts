@@ -1516,6 +1516,34 @@ export async function activate(
 				},
 			),
 			vscode.commands.registerCommand(
+				"commandCentral.filterToProject",
+				(node?: ProjectGroupNode) => {
+					if (!node || !agentStatusProvider) return;
+					const projectDir =
+						node.projectDir ||
+						node.tasks[0]?.project_dir ||
+						node.projectName;
+					// Toggle: if already filtering this project, clear the filter
+					if (agentStatusProvider.projectFilter === projectDir) {
+						agentStatusProvider.filterToProject(null);
+					} else {
+						agentStatusProvider.filterToProject(projectDir);
+					}
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.filterCurrentProject",
+				() => {
+					agentStatusProvider?.filterToCurrentProject();
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.clearProjectFilter",
+				() => {
+					agentStatusProvider?.filterToProject(null);
+				},
+			),
+			vscode.commands.registerCommand(
 				"commandCentral.captureAgentOutput",
 				async (node?: { type: string; task?: { session_id: string } }) => {
 					const sessionId = node?.task?.session_id;

@@ -751,6 +751,8 @@ export class AgentStatusTreeProvider
 		{ alive: boolean; checkedAt: number }
 	>();
 	private projectIconManager: ProjectIconManager;
+	/** Project filter: when set, only show agents from this project dir */
+	private _projectFilter: string | null = null;
 	private _openclawConfigService: OpenClawConfigService | null = null;
 	private _openclawTaskService: OpenClawTaskService | null = null;
 	private _acpSessionService: AcpSessionService | null = null;
@@ -850,6 +852,46 @@ export class AgentStatusTreeProvider
 	setTreeView(treeView: vscode.TreeView<AgentNode>): void {
 		this._agentStatusView = treeView;
 		this.updateDockBadge();
+	}
+
+	/** Filter the tree to show only agents from the given project dir. Pass null to clear. */
+	filterToProject(projectDir: string | null): void {
+		this._projectFilter = projectDir;
+		void vscode.commands.executeCommand(
+			"setContext",
+			"commandCentral.agentStatus.projectFilterActive",
+			projectDir != null,
+		);
+		this._onDidChangeTreeData.fire(undefined);
+	}
+
+	/** Get the current project filter dir (if any). */
+	get projectFilter(): string | null {
+		return this._projectFilter;
+	}
+
+	/** Filter to the project that owns the currently active editor file. */
+	filterToCurrentProject(): void {
+		const activeUri = vscode.window.activeTextEditor?.document.uri;
+		if (!activeUri) {
+			vscode.window.showInformationMessage(
+				"No active editor — cannot determine current project.",
+			);
+			return;
+		}
+		const filePath = activeUri.fsPath;
+		// Find which project dir the file belongs to
+		const tasks = this.getTasks();
+		const match = tasks.find(
+			(t) => t.project_dir && filePath.startsWith(t.project_dir),
+		);
+		if (match?.project_dir) {
+			this.filterToProject(match.project_dir);
+		} else {
+			vscode.window.showInformationMessage(
+				"No agent project found for the active editor file.",
+			);
+		}
 	}
 
 	setOpenClawConfigService(service: OpenClawConfigService): void {
@@ -2304,12 +2346,27 @@ export class AgentStatusTreeProvider
 				.join(" · ");
 			const summaryTooltip = this.getSummaryTooltip(agentCounts, stuckCount);
 
+			// When grouped by project, replace summary node with view badge
+			// (each project header already shows its own counts)
+			if (groupedByProject && this._agentStatusView) {
+				this._agentStatusView.badge = {
+					value: agentCounts.total,
+					tooltip: `${agentCounts.total} agents · ${counts.working} working`,
+				};
+			}
+
+			const summaryNodes: AgentNode[] = groupedByProject
+				? []
+				: [
+						{
+							type: "summary" as const,
+							label: summaryLabel,
+							tooltip: summaryTooltip || undefined,
+						},
+					];
+
 			return [
-				{
-					type: "summary" as const,
-					label: summaryLabel,
-					tooltip: summaryTooltip || undefined,
-				},
+				...summaryNodes,
 				...(!showOpenClawInline && openclawTasks.length > 0
 					? [
 							{
@@ -2878,26 +2935,33 @@ export class AgentStatusTreeProvider
 	}
 
 	private getProjectGroupChildren(node: ProjectGroupNode): AgentNode[] {
-		return this.buildStatusGroupNodes(
-			this.sortAgentNodes([
-				...node.tasks.map(
-					(task) =>
-						({ type: "task" as const, task }) satisfies SortableAgentNode,
-				),
-				...(node.discoveredAgents ?? []).map(
-					(agent) =>
-						({
-							type: "discovered" as const,
-							agent,
-						}) satisfies SortableAgentNode,
-				),
-			]),
-			{
-				parentProjectName: node.projectName,
-				parentProjectDir: node.projectDir,
-				parentGroupKey: node.parentGroupKey,
-			},
-		);
+		const sorted = this.sortAgentNodes([
+			...node.tasks.map(
+				(task) =>
+					({ type: "task" as const, task }) satisfies SortableAgentNode,
+			),
+			...(node.discoveredAgents ?? []).map(
+				(agent) =>
+					({
+						type: "discovered" as const,
+						agent,
+					}) satisfies SortableAgentNode,
+			),
+		]);
+
+		const parentOptions = {
+			parentProjectName: node.projectName,
+			parentProjectDir: node.projectDir,
+			parentGroupKey: node.parentGroupKey,
+		};
+
+		// If ≤ 5 agents, show them flat (no sub-grouping needed)
+		if (sorted.length <= 5) {
+			return this.applyAgentVisibilityCap(sorted, parentOptions);
+		}
+
+		// > 5 agents: sub-group by status (like Git Sort's time-period groups)
+		return this.buildStatusGroupNodes(sorted, parentOptions);
 	}
 
 	private statusGroupHasRecentItems(node: StatusGroupNode): boolean {
@@ -3267,7 +3331,19 @@ export class AgentStatusTreeProvider
 		tasks: AgentTask[],
 		discoveredAgents: DiscoveredAgent[],
 	): Array<ProjectGroupNode | FolderGroupNode> {
-		const projectNodes = this.buildProjectNodes(tasks, discoveredAgents);
+		let projectNodes = this.buildProjectNodes(tasks, discoveredAgents);
+
+		// Apply project filter if active
+		if (this._projectFilter) {
+			const filterDir = this._projectFilter;
+			projectNodes = projectNodes.filter((node) => {
+				const dir =
+					node.projectDir ||
+					node.tasks[0]?.project_dir ||
+					node.projectName;
+				return dir === filterDir;
+			});
+		}
 		const folderGroups = new Map<
 			string,
 			{
@@ -5242,21 +5318,28 @@ export class AgentStatusTreeProvider
 		const launcherIcon =
 			node.tasks.find((task) => task.project_icon)?.project_icon ?? null;
 		const icon = this.getProjectIcon(projectDir, { launcherIcon });
-		const latestActivity = this.getProjectGroupRelativeActivity(node);
-		const item = new vscode.TreeItem(
-			`${icon} ${node.projectName}`,
-			vscode.TreeItemCollapsibleState.Expanded,
-		);
 		const discoveredCount = node.discoveredAgents?.length ?? 0;
 		const counts = countAgentStatuses(node.tasks);
 		counts.working += discoveredCount;
 		counts.total += discoveredCount;
+		const total = counts.total;
+
+		// Uppercase name + ▼ + count in parens — mirrors Git Sort section headers
+		const hasRunning = counts.working > 0;
+		const collapseState = hasRunning
+			? vscode.TreeItemCollapsibleState.Expanded
+			: vscode.TreeItemCollapsibleState.Collapsed;
+		const item = new vscode.TreeItem(
+			`${icon} ${node.projectName.toUpperCase()} \u25BC (${total})`,
+			collapseState,
+		);
+
+		// Description: just the status summary, no relative time
 		const description = formatCountSummary(counts, {
 			includeAttention: true,
 		});
-		item.description = latestActivity
-			? `${description} · ${latestActivity}`
-			: description;
+		item.description = description;
+		const latestActivity = this.getProjectGroupRelativeActivity(node);
 		const attentionCount = counts.attention;
 		item.tooltip = new vscode.MarkdownString(
 			[
