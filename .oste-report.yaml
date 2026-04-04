@@ -1,9 +1,0 @@
-task_id: "cc-sidebar-cap-stale-fix"
-status: "success"
-summary: "Added completed task cap (default 10) to Agent Status sidebar and improved stale detection for dirty-exit tasks with git commit history"
-files_changed:
-  - "src/providers/agent-status-tree-provider.ts"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
-  - "package.json"
-tests_passing: true
-next_steps: "Consider adding a UI button to adjust completedTaskLimit from the sidebar, or exposing it via a command palette action"
