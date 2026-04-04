@@ -5784,10 +5784,11 @@ describe("AgentStatusTreeProvider", () => {
 			provider.reload();
 
 			const tasks = provider.getTasks();
-			expect(tasks[0]?.status).toBe("stopped");
+			// Stale transition fires for dead tasks without commits
+			expect(tasks[0]?.status).toBe("completed_stale");
 		});
 
-		test("dead running task without start_commit still shows as stopped", () => {
+		test("dead running task without start_commit shows as completed_stale", () => {
 			const task = createMockTask({
 				id: "no-start-commit",
 				status: "running",
@@ -5810,10 +5811,11 @@ describe("AgentStatusTreeProvider", () => {
 			provider.reload();
 
 			const tasks = provider.getTasks();
-			expect(tasks[0]?.status).toBe("stopped");
+			// No start_commit → can't check commits → stale path takes over
+			expect(tasks[0]?.status).toBe("completed_stale");
 		});
 
-		test("git failure falls through to stopped gracefully", () => {
+		test("git failure falls through to completed_stale gracefully", () => {
 			const task = createMockTask({
 				id: "git-fail",
 				status: "running",
@@ -5854,7 +5856,8 @@ describe("AgentStatusTreeProvider", () => {
 			provider.reload();
 
 			const tasks = provider.getTasks();
-			expect(tasks[0]?.status).toBe("stopped");
+			// Git failure → hasCommitsSinceStart returns false → stale path
+			expect(tasks[0]?.status).toBe("completed_stale");
 		});
 
 		test("stale transition skipped when task has commits (becomes completed_dirty instead)", () => {
