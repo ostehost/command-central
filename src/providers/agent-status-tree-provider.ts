@@ -686,6 +686,7 @@ export class AgentStatusTreeProvider
 	private static readonly STUCK_THRESHOLD_MIN_MINUTES = 5;
 	private static readonly STUCK_THRESHOLD_MAX_MINUTES = 60;
 	private static readonly MAX_VISIBLE_AGENTS_DEFAULT = 50;
+	private static readonly COMPLETED_TASK_LIMIT_DEFAULT = 10;
 	private static readonly STREAM_BACKEND_PREFIXES = [
 		"claude",
 		"codex",
@@ -762,6 +763,9 @@ export class AgentStatusTreeProvider
 				}
 				if (
 					e.affectsConfiguration("commandCentral.agentStatus.groupByProject") ||
+					e.affectsConfiguration(
+						"commandCentral.agentStatus.completedTaskLimit",
+					) ||
 					e.affectsConfiguration("commandCentral.project.group") ||
 					e.affectsConfiguration("commandCentral.project.icon") ||
 					e.affectsConfiguration("commandCentral.projects")
@@ -1232,6 +1236,17 @@ export class AgentStatusTreeProvider
 			});
 		}
 
+		// Dirty-exit tasks lack exit_code and completed_at, but may have
+		// produced commits.  Check git history as a last-resort signal
+		// before defaulting to "stopped".
+		if (this.hasCommitsSinceStart(task)) {
+			return this.applyRuntimeStatusOverlay(task, {
+				status: "completed_dirty",
+				reason:
+					"Session ended without completion signal, but commits were produced.",
+			});
+		}
+
 		return this.applyRuntimeStatusOverlay(task, {
 			status: "stopped",
 			reason: "Session no longer appears active. Showing as stopped.",
@@ -1265,6 +1280,30 @@ export class AgentStatusTreeProvider
 					? (task.error_message ?? overlay.reason ?? null)
 					: task.error_message,
 		};
+	}
+
+	/**
+	 * Check if a task's project has commits after its start_commit.
+	 * Used as a last-resort signal for dirty-exit tasks that lack
+	 * exit_code and completed_at but actually produced work.
+	 */
+	private hasCommitsSinceStart(task: AgentTask): boolean {
+		const startRef = task.start_commit;
+		if (!startRef || startRef === "unknown") return false;
+		if (!task.project_dir) return false;
+
+		try {
+			const output = execFileSync(
+				"git",
+				["-C", task.project_dir, "rev-list", "--count", `${startRef}..HEAD`],
+				{ encoding: "utf-8", timeout: 3000 },
+			);
+			const count = Number.parseInt(output.trim(), 10);
+			return Number.isFinite(count) && count > 0;
+		} catch {
+			// Git call failed (missing repo, bad ref, etc.) — fall through.
+			return false;
+		}
 	}
 
 	private getStreamTerminalState(task: AgentTask): {
@@ -1980,6 +2019,9 @@ export class AgentStatusTreeProvider
 		if (!this.isAgentStuck(task)) return null;
 		if (this.isRunningTaskHealthy(task)) return null;
 		if (!this.isTaskSessionConfirmedDead(task)) return null;
+		// Task would be marked stale, but if it produced commits it's
+		// more accurately "completed_dirty" — handled in toDisplayTask.
+		if (this.hasCommitsSinceStart(task)) return null;
 		return STALE_AGENT_STATUS_DESCRIPTION;
 	}
 
@@ -2455,8 +2497,20 @@ export class AgentStatusTreeProvider
 
 		try {
 			const startCommit = this.getTaskDiffStartCommit(task);
+			const endCommit = this.getTaskDiffEndCommit(task);
+
+			// Non-running task with no valid end boundary — no diff available.
+			if (startCommit && !endCommit) return null;
+
+			const resolvedEnd = endCommit ?? "HEAD";
 			const primaryArgs = startCommit
-				? ["-C", projectDir, "diff", "--numstat", `${startCommit}..HEAD`]
+				? [
+						"-C",
+						projectDir,
+						"diff",
+						"--numstat",
+						`${startCommit}..${resolvedEnd}`,
+					]
 				: ["-C", projectDir, "diff", "--numstat"];
 
 			let output = "";
@@ -2579,6 +2633,15 @@ export class AgentStatusTreeProvider
 
 	private getMaxVisibleAgents(): number {
 		return AgentStatusTreeProvider.MAX_VISIBLE_AGENTS_DEFAULT;
+	}
+
+	private getCompletedTaskLimit(): number {
+		const config = vscode.workspace.getConfiguration("commandCentral");
+		const raw = config.get<number>(
+			"agentStatus.completedTaskLimit",
+			AgentStatusTreeProvider.COMPLETED_TASK_LIMIT_DEFAULT,
+		);
+		return Math.max(1, Math.floor(raw));
 	}
 
 	private formatSummaryCounts(counts: AgentCounts): string {
@@ -2885,6 +2948,12 @@ export class AgentStatusTreeProvider
 		);
 	}
 
+	/** Check if a node has a capped completed status (completed or completed_dirty). */
+	private isCappedCompletedNode(node: SortableAgentNode): boolean {
+		const status = this.getNodeStatus(node);
+		return status === "completed" || status === "completed_dirty";
+	}
+
 	private applyAgentVisibilityCap(
 		nodes: SortableAgentNode[],
 		options?: {
@@ -2893,36 +2962,64 @@ export class AgentStatusTreeProvider
 			parentGroupKey?: string;
 		},
 	): AgentNode[] {
-		const cap = this.getMaxVisibleAgents();
-		if (nodes.length <= cap) {
-			return nodes.map((node) => this.toAgentNode(node));
+		// Phase 1: Apply completed task cap — nodes are already sorted by recency.
+		// Split into always-visible (running, stopped, failed, killed, completed_stale)
+		// and capped (completed, completed_dirty — keep only the most recent N).
+		const completedLimit = this.getCompletedTaskLimit();
+		let completedSeen = 0;
+		const cappedNodes: SortableAgentNode[] = [];
+		const completedOverflow: SortableAgentNode[] = [];
+
+		for (const node of nodes) {
+			if (this.isCappedCompletedNode(node)) {
+				completedSeen++;
+				if (completedSeen <= completedLimit) {
+					cappedNodes.push(node);
+				} else {
+					completedOverflow.push(node);
+				}
+			} else {
+				cappedNodes.push(node);
+			}
 		}
 
+		// Phase 2: Apply overall visibility cap on the remaining nodes.
+		const cap = this.getMaxVisibleAgents();
 		const visibleNodes: AgentNode[] = [];
 		const hiddenNodes: SortableAgentNode[] = [];
 
-		for (const [index, node] of nodes.entries()) {
-			if (index < cap || this.isAlwaysVisibleAgentNode(node)) {
+		if (cappedNodes.length <= cap) {
+			for (const node of cappedNodes) {
 				visibleNodes.push(this.toAgentNode(node));
-				continue;
 			}
-			hiddenNodes.push(node);
+		} else {
+			for (const [index, node] of cappedNodes.entries()) {
+				if (index < cap || this.isAlwaysVisibleAgentNode(node)) {
+					visibleNodes.push(this.toAgentNode(node));
+					continue;
+				}
+				hiddenNodes.push(node);
+			}
 		}
 
-		if (hiddenNodes.length === 0) {
+		// Merge both overflow sets — completed overflow first (already sorted),
+		// then general overflow.
+		const allHidden = [...completedOverflow, ...hiddenNodes];
+
+		if (allHidden.length === 0) {
 			return visibleNodes;
 		}
 
 		const label =
-			hiddenNodes.length === 1
-				? "Show 1 older run..."
-				: `Show ${hiddenNodes.length} older runs...`;
+			allHidden.length === 1
+				? "Show 1 older completed..."
+				: `Show ${allHidden.length} older completed...`;
 		return [
 			...visibleNodes,
 			{
 				type: "olderRuns",
 				label,
-				hiddenNodes,
+				hiddenNodes: allHidden,
 				parentProjectName: options?.parentProjectName,
 				parentProjectDir: options?.parentProjectDir,
 				parentGroupKey: options?.parentGroupKey,
@@ -3603,10 +3700,13 @@ export class AgentStatusTreeProvider
 				).trim();
 				if (commitHash) return commitHash;
 			} catch {
-				// Fallback to HEAD below
+				// No valid commit found
 			}
 		}
-		return "HEAD";
+		// Terminal tasks without end_commit or completed_at: return undefined
+		// to signal "no valid end boundary" — avoids diffing against HEAD
+		// which would inflate file counts as new commits land.
+		return undefined;
 	}
 
 	/** Kick off async port detection; fires onDidChangeTreeData when done */
@@ -3927,14 +4027,19 @@ export class AgentStatusTreeProvider
 	/**
 	 * Get per-file diff stats via `git diff --numstat`.
 	 *
-	 * - Running agents: compare working tree vs HEAD (`startCommit` undefined)
-	 * - Completed/stopped/failed: compare `startCommit..endCommit` (fallback: HEAD~1..HEAD)
+	 * - Running agents: compare working tree vs HEAD (`startCommit` and `endCommit` both undefined)
+	 * - Completed/stopped/failed with commits: compare `startCommit..endCommit`
+	 * - Terminal tasks without valid end boundary: `startCommit` set but `endCommit` undefined → empty
 	 */
 	getPerFileDiffs(
 		projectDir: string,
 		startCommit?: string,
 		endCommit?: string,
 	): PerFileDiff[] {
+		// Non-running task with no valid end boundary — no diff available.
+		// (Running tasks have both startCommit and endCommit undefined.)
+		if (startCommit && !endCommit) return [];
+
 		const runNumstat = (args: string[]): string =>
 			execFileSync("git", args, {
 				encoding: "utf-8",

@@ -1830,6 +1830,7 @@ describe("AgentStatusTreeProvider", () => {
 			discoveryEnabled: false,
 		});
 
+		// Default completedTaskLimit is 10 — 51 completed tasks → 10 visible + 41 hidden
 		const tasks = Array.from({ length: 51 }, (_, index) =>
 			createMockTask({
 				id: `task-${index + 1}`,
@@ -1845,24 +1846,24 @@ describe("AgentStatusTreeProvider", () => {
 
 		const children = provider.getChildren();
 		const taskNodes = getTaskNodes(children);
-		expect(taskNodes).toHaveLength(50);
+		expect(taskNodes).toHaveLength(10);
 		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
 			"task-1",
 		);
-		expect((taskNodes[49] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"task-50",
+		expect((taskNodes[9] as { type: "task"; task: AgentTask }).task.id).toBe(
+			"task-10",
 		);
 
 		const olderRuns = getOlderRunsNode(children);
-		expect(olderRuns.label).toBe("Show 1 older run...");
+		expect(olderRuns.label).toBe("Show 41 older completed...");
 		const olderRunsItem = provider.getTreeItem(olderRuns);
 		expect(olderRunsItem.collapsibleState).toBe(1);
 
 		const expandedChildren = provider.getChildren(olderRuns);
-		expect(expandedChildren).toHaveLength(1);
+		expect(expandedChildren).toHaveLength(41);
 		expect(expandedChildren[0]?.type).toBe("task");
 		if (expandedChildren[0]?.type === "task") {
-			expect(expandedChildren[0].task.id).toBe("task-51");
+			expect(expandedChildren[0].task.id).toBe("task-11");
 		}
 	});
 
@@ -5331,7 +5332,7 @@ describe("AgentStatusTreeProvider", () => {
 			expect(gitArgs.some((a) => a.includes("abc123..HEAD"))).toBe(false);
 		});
 
-		test("getPerFileDiffs uses start_commit..HEAD when no end_commit", () => {
+		test("getPerFileDiffs returns empty when startCommit set but endCommit undefined (terminal task, no end boundary)", () => {
 			const gitArgs: string[][] = [];
 			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
 				const [cmd, args] = fnArgs as [string, string[] | undefined];
@@ -5346,10 +5347,12 @@ describe("AgentStatusTreeProvider", () => {
 				);
 			});
 
+			// startCommit set, endCommit undefined → no valid end boundary
 			const diffs = provider.getPerFileDiffs("/some/project", "abc123");
 
-			expect(diffs).toHaveLength(1);
-			expect(gitArgs.some((a) => a.includes("abc123..HEAD"))).toBe(true);
+			expect(diffs).toHaveLength(0);
+			// Should not have called git at all
+			expect(gitArgs).toHaveLength(0);
 		});
 
 		test("getPerFileDiffs diffs working tree (no range) for running tasks", () => {
@@ -5402,7 +5405,7 @@ describe("AgentStatusTreeProvider", () => {
 			expect(gitArgs.some((a) => a.includes("start111..end222"))).toBe(true);
 		});
 
-		test("getDiffSummary falls back to HEAD for completed task without end_commit", () => {
+		test("getDiffSummary returns null for completed task without end_commit or completed_at (no diff drift)", () => {
 			const gitArgs: string[][] = [];
 			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
 				const [cmd, args] = fnArgs as [string, string[] | undefined];
@@ -5434,9 +5437,10 @@ describe("AgentStatusTreeProvider", () => {
 
 			const summary = provider.getDiffSummary(task.project_dir, task);
 
-			expect(summary).not.toBeNull();
-			// Should fall back to HEAD since no end_commit and no completed_at
-			expect(gitArgs.some((a) => a.includes("startabc..HEAD"))).toBe(true);
+			// Should return null — no valid end boundary, avoids diff drift against HEAD
+			expect(summary).toBeNull();
+			// Should NOT have called git diff --numstat at all
+			expect(gitArgs).toHaveLength(0);
 		});
 
 		test("running task getDiffSummary diffs working tree (no commit range)", () => {
@@ -5463,6 +5467,443 @@ describe("AgentStatusTreeProvider", () => {
 
 			// Running task: no range args, just working tree diff
 			expect(gitArgs.some((a) => a.some((s) => s.includes("..")))).toBe(false);
+		});
+
+		test("getDiffSummary returns null for all terminal statuses without end_commit (diff drift guard)", () => {
+			const terminalStatuses = [
+				"completed",
+				"completed_dirty",
+				"completed_stale",
+				"failed",
+				"stopped",
+				"killed",
+			] as const;
+
+			for (const status of terminalStatuses) {
+				execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+					const [cmd, args] = fnArgs as [string, string[] | undefined];
+					if (
+						cmd === "git" &&
+						args?.includes("log") &&
+						args?.some((a) => a.startsWith("--before="))
+					) {
+						return "";
+					}
+					return realChildProcess.execFileSync(
+						cmd,
+						args,
+						fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+					);
+				});
+
+				const task = createMockTask({
+					status,
+					start_commit: "abc123",
+					end_commit: null,
+					completed_at: null,
+				});
+
+				const summary = provider.getDiffSummary(task.project_dir, task);
+				expect(summary).toBeNull();
+			}
+		});
+
+		test("getDiffSummary returns bounded diff for completed task WITH end_commit (no regression)", () => {
+			const gitArgs: string[][] = [];
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (cmd === "git" && args?.includes("--numstat")) {
+					gitArgs.push(args);
+					return "5\t2\tsrc/feature.ts\n";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			const task = createMockTask({
+				status: "completed",
+				start_commit: "start111",
+				end_commit: "end222",
+			});
+
+			const summary = provider.getDiffSummary(task.project_dir, task);
+
+			expect(summary).toBe("1 file · +5 / -2");
+			expect(gitArgs.some((a) => a.includes("start111..end222"))).toBe(true);
+		});
+
+		test("running task still diffs working tree (no regression)", () => {
+			const gitArgs: string[][] = [];
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (cmd === "git" && args?.includes("--numstat")) {
+					gitArgs.push(args);
+					return "2\t3\tsrc/wip.ts\n";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			const task = createMockTask({
+				status: "running",
+				start_commit: "runsha",
+			});
+
+			const summary = provider.getDiffSummary(task.project_dir, task);
+
+			expect(summary).toBe("1 file · +2 / -3");
+			// Running task: should NOT use a commit range
+			expect(gitArgs.some((a) => a.some((s) => s.includes("..")))).toBe(false);
+		});
+	});
+
+	describe("completed task cap", () => {
+		test("caps completed tasks at default limit (10) while keeping non-completed visible", () => {
+			setAgentStatusConfig(vscodeMock, {
+				groupByProject: false,
+				discoveryEnabled: false,
+			});
+
+			const completedTasks = Array.from({ length: 15 }, (_, index) =>
+				createMockTask({
+					id: `completed-${index + 1}`,
+					status: "completed",
+					started_at: new Date(Date.now() - (index + 1) * 60_000).toISOString(),
+				}),
+			);
+			const failedTask = createMockTask({
+				id: "failed-1",
+				status: "failed",
+				started_at: new Date(Date.now() - 20 * 60_000).toISOString(),
+			});
+			const stoppedTask = createMockTask({
+				id: "stopped-1",
+				status: "stopped",
+				started_at: new Date(Date.now() - 25 * 60_000).toISOString(),
+			});
+
+			provider.readRegistry = () =>
+				createMockRegistry(
+					Object.fromEntries(
+						[...completedTasks, failedTask, stoppedTask].map((t) => [t.id, t]),
+					),
+				);
+			provider.reload();
+
+			const children = provider.getChildren();
+			const taskNodes = getTaskNodes(children);
+
+			// 10 completed (capped) + 1 failed + 1 stopped = 12 visible
+			expect(taskNodes).toHaveLength(12);
+
+			// 5 completed tasks hidden behind olderRuns
+			const olderRuns = getOlderRunsNode(children);
+			expect(olderRuns.hiddenNodes).toHaveLength(5);
+			expect(olderRuns.label).toBe("Show 5 older completed...");
+		});
+
+		test("completed_dirty tasks are also subject to the cap", () => {
+			setAgentStatusConfig(vscodeMock, {
+				groupByProject: false,
+				discoveryEnabled: false,
+			});
+
+			const tasks = Array.from({ length: 12 }, (_, index) =>
+				createMockTask({
+					id: `dirty-${index + 1}`,
+					status: "completed_dirty",
+					started_at: new Date(Date.now() - (index + 1) * 60_000).toISOString(),
+				}),
+			);
+			provider.readRegistry = () =>
+				createMockRegistry(Object.fromEntries(tasks.map((t) => [t.id, t])));
+			provider.reload();
+
+			const children = provider.getChildren();
+			const taskNodes = getTaskNodes(children);
+			expect(taskNodes).toHaveLength(10);
+
+			const olderRuns = getOlderRunsNode(children);
+			expect(olderRuns.hiddenNodes).toHaveLength(2);
+		});
+
+		test("completed_stale tasks are NOT subject to the completed cap", () => {
+			setAgentStatusConfig(vscodeMock, {
+				groupByProject: false,
+				discoveryEnabled: false,
+			});
+
+			// 3 completed_stale + 10 completed = 13 tasks, all should be visible
+			// (completed_stale is always-visible, 10 completed within cap)
+			const staleTasks = Array.from({ length: 3 }, (_, index) =>
+				createMockTask({
+					id: `stale-${index + 1}`,
+					status: "completed_stale",
+					started_at: new Date(Date.now() - (index + 1) * 60_000).toISOString(),
+				}),
+			);
+			const completedTasks = Array.from({ length: 10 }, (_, index) =>
+				createMockTask({
+					id: `completed-${index + 1}`,
+					status: "completed",
+					started_at: new Date(
+						Date.now() - (index + 10) * 60_000,
+					).toISOString(),
+				}),
+			);
+
+			provider.readRegistry = () =>
+				createMockRegistry(
+					Object.fromEntries(
+						[...staleTasks, ...completedTasks].map((t) => [t.id, t]),
+					),
+				);
+			provider.reload();
+
+			const children = provider.getChildren();
+			const taskNodes = getTaskNodes(children);
+			// All 13 visible: 3 stale (not capped) + 10 completed (within cap)
+			expect(taskNodes).toHaveLength(13);
+			// No olderRuns node needed
+			expect(children.find((n) => n.type === "olderRuns")).toBeUndefined();
+		});
+
+		test("single hidden completed shows singular label", () => {
+			setAgentStatusConfig(vscodeMock, {
+				groupByProject: false,
+				discoveryEnabled: false,
+			});
+
+			const tasks = Array.from({ length: 11 }, (_, index) =>
+				createMockTask({
+					id: `task-${index + 1}`,
+					status: "completed",
+					started_at: new Date(Date.now() - (index + 1) * 60_000).toISOString(),
+				}),
+			);
+			provider.readRegistry = () =>
+				createMockRegistry(Object.fromEntries(tasks.map((t) => [t.id, t])));
+			provider.reload();
+
+			const children = provider.getChildren();
+			const olderRuns = getOlderRunsNode(children);
+			expect(olderRuns.label).toBe("Show 1 older completed...");
+		});
+	});
+
+	describe("dirty-exit commit detection", () => {
+		test("dead running task with commits shows as completed_dirty instead of stopped", () => {
+			const task = createMockTask({
+				id: "dirty-exit-with-commits",
+				status: "running",
+				terminal_backend: "tmux",
+				start_commit: "abc123",
+				started_at: new Date(Date.now() - 5 * 60 * 60_000).toISOString(),
+			});
+			// Mark tmux session as dead
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+
+			// Mock git rev-list to return commit count > 0
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (
+					cmd === "git" &&
+					args?.includes("rev-list") &&
+					args?.includes("--count")
+				) {
+					return "3\n";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			const tasks = provider.getTasks();
+			expect(tasks[0]?.status).toBe("completed_dirty");
+		});
+
+		test("dead running task without commits still shows as stopped", () => {
+			const task = createMockTask({
+				id: "dirty-exit-no-commits",
+				status: "running",
+				terminal_backend: "tmux",
+				start_commit: "abc123",
+				started_at: new Date(Date.now() - 5 * 60 * 60_000).toISOString(),
+			});
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+
+			// Mock git rev-list to return 0 commits
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (
+					cmd === "git" &&
+					args?.includes("rev-list") &&
+					args?.includes("--count")
+				) {
+					return "0\n";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			const tasks = provider.getTasks();
+			expect(tasks[0]?.status).toBe("stopped");
+		});
+
+		test("dead running task without start_commit still shows as stopped", () => {
+			const task = createMockTask({
+				id: "no-start-commit",
+				status: "running",
+				terminal_backend: "tmux",
+				started_at: new Date(Date.now() - 5 * 60 * 60_000).toISOString(),
+			});
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			const tasks = provider.getTasks();
+			expect(tasks[0]?.status).toBe("stopped");
+		});
+
+		test("git failure falls through to stopped gracefully", () => {
+			const task = createMockTask({
+				id: "git-fail",
+				status: "running",
+				terminal_backend: "tmux",
+				start_commit: "badref",
+				started_at: new Date(Date.now() - 5 * 60 * 60_000).toISOString(),
+			});
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+
+			// Mock git rev-list to throw
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (
+					cmd === "git" &&
+					args?.includes("rev-list") &&
+					args?.includes("--count")
+				) {
+					throw new Error("fatal: bad revision 'badref..HEAD'");
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			const tasks = provider.getTasks();
+			expect(tasks[0]?.status).toBe("stopped");
+		});
+
+		test("stale transition skipped when task has commits (becomes completed_dirty instead)", () => {
+			const task = createMockTask({
+				id: "stale-with-commits",
+				status: "running",
+				terminal_backend: "tmux",
+				start_commit: "abc123",
+				started_at: new Date(Date.now() - 5 * 60 * 60_000).toISOString(),
+			});
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+				alive: false,
+				checkedAt: Date.now(),
+			});
+
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (
+					cmd === "git" &&
+					args?.includes("rev-list") &&
+					args?.includes("--count")
+				) {
+					return "5\n";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			// Should NOT appear in stale tasks list
+			expect(provider.getStaleLauncherTasks().map((t) => t.id)).not.toContain(
+				"stale-with-commits",
+			);
+
+			// Should be completed_dirty, not completed_stale
+			const tasks = provider.getTasks();
+			expect(tasks[0]?.status).toBe("completed_dirty");
 		});
 	});
 });

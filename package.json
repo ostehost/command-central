@@ -219,6 +219,14 @@
           "description": "Group agents by project in the Agent Status tree",
           "scope": "window"
         },
+        "commandCentral.agentStatus.completedTaskLimit": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Maximum number of completed/completed_dirty tasks to show inline. Older completed tasks are collapsed into an expandable node.",
+          "scope": "window"
+        },
         "commandCentral.agentStatus.notifications": {
           "type": "boolean",
           "default": true,
