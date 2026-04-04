@@ -262,15 +262,20 @@ export interface PerFileDiff {
 	filePath: string;
 	additions: number;
 	deletions: number;
+	status?: FileChangeStatus;
 }
+
+export type FileChangeStatus = "A" | "M" | "D";
 
 export interface FileChangeNode {
 	type: "fileChange";
 	taskId: string;
 	projectDir: string;
+	projectName: string;
 	filePath: string;
 	additions: number;
 	deletions: number;
+	status: FileChangeStatus;
 	taskStatus: AgentTask["status"];
 	startCommit?: string;
 	endCommit?: string;
@@ -3436,10 +3441,16 @@ export class AgentStatusTreeProvider
 		// Git info — merged branch + hash
 		const gitInfo = this.getGitInfo(t.project_dir);
 		if (gitInfo) {
+			const gitHash =
+				t.status === "running"
+					? this.extractCommitHash(gitInfo.lastCommit)
+					: this.getTaskDiffEndCommit(t);
 			details.push({
 				type: "detail",
 				label: "Git",
-				value: `${gitInfo.branch} → ${gitInfo.lastCommit.split(" ")[0]}`,
+				value: gitHash
+					? `${gitInfo.branch} → ${this.shortenCommitHash(gitHash)}`
+					: gitInfo.branch,
 				taskId: t.id,
 			});
 		}
@@ -3538,9 +3549,12 @@ export class AgentStatusTreeProvider
 			type: "fileChange",
 			taskId: t.id,
 			projectDir: t.project_dir,
+			projectName:
+				t.project_name || path.basename(t.project_dir) || t.project_dir,
 			filePath: diff.filePath,
 			additions: diff.additions,
 			deletions: diff.deletions,
+			status: diff.status ?? this.deriveFallbackFileChangeStatus(diff),
 			taskStatus: t.status,
 			startCommit,
 			endCommit,
@@ -3677,35 +3691,9 @@ export class AgentStatusTreeProvider
 	}
 
 	private getTaskDiffEndCommit(t: AgentTask): string | undefined {
-		if (t.status === "running") return undefined;
 		if (t.end_commit && t.end_commit !== "unknown") {
 			return t.end_commit;
 		}
-		if (t.completed_at) {
-			try {
-				const commitHash = execFileSync(
-					"git",
-					[
-						"-C",
-						t.project_dir,
-						"log",
-						`--before=${t.completed_at}`,
-						"-1",
-						"--format=%H",
-					],
-					{
-						encoding: "utf-8",
-						timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
-					},
-				).trim();
-				if (commitHash) return commitHash;
-			} catch {
-				// No valid commit found
-			}
-		}
-		// Terminal tasks without end_commit or completed_at: return undefined
-		// to signal "no valid end boundary" — avoids diffing against HEAD
-		// which would inflate file counts as new commits land.
 		return undefined;
 	}
 
@@ -3991,12 +3979,36 @@ export class AgentStatusTreeProvider
 	/** Get a formatted diff summary for an agent's working directory */
 	getDiffSummary(projectDir: string, task: AgentTask): string | null {
 		return this.formatPerFileDiffSummary(
-			this.getPerFileDiffs(
+			this.getPerFileNumstatDiffs(
 				projectDir,
 				this.getTaskDiffStartCommit(task),
 				this.getTaskDiffEndCommit(task),
 			),
 		);
+	}
+
+	private parsePerFileStatusesFromNameStatus(
+		output: string,
+	): Map<string, FileChangeStatus> {
+		const statuses = new Map<string, FileChangeStatus>();
+		if (!output.trim()) return statuses;
+
+		for (const line of output.split("\n")) {
+			if (!line.trim()) continue;
+			const [statusRaw, ...fileParts] = line.split("\t");
+			if (!statusRaw || fileParts.length === 0) continue;
+			const filePath = fileParts[fileParts.length - 1]?.trim();
+			if (!filePath) continue;
+
+			const normalizedStatus = statusRaw.startsWith("A")
+				? "A"
+				: statusRaw.startsWith("D")
+					? "D"
+					: "M";
+			statuses.set(filePath, normalizedStatus);
+		}
+
+		return statuses;
 	}
 
 	private parsePerFileDiffsFromNumstat(output: string): PerFileDiff[] {
@@ -4024,6 +4036,82 @@ export class AgentStatusTreeProvider
 		return diffs;
 	}
 
+	private buildGitDiffArgs(
+		projectDir: string,
+		diffFlag: "--name-status" | "--numstat",
+		startCommit?: string,
+		endCommit?: string,
+	): string[] {
+		if (!startCommit) {
+			return ["-C", projectDir, "diff", diffFlag];
+		}
+
+		const resolvedEnd = endCommit ?? "HEAD";
+		return [
+			"-C",
+			projectDir,
+			"diff",
+			diffFlag,
+			`${startCommit}..${resolvedEnd}`,
+		];
+	}
+
+	private runGitDiffOutput(
+		projectDir: string,
+		diffFlag: "--name-status" | "--numstat",
+		startCommit?: string,
+		endCommit?: string,
+	): string {
+		if (startCommit && !endCommit) return "";
+
+		const run = (args: string[]): string =>
+			execFileSync("git", args, {
+				encoding: "utf-8",
+				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
+			}).trim();
+
+		try {
+			let output = "";
+			try {
+				output = run(
+					this.buildGitDiffArgs(projectDir, diffFlag, startCommit, endCommit),
+				);
+			} catch {
+				if (!startCommit) return "";
+				output = run(["-C", projectDir, "diff", diffFlag, "HEAD~1..HEAD"]);
+			}
+
+			if (!output && startCommit) {
+				output = run(["-C", projectDir, "diff", diffFlag, "HEAD~1..HEAD"]);
+			}
+
+			return output;
+		} catch {
+			return "";
+		}
+	}
+
+	private getPerFileNumstatDiffs(
+		projectDir: string,
+		startCommit?: string,
+		endCommit?: string,
+	): PerFileDiff[] {
+		const output = this.runGitDiffOutput(
+			projectDir,
+			"--numstat",
+			startCommit,
+			endCommit,
+		);
+		if (!output) return [];
+		return this.parsePerFileDiffsFromNumstat(output);
+	}
+
+	private deriveFallbackFileChangeStatus(diff: PerFileDiff): FileChangeStatus {
+		if (diff.additions === 0 && diff.deletions > 0) return "D";
+		if (diff.deletions === 0 && diff.additions > 0) return "A";
+		return "M";
+	}
+
 	/**
 	 * Get per-file diff stats via `git diff --numstat`.
 	 *
@@ -4036,55 +4124,61 @@ export class AgentStatusTreeProvider
 		startCommit?: string,
 		endCommit?: string,
 	): PerFileDiff[] {
-		// Non-running task with no valid end boundary — no diff available.
-		// (Running tasks have both startCommit and endCommit undefined.)
-		if (startCommit && !endCommit) return [];
+		const diffs = this.getPerFileNumstatDiffs(
+			projectDir,
+			startCommit,
+			endCommit,
+		);
+		if (diffs.length === 0) return [];
 
-		const runNumstat = (args: string[]): string =>
-			execFileSync("git", args, {
-				encoding: "utf-8",
-				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
-			}).trim();
-		try {
-			const resolvedEnd = endCommit ?? "HEAD";
-			const primaryArgs = startCommit
-				? [
-						"-C",
-						projectDir,
-						"diff",
-						"--numstat",
-						`${startCommit}..${resolvedEnd}`,
-					]
-				: ["-C", projectDir, "diff", "--numstat"];
-			let output = "";
-			try {
-				output = runNumstat(primaryArgs);
-			} catch {
-				if (!startCommit) return [];
-				output = runNumstat([
-					"-C",
-					projectDir,
-					"diff",
-					"--numstat",
-					"HEAD~1..HEAD",
-				]);
-			}
-			if (!output && startCommit) {
-				// If a computed start ref is stale/missing, fall back to HEAD~1..HEAD.
-				output = runNumstat([
-					"-C",
-					projectDir,
-					"diff",
-					"--numstat",
-					"HEAD~1..HEAD",
-				]);
-			}
-			if (!output) return [];
+		const statuses = this.parsePerFileStatusesFromNameStatus(
+			this.runGitDiffOutput(
+				projectDir,
+				"--name-status",
+				startCommit,
+				endCommit,
+			),
+		);
 
-			return this.parsePerFileDiffsFromNumstat(output);
-		} catch {
-			return [];
-		}
+		return diffs.map((diff) => ({
+			...diff,
+			status:
+				statuses.get(diff.filePath) ??
+				this.deriveFallbackFileChangeStatus(diff),
+		}));
+	}
+
+	private extractCommitHash(value: string): string | undefined {
+		const firstToken = value.trim().split(/\s+/)[0];
+		return firstToken && /^[0-9a-f]{7,40}$/i.test(firstToken)
+			? firstToken
+			: undefined;
+	}
+
+	private shortenCommitHash(value: string): string {
+		return value.slice(0, 7);
+	}
+
+	private getFileChangePathParts(filePath: string): {
+		filename: string;
+		directory?: string;
+	} {
+		const normalized = filePath.replace(/\\/g, "/");
+		const segments = normalized.split("/").filter(Boolean);
+		const filename = segments.pop() ?? normalized;
+		return {
+			filename,
+			...(segments.length > 0 ? { directory: segments.join("/") } : {}),
+		};
+	}
+
+	private formatFileChangeDescription(node: FileChangeNode): string {
+		const { directory } = this.getFileChangePathParts(node.filePath);
+		const stats =
+			node.additions < 0 || node.deletions < 0
+				? `${node.status} binary`
+				: `${node.status} +${node.additions} -${node.deletions}`;
+		return directory ? `${directory} · ${stats}` : stats;
 	}
 
 	private async getLastOutputLine(
@@ -5521,15 +5615,12 @@ export class AgentStatusTreeProvider
 	}
 
 	private createFileChangeItem(node: FileChangeNode): vscode.TreeItem {
-		const label = path.basename(node.filePath);
+		const { filename } = this.getFileChangePathParts(node.filePath);
 		const item = new vscode.TreeItem(
-			label,
+			filename,
 			vscode.TreeItemCollapsibleState.None,
 		);
-		item.description =
-			node.additions < 0 || node.deletions < 0
-				? "binary"
-				: `+${node.additions} -${node.deletions}`;
+		item.description = this.formatFileChangeDescription(node);
 		item.tooltip = path.join(node.projectDir, node.filePath);
 		item.iconPath = new vscode.ThemeIcon("file");
 		item.contextValue = "agentFileChange";

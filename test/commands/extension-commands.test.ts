@@ -9,6 +9,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as path from "node:path";
 import type { AgentTask } from "../../src/providers/agent-status-tree-provider.js";
 import {
 	clearCompletedAgentEntries,
@@ -817,6 +818,46 @@ describe("openFileDiff command", () => {
 		}
 		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
 			"Binary file detected — no text diff is available.",
+		);
+	});
+
+	test("includes project name in diff tab title", () => {
+		const node = {
+			projectDir: "/tmp/project",
+			projectName: "command-central",
+			filePath: "src/app.ts",
+			taskStatus: "completed" as const,
+			startCommit: "abc123",
+			endCommit: "def456",
+		};
+		const beforeRef =
+			node.taskStatus === "running" ? "HEAD" : (node.startCommit ?? "HEAD~1");
+		const afterRef =
+			node.taskStatus === "running" ? "Working Tree" : node.endCommit;
+		const title = `${path.basename(node.filePath)} (${beforeRef} ↔ ${afterRef}) — ${node.projectName}`;
+
+		expect(title).toBe("app.ts (abc123 ↔ def456) — command-central");
+	});
+
+	test("does not fall back to HEAD for terminal tasks without endCommit", () => {
+		const node = {
+			projectDir: "/tmp/project",
+			filePath: "src/app.ts",
+			taskStatus: "completed" as const,
+			startCommit: "abc123",
+			endCommit: undefined,
+		};
+		const afterRef =
+			node.taskStatus === "running" ? "Working Tree" : node.endCommit;
+
+		if (node.taskStatus !== "running" && !afterRef) {
+			vscodeMock.window.showInformationMessage(
+				"No bounded diff is available for this task.",
+			);
+		}
+
+		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+			"No bounded diff is available for this task.",
 		);
 	});
 });

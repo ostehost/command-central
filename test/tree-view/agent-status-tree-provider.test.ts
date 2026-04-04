@@ -3043,7 +3043,7 @@ describe("AgentStatusTreeProvider", () => {
 		]);
 	});
 
-	test("file-change tree item shows basename, +/- stats, tooltip, and command", () => {
+	test("file-change tree item shows filename, relative path, status, stats, tooltip, and command", () => {
 		const task = createMockTask({ status: "completed", exit_code: 0 });
 		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
 		provider.getGitInfo = () => null;
@@ -3054,6 +3054,7 @@ describe("AgentStatusTreeProvider", () => {
 				filePath: "src/providers/agent-status-tree-provider.ts",
 				additions: 5,
 				deletions: 2,
+				status: "M",
 			},
 		];
 		provider.reload();
@@ -3069,7 +3070,7 @@ describe("AgentStatusTreeProvider", () => {
 		const item = provider.getTreeItem(fileNode);
 
 		expect(item.label).toBe("agent-status-tree-provider.ts");
-		expect(item.description).toBe("+5 -2");
+		expect(item.description).toBe("src/providers · M +5 -2");
 		expect(item.tooltip).toBe(
 			"/Users/test/projects/my-app/src/providers/agent-status-tree-provider.ts",
 		);
@@ -3084,7 +3085,12 @@ describe("AgentStatusTreeProvider", () => {
 		provider.getDiffSummary = () => null;
 		provider.readPromptSummary = () => "mock summary";
 		provider.getPerFileDiffs = () => [
-			{ filePath: "assets/logo.png", additions: -1, deletions: -1 },
+			{
+				filePath: "assets/logo.png",
+				additions: -1,
+				deletions: -1,
+				status: "A",
+			},
 		];
 		provider.reload();
 
@@ -3097,7 +3103,36 @@ describe("AgentStatusTreeProvider", () => {
 			throw new Error("No file-change node found");
 		}
 		const item = provider.getTreeItem(fileNode);
-		expect(item.description).toBe("binary");
+		expect(item.description).toBe("assets · A binary");
+	});
+
+	test("root-level deleted file-change tree item keeps filename and shows D status", () => {
+		const task = createMockTask({ status: "completed", exit_code: 0 });
+		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.getGitInfo = () => null;
+		provider.getDiffSummary = () => null;
+		provider.readPromptSummary = () => "mock summary";
+		provider.getPerFileDiffs = () => [
+			{
+				filePath: "package.json",
+				additions: 0,
+				deletions: 6,
+				status: "D",
+			},
+		];
+		provider.reload();
+
+		const root = provider.getChildren();
+		const firstTask = getFirstTask(root);
+		const children = provider.getChildren(firstTask);
+		const fileNode = children.find((c) => c.type === "fileChange");
+		expect(fileNode).toBeDefined();
+		if (!fileNode) {
+			throw new Error("No file-change node found");
+		}
+		const item = provider.getTreeItem(fileNode);
+		expect(item.label).toBe("package.json");
+		expect(item.description).toBe("D +0 -6");
 	});
 
 	test("getParent returns task node for file-change child", () => {
@@ -3109,9 +3144,11 @@ describe("AgentStatusTreeProvider", () => {
 			type: "fileChange",
 			taskId: "test-task-1",
 			projectDir: task.project_dir,
+			projectName: task.project_name,
 			filePath: "src/file.ts",
 			additions: 1,
 			deletions: 0,
+			status: "M",
 			taskStatus: "completed",
 			startCommit: "HEAD~1",
 		});
@@ -3745,6 +3782,33 @@ describe("AgentStatusTreeProvider", () => {
 			}
 			const gitItem = provider.getTreeItem(gitDetail);
 			expect(gitItem.label).toBe("Git: main → def5678");
+		});
+
+		test("Git detail prefers task end_commit over current HEAD", () => {
+			const task = createMockTask({
+				status: "completed",
+				end_commit: "df10667abcdef1234567890",
+			});
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.getDiffSummary = () => null;
+			provider.getGitInfo = (_dir: string): GitInfo | null => ({
+				branch: "main",
+				lastCommit: "41860d3 current head commit",
+			});
+			provider.reload();
+
+			const root = provider.getChildren();
+			const firstTask = getFirstTask(root);
+			const details = provider.getChildren(firstTask);
+			const gitDetail = details.find(
+				(d) => d.type === "detail" && d.label === "Git",
+			);
+			expect(gitDetail).toBeDefined();
+			if (!gitDetail) {
+				throw new Error("Git detail not found");
+			}
+			const gitItem = provider.getTreeItem(gitDetail);
+			expect(gitItem.label).toBe("Git: main → df10667");
 		});
 	});
 
@@ -5440,6 +5504,41 @@ describe("AgentStatusTreeProvider", () => {
 			// Should return null — no valid end boundary, avoids diff drift against HEAD
 			expect(summary).toBeNull();
 			// Should NOT have called git diff --numstat at all
+			expect(gitArgs).toHaveLength(0);
+		});
+
+		test("getDiffSummary ignores completed_at when end_commit is missing", () => {
+			const gitArgs: string[][] = [];
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (cmd === "git" && args?.includes("--numstat")) {
+					gitArgs.push(args);
+					return "1\t0\tsrc/drift.ts\n";
+				}
+				if (
+					cmd === "git" &&
+					args?.includes("log") &&
+					args?.some((a) => a.startsWith("--before="))
+				) {
+					throw new Error("completed_at lookup should not run");
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			const task = createMockTask({
+				status: "completed",
+				start_commit: "startabc",
+				end_commit: null,
+				completed_at: "2026-04-03T20:00:00.000Z",
+			});
+
+			const summary = provider.getDiffSummary(task.project_dir, task);
+
+			expect(summary).toBeNull();
 			expect(gitArgs).toHaveLength(0);
 		});
 

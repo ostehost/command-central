@@ -2340,6 +2340,7 @@ export async function activate(
 				"commandCentral.openFileDiff",
 				async (node?: {
 					projectDir?: string;
+					projectName?: string;
 					filePath?: string;
 					taskId?: string;
 					taskStatus?: AgentTask["status"];
@@ -2361,15 +2362,22 @@ export async function activate(
 						.relative(projectDir, absolutePath)
 						.split(path.sep)
 						.join("/");
+					const projectName =
+						node.projectName || path.basename(projectDir) || projectDir;
 
 					const beforeRef =
 						node.taskStatus === "running"
 							? "HEAD"
 							: (node.startCommit ?? "HEAD~1");
 					const afterRef =
-						node.taskStatus === "running"
-							? "Working Tree"
-							: (node.endCommit ?? "HEAD");
+						node.taskStatus === "running" ? "Working Tree" : node.endCommit;
+
+					if (node.taskStatus !== "running" && !afterRef) {
+						vscode.window.showInformationMessage(
+							"No bounded diff is available for this task.",
+						);
+						return;
+					}
 
 					try {
 						const fs = await import("node:fs");
@@ -2485,7 +2493,7 @@ export async function activate(
 							"vscode.diff",
 							beforeUri,
 							afterUri,
-							`${path.basename(relativePath)} (${beforeRef} ↔ ${afterRef}${changeHint})`,
+							`${path.basename(relativePath)} (${beforeRef} ↔ ${afterRef}${changeHint}) — ${projectName}`,
 						);
 					} catch (err) {
 						vscode.window.showErrorMessage(

@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 let execOutput = "";
 let execError: Error | null = null;
 let lastExecArgs: string[] = [];
+let execCalls: string[][] = [];
 
 const mockExecFileSync = mock((_cmd: string, args: string[]) => {
 	lastExecArgs = args;
+	execCalls.push(args);
 	if (execError) throw execError;
 	return execOutput;
 });
@@ -33,56 +35,88 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		execOutput = "";
 		execError = null;
 		lastExecArgs = [];
+		execCalls = [];
 		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
 			lastExecArgs = args;
+			execCalls.push(args);
 			if (execError) throw execError;
 			return execOutput;
 		});
 	});
 
-	test("parses running-agent numstat output from working tree", () => {
-		execOutput = "10\t2\tsrc/a.ts\n5\t0\tREADME.md\n";
+	test("parses running-agent diff output from working tree and includes file statuses", () => {
 		const provider = new AgentStatusTreeProvider();
+		mockExecFileSync.mockReset();
+		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+			lastExecArgs = args;
+			execCalls.push(args);
+			if (args.includes("--name-status")) {
+				return "M\tsrc/a.ts\nA\tREADME.md\n";
+			}
+			return "10\t2\tsrc/a.ts\n5\t0\tREADME.md\n";
+		});
 
 		const result = provider.getPerFileDiffs("/tmp/project");
+		const gitDiffCalls = execCalls.filter((args) => args[0] === "-C");
 
-		expect(lastExecArgs).toEqual(["-C", "/tmp/project", "diff", "--numstat"]);
+		expect(gitDiffCalls).toEqual([
+			["-C", "/tmp/project", "diff", "--numstat"],
+			["-C", "/tmp/project", "diff", "--name-status"],
+		]);
 		expect(result).toEqual([
-			{ filePath: "src/a.ts", additions: 10, deletions: 2 },
-			{ filePath: "README.md", additions: 5, deletions: 0 },
+			{ filePath: "src/a.ts", additions: 10, deletions: 2, status: "M" },
+			{ filePath: "README.md", additions: 5, deletions: 0, status: "A" },
 		]);
 		provider.dispose();
 	});
 
 	test("uses startCommit..HEAD for completed-agent diffs", () => {
-		execOutput = "1\t1\tsrc/b.ts\n";
 		const provider = new AgentStatusTreeProvider();
-		lastExecArgs = [];
+		mockExecFileSync.mockReset();
+		execCalls = [];
+		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+			lastExecArgs = args;
+			execCalls.push(args);
+			if (args.includes("--name-status")) {
+				return "M\tsrc/b.ts\n";
+			}
+			return "1\t1\tsrc/b.ts\n";
+		});
 
 		const result = provider.getPerFileDiffs("/tmp/project", "abc123", "HEAD");
 
-		expect(lastExecArgs).toEqual([
-			"-C",
-			"/tmp/project",
-			"diff",
-			"--numstat",
-			"abc123..HEAD",
+		expect(execCalls).toEqual([
+			["-C", "/tmp/project", "diff", "--numstat", "abc123..HEAD"],
+			["-C", "/tmp/project", "diff", "--name-status", "abc123..HEAD"],
 		]);
 		expect(result).toEqual([
-			{ filePath: "src/b.ts", additions: 1, deletions: 1 },
+			{ filePath: "src/b.ts", additions: 1, deletions: 1, status: "M" },
 		]);
 		provider.dispose();
 	});
 
 	test("marks binary files with sentinel counts", () => {
-		execOutput = "-\t-\tassets/logo.png\n";
 		const provider = new AgentStatusTreeProvider();
-		lastExecArgs = [];
+		mockExecFileSync.mockReset();
+		execCalls = [];
+		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+			lastExecArgs = args;
+			execCalls.push(args);
+			if (args.includes("--name-status")) {
+				return "A\tassets/logo.png\n";
+			}
+			return "-\t-\tassets/logo.png\n";
+		});
 
 		const result = provider.getPerFileDiffs("/tmp/project", "HEAD~1", "HEAD");
 
 		expect(result).toEqual([
-			{ filePath: "assets/logo.png", additions: -1, deletions: -1 },
+			{
+				filePath: "assets/logo.png",
+				additions: -1,
+				deletions: -1,
+				status: "A",
+			},
 		]);
 		provider.dispose();
 	});
@@ -103,9 +137,13 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		let calls = 0;
 		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
 			lastExecArgs = args;
+			execCalls.push(args);
 			calls += 1;
 			if (calls === 1) {
 				throw new Error("bad revision");
+			}
+			if (args.includes("--name-status")) {
+				return "M\tsrc/fallback.ts\n";
 			}
 			return "3\t1\tsrc/fallback.ts\n";
 		});
@@ -114,17 +152,43 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 			"stale-commit",
 			"HEAD",
 		);
+		const gitDiffCalls = execCalls.filter((args) => args[0] === "-C");
 
-		expect(calls).toBe(2);
-		expect(lastExecArgs).toEqual([
-			"-C",
-			"/tmp/project",
-			"diff",
-			"--numstat",
-			"HEAD~1..HEAD",
+		expect(calls).toBe(3);
+		expect(gitDiffCalls).toEqual([
+			["-C", "/tmp/project", "diff", "--numstat", "stale-commit..HEAD"],
+			["-C", "/tmp/project", "diff", "--numstat", "HEAD~1..HEAD"],
+			["-C", "/tmp/project", "diff", "--name-status", "stale-commit..HEAD"],
 		]);
 		expect(result).toEqual([
-			{ filePath: "src/fallback.ts", additions: 3, deletions: 1 },
+			{ filePath: "src/fallback.ts", additions: 3, deletions: 1, status: "M" },
+		]);
+		provider.dispose();
+	});
+
+	test("maps explicit A/M/D statuses from name-status output", () => {
+		const provider = new AgentStatusTreeProvider();
+		mockExecFileSync.mockReset();
+		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+			lastExecArgs = args;
+			execCalls.push(args);
+			if (args.includes("--name-status")) {
+				return "A\tsrc/new.ts\nM\tsrc/changed.ts\nD\tsrc/deleted.ts\n";
+			}
+			return "4\t0\tsrc/new.ts\n2\t2\tsrc/changed.ts\n0\t6\tsrc/deleted.ts\n";
+		});
+
+		const result = provider.getPerFileDiffs("/tmp/project", "abc123", "def456");
+
+		expect(result).toEqual([
+			{ filePath: "src/new.ts", additions: 4, deletions: 0, status: "A" },
+			{
+				filePath: "src/changed.ts",
+				additions: 2,
+				deletions: 2,
+				status: "M",
+			},
+			{ filePath: "src/deleted.ts", additions: 0, deletions: 6, status: "D" },
 		]);
 		provider.dispose();
 	});
