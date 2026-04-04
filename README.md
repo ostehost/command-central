@@ -17,7 +17,7 @@ You're running 3 Claude Code agents in terminal tabs, a Codex session in tmux, a
 
 Command Central puts every agent — regardless of which terminal app they're running in — into a single VS Code sidebar. One glance tells you what's running, what's done, and what needs attention.
 
-<!-- TODO: Add screenshot/gif here before Marketplace publish -->
+![Command Central — Agent Status Sidebar](screenshots/hero.png)
 
 ---
 
