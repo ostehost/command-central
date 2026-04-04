@@ -73,6 +73,7 @@ export function createVSCodeMock() {
 			machineId: "mock-machine-id",
 			appName: "Visual Studio Code",
 			language: "en",
+			openExternal: mock(() => Promise.resolve(true)),
 		},
 		workspace: {
 			isTrusted: true,

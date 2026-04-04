@@ -62,6 +62,7 @@ import { ExtensionFilterViewManager } from "./providers/extension-filter-view-ma
 import { AgentOutputChannels } from "./services/agent-output-channels.js";
 import { AgentStatusBar } from "./services/agent-status-bar.js";
 import { GroupingStateManager } from "./services/grouping-state-manager.js";
+import { InfrastructureHealthStatusBar } from "./services/infrastructure-health-status-bar.js";
 import { LoggerService, LogLevel } from "./services/logger-service.js";
 import { OpenClawConfigService } from "./services/openclaw-config-service.js";
 import { ProjectIconManager } from "./services/project-icon-manager.js";
@@ -807,6 +808,19 @@ export async function activate(
 		// Agent Status Bar — shows running/total count
 		const agentStatusBar = new AgentStatusBar();
 		context.subscriptions.push(agentStatusBar);
+
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.openInfrastructureDashboard",
+				async () => {
+					await vscode.env.openExternal(
+						vscode.Uri.parse("https://dashboard.partnerai.dev"),
+					);
+				},
+			),
+		);
+		const infrastructureHealthStatusBar = new InfrastructureHealthStatusBar();
+		context.subscriptions.push(infrastructureHealthStatusBar);
 
 		// Update status bar + session store on tree data changes
 		agentStatusProvider.onDidChangeTreeData(() => {
@@ -2927,6 +2941,7 @@ export async function activate(
 			),
 		);
 		mainLogger.info("Test count status bar initialized");
+		mainLogger.info("Infrastructure health status bar initialized");
 
 		const activationTime = performance.now() - start;
 		telemetry.track("cc_extension_activated", {
