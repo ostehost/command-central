@@ -3073,7 +3073,7 @@ describe("AgentStatusTreeProvider", () => {
 			"/Users/test/projects/my-app/src/providers/agent-status-tree-provider.ts",
 		);
 		expect(item.contextValue).toBe("agentFileChange");
-		expect(item.command?.command).toBe("commandCentral.openFileDiff");
+		expect(item.command?.command).toBe("commandCentral.smartOpenFile");
 	});
 
 	test("binary file-change tree item uses binary description", () => {

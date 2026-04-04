@@ -5654,11 +5654,13 @@ export class AgentStatusTreeProvider
 		);
 		item.description = this.formatFileChangeDescription(node);
 		item.tooltip = path.join(node.projectDir, node.filePath);
-		item.iconPath = new vscode.ThemeIcon("file");
+		item.resourceUri = vscode.Uri.file(
+			path.join(node.projectDir, node.filePath),
+		);
 		item.contextValue = "agentFileChange";
 		item.command = {
-			command: "commandCentral.openFileDiff",
-			title: "Open File Diff",
+			command: "commandCentral.smartOpenFile",
+			title: "Open File",
 			arguments: [node],
 		};
 		return item;

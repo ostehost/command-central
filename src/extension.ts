@@ -2348,6 +2348,42 @@ export async function activate(
 			),
 		);
 
+		// Smart Open File — opens the actual file on disk (falls back to diff for deleted files)
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.smartOpenFile",
+				async (node?: {
+					projectDir?: string;
+					filePath?: string;
+					status?: string;
+				}) => {
+					if (!node?.projectDir || !node.filePath) {
+						vscode.window.showWarningMessage("No file change selected.");
+						return;
+					}
+
+					const absolutePath = path.isAbsolute(node.filePath)
+						? node.filePath
+						: path.join(node.projectDir, node.filePath);
+
+					const fs = await import("node:fs");
+					if (!fs.existsSync(absolutePath)) {
+						// File was deleted — fall back to showing the diff
+						await vscode.commands.executeCommand(
+							"commandCentral.openFileDiff",
+							node,
+						);
+						return;
+					}
+
+					await vscode.commands.executeCommand(
+						"vscode.open",
+						vscode.Uri.file(absolutePath),
+					);
+				},
+			),
+		);
+
 		// Open File Diff — opens a focused diff for a specific changed file
 		context.subscriptions.push(
 			vscode.commands.registerCommand(

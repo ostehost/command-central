@@ -71,6 +71,14 @@ async function getConfigProperties(): Promise<
 }
 
 describe("package.json agent menu contributions", () => {
+	test("registers smartOpenFile command contribution", async () => {
+		const commands = await getCommands();
+		const exists = commands.some(
+			(item) => item.command === "commandCentral.smartOpenFile",
+		);
+		expect(exists).toBe(true);
+	});
+
 	test("registers openFileDiff command contribution", async () => {
 		const commands = await getCommands();
 		const exists = commands.some(
@@ -208,15 +216,34 @@ describe("package.json agent menu contributions", () => {
 		expect(contextRestart?.when).toContain("commandCentral.hasLauncher");
 	});
 
-	test("adds openFileDiff action for per-file change nodes", async () => {
+	test("adds smartOpenFile action for per-file change nodes", async () => {
 		const menu = await getViewItemContextMenu();
-		const openFileDiff = menu.find(
+		const smartOpen = menu.find(
 			(item) =>
-				item.command === "commandCentral.openFileDiff" &&
+				item.command === "commandCentral.smartOpenFile" &&
 				item.when === "viewItem == agentFileChange",
 		);
-		expect(openFileDiff).toBeDefined();
-		expect(openFileDiff?.group).toBe("navigation");
+		expect(smartOpen).toBeDefined();
+		expect(smartOpen?.group).toBe("navigation@1");
+	});
+
+	test("adds openFileDiff context and inline actions for per-file change nodes", async () => {
+		const menu = await getViewItemContextMenu();
+		const contextDiff = menu.find(
+			(item) =>
+				item.command === "commandCentral.openFileDiff" &&
+				item.when === "viewItem == agentFileChange" &&
+				item.group === "navigation@2",
+		);
+		expect(contextDiff).toBeDefined();
+
+		const inlineDiff = menu.find(
+			(item) =>
+				item.command === "commandCentral.openFileDiff" &&
+				item.when === "viewItem == agentFileChange" &&
+				item.group === "inline",
+		);
+		expect(inlineDiff).toBeDefined();
 	});
 
 	test("adds context-menu kill action for running agents", async () => {

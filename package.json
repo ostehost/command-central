@@ -863,8 +863,14 @@
         "icon": "$(git-compare)"
       },
       {
+        "command": "commandCentral.smartOpenFile",
+        "title": "Open File",
+        "category": "Command Central",
+        "icon": "$(go-to-file)"
+      },
+      {
         "command": "commandCentral.openFileDiff",
-        "title": "Open File Diff",
+        "title": "View Agent Diff",
         "category": "Command Central",
         "icon": "$(file-diff)"
       },
@@ -1348,9 +1354,19 @@
           "group": "navigation"
         },
         {
+          "command": "commandCentral.smartOpenFile",
+          "when": "viewItem == agentFileChange",
+          "group": "navigation@1"
+        },
+        {
           "command": "commandCentral.openFileDiff",
           "when": "viewItem == agentFileChange",
-          "group": "navigation"
+          "group": "navigation@2"
+        },
+        {
+          "command": "commandCentral.openFileDiff",
+          "when": "viewItem == agentFileChange",
+          "group": "inline"
         },
         {
           "command": "commandCentral.openAgentDirectory",
