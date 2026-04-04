@@ -862,6 +862,11 @@ export class AgentStatusTreeProvider
 			"commandCentral.agentStatus.projectFilterActive",
 			projectDir != null,
 		);
+		if (this._agentStatusView) {
+			this._agentStatusView.description = projectDir
+				? `Filtered: ${path.basename(projectDir)}`
+				: undefined;
+		}
 		this._onDidChangeTreeData.fire(undefined);
 	}
 
@@ -892,6 +897,18 @@ export class AgentStatusTreeProvider
 				"No agent project found for the active editor file.",
 			);
 		}
+	}
+
+	/** Return all known project directories from tasks and discovered agents. */
+	getKnownProjectDirs(): string[] {
+		const dirs = new Set<string>();
+		for (const task of this.getScopedLauncherTasks()) {
+			if (task.project_dir) dirs.add(task.project_dir);
+		}
+		for (const agent of this.getScopedDiscoveredAgents()) {
+			dirs.add(this.getDiscoveredProjectDir(agent));
+		}
+		return Array.from(dirs).sort();
 	}
 
 	setOpenClawConfigService(service: OpenClawConfigService): void {
@@ -2250,9 +2267,22 @@ export class AgentStatusTreeProvider
 
 	getChildren(element?: AgentNode): AgentNode[] {
 		if (!element) {
-			const allTasks = this.getScopedLauncherTasks();
-			const discovered = this.getScopedDiscoveredAgents();
+			let allTasks = this.getScopedLauncherTasks();
+			let discovered = this.getScopedDiscoveredAgents();
 			const openclawTasks = this.getVisibleOpenClawTasks();
+
+			// Apply project filter before grouping (works for both flat and grouped modes)
+			if (this._projectFilter) {
+				const filterDir = this._projectFilter;
+				allTasks = allTasks.filter(
+					(t) =>
+						t.project_dir === filterDir ||
+						t.project_name === path.basename(filterDir),
+				);
+				discovered = discovered.filter(
+					(a) => this.getDiscoveredProjectDir(a) === filterDir,
+				);
+			}
 			const taskFlows = this.getVisibleTaskFlows();
 			const hasAnyAgents =
 				allTasks.length > 0 ||
@@ -2937,8 +2967,7 @@ export class AgentStatusTreeProvider
 	private getProjectGroupChildren(node: ProjectGroupNode): AgentNode[] {
 		const sorted = this.sortAgentNodes([
 			...node.tasks.map(
-				(task) =>
-					({ type: "task" as const, task }) satisfies SortableAgentNode,
+				(task) => ({ type: "task" as const, task }) satisfies SortableAgentNode,
 			),
 			...(node.discoveredAgents ?? []).map(
 				(agent) =>
@@ -3338,9 +3367,7 @@ export class AgentStatusTreeProvider
 			const filterDir = this._projectFilter;
 			projectNodes = projectNodes.filter((node) => {
 				const dir =
-					node.projectDir ||
-					node.tasks[0]?.project_dir ||
-					node.projectName;
+					node.projectDir || node.tasks[0]?.project_dir || node.projectName;
 				return dir === filterDir;
 			});
 		}

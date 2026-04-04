@@ -5957,4 +5957,82 @@ describe("AgentStatusTreeProvider", () => {
 			expect(tasks[0]?.status).toBe("completed_dirty");
 		});
 	});
+
+	describe("Project filter", () => {
+		test("filters tasks by project_dir in flat mode", () => {
+			const taskA = createMockTask({
+				id: "task-a",
+				project_dir: "/projects/alpha",
+				project_name: "alpha",
+				session_id: "agent-alpha",
+			});
+			const taskB = createMockTask({
+				id: "task-b",
+				project_dir: "/projects/beta",
+				project_name: "beta",
+				session_id: "agent-beta",
+			});
+			provider.readRegistry = () =>
+				createMockRegistry({ "task-a": taskA, "task-b": taskB });
+			provider.reload();
+
+			// Unfiltered: both tasks visible
+			const allChildren = provider.getChildren();
+			const allTaskNodes = getTaskNodes(allChildren);
+			expect(allTaskNodes).toHaveLength(2);
+
+			// Filter to alpha
+			provider.filterToProject("/projects/alpha");
+			provider.reload();
+			const filtered = provider.getChildren();
+			const filteredTasks = getTaskNodes(filtered);
+			expect(filteredTasks).toHaveLength(1);
+			const firstTask = filteredTasks[0];
+			expect(
+				firstTask?.type === "task" ? firstTask.task.project_dir : undefined,
+			).toBe("/projects/alpha");
+
+			// Clear filter
+			provider.filterToProject(null);
+			provider.reload();
+			const cleared = provider.getChildren();
+			expect(getTaskNodes(cleared)).toHaveLength(2);
+		});
+
+		test("getKnownProjectDirs returns unique sorted dirs", () => {
+			const taskA = createMockTask({
+				id: "task-a",
+				project_dir: "/projects/beta",
+				session_id: "agent-beta",
+			});
+			const taskB = createMockTask({
+				id: "task-b",
+				project_dir: "/projects/alpha",
+				session_id: "agent-alpha",
+			});
+			const taskC = createMockTask({
+				id: "task-c",
+				project_dir: "/projects/beta",
+				session_id: "agent-beta-2",
+			});
+			provider.readRegistry = () =>
+				createMockRegistry({
+					"task-a": taskA,
+					"task-b": taskB,
+					"task-c": taskC,
+				});
+			provider.reload();
+
+			const dirs = provider.getKnownProjectDirs();
+			expect(dirs).toEqual(["/projects/alpha", "/projects/beta"]);
+		});
+
+		test("projectFilter getter reflects current filter", () => {
+			expect(provider.projectFilter).toBeNull();
+			provider.filterToProject("/projects/alpha");
+			expect(provider.projectFilter).toBe("/projects/alpha");
+			provider.filterToProject(null);
+			expect(provider.projectFilter).toBeNull();
+		});
+	});
 });

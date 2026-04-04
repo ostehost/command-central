@@ -798,15 +798,21 @@
       },
       {
         "command": "commandCentral.filterCurrentProject",
-        "title": "Filter to Current Project",
+        "title": "Filter: Current Project",
         "category": "Command Central",
-        "icon": "$(home)"
+        "icon": "$(filter)"
       },
       {
         "command": "commandCentral.clearProjectFilter",
-        "title": "Show All Projects",
+        "title": "Clear Project Filter",
         "category": "Command Central",
-        "icon": "$(close)"
+        "icon": "$(filter-filled)"
+      },
+      {
+        "command": "commandCentral.selectProjectFilter",
+        "title": "Select Project Filter",
+        "category": "Command Central",
+        "icon": "$(list-filter)"
       },
       {
         "command": "commandCentral.launchAgent",
@@ -1765,7 +1771,7 @@
         },
         {
           "command": "commandCentral.filterCurrentProject",
-          "when": "view == commandCentral.agentStatus && commandCentral.agentStatus.groupByProject && !commandCentral.agentStatus.projectFilterActive",
+          "when": "view == commandCentral.agentStatus && !commandCentral.agentStatus.projectFilterActive",
           "group": "navigation@3"
         },
         {

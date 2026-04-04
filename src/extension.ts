@@ -1520,9 +1520,7 @@ export async function activate(
 				(node?: ProjectGroupNode) => {
 					if (!node || !agentStatusProvider) return;
 					const projectDir =
-						node.projectDir ||
-						node.tasks[0]?.project_dir ||
-						node.projectName;
+						node.projectDir || node.tasks[0]?.project_dir || node.projectName;
 					// Toggle: if already filtering this project, clear the filter
 					if (agentStatusProvider.projectFilter === projectDir) {
 						agentStatusProvider.filterToProject(null);
@@ -1541,6 +1539,34 @@ export async function activate(
 				"commandCentral.clearProjectFilter",
 				() => {
 					agentStatusProvider?.filterToProject(null);
+				},
+			),
+			vscode.commands.registerCommand(
+				"commandCentral.selectProjectFilter",
+				async () => {
+					if (!agentStatusProvider) return;
+					const projectDirs = agentStatusProvider.getKnownProjectDirs();
+					if (projectDirs.length === 0) {
+						vscode.window.showInformationMessage("No agent projects found.");
+						return;
+					}
+					const items = [
+						{
+							label: "$(close) Show All Projects",
+							projectDir: null as string | null,
+						},
+						...projectDirs.map((dir) => ({
+							label: `$(folder) ${path.basename(dir)}`,
+							description: dir,
+							projectDir: dir as string | null,
+						})),
+					];
+					const pick = await vscode.window.showQuickPick(items, {
+						placeHolder: "Select a project to filter by",
+					});
+					if (pick) {
+						agentStatusProvider.filterToProject(pick.projectDir);
+					}
 				},
 			),
 			vscode.commands.registerCommand(
