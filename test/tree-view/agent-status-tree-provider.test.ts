@@ -56,7 +56,6 @@ mock.module("../../src/utils/port-detector.js", () => ({
 import {
 	type AgentNode,
 	type AgentRole,
-	type AgentStatusGroup,
 	AgentStatusTreeProvider,
 	type AgentTask,
 	detectAgentType,
@@ -212,21 +211,7 @@ function getSummaryNode(
 	return summary;
 }
 
-function getStatusGroupNode(
-	children: AgentNode[],
-	status: AgentStatusGroup,
-): Extract<AgentNode, { type: "statusGroup" }> {
-	const group = children.find(
-		(
-			node,
-		): node is Extract<
-			AgentNode,
-			{ type: "statusGroup"; status: AgentStatusGroup }
-		> => node.type === "statusGroup" && node.status === status,
-	);
-	if (!group) throw new Error(`No status group found for ${status}`);
-	return group;
-}
+// getStatusGroupNode helper removed — ≤5 agents now render flat (no status sub-groups)
 
 function setAgentStatusConfig(
 	vscodeMock: ReturnType<typeof setupVSCodeMock>,
@@ -1246,22 +1231,15 @@ describe("AgentStatusTreeProvider", () => {
 			);
 			if (!groupNode) throw new Error("expected project group");
 			const groupItem = provider.getTreeItem(groupNode);
-			expect(groupItem.label).toBe("🚀 Command Central");
+			expect(groupItem.label).toBe("🚀 COMMAND CENTRAL ▼ (1)");
 			expect(groupItem.description).toContain("1 working");
-			expect(groupItem.description).toContain("1m ago");
 
+			// ≤5 agents → flat children (no status sub-groups)
 			const children = provider.getChildren(groupNode);
-			const runningGroup = children.find(
-				(node): node is Extract<AgentNode, { type: "statusGroup" }> =>
-					node.type === "statusGroup" && node.status === "running",
+			const taskNode = children.find(
+				(node): node is Extract<AgentNode, { type: "task" }> =>
+					node.type === "task",
 			);
-			if (!runningGroup) throw new Error("expected running status group");
-			const taskNode = provider
-				.getChildren(runningGroup)
-				.find(
-					(node): node is Extract<AgentNode, { type: "task" }> =>
-						node.type === "task",
-				);
 			if (!taskNode) throw new Error("expected task node");
 			const taskItem = provider.getTreeItem(taskNode);
 			expect(taskItem.label).toContain("🚀");
@@ -1948,12 +1926,13 @@ describe("AgentStatusTreeProvider", () => {
 					node.type === "projectGroup",
 			);
 		if (!projectGroup) throw new Error("expected project group");
+		// ≤5 agents → flat children (no status sub-groups)
 		const groupChildren = provider.getChildren(projectGroup);
-		expect(
-			groupChildren.map((node) =>
-				node.type === "statusGroup" ? node.status : node.type,
-			),
-		).toEqual(["running", "attention", "done"]);
+		expect(groupChildren.map((node) => node.type)).toEqual([
+			"task",
+			"task",
+			"task",
+		]);
 	});
 
 	test("grouped project children keep task ordering within each status group", () => {
@@ -1994,26 +1973,14 @@ describe("AgentStatusTreeProvider", () => {
 					node.type === "projectGroup",
 			);
 		if (!projectGroup) throw new Error("expected project group");
+		// ≤5 agents → flat children sorted by status priority then recency
 		const groupChildren = provider.getChildren(projectGroup);
-		const runningGroup = getStatusGroupNode(groupChildren, "running");
-		const attentionGroup = getStatusGroupNode(groupChildren, "attention");
-		const doneGroup = getStatusGroupNode(groupChildren, "done");
-		const runningChildren = provider.getChildren(runningGroup);
-		const attentionChildren = provider.getChildren(attentionGroup);
-		const doneChildren = provider.getChildren(doneGroup);
-		expect(runningChildren).toHaveLength(1);
-		expect(attentionChildren).toHaveLength(1);
-		expect(doneChildren).toHaveLength(1);
-		expect(
-			(runningChildren[0] as { type: "task"; task: AgentTask }).task.id,
-		).toBe("running-older");
-		expect(
-			(attentionChildren[0] as { type: "task"; task: AgentTask }).task.id,
-		).toBe("failed-middle");
-		expect(doneChildren[0]?.type).toBe("task");
-		expect((doneChildren[0] as { type: "task"; task: AgentTask }).task.id).toBe(
-			"completed-latest",
+		expect(groupChildren).toHaveLength(3);
+		expect(groupChildren.every((node) => node.type === "task")).toBe(true);
+		const ids = groupChildren.map(
+			(node) => (node as { type: "task"; task: AgentTask }).task.id,
 		);
+		expect(ids).toEqual(["running-older", "failed-middle", "completed-latest"]);
 	});
 
 	test("grouped status headers show count badges and collapse stale done groups", () => {
@@ -2047,15 +2014,10 @@ describe("AgentStatusTreeProvider", () => {
 					node.type === "projectGroup",
 			);
 		if (!projectGroup) throw new Error("expected project group");
+		// ≤5 agents → flat children (no status sub-groups)
 		const children = provider.getChildren(projectGroup);
-		const runningGroup = getStatusGroupNode(children, "running");
-		const doneGroup = getStatusGroupNode(children, "done");
-		const attentionGroup = getStatusGroupNode(children, "attention");
-		expect(provider.getTreeItem(runningGroup).label).toBe("Running · 1 agent");
-		expect(provider.getTreeItem(attentionGroup).label).toBe(
-			"Failed & Stopped · 1 agent",
-		);
-		expect(provider.getTreeItem(doneGroup).collapsibleState).toBe(1);
+		expect(children).toHaveLength(3);
+		expect(children.every((node) => node.type === "task")).toBe(true);
 	});
 
 	test("done groups show a flat list of tasks sorted by recency (no time sub-groups)", () => {
@@ -2102,18 +2064,15 @@ describe("AgentStatusTreeProvider", () => {
 					node.type === "projectGroup",
 			);
 		if (!projectGroup) throw new Error("expected project group");
-		const doneGroup = getStatusGroupNode(
-			provider.getChildren(projectGroup),
-			"done",
-		);
-		const doneChildren = provider.getChildren(doneGroup);
+		// ≤5 agents → flat children (no status sub-groups)
+		const groupChildren = provider.getChildren(projectGroup);
 
-		// No statusTimeGroup nodes — all children are task nodes
-		expect(doneChildren.every((node) => node.type === "task")).toBe(true);
-		expect(doneChildren).toHaveLength(4);
+		// All children are task nodes
+		expect(groupChildren.every((node) => node.type === "task")).toBe(true);
+		expect(groupChildren).toHaveLength(4);
 
 		// Sorted by recency: most recent first
-		const ids = doneChildren.map(
+		const ids = groupChildren.map(
 			(node) => (node as { type: "task"; task: AgentTask }).task.id,
 		);
 		expect(ids).toEqual([
@@ -2148,12 +2107,9 @@ describe("AgentStatusTreeProvider", () => {
 					node.type === "projectGroup",
 			);
 		if (!projectGroup) throw new Error("expected project group");
-		const attentionGroup = getStatusGroupNode(
-			provider.getChildren(projectGroup),
-			"attention",
-		);
-		const attentionChildren = provider.getChildren(attentionGroup);
-		expect(attentionChildren.every((node) => node.type === "task")).toBe(true);
+		// ≤5 agents → flat children (no status sub-groups)
+		const groupChildren = provider.getChildren(projectGroup);
+		expect(groupChildren.every((node) => node.type === "task")).toBe(true);
 	});
 
 	test("running groups stay flat inside project groups", () => {
@@ -2180,12 +2136,9 @@ describe("AgentStatusTreeProvider", () => {
 					node.type === "projectGroup",
 			);
 		if (!projectGroup) throw new Error("expected project group");
-		const runningGroup = getStatusGroupNode(
-			provider.getChildren(projectGroup),
-			"running",
-		);
-		const runningChildren = provider.getChildren(runningGroup);
-		expect(runningChildren.every((node) => node.type === "task")).toBe(true);
+		// ≤5 agents → flat children (no status sub-groups)
+		const groupChildren = provider.getChildren(projectGroup);
+		expect(groupChildren.every((node) => node.type === "task")).toBe(true);
 	});
 
 	test("reload preserves diff cache entries when task identity is unchanged", () => {
@@ -2431,8 +2384,9 @@ describe("AgentStatusTreeProvider", () => {
 			tasks: [olderTask, fresherTask],
 		});
 
-		expect(item.label).toBe("🧩 Alpha");
-		expect(item.description).toContain("2m ago");
+		expect(item.label).toBe("🧩 ALPHA ▼ (2)");
+		// Description no longer includes relative time — just status summary
+		expect(item.description).toContain("1 working");
 	});
 
 	test("hardcodes status-recency mode", () => {
@@ -2606,31 +2560,23 @@ describe("AgentStatusTreeProvider", () => {
 		) as { type: "projectGroup"; projectName: string; tasks: AgentTask[] };
 		expect(groupNode.projectName).toBe("Alpha");
 
+		// ≤5 agents → flat children (no status sub-groups)
 		const groupChildren = provider.getChildren(groupNode);
+		expect(groupChildren.map((node) => node.type)).toEqual([
+			"discovered",
+			"task",
+			"task",
+		]);
 		expect(
-			groupChildren.map((node) =>
-				node.type === "statusGroup" ? node.status : node.type,
-			),
-		).toEqual(["running", "attention", "done"]);
-		const runningGroup = getStatusGroupNode(groupChildren, "running");
-		const runningChildren = provider.getChildren(runningGroup);
-		expect(runningChildren).toHaveLength(1);
-		expect(runningChildren[0]?.type).toBe("discovered");
-		if (runningChildren[0]?.type === "discovered") {
-			expect(runningChildren[0].agent.pid).toBe(5151);
-		}
-		const attentionGroup = getStatusGroupNode(groupChildren, "attention");
-		const attentionChildren = provider.getChildren(attentionGroup);
-		expect(attentionChildren[0]?.type).toBe("task");
-		if (attentionChildren[0]?.type === "task") {
-			expect(attentionChildren[0].task.id).toBe("alpha-old");
-		}
-		const doneGroup = getStatusGroupNode(groupChildren, "done");
-		const doneChildren = provider.getChildren(doneGroup);
-		expect(doneChildren[0]?.type).toBe("task");
-		if (doneChildren[0]?.type === "task") {
-			expect(doneChildren[0].task.id).toBe("alpha-completed-latest");
-		}
+			(groupChildren[0] as { type: "discovered"; agent: { pid: number } }).agent
+				.pid,
+		).toBe(5151);
+		expect(
+			(groupChildren[1] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("alpha-old");
+		expect(
+			(groupChildren[2] as { type: "task"; task: AgentTask }).task.id,
+		).toBe("alpha-completed-latest");
 	});
 
 	test("grouped project children order status groups by priority", () => {
@@ -2673,11 +2619,11 @@ describe("AgentStatusTreeProvider", () => {
 		) as { type: "projectGroup"; projectName: string; tasks: AgentTask[] };
 		const groupChildren = provider.getChildren(groupNode);
 
-		expect(
-			groupChildren.map((node) =>
-				node.type === "statusGroup" ? node.status : node.type,
-			),
-		).toEqual(["running", "attention"]);
+		// ≤5 agents → flat children (no status sub-groups)
+		expect(groupChildren.map((node) => node.type)).toEqual([
+			"discovered",
+			"task",
+		]);
 	});
 
 	test("sorts grouped roots by freshest activity in status mode", () => {
@@ -2838,9 +2784,8 @@ describe("AgentStatusTreeProvider", () => {
 			],
 		};
 		const item = provider.getTreeItem(node);
-		expect(item.label).toBe("🧩 Alpha");
+		expect(item.label).toBe("🧩 ALPHA ▼ (1)");
 		expect(item.description).toContain("1 working");
-		expect(item.description).toContain("1m ago");
 		expect(item.collapsibleState).toBe(2); // Expanded
 		expect(item.iconPath).toBeUndefined();
 		expect(item.contextValue).toBe("projectGroup");
@@ -2871,9 +2816,8 @@ describe("AgentStatusTreeProvider", () => {
 			],
 		};
 		const item = provider.getTreeItem(node);
-		expect(item.label).toBe("🛸 Alpha");
+		expect(item.label).toBe("🛸 ALPHA ▼ (1)");
 		expect(item.description).toContain("1 working");
-		expect(item.description).toContain("1m ago");
 		expect(projectIconManagerMock.getIconForProject).not.toHaveBeenCalled();
 	});
 
