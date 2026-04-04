@@ -57,8 +57,9 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 	test("uses startCommit..HEAD for completed-agent diffs", () => {
 		execOutput = "1\t1\tsrc/b.ts\n";
 		const provider = new AgentStatusTreeProvider();
+		lastExecArgs = [];
 
-		const result = provider.getPerFileDiffs("/tmp/project", "abc123");
+		const result = provider.getPerFileDiffs("/tmp/project", "abc123", "HEAD");
 
 		expect(lastExecArgs).toEqual([
 			"-C",
@@ -76,8 +77,9 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 	test("marks binary files with sentinel counts", () => {
 		execOutput = "-\t-\tassets/logo.png\n";
 		const provider = new AgentStatusTreeProvider();
+		lastExecArgs = [];
 
-		const result = provider.getPerFileDiffs("/tmp/project", "HEAD~1");
+		const result = provider.getPerFileDiffs("/tmp/project", "HEAD~1", "HEAD");
 
 		expect(result).toEqual([
 			{ filePath: "assets/logo.png", additions: -1, deletions: -1 },
@@ -107,7 +109,11 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 			}
 			return "3\t1\tsrc/fallback.ts\n";
 		});
-		const result = provider.getPerFileDiffs("/tmp/project", "stale-commit");
+		const result = provider.getPerFileDiffs(
+			"/tmp/project",
+			"stale-commit",
+			"HEAD",
+		);
 
 		expect(calls).toBe(2);
 		expect(lastExecArgs).toEqual([
@@ -130,7 +136,9 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 			status: "completed",
 			project_dir: "/tmp/project",
 			start_sha: "abc123",
+			end_commit: "HEAD",
 		} as AgentTask;
+		lastExecArgs = [];
 
 		const result = provider.getDiffSummary("/tmp/project", task);
 

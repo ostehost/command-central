@@ -108,6 +108,11 @@ export function createVSCodeMock() {
 				// Return just filename for root files
 				return parts[parts.length - 1] || path;
 			}),
+			registerTextDocumentContentProvider: mock(
+				(_scheme: string, _provider: unknown) => ({
+					dispose: mock(),
+				}),
+			),
 		},
 		TreeItem: class {
 			public description?: string;

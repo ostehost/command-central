@@ -54,6 +54,10 @@ import {
 	isValidSessionId,
 	type ProjectGroupNode,
 } from "./providers/agent-status-tree-provider.js";
+import {
+	buildDiffContentUri,
+	DiffContentProvider,
+} from "./providers/diff-content-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
 import { AgentOutputChannels } from "./services/agent-output-channels.js";
 import { AgentStatusBar } from "./services/agent-status-bar.js";
@@ -96,9 +100,6 @@ let testCountStatusBar:
 let mainLogger: LoggerService;
 let gitSortLogger: LoggerService;
 
-/** Tracks temp directories created for file diffs so they can be cleaned up on deactivate. */
-const activeDiffTempDirs = new Set<string>();
-
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
@@ -128,32 +129,6 @@ export async function activate(
 
 		mainLogger.info(`Extension starting... (v${version})`);
 		mainLogger.info(`Command Central v${version}`);
-
-		// Clean up any leftover diff temp dirs from previous sessions
-		{
-			const os = await import("node:os");
-			const fs = await import("node:fs");
-			const tmpBase = os.tmpdir();
-			try {
-				for (const entry of fs.readdirSync(tmpBase)) {
-					if (
-						entry.startsWith("command-central-file-diff-") ||
-						entry.startsWith("command-central-diff-")
-					) {
-						try {
-							fs.rmSync(path.join(tmpBase, entry), {
-								recursive: true,
-								force: true,
-							});
-						} catch {
-							// Silent — stale cleanup must never block activation
-						}
-					}
-				}
-			} catch {
-				// Silent — tmpdir scan must never block activation
-			}
-		}
 
 		// Initialize Telemetry (lightweight — no SDK, no deps)
 		const telemetry = TelemetryService.getInstance(version);
@@ -881,6 +856,13 @@ export async function activate(
 		context.subscriptions.push(agentDecorationProvider);
 		context.subscriptions.push(
 			vscode.window.registerFileDecorationProvider(agentDecorationProvider),
+		);
+		const diffContentProvider = new DiffContentProvider();
+		context.subscriptions.push(
+			vscode.workspace.registerTextDocumentContentProvider(
+				DiffContentProvider.scheme,
+				diffContentProvider,
+			),
 		);
 
 		// Track status transitions for decoration badges
@@ -2391,7 +2373,6 @@ export async function activate(
 
 					try {
 						const fs = await import("node:fs");
-						const os = await import("node:os");
 						const { execFileSync } = await import("node:child_process");
 
 						const openFileIfPresent = async (): Promise<boolean> => {
@@ -2422,6 +2403,19 @@ export async function activate(
 							| { kind: "missing" }
 							| { kind: "binary" };
 
+						const readWorkingTreeFile = (): GitFileReadResult => {
+							try {
+								const content = fs.readFileSync(absolutePath);
+								const asBuffer = Buffer.isBuffer(content)
+									? content
+									: Buffer.from(String(content));
+								if (asBuffer.includes(0x00)) return { kind: "binary" };
+								return { kind: "text", content: asBuffer.toString("utf-8") };
+							} catch {
+								return { kind: "missing" };
+							}
+						};
+
 						const readFileAtRef = (ref: string): GitFileReadResult => {
 							try {
 								const content = execFileSync(
@@ -2442,12 +2436,7 @@ export async function activate(
 						const beforeFile = readFileAtRef(beforeRef);
 						const afterFile =
 							node.taskStatus === "running"
-								? fs.existsSync(absolutePath)
-									? ({
-											kind: "text",
-											content: fs.readFileSync(absolutePath, "utf-8"),
-										} as const)
-									: ({ kind: "missing" } as const)
+								? readWorkingTreeFile()
 								: readFileAtRef(afterRef);
 
 						if (beforeFile.kind === "binary" || afterFile.kind === "binary") {
@@ -2467,31 +2456,23 @@ export async function activate(
 							return;
 						}
 
-						const taskTempDir = path.join(
-							os.tmpdir(),
-							`command-central-diff-${node.taskId ?? "unknown"}`,
-						);
-						if (!fs.existsSync(taskTempDir)) {
-							fs.mkdirSync(taskTempDir, { recursive: true });
-						}
-						activeDiffTempDirs.add(taskTempDir);
-
-						const safeRelPath = relativePath.replace(/\//g, "__");
-						const beforePath = path.join(taskTempDir, `before-${safeRelPath}`);
-						fs.writeFileSync(
-							beforePath,
-							beforeFile.kind === "text" ? beforeFile.content : "",
-							"utf-8",
-						);
-						const beforeUri = vscode.Uri.file(beforePath);
-
-						const afterPath = path.join(taskTempDir, `after-${safeRelPath}`);
-						fs.writeFileSync(
-							afterPath,
-							afterFile.kind === "text" ? afterFile.content : "",
-							"utf-8",
-						);
-						const afterUri = vscode.Uri.file(afterPath);
+						const beforeUri = buildDiffContentUri({
+							projectDir,
+							ref: beforeFile.kind === "missing" ? "empty" : beforeRef,
+							relativePath,
+							taskId: node.taskId ?? "unknown",
+						});
+						const afterUri = buildDiffContentUri({
+							projectDir,
+							ref:
+								afterFile.kind === "missing"
+									? "empty"
+									: node.taskStatus === "running"
+										? "working-tree"
+										: afterRef,
+							relativePath,
+							taskId: node.taskId ?? "unknown",
+						});
 
 						const changeHint =
 							beforeFile.kind === "missing" && afterFile.kind === "text"
@@ -2955,19 +2936,6 @@ export async function activate(
 }
 
 export async function deactivate(): Promise<void> {
-	// Clean up diff temp directories created during this session
-	{
-		const fs = await import("node:fs");
-		for (const dir of activeDiffTempDirs) {
-			try {
-				fs.rmSync(dir, { recursive: true, force: true });
-			} catch {
-				// Silent — cleanup must never block deactivation
-			}
-		}
-		activeDiffTempDirs.clear();
-	}
-
 	// Clean up Git Sorter
 	if (gitSorter) {
 		gitSorter.disable();
