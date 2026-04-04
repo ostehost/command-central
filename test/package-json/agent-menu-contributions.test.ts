@@ -263,7 +263,7 @@ describe("package.json agent menu contributions", () => {
 		const clearAction = menu.find(
 			(item) =>
 				item.command === "commandCentral.clearCompletedAgents" &&
-				item.group === "navigation@3",
+				item.group === "navigation@4",
 		);
 		expect(clearAction).toBeDefined();
 		expect(clearAction?.when).toContain("view == commandCentral.agentStatus");
@@ -277,7 +277,7 @@ describe("package.json agent menu contributions", () => {
 		const reapAction = menu.find(
 			(item) =>
 				item.command === "commandCentral.reapStaleAgents" &&
-				item.group === "navigation@4",
+				item.group === "navigation@5",
 		);
 		expect(reapAction).toBeDefined();
 		expect(reapAction?.when).toContain("view == commandCentral.agentStatus");
@@ -286,7 +286,7 @@ describe("package.json agent menu contributions", () => {
 		);
 	});
 
-	test("uses a four-button agent status toolbar", async () => {
+	test("uses agent status toolbar with filter and management buttons", async () => {
 		const menu = await getViewTitleMenu();
 		const toolbarEntries = menu.filter((item) =>
 			item.when?.includes("view == commandCentral.agentStatus"),
@@ -315,15 +315,29 @@ describe("package.json agent menu contributions", () => {
 		expect(
 			toolbarEntries.some(
 				(item) =>
-					item.command === "commandCentral.clearCompletedAgents" &&
+					item.command === "commandCentral.filterCurrentProject" &&
 					item.group === "navigation@3",
 			),
 		).toBe(true);
 		expect(
 			toolbarEntries.some(
 				(item) =>
-					item.command === "commandCentral.reapStaleAgents" &&
+					item.command === "commandCentral.clearProjectFilter" &&
+					item.group === "navigation@3",
+			),
+		).toBe(true);
+		expect(
+			toolbarEntries.some(
+				(item) =>
+					item.command === "commandCentral.clearCompletedAgents" &&
 					item.group === "navigation@4",
+			),
+		).toBe(true);
+		expect(
+			toolbarEntries.some(
+				(item) =>
+					item.command === "commandCentral.reapStaleAgents" &&
+					item.group === "navigation@5",
 			),
 		).toBe(true);
 		expect(
