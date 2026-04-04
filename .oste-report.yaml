@@ -1,11 +1,10 @@
-task_id: "cc-agent-project-sections-v1"
+task_id: "cc-agent-filter-ui-v1"
 status: "success"
-summary: "Mirror Git Sort project sections in Agent Status view — uppercase names, ▼ indicator, smart collapse, view badge, status sub-groups, project filter commands"
+summary: "Wire project filter UI with toolbar button, quick pick, view description, and flat-mode filtering"
 files_changed:
   - "src/providers/agent-status-tree-provider.ts"
   - "src/extension.ts"
   - "package.json"
-  - "test/package-json/agent-menu-contributions.test.ts"
   - "test/tree-view/agent-status-tree-provider.test.ts"
 tests_passing: true
-next_steps: "Consider adding keyboard shortcut for filterCurrentProject (e.g. 'p' when agentStatus view is focused)"
+next_steps: "Consider adding filter persistence across sessions via workspace state"
