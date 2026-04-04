@@ -73,9 +73,9 @@ describe("tasks.json startup smoke", () => {
 		expect(treeProvider.getChildren()).toEqual([
 			{
 				type: "state",
-				label: "No agents tracked yet",
-				description: "Start an agent task to populate this view.",
-				icon: "info",
+				label: "Waiting for agents...",
+				description: "Start Claude Code, Codex, or Gemini in any terminal",
+				icon: "search",
 			},
 		]);
 	});
@@ -90,9 +90,9 @@ describe("tasks.json startup smoke", () => {
 		expect(treeProvider.getChildren()).toEqual([
 			{
 				type: "state",
-				label: "No agents tracked yet",
-				description: "Start an agent task to populate this view.",
-				icon: "info",
+				label: "Waiting for agents...",
+				description: "Start Claude Code, Codex, or Gemini in any terminal",
+				icon: "search",
 			},
 		]);
 	});
@@ -111,9 +111,9 @@ describe("tasks.json startup smoke", () => {
 			expect(treeProvider.getChildren()).toEqual([
 				{
 					type: "state",
-					label: "No agents tracked yet",
-					description: "Start an agent task to populate this view.",
-					icon: "info",
+					label: "Waiting for agents...",
+					description: "Start Claude Code, Codex, or Gemini in any terminal",
+					icon: "search",
 				},
 			]);
 			expect(warnMock).toHaveBeenCalledTimes(1);

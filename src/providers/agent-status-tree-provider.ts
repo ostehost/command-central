@@ -2222,8 +2222,8 @@ export class AgentStatusTreeProvider
 					return [
 						{
 							type: "state",
-							label: "Loading agents...",
-							description: "Reading tasks registry",
+							label: "Scanning for agents...",
+							description: "Checking processes, sessions, and tasks",
 							icon: "loading~spin",
 						},
 					];
@@ -2241,9 +2241,9 @@ export class AgentStatusTreeProvider
 				return [
 					{
 						type: "state",
-						label: "No agents tracked yet",
-						description: "Start an agent task to populate this view.",
-						icon: "info",
+						label: "Waiting for agents...",
+						description: "Start Claude Code, Codex, or Gemini in any terminal",
+						icon: "search",
 					},
 				];
 			}
