@@ -517,8 +517,8 @@ describe("AgentStatusTreeProvider", () => {
 		if (summary?.type === "summary") {
 			expect(summary.label).toContain("4 agents");
 			expect(summary.label).toContain("1 working");
-			expect(summary.label).toContain("2 stopped");
-			expect(summary.label).toContain("1 done");
+			expect(summary.label).toContain("2 ⏹");
+			expect(summary.label).toContain("1 ✓");
 		}
 	});
 
@@ -562,14 +562,12 @@ describe("AgentStatusTreeProvider", () => {
 			const summary = children.find((n) => n.type === "summary");
 			expect(summary).toBeDefined();
 			if (summary?.type === "summary") {
-				expect(summary.label).toContain("1 done");
+				expect(summary.label).toContain("1 ✓");
 				expect(summary.label).not.toContain("1 working");
 			}
 			const taskNode = getFirstTask(children);
 			const taskItem = provider.getTreeItem(taskNode);
-			expect(taskItem.description).toContain(
-				"Stale — session ended without completion signal",
-			);
+			expect(taskItem.description).toContain("stale");
 			const icon = taskItem.iconPath as { id: string; color?: { id: string } };
 			expect(icon.id).toBe("warning");
 			expect(icon.color?.id).toBe("charts.yellow");
@@ -1127,7 +1125,7 @@ describe("AgentStatusTreeProvider", () => {
 				expect(summary).toBeDefined();
 				if (summary?.type === "summary") {
 					expect(summary.label).not.toContain("1 working");
-					expect(summary.label).toContain("2 done");
+					expect(summary.label).toContain("2 ✓");
 				}
 
 				expect(vscodeMock.window.badge).toBeUndefined();
@@ -1218,7 +1216,7 @@ describe("AgentStatusTreeProvider", () => {
 			expect(summary).toBeDefined();
 			if (summary?.type === "summary") {
 				expect(summary.label).toContain("1 working");
-				expect(summary.label).toContain("1 done");
+				expect(summary.label).toContain("1 ✓");
 			}
 		});
 
@@ -1788,7 +1786,7 @@ describe("AgentStatusTreeProvider", () => {
 		expect(summary).toBeDefined();
 		if (summary?.type === "summary") {
 			expect(summary.label).toContain("1 working");
-			expect(summary.label).toContain("2 stopped");
+			expect(summary.label).toContain("2 ⏹");
 			expect(summary.label).toContain("1 stuck");
 		}
 
@@ -3290,7 +3288,9 @@ describe("AgentStatusTreeProvider", () => {
 		const firstTask = getFirstTask(root);
 		const details = provider.getChildren(firstTask);
 		const resultDetail = details.find(
-			(d) => d.type === "detail" && d.label === "Result",
+			(d) =>
+				d.type === "detail" &&
+				(d.label?.startsWith("✅") || d.label?.startsWith("❌")),
 		);
 		expect(resultDetail).toBeUndefined();
 	});
@@ -3736,11 +3736,12 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const gitDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Git",
+				(d) => d.type === "detail" && d.icon === "git-branch",
 			);
 			expect(gitDetail).toBeDefined();
 			if (gitDetail?.type === "detail") {
-				expect(gitDetail.value).toBe("feature/my-branch → abc1234");
+				expect(gitDetail.label).toContain("feature/my-branch");
+				expect(gitDetail.label).toContain("abc1234");
 			}
 		});
 
@@ -3755,7 +3756,7 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const gitDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Git",
+				(d) => d.type === "detail" && d.icon === "git-branch",
 			);
 			expect(gitDetail).toBeUndefined();
 		});
@@ -3774,14 +3775,14 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const gitDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Git",
+				(d) => d.type === "detail" && d.icon === "git-branch",
 			);
 			expect(gitDetail).toBeDefined();
 			if (!gitDetail) {
 				throw new Error("Git detail not found");
 			}
 			const gitItem = provider.getTreeItem(gitDetail);
-			expect(gitItem.label).toBe("Git: main → def5678");
+			expect(gitItem.label).toBe("main · def5678");
 		});
 
 		test("Git detail prefers task end_commit over current HEAD", () => {
@@ -3801,14 +3802,14 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const gitDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Git",
+				(d) => d.type === "detail" && d.icon === "git-branch",
 			);
 			expect(gitDetail).toBeDefined();
 			if (!gitDetail) {
 				throw new Error("Git detail not found");
 			}
 			const gitItem = provider.getTreeItem(gitDetail);
-			expect(gitItem.label).toBe("Git: main → df10667");
+			expect(gitItem.label).toBe("main · df10667");
 		});
 	});
 
@@ -4632,12 +4633,12 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const promptDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Prompt",
+				(d) => d.type === "detail" && d.icon === "comment",
 			);
 			expect(promptDetail).toBeDefined();
 			if (promptDetail?.type === "detail") {
-				expect(promptDetail.value).toBe("Implement the widget factory");
-				expect(promptDetail.value).not.toContain("/tmp/");
+				expect(promptDetail.label).toBe("Implement the widget factory");
+				expect(promptDetail.label).not.toContain("/tmp/");
 			}
 		});
 	});
@@ -4694,11 +4695,11 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const changesDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Changes",
+				(d) => d.type === "detail" && d.icon === "diff",
 			);
 			expect(changesDetail).toBeDefined();
 			if (changesDetail?.type === "detail") {
-				expect(changesDetail.value).toBe("3 files · +100 / -20");
+				expect(changesDetail.label).toBe("3 files · +100 / -20");
 			}
 		});
 
@@ -4713,7 +4714,7 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const changesDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Changes",
+				(d) => d.type === "detail" && d.icon === "diff",
 			);
 			expect(changesDetail).toBeUndefined();
 		});
@@ -4736,7 +4737,7 @@ describe("AgentStatusTreeProvider", () => {
 			expect(worktreeDetail).toBeUndefined();
 		});
 
-		test("detail children include merged Git node with branch → hash", () => {
+		test("detail children include merged Git node with branch · hash", () => {
 			const task = createMockTask();
 			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
 			provider.getDiffSummary = () => null;
@@ -4750,11 +4751,12 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const gitDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Git",
+				(d) => d.type === "detail" && d.icon === "git-branch",
 			);
 			expect(gitDetail).toBeDefined();
 			if (gitDetail?.type === "detail") {
-				expect(gitDetail.value).toBe("feature/sidebar → a1b2c3d");
+				expect(gitDetail.label).toContain("feature/sidebar");
+				expect(gitDetail.label).toContain("a1b2c3d");
 			}
 		});
 
@@ -4774,11 +4776,11 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const resultDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Result",
+				(d) => d.type === "detail" && d.label?.startsWith("✅"),
 			);
 			expect(resultDetail).toBeDefined();
 			if (resultDetail?.type === "detail") {
-				expect(resultDetail.value).toBe("✅ Success");
+				expect(resultDetail.label).toBe("✅ Completed");
 			}
 		});
 
@@ -4796,13 +4798,17 @@ describe("AgentStatusTreeProvider", () => {
 			const root = provider.getChildren();
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
-			const labels = details.map((d) => (d.type === "detail" ? d.label : ""));
-			expect(labels).toContain("Prompt");
-			expect(labels).toContain("Changes");
-			expect(labels).toContain("Git");
-			expect(labels).not.toContain("Result");
-			expect(labels).not.toContain("Worktree");
-			expect(labels).not.toContain("Session");
+			const icons = details.map((d) =>
+				d.type === "detail" ? (d.icon ?? "") : "",
+			);
+			expect(icons).toContain("comment");
+			expect(icons).toContain("diff");
+			expect(icons).toContain("git-branch");
+			// No Result node for running tasks
+			const hasResult = details.some(
+				(d) => d.type === "detail" && d.label?.startsWith("✅"),
+			);
+			expect(hasResult).toBe(false);
 		});
 
 		test("discovered children no longer include Session node", () => {
@@ -5147,14 +5153,14 @@ describe("AgentStatusTreeProvider", () => {
 
 			// Before marking reviewed — no badge
 			let item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).not.toContain("✓ reviewed");
+			expect(item.description).not.toContain("✓");
 			expect(item.contextValue).toBe("agentTask.completed");
 
 			// Mark reviewed
 			provider.markTaskReviewed("test-task-1");
 
 			item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).toContain("✓ reviewed");
+			expect(item.description).toContain("✓");
 			expect(item.contextValue).toBe("agentTask.completed.reviewed");
 		});
 
@@ -5185,7 +5191,7 @@ describe("AgentStatusTreeProvider", () => {
 
 			// Running tasks don't get the reviewed badge
 			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).not.toContain("✓ reviewed");
+			expect(item.description).not.toContain("✓");
 			expect(item.contextValue).toBe("agentTask.running");
 		});
 
@@ -5202,7 +5208,7 @@ describe("AgentStatusTreeProvider", () => {
 					completed_at: new Date(Date.now() - 60_000).toISOString(),
 				});
 				const item = provider.getTreeItem({ type: "task", task });
-				expect(item.description).toContain("✓ reviewed");
+				expect(item.description).toContain("✓");
 			} finally {
 				fs.rmSync(tmpDir, { recursive: true, force: true });
 			}
@@ -5248,11 +5254,11 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const modelDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Model",
+				(d) => d.type === "detail" && d.icon === "hubot",
 			);
 			expect(modelDetail).toBeDefined();
 			if (modelDetail?.type === "detail") {
-				expect(modelDetail.value).toBe("anthropic/claude-opus-4-6 (explicit)");
+				expect(modelDetail.label).toBe("opus");
 			}
 		});
 
@@ -5292,11 +5298,11 @@ describe("AgentStatusTreeProvider", () => {
 				const firstTask = getFirstTask(root);
 				const details = provider.getChildren(firstTask);
 				const modelDetail = details.find(
-					(d) => d.type === "detail" && d.label === "Model",
+					(d) => d.type === "detail" && d.icon === "hubot",
 				);
 				expect(modelDetail).toBeDefined();
 				if (modelDetail?.type === "detail") {
-					expect(modelDetail.value).toBe("openai-codex/gpt-5.4 (inherited)");
+					expect(modelDetail.label).toBe("codex-5.4");
 				}
 			} finally {
 				fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -5354,13 +5360,12 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const modelDetail = details.find(
-				(d) => d.type === "detail" && d.label === "Model",
+				(d) => d.type === "detail" && d.icon === "hubot",
 			);
 			expect(modelDetail).toBeDefined();
 			if (modelDetail?.type === "detail") {
-				expect(modelDetail.value).toBe(
-					"google/gemini-2.5-flash-lite (fallback from anthropic/claude-opus-4-6)",
-				);
+				expect(modelDetail.label).toContain("flash-lite");
+				expect(modelDetail.label).toContain("(fallback)");
 			}
 		});
 	});

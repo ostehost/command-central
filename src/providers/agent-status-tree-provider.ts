@@ -2652,8 +2652,8 @@ export class AgentStatusTreeProvider
 	private formatSummaryCounts(counts: AgentCounts): string {
 		const parts = [
 			counts.working > 0 ? `${counts.working} working` : null,
-			counts.attention > 0 ? `${counts.attention} stopped` : null,
-			counts.done > 0 ? `${counts.done} done` : null,
+			counts.attention > 0 ? `${counts.attention} ⏹` : null,
+			counts.done > 0 ? `${counts.done} ✓` : null,
 		];
 
 		return (
@@ -3392,7 +3392,7 @@ export class AgentStatusTreeProvider
 		if (rawStatus === "running" && t.status === "completed_stale") {
 			details.push({
 				type: "detail",
-				label: STALE_AGENT_STATUS_DESCRIPTION,
+				label: "⚠️ Stale",
 				value: "Mark as failed to persist the transition",
 				taskId: t.id,
 				icon: "alert",
@@ -3418,11 +3418,14 @@ export class AgentStatusTreeProvider
 		const promptValue =
 			isPromptFallback && t.prompt_summary ? t.prompt_summary : promptSummary;
 		if (promptValue && promptValue !== "---" && !promptValue.endsWith(".md")) {
+			const truncatedPrompt =
+				promptValue.length > 60 ? `${promptValue.slice(0, 59)}…` : promptValue;
 			details.push({
 				type: "detail",
-				label: "Prompt",
-				value: promptValue,
+				label: truncatedPrompt,
+				value: "",
 				taskId: t.id,
+				icon: "comment",
 			});
 		}
 
@@ -3431,27 +3434,30 @@ export class AgentStatusTreeProvider
 		if (diffSummary) {
 			details.push({
 				type: "detail",
-				label: "Changes",
-				value: diffSummary,
+				label: diffSummary,
+				value: "",
 				taskId: t.id,
+				icon: "diff",
 			});
 		}
 		// Omit diff loading placeholder — show nothing until ready
 
-		// Git info — merged branch + hash
+		// Git info — merged branch + hash into one line
 		const gitInfo = this.getGitInfo(t.project_dir);
 		if (gitInfo) {
 			const gitHash =
 				t.status === "running"
 					? this.extractCommitHash(gitInfo.lastCommit)
 					: this.getTaskDiffEndCommit(t);
+			const gitLabel = gitHash
+				? `${gitInfo.branch} · ${this.shortenCommitHash(gitHash)}`
+				: gitInfo.branch;
 			details.push({
 				type: "detail",
-				label: "Git",
-				value: gitHash
-					? `${gitInfo.branch} → ${this.shortenCommitHash(gitHash)}`
-					: gitInfo.branch,
+				label: gitLabel,
+				value: "",
 				taskId: t.id,
+				icon: "git-branch",
 			});
 		}
 
@@ -3463,13 +3469,13 @@ export class AgentStatusTreeProvider
 				t.status === "stopped")
 		) {
 			const resultText =
-				t.exit_code === 0 ? "✅ Success" : `❌ Failed (code ${t.exit_code})`;
+				t.exit_code === 0 ? "✅ Completed" : `❌ Failed (code ${t.exit_code})`;
 			const retrySuffix =
 				t.attempts > 1 ? ` · Retry ${t.attempts}/${t.max_attempts}` : "";
 			details.push({
 				type: "detail",
-				label: "Result",
-				value: `${resultText}${retrySuffix}`,
+				label: `${resultText}${retrySuffix}`,
+				value: "",
 				taskId: t.id,
 			});
 		}
@@ -3490,16 +3496,18 @@ export class AgentStatusTreeProvider
 		if (detailFallback) {
 			details.push({
 				type: "detail",
-				label: "Model",
-				value: `${detailFallback.actualFull} (fallback from ${detailFallback.requestedFull})`,
+				label: `${detailFallback.actualAlias} (fallback)`,
+				value: "",
 				taskId: t.id,
+				icon: "hubot",
 			});
 		} else if (modelDisplay) {
 			details.push({
 				type: "detail",
-				label: "Model",
-				value: `${modelDisplay.fullName} (${modelDisplay.isExplicit ? "explicit" : "inherited"})`,
+				label: modelDisplay.alias,
+				value: "",
 				taskId: t.id,
+				icon: "hubot",
 			});
 		}
 
@@ -5465,7 +5473,7 @@ export class AgentStatusTreeProvider
 			descriptionParts.push(task.project_name);
 		}
 		if (task.status === "completed_stale") {
-			descriptionParts.push(STALE_AGENT_STATUS_DESCRIPTION);
+			descriptionParts.push("stale");
 		}
 		if (diffSummaryInline) {
 			descriptionParts.push(diffSummaryInline);
@@ -5494,11 +5502,15 @@ export class AgentStatusTreeProvider
 			descriptionParts.push(relativeTime(this.getTaskActivityTimeMs(task)));
 		}
 		if (isReviewed) {
-			descriptionParts.push("✓ reviewed");
+			descriptionParts.push("✓");
 		}
-		const description = isStuck
+		const rawDescription = isStuck
 			? `${descriptionParts.join(" · ")} (possibly stuck)`
 			: descriptionParts.join(" · ");
+		const description =
+			rawDescription.length > 80
+				? `${rawDescription.slice(0, 79)}…`
+				: rawDescription;
 		const duration = this.getTaskDuration(task);
 
 		const item = new vscode.TreeItem(
@@ -5610,7 +5622,27 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.contextValue = "olderRuns";
-		item.iconPath = new vscode.ThemeIcon("history");
+		item.iconPath = new vscode.ThemeIcon(
+			"history",
+			new vscode.ThemeColor("descriptionForeground"),
+		);
+		// Build a description from the hidden node statuses
+		const hasCompleted = node.hiddenNodes.some(
+			(n) =>
+				n.type === "task" &&
+				(n.task.status === "completed" ||
+					n.task.status === "completed_dirty" ||
+					n.task.status === "completed_stale"),
+		);
+		const hasStopped = node.hiddenNodes.some(
+			(n) => n.type === "task" && n.task.status === "stopped",
+		);
+		const statusParts: string[] = [];
+		if (hasCompleted) statusParts.push("completed");
+		if (hasStopped) statusParts.push("stopped");
+		if (statusParts.length > 0) {
+			item.description = statusParts.join(" · ");
+		}
 		return item;
 	}
 
