@@ -2459,7 +2459,7 @@ export async function activate(
 						const afterFile =
 							node.taskStatus === "running"
 								? readWorkingTreeFile()
-								: readFileAtRef(afterRef);
+								: readFileAtRef(afterRef!);
 
 						if (beforeFile.kind === "binary" || afterFile.kind === "binary") {
 							const opened = await openFileIfPresent();
@@ -2491,7 +2491,7 @@ export async function activate(
 									? "empty"
 									: node.taskStatus === "running"
 										? "working-tree"
-										: afterRef,
+										: afterRef!,
 							relativePath,
 							taskId: node.taskId ?? "unknown",
 						});

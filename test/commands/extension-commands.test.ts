@@ -826,7 +826,7 @@ describe("openFileDiff command", () => {
 			projectDir: "/tmp/project",
 			projectName: "command-central",
 			filePath: "src/app.ts",
-			taskStatus: "completed" as const,
+			taskStatus: "completed",
 			startCommit: "abc123",
 			endCommit: "def456",
 		};
@@ -843,7 +843,7 @@ describe("openFileDiff command", () => {
 		const node = {
 			projectDir: "/tmp/project",
 			filePath: "src/app.ts",
-			taskStatus: "completed" as const,
+			taskStatus: "completed",
 			startCommit: "abc123",
 			endCommit: undefined,
 		};
