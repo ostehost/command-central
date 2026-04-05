@@ -559,7 +559,7 @@ const TASK_STATUS_PRIORITY: Record<AgentStatusGroup, number> = {
 	done: 2,
 };
 
-const PORT_LOADING_LABEL = "Detecting ports...";
+// PORT_LOADING_LABEL removed — ports row only renders with real data
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const STATUS_GROUP_LABELS: Record<AgentStatusGroup, string> = {
@@ -2665,23 +2665,7 @@ export class AgentStatusTreeProvider
 
 	/** Get detail children for discovered agents (no task record) */
 	private getDiscoveredChildren(agent: DiscoveredAgent): DetailNode[] {
-		const sourceLabel =
-			agent.source === "process"
-				? "Discovered via ps"
-				: "Discovered via session file";
 		const details: DetailNode[] = [
-			{
-				type: "detail",
-				label: "PID",
-				value: `${agent.pid}`,
-				taskId: `discovered-${agent.pid}`,
-			},
-			{
-				type: "detail",
-				label: "Source",
-				value: sourceLabel,
-				taskId: `discovered-${agent.pid}`,
-			},
 			{
 				type: "detail",
 				label: "Working Dir",
@@ -3710,19 +3694,7 @@ export class AgentStatusTreeProvider
 			} else if (!this._portDetecting.has(t.id)) {
 				this._portDetecting.add(t.id);
 				void this._detectPortsAsync(t);
-				details.push({
-					type: "detail",
-					label: "Ports",
-					value: PORT_LOADING_LABEL,
-					taskId: t.id,
-				});
-			} else {
-				details.push({
-					type: "detail",
-					label: "Ports",
-					value: PORT_LOADING_LABEL,
-					taskId: t.id,
-				});
+				// Suppress placeholder — row appears only after real ports are detected
 			}
 		}
 
