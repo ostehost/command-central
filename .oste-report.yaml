@@ -1,10 +1,7 @@
-task_id: "cc-agent-filter-ui-v1"
+task_id: "noise-reduction-pass"
 status: "success"
-summary: "Wire project filter UI with toolbar button, quick pick, view description, and flat-mode filtering"
+summary: "Suppressed Ports loading placeholder rows and removed low-signal PID/Source detail rows from discovered agents"
 files_changed:
   - "src/providers/agent-status-tree-provider.ts"
-  - "src/extension.ts"
-  - "package.json"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
 tests_passing: true
-next_steps: "Consider adding filter persistence across sessions via workspace state"
+next_steps: "Consider further noise reduction on discovered agent detail rows or description line tightening if the view is still too dense"
