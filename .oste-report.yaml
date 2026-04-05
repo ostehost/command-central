@@ -1,7 +1,7 @@
-task_id: "noise-reduction-pass"
+task_id: "cc-unified-project-surface-spec"
 status: "success"
-summary: "Suppressed Ports loading placeholder rows and removed low-signal PID/Source detail rows from discovered agents"
+summary: "Wrote comprehensive unified project surface spec covering UX vision, shared cache model, current-project mode, and 5-phase milestone breakdown"
 files_changed:
-  - "src/providers/agent-status-tree-provider.ts"
+  - "specs/cc-unified-project-surface-v1.md"
 tests_passing: true
-next_steps: "Consider further noise reduction on discovered agent detail rows or description line tightening if the view is still too dense"
+next_steps: "Phase 1 (visual parity) is already specced in cc-agent-project-sections-v1.md and can ship first. Phase 2 (ProjectContext type) is additive and can start in parallel."
