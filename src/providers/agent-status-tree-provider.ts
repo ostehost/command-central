@@ -256,6 +256,7 @@ export interface DetailNode {
 	description?: string;
 	icon?: string;
 	iconColor?: string;
+	command?: vscode.Command;
 }
 
 export interface PerFileDiff {
@@ -483,6 +484,31 @@ export function formatElapsed(startedAt: string, now?: Date): string {
 		return `${hours}h ${minutes}m`;
 	}
 	return `${minutes}m`;
+}
+
+/**
+ * Format duration between two ISO timestamps (or from start to now) with
+ * minute+second precision, e.g. "4m 32s", "1h 12m", "< 1m".
+ */
+function formatDurationPrecise(
+	startIso: string,
+	endIso?: string | null,
+): string {
+	const start = new Date(startIso).getTime();
+	const end = endIso ? new Date(endIso).getTime() : Date.now();
+	const diffMs = Math.max(0, end - start);
+	const totalSeconds = Math.floor(diffMs / 1000);
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+
+	if (hours > 0) {
+		return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+	}
+	if (minutes > 0) {
+		return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+	}
+	return totalSeconds > 0 ? `${seconds}s` : "< 1s";
 }
 
 function getStatusElapsedReference(task: AgentTask): string {
@@ -3467,13 +3493,20 @@ export class AgentStatusTreeProvider
 		const details: DetailNode[] = [];
 		const rawStatus = this.registry.tasks[t.id]?.status;
 
+		// ── 1. Result line — FIRST child, prominent ─────────────────────
+		const duration = t.completed_at
+			? formatDurationPrecise(t.started_at, t.completed_at)
+			: null;
+		const runningDuration = formatDurationPrecise(t.started_at);
+
 		if (t.status === "failed" && t.exit_code != null) {
 			const retrySuffix =
 				t.attempts > 1 ? ` · Retry ${t.attempts}/${t.max_attempts}` : "";
+			const durationSuffix = duration ? ` after ${duration}` : "";
 			const errorMessage = t.error_message?.trim();
 			details.push({
 				type: "detail",
-				label: `Error: ❌ Failed (code ${t.exit_code})${retrySuffix}`,
+				label: `Failed (exit code ${t.exit_code})${durationSuffix}${retrySuffix}`,
 				value: "",
 				taskId: t.id,
 				description:
@@ -3481,7 +3514,45 @@ export class AgentStatusTreeProvider
 				icon: "error",
 				iconColor: "charts.red",
 			});
+		} else if (
+			t.exit_code != null &&
+			(t.status === "completed" ||
+				t.status === "completed_dirty" ||
+				t.status === "stopped")
+		) {
+			const retrySuffix =
+				t.attempts > 1 ? ` · Retry ${t.attempts}/${t.max_attempts}` : "";
+			const durationSuffix = duration ? ` in ${duration}` : "";
+			if (t.exit_code === 0) {
+				details.push({
+					type: "detail",
+					label: `Completed${durationSuffix}${retrySuffix}`,
+					value: "",
+					taskId: t.id,
+					icon: "pass",
+					iconColor: "charts.green",
+				});
+			} else {
+				details.push({
+					type: "detail",
+					label: `Failed (exit code ${t.exit_code})${durationSuffix}${retrySuffix}`,
+					value: "",
+					taskId: t.id,
+					icon: "error",
+					iconColor: "charts.red",
+				});
+			}
+		} else if (t.status === "running") {
+			details.push({
+				type: "detail",
+				label: `Running for ${runningDuration}`,
+				value: "",
+				taskId: t.id,
+				icon: "sync~spin",
+				iconColor: "charts.blue",
+			});
 		}
+
 		if (rawStatus === "running" && t.status === "stopped") {
 			details.push({
 				type: "detail",
@@ -3495,10 +3566,10 @@ export class AgentStatusTreeProvider
 		if (rawStatus === "running" && t.status === "completed_stale") {
 			details.push({
 				type: "detail",
-				label: "⚠️ Stale",
-				value: "Mark as failed to persist the transition",
+				label: "Stale — no completion signal",
+				value: "",
 				taskId: t.id,
-				icon: "alert",
+				icon: "warning",
 				iconColor: "charts.yellow",
 			});
 		}
@@ -3515,45 +3586,53 @@ export class AgentStatusTreeProvider
 			});
 		}
 
+		// ── 2. Prompt — smart truncation ────────────────────────────────
 		const promptSummary = this.readPromptSummary(t.prompt_file);
 		const isPromptFallback =
 			!promptSummary || promptSummary === path.basename(t.prompt_file);
 		const promptValue =
 			isPromptFallback && t.prompt_summary ? t.prompt_summary : promptSummary;
 		if (promptValue && promptValue !== "---" && !promptValue.endsWith(".md")) {
-			const truncatedPrompt =
-				promptValue.length > 60 ? `${promptValue.slice(0, 59)}…` : promptValue;
-			details.push({
-				type: "detail",
-				label: truncatedPrompt,
-				value: "",
-				taskId: t.id,
-				icon: "comment",
-			});
+			const cleanedPrompt = this.cleanPromptForDisplay(promptValue);
+			if (cleanedPrompt) {
+				const truncatedPrompt =
+					cleanedPrompt.length > 80
+						? `${cleanedPrompt.slice(0, 79)}…`
+						: cleanedPrompt;
+				details.push({
+					type: "detail",
+					label: truncatedPrompt,
+					value: "",
+					taskId: t.id,
+					icon: "comment",
+				});
+			}
 		}
 
-		// Diff summary
+		// ── 3. Changes — inline file names when ≤3 files ────────────────
 		const diffSummary = this.getCachedDiffSummaryForTask(t);
 		if (diffSummary) {
+			const changesLabel = this.formatSmartDiffLabel(t, diffSummary);
 			details.push({
 				type: "detail",
-				label: diffSummary,
+				label: changesLabel,
 				value: "",
 				taskId: t.id,
-				icon: "diff",
+				icon: "files",
 			});
 		}
 		// Omit diff loading placeholder — show nothing until ready
 
-		// Git info — merged branch + hash into one line
+		// ── 4. Git info — branch + commit with click-to-copy ────────────
 		const gitInfo = this.getGitInfo(t.project_dir);
 		if (gitInfo) {
 			const gitHash =
 				t.status === "running"
 					? this.extractCommitHash(gitInfo.lastCommit)
 					: this.getTaskDiffEndCommit(t);
-			const gitLabel = gitHash
-				? `${gitInfo.branch} · ${this.shortenCommitHash(gitHash)}`
+			const shortHash = gitHash ? this.shortenCommitHash(gitHash) : null;
+			const gitLabel = shortHash
+				? `${gitInfo.branch} · ${shortHash}`
 				: gitInfo.branch;
 			details.push({
 				type: "detail",
@@ -3561,25 +3640,27 @@ export class AgentStatusTreeProvider
 				value: "",
 				taskId: t.id,
 				icon: "git-branch",
+				command: gitHash
+					? {
+							command: "commandCentral.copyToClipboard",
+							title: "Copy commit hash",
+							arguments: [gitHash],
+						}
+					: undefined,
 			});
 		}
 
-		// Result — merged exit code + attempts (only for terminal states)
+		// ── 5. Duration — only if not already shown in Result line ──────
 		if (
-			t.exit_code != null &&
-			(t.status === "completed" ||
-				t.status === "completed_dirty" ||
-				t.status === "stopped")
+			t.status === "running" &&
+			!details.some((d) => d.icon === "sync~spin")
 		) {
-			const resultText =
-				t.exit_code === 0 ? "✅ Completed" : `❌ Failed (code ${t.exit_code})`;
-			const retrySuffix =
-				t.attempts > 1 ? ` · Retry ${t.attempts}/${t.max_attempts}` : "";
 			details.push({
 				type: "detail",
-				label: `${resultText}${retrySuffix}`,
+				label: runningDuration,
 				value: "",
 				taskId: t.id,
+				icon: "clock",
 			});
 		}
 
@@ -3593,13 +3674,13 @@ export class AgentStatusTreeProvider
 			});
 		}
 
-		// Model — from tasks.json (spawn-time) or OpenClaw config (policy)
+		// ── 6. Model — clean alias format ───────────────────────────────
 		const detailFallback = this.getTaskFallbackInfo(t);
 		const modelDisplay = this.resolveTaskModelDisplay(t);
 		if (detailFallback) {
 			details.push({
 				type: "detail",
-				label: `${detailFallback.actualAlias} (fallback)`,
+				label: `${detailFallback.actualAlias} (fallback from ${detailFallback.requestedAlias})`,
 				value: "",
 				taskId: t.id,
 				icon: "hubot",
@@ -3646,6 +3727,68 @@ export class AgentStatusTreeProvider
 		}
 
 		return details;
+	}
+
+	/**
+	 * Strip boilerplate prefixes (ULTRATHINK, system-reminder lines, etc.)
+	 * and return the first meaningful line, trimmed.
+	 */
+	private cleanPromptForDisplay(raw: string): string | null {
+		const lines = raw.split("\n");
+		const boilerplatePrefixes = [
+			"ULTRATHINK",
+			"<system-reminder>",
+			"---",
+			"##",
+			"# Task",
+			"task_id:",
+		];
+		for (const line of lines) {
+			const trimmed = line.trim();
+			if (!trimmed) continue;
+			if (boilerplatePrefixes.some((p) => trimmed.startsWith(p))) continue;
+			return trimmed;
+		}
+		return null;
+	}
+
+	/**
+	 * If ≤3 files changed, show file names inline; otherwise keep the count summary.
+	 * Uses cached per-file data from getFileChangeChildren to avoid extra git spawns.
+	 */
+	private formatSmartDiffLabel(t: AgentTask, fallbackSummary: string): string {
+		// Parse the file count from the cached summary (e.g. "3 files · +100 / -20")
+		const countMatch = fallbackSummary.match(/^(\d+)\s+files?\s+·/);
+		const fileCount = countMatch?.[1] ? Number.parseInt(countMatch[1], 10) : 0;
+
+		// Only attempt inline file names for ≤3 files in valid git repos
+		if (fileCount < 1 || fileCount > 3) return fallbackSummary;
+		if (!fs.existsSync(t.project_dir)) return fallbackSummary;
+
+		try {
+			const startCommit = this.getTaskDiffStartCommit(t);
+			const endCommit = this.getTaskDiffEndCommit(t);
+			const fileDiffs = this.getPerFileDiffs(
+				t.project_dir,
+				startCommit,
+				endCommit,
+			);
+			if (fileDiffs.length === 0 || fileDiffs.length > 3)
+				return fallbackSummary;
+
+			const additions = fileDiffs.reduce(
+				(total, d) => total + Math.max(d.additions, 0),
+				0,
+			);
+			const deletions = fileDiffs.reduce(
+				(total, d) => total + Math.max(d.deletions, 0),
+				0,
+			);
+			const names = fileDiffs.map((d) => path.basename(d.filePath));
+			return `${names.join(", ")} · +${additions} / -${deletions}`;
+		} catch {
+			return fallbackSummary;
+		}
 	}
 
 	private getFileChangeChildren(t: AgentTask): FileChangeNode[] {
@@ -5790,6 +5933,9 @@ export class AgentStatusTreeProvider
 				node.icon,
 				node.iconColor ? new vscode.ThemeColor(node.iconColor) : undefined,
 			);
+		}
+		if (node.command) {
+			item.command = node.command;
 		}
 		return item;
 	}

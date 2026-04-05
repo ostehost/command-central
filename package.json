@@ -392,6 +392,10 @@
         "icon": "$(folder-opened)"
       },
       {
+        "command": "commandCentral.copyToClipboard",
+        "title": "Command Central: Copy to Clipboard"
+      },
+      {
         "command": "commandCentral.gitSort.copyPath",
         "title": "Command Central: Copy Path",
         "icon": "$(copy)"

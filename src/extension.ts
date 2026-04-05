@@ -626,6 +626,18 @@ export async function activate(
 			),
 		);
 
+		// Utility: copy text to clipboard (used by detail item click commands)
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.copyToClipboard",
+				async (text: string) => {
+					if (text) {
+						await vscode.env.clipboard.writeText(text);
+					}
+				},
+			),
+		);
+
 		// Check if Git Sort is enabled and activate
 		const isGitSortEnabled = vscode.workspace
 			.getConfiguration("commandCentral.gitSort")
@@ -2581,7 +2593,7 @@ export async function activate(
 									? "empty"
 									: node.taskStatus === "running"
 										? "working-tree"
-										: afterRef!,
+										: (afterRef ?? "HEAD"),
 							relativePath,
 							taskId: node.taskId ?? "unknown",
 						});

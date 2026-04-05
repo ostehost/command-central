@@ -3187,7 +3187,8 @@ describe("AgentStatusTreeProvider", () => {
 		const errorDetail = details[0];
 		expect(errorDetail?.type).toBe("detail");
 		if (errorDetail?.type === "detail") {
-			expect(errorDetail.label).toBe("Error: ❌ Failed (code 127) · Retry 2/3");
+			expect(errorDetail.label).toContain("Failed (exit code 127)");
+			expect(errorDetail.label).toContain("Retry 2/3");
 			expect(errorDetail.description).toBe("build failed: missing env var");
 			const treeItem = provider.getTreeItem(errorDetail);
 			expect((treeItem.iconPath as { id: string }).id).toBe("error");
@@ -3217,7 +3218,8 @@ describe("AgentStatusTreeProvider", () => {
 		const errorDetail = details[0];
 		expect(errorDetail?.type).toBe("detail");
 		if (errorDetail?.type === "detail") {
-			expect(errorDetail.label).toBe("Error: ❌ Failed (code 2)");
+			expect(errorDetail.label).toContain("Failed (exit code 2)");
+			expect(errorDetail.label).not.toContain("Retry");
 		}
 	});
 
@@ -4639,7 +4641,7 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const changesDetail = details.find(
-				(d) => d.type === "detail" && d.icon === "diff",
+				(d) => d.type === "detail" && d.icon === "files",
 			);
 			expect(changesDetail).toBeDefined();
 			if (changesDetail?.type === "detail") {
@@ -4658,7 +4660,7 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const changesDetail = details.find(
-				(d) => d.type === "detail" && d.icon === "diff",
+				(d) => d.type === "detail" && d.icon === "files",
 			);
 			expect(changesDetail).toBeUndefined();
 		});
@@ -4720,11 +4722,11 @@ describe("AgentStatusTreeProvider", () => {
 			const firstTask = getFirstTask(root);
 			const details = provider.getChildren(firstTask);
 			const resultDetail = details.find(
-				(d) => d.type === "detail" && d.label?.startsWith("✅"),
+				(d) => d.type === "detail" && d.icon === "pass",
 			);
 			expect(resultDetail).toBeDefined();
 			if (resultDetail?.type === "detail") {
-				expect(resultDetail.label).toBe("✅ Completed");
+				expect(resultDetail.label).toContain("Completed");
 			}
 		});
 
@@ -4745,12 +4747,13 @@ describe("AgentStatusTreeProvider", () => {
 			const icons = details.map((d) =>
 				d.type === "detail" ? (d.icon ?? "") : "",
 			);
+			expect(icons).toContain("sync~spin");
 			expect(icons).toContain("comment");
-			expect(icons).toContain("diff");
+			expect(icons).toContain("files");
 			expect(icons).toContain("git-branch");
-			// No Result node for running tasks
+			// No completed Result node for running tasks
 			const hasResult = details.some(
-				(d) => d.type === "detail" && d.label?.startsWith("✅"),
+				(d) => d.type === "detail" && d.icon === "pass",
 			);
 			expect(hasResult).toBe(false);
 		});
@@ -5309,7 +5312,7 @@ describe("AgentStatusTreeProvider", () => {
 			expect(modelDetail).toBeDefined();
 			if (modelDetail?.type === "detail") {
 				expect(modelDetail.label).toContain("flash-lite");
-				expect(modelDetail.label).toContain("(fallback)");
+				expect(modelDetail.label).toContain("(fallback from");
 			}
 		});
 	});
