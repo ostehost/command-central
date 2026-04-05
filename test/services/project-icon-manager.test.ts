@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import * as fs from "node:fs";
+import type * as _fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
 // Ensure this file uses real fs even if other tests mock node:fs.
-const realFs = require("node:fs");
-mock.module("node:fs", () => realFs);
+// Use the cached reference saved by the preload (global-test-cleanup.ts)
+// because require("node:fs") would return the already-mocked version.
+// We use realFs directly (not the `import * as fs` binding) because
+// the import is already resolved to the mocked version at module load time.
+const fs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof _fs;
+mock.module("node:fs", () => fs);
 
 const { ProjectIconManager } = await import(
 	"../../src/services/project-icon-manager.js"
@@ -15,6 +21,8 @@ describe("ProjectIconManager", () => {
 	let tmpDir: string;
 
 	beforeEach(() => {
+		// Re-register real node:fs after global afterEach's mock.restore() clears it
+		mock.module("node:fs", () => fs);
 		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "project-icon-manager-"));
 	});
 

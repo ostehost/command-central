@@ -3,13 +3,17 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import * as fs from "node:fs";
+import type * as _fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-// Restore real node:fs to undo mock bleed from other test files
-const realFs = require("node:fs");
-mock.module("node:fs", () => realFs);
+// Restore real node:fs to undo mock bleed from other test files.
+// Use the cached reference saved by the preload (global-test-cleanup.ts)
+// because require("node:fs") would return the already-mocked version.
+const fs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof _fs;
+mock.module("node:fs", () => fs);
 
 const { ReviewTracker } = await import("../../src/services/review-tracker.js");
 
@@ -18,6 +22,8 @@ describe("ReviewTracker", () => {
 	let storePath: string;
 
 	beforeEach(() => {
+		// Re-register real node:fs after global afterEach's mock.restore() clears it
+		mock.module("node:fs", () => fs);
 		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "review-tracker-test-"));
 		storePath = path.join(tmpDir, "reviewed-tasks.json");
 	});

@@ -4,7 +4,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentTask } from "../../src/providers/agent-status-tree-provider.js";
 
-const realFs = require("node:fs") as typeof import("node:fs");
+// Use the cached reference saved by the preload (global-test-cleanup.ts)
+// because require("node:fs") would return the already-mocked version.
+const realFs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof fs;
 mock.module("node:fs", () => realFs);
 
 const {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { CronJob, CronTreeElement } from "../../src/types/cron-types.js";
 import { createVSCodeMock } from "../helpers/vscode-mock.js";
 
@@ -69,6 +69,10 @@ describe("CronTreeProvider", () => {
 		provider = new CronTreeProvider(
 			service as unknown as ConstructorParameters<typeof CronTreeProvider>[0],
 		);
+	});
+
+	afterEach(() => {
+		provider.dispose();
 	});
 
 	test("shows guidance when OpenClaw not installed", () => {

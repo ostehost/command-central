@@ -1831,7 +1831,7 @@
   },
   "scripts": {
     "dev": "bun run scripts-v2/dev.ts",
-    "test": "bun test",
+    "test": "bun test test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/ test/mocks/ test/package-json/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
     "dist": "bun run scripts-v2/dist-simple.ts",
     "_test:git2": "bun test test/git-sort/sorted-changes-provider.test.ts",
     "_test:git4": "bun test test/git-sort/circuit-breaker.test.ts test/git-sort/scm-sorter.test.ts",

@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type * as fs from "node:fs";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
+
+// Restore real node:fs to undo mock bleed from other test files.
+// The production module imports { promises } from "node:fs" which fails
+// if node:fs is still mocked without a "promises" export.
+const realFs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof fs;
+mock.module("node:fs", () => realFs);
 
 let vscodeMock: ReturnType<typeof setupVSCodeMock>;
 let mockStatusBarItem: {
@@ -14,6 +23,8 @@ let mockStatusBarItem: {
 
 beforeEach(() => {
 	mock.restore();
+	// Re-register real node:fs after mock.restore() clears it
+	mock.module("node:fs", () => realFs);
 	mockStatusBarItem = {
 		text: "",
 		tooltip: "",

@@ -444,6 +444,18 @@ describe("AgentStatusTreeProvider", () => {
 		provider.reload();
 	});
 
+	afterEach(() => {
+		// Null out _agentRegistry if it lacks dispose() (test mocks may omit it)
+		const p = provider as unknown as { _agentRegistry: unknown };
+		if (
+			p._agentRegistry &&
+			typeof (p._agentRegistry as { dispose?: unknown }).dispose !== "function"
+		) {
+			p._agentRegistry = null;
+		}
+		provider.dispose();
+	});
+
 	test("shows explicit empty state when no tasks", () => {
 		const children = provider.getChildren();
 		expect(children).toHaveLength(1);

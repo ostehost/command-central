@@ -3,15 +3,18 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import * as fs from "node:fs";
+import type * as _fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-// Restore real node:fs to undo mock bleed from other test files
-// (e.g. launch-agent.test.ts mocks existsSync: () => true globally).
-// We must require() the real module before mock.module overwrites it.
-const realFs = require("node:fs");
-mock.module("node:fs", () => realFs);
+// Restore real node:fs to undo mock bleed from other test files.
+// Use the cached reference saved by the preload (global-test-cleanup.ts)
+// because require("node:fs") would return the already-mocked version.
+// We alias as `fs` so existing code works without changes.
+const fs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof _fs;
+mock.module("node:fs", () => fs);
 
 // Re-import SessionStore AFTER restoring real fs so it binds to real existsSync
 const { SessionStore } = await import("../../src/services/session-store.js");
@@ -21,6 +24,8 @@ describe("SessionStore", () => {
 	let storePath: string;
 
 	beforeEach(() => {
+		// Re-register real node:fs after global afterEach's mock.restore() clears it
+		mock.module("node:fs", () => fs);
 		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "session-store-test-"));
 		storePath = path.join(tmpDir, "sessions.json");
 	});

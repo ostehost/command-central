@@ -6,23 +6,20 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import * as realFs from "node:fs";
+import type * as _fs from "node:fs";
 import { buildOsteSpawnCommand } from "../../src/utils/shell-command.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
-// Capture real writeFileSync before mock.module overwrites it
+// Use the cached real node:fs from the preload to avoid mock bleed
+const realFs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof _fs;
 const originalWriteFileSync = realFs.writeFileSync.bind(realFs);
-// Mock fs — track writeFileSync calls while still performing the real write
 const mockWriteFileSync = mock(
-	(...args: Parameters<typeof realFs.writeFileSync>) => {
+	(...args: Parameters<typeof _fs.writeFileSync>) => {
 		return originalWriteFileSync(...args);
 	},
 );
-mock.module("node:fs", () => ({
-	...realFs,
-	writeFileSync: mockWriteFileSync,
-	existsSync: () => true,
-}));
 
 describe("launchAgent command", () => {
 	let vscodeMock: ReturnType<typeof setupVSCodeMock>;
@@ -33,6 +30,12 @@ describe("launchAgent command", () => {
 
 	beforeEach(() => {
 		mock.restore();
+		// Register node:fs mock inside beforeEach (not module level) to prevent bleed
+		mock.module("node:fs", () => ({
+			...realFs,
+			writeFileSync: mockWriteFileSync,
+			existsSync: () => true,
+		}));
 		vscodeMock = setupVSCodeMock();
 		mockWriteFileSync.mockClear();
 		mockRunInProjectTerminal.mockClear();
