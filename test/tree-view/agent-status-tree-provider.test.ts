@@ -4776,7 +4776,6 @@ describe("AgentStatusTreeProvider", () => {
 				projectDir: "/Users/test/projects/my-app",
 				startTime: new Date("2026-02-25T08:00:00Z"),
 				source: "process" as const,
-				sessionId: "some-session",
 				model: "opus",
 			};
 			provider.getDiffSummary = () => null;
@@ -4784,7 +4783,9 @@ describe("AgentStatusTreeProvider", () => {
 				getDiscoveredChildren: (
 					a: Record<string, unknown>,
 				) => Array<{ type: string; label: string; value: string }>;
+				readDiscoveredPrompt: (a: Record<string, unknown>) => string | null;
 			};
+			p.readDiscoveredPrompt = () => null;
 			const details = p.getDiscoveredChildren(agent);
 			const sessionDetail = details.find((d) => d.label === "Session");
 			expect(sessionDetail).toBeUndefined();
