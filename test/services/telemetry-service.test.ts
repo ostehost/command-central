@@ -240,6 +240,56 @@ describe("TelemetryService", () => {
 		});
 	});
 
+	describe("agent status events", () => {
+		test("tracks cc_agent_status_group_toggled with grouped: true", async () => {
+			const TelemetryService = await getTelemetryService();
+			TelemetryService.resetInstance();
+			const service = TelemetryService.getInstance("1.0.0");
+			service.track("cc_agent_status_group_toggled", { grouped: true });
+			await service.flush();
+
+			expect(mockFetch).toHaveBeenCalledTimes(1);
+			const [_url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+			const body = JSON.parse(options.body as string) as {
+				batch: Array<{ event: string; properties: Record<string, unknown> }>;
+			};
+			expect(body.batch[0]?.event).toBe("cc_agent_status_group_toggled");
+			expect(body.batch[0]?.properties?.["grouped"]).toBe(true);
+		});
+
+		test("tracks cc_agent_status_group_toggled with grouped: false", async () => {
+			const TelemetryService = await getTelemetryService();
+			TelemetryService.resetInstance();
+			const service = TelemetryService.getInstance("1.0.0");
+			service.track("cc_agent_status_group_toggled", { grouped: false });
+			await service.flush();
+
+			expect(mockFetch).toHaveBeenCalledTimes(1);
+			const [_url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+			const body = JSON.parse(options.body as string) as {
+				batch: Array<{ event: string; properties: Record<string, unknown> }>;
+			};
+			expect(body.batch[0]?.event).toBe("cc_agent_status_group_toggled");
+			expect(body.batch[0]?.properties?.["grouped"]).toBe(false);
+		});
+
+		test("tracks cc_agent_status_filter_changed with action property", async () => {
+			const TelemetryService = await getTelemetryService();
+			TelemetryService.resetInstance();
+			const service = TelemetryService.getInstance("1.0.0");
+			service.track("cc_agent_status_filter_changed", { action: "filter" });
+			await service.flush();
+
+			expect(mockFetch).toHaveBeenCalledTimes(1);
+			const [_url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+			const body = JSON.parse(options.body as string) as {
+				batch: Array<{ event: string; properties: Record<string, unknown> }>;
+			};
+			expect(body.batch[0]?.event).toBe("cc_agent_status_filter_changed");
+			expect(body.batch[0]?.properties?.["action"]).toBe("filter");
+		});
+	});
+
 	describe("dispose()", () => {
 		test("calls flush and clears singleton", async () => {
 			const TelemetryService = await getTelemetryService();

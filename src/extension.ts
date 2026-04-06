@@ -249,6 +249,11 @@ export async function activate(
 					try {
 						await groupingViewManager.selectOption(optionId);
 
+						// Track grouping mode change
+						telemetry.track("cc_agent_status_group_toggled", {
+							grouped: optionId === "gitStatus",
+						});
+
 						// Provide user feedback on success
 						const message =
 							optionId === "gitStatus"
