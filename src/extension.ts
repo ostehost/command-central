@@ -144,6 +144,18 @@ export async function activate(
 			context.globalState.update("commandCentral.hasActivatedBefore", true);
 		}
 
+		// What's New notification — shown once per version to returning users
+		const WHATS_NEW_VERSION = "0.6.0";
+		const whatsNewShown = context.globalState.get<string>("commandCentral.whatsNewShown", "");
+		if (hasActivatedBefore && whatsNewShown !== WHATS_NEW_VERSION) {
+			vscode.window.showInformationMessage(
+				"Command Central 0.6.0: Agent Status now sorts by recency by default. Your most recent agent runs appear first.",
+				"Got it",
+			);
+			context.globalState.update("commandCentral.whatsNewShown", WHATS_NEW_VERSION);
+			telemetry.track("cc_whats_new_shown", { version: WHATS_NEW_VERSION });
+		}
+
 		await migrateLegacyAgentStatusSettings(context);
 
 		// Initialize Project Icon Service
