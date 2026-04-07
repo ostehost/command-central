@@ -1,10 +1,7 @@
-task_id: "prerelease-cleanup"
+task_id: "smoke-checklist-prep"
 status: "success"
-summary: "Cleaned up prerelease follow-up: Biome formatting, TS strictness fix, version bump — just check passes clean"
+summary: "Created manual smoke checklist for 0.5.1-77 prerelease covering 6 recently-changed features plus regression sniff"
 files_changed:
-  - "package.json"
-  - "src/extension.ts"
-  - "test/services/whats-new-notification.test.ts"
-  - "releases/digest-v0.5.1-77.md"
+  - "research/SMOKE-CHECKLIST-macbook-prerelease-2026-04-07.md"
 tests_passing: true
-next_steps: "All checks pass. Knip reports some unused exports/files that could be cleaned up in a future task."
+next_steps: "Run the smoke checklist in VS Code; note the What's New notification targets version 0.6.0 so it likely won't fire on 0.5.1-77"
