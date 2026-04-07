@@ -38,9 +38,9 @@ function makeContext() {
 
 	return {
 		globalState: {
-			get: mock(<T>(key: string, defaultValue?: T): T => {
-				return (store.has(key) ? store.get(key) : defaultValue) as T;
-			}),
+			get: mock((key: string, defaultValue?: unknown): unknown => {
+				return store.has(key) ? store.get(key) : defaultValue;
+			}) as unknown as <T>(key: string, defaultValue?: T) => T,
 			update: mock((key: string, value: unknown) => {
 				store.set(key, value);
 				return Promise.resolve();
@@ -52,7 +52,9 @@ function makeContext() {
 // The notification logic extracted from extension.ts for unit testing
 async function runWhatsNewLogic(
 	context: ReturnType<typeof makeContext>,
-	telemetry: { track: (event: string, props?: Record<string, unknown>) => void },
+	telemetry: {
+		track: (event: string, props?: Record<string, unknown>) => void;
+	},
 ) {
 	const vscode = await import("vscode");
 	const hasActivatedBefore = context.globalState.get<boolean>(
@@ -65,7 +67,10 @@ async function runWhatsNewLogic(
 	);
 	if (hasActivatedBefore && whatsNewShown !== WHATS_NEW_VERSION) {
 		vscode.window.showInformationMessage(WHATS_NEW_MESSAGE, "Got it");
-		context.globalState.update("commandCentral.whatsNewShown", WHATS_NEW_VERSION);
+		context.globalState.update(
+			"commandCentral.whatsNewShown",
+			WHATS_NEW_VERSION,
+		);
 		telemetry.track("cc_whats_new_shown", { version: WHATS_NEW_VERSION });
 	}
 }
