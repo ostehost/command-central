@@ -28,7 +28,14 @@ export function countAgentStatuses(tasks: AgentTask[]): AgentCounts {
 				counts.working++;
 				break;
 			case "completed":
-				counts.done++;
+				if (
+					task.review_status === "pending" ||
+					task.review_status === "changes_requested"
+				) {
+					counts.attention++;
+				} else {
+					counts.done++;
+				}
 				break;
 			case "completed_dirty":
 			case "completed_stale":
