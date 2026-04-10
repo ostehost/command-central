@@ -89,6 +89,10 @@ export function isTmuxPaneAgentAlive(
 		}
 	}
 
+	// Fail-open when list-panes returned no pane lines we could parse — we have no
+	// positive or negative evidence in that case.
+	if (panePids.length === 0) return true;
+
 	// ── Step 3: BFS over descendant pids (max depth 4, cap 64) ──────────────
 	const visited = new Set<number>(panePids);
 	let frontier = [...panePids];
@@ -121,9 +125,7 @@ export function isTmuxPaneAgentAlive(
 
 	// Remove the seed pane pids (already checked via pane_current_command).
 	const descendantPids = [...visited].filter((p) => !panePids.includes(p));
-	// Only assert dead when we actually enumerated panes; zero panes means we
-	// got no data → fail-open.
-	if (panePids.length > 0 && descendantPids.length === 0) return false;
+	if (descendantPids.length === 0) return false;
 
 	// ── Step 4: batch-check comm for all discovered descendant pids ─────────
 	try {
