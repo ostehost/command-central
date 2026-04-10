@@ -1,22 +1,11 @@
-task_id: "cc-agent-status-slice2-v1"
+task_id: "cc-agent-status-slice3-v1"
 status: "success"
-summary: "Detect dead agent process in alive tmux session: added isTmuxPaneAgentAlive helper (tmux list-panes + pgrep BFS + ps comm check) and wired into isRunningTaskHealthy and isTaskSessionConfirmedDead with fail-open contract"
+summary: "Route review_status into countAgentStatuses so status-bar badges stop counting awaiting-review tasks as done; badge now mirrors tree-provider grouping."
 files_changed:
-  - "src/utils/tmux-pane-health.ts"
-  - "src/providers/agent-status-tree-provider.ts"
-  - "test/utils/tmux-pane-health.test.ts"
-  - "test/tree-view/agent-status-dead-process-running.test.ts"
-  - "research/DEV-NOTES-cc-agent-status-slice2-v1.md"
-tests:
-  helper_unit: 17
-  tree_provider_integration: 7
-  total: 24
+  - "src/utils/agent-counts.ts"
+  - "test/utils/agent-counts.test.ts"
+  - "test/services/agent-status-bar-count.test.ts"
+  - "test/tree-view/agent-status-limbo-tier.test.ts"
+  - "research/DEV-NOTES-cc-agent-status-slice3-v1.md"
 tests_passing: true
-commits:
-  - "1a666cd feat: add tmux-pane-health helper for agent-process detection (slice 2)"
-  - "41f7890 fix: fail-open when tmux list-panes returns empty output (slice 2)"
-  - "d3e4ea1 fix: fail-open on empty tmux list-panes output (slice 2)"
-  - "d0b9912 test: add unit tests for tmux-pane-health helper (slice 2)"
-  - "bc26d5b feat: detect dead agent process in alive tmux session (slice 2)"
-  - "cfa0f0b test: add tree-provider tests for dead-process-running detection (slice 2)"
-next_steps: "Handoff-file detection to distinguish completed-with-notes from completed-silently"
+next_steps: "Proceed with handoff-file detection or stream-liveness secondary signal (per RETRO-agent-status-truth-wave-v1). Slice 2 dead-process-running is already in flight on a separate worktree."
