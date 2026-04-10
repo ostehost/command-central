@@ -1,4 +1,4 @@
-task_id: "cc-agent-status-slice1"
+task_id: "cc-agent-status-slice1-v1"
 status: "success"
 summary: "Added limbo display tier for completed_dirty/completed_stale, fixed counts, default-collapsed done, routed pending review_status to attention"
 files_changed:

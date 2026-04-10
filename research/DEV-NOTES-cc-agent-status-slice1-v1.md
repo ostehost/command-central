@@ -62,6 +62,10 @@ The `done` group now always renders as `Collapsed` regardless of recency. Previo
 
 During this team run, the orchestrator noted that the lane was live in tmux across team panes even though the registered stream file was missing. **Stream file presence is not a reliable liveness signal for team-mode runs.** The current display code doesn't depend on stream files for grouping decisions, but any future liveness indicator should account for this gap. A tmux session can be alive and producing work without a corresponding stream file being registered.
 
+### Completion report task_id reconciliation
+
+The initial `.oste-report.yaml` used `task_id: "cc-agent-status-slice1"` instead of the launcher's actual task id `"cc-agent-status-slice1-v1"`. This mismatch caused the orchestrator lane to appear live/unreconciled even after all work was committed and clean. Fixed in a follow-up commit. When writing completion reports, always match the exact task id from the launcher — do not abbreviate or guess.
+
 ### Pre-existing test failures
 
 The Reviewer confirmed 3 pre-existing test failures in the broader suite (536 tests total) that are unrelated to this change. They reproduce identically on the baseline commit.
