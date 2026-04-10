@@ -128,6 +128,61 @@ describe("limbo tier — formatCountSummary ordering", () => {
 	});
 });
 
+// ---------------------------------------------------------------------------
+// review_status routing (display-layer only)
+//
+// `getNodeStatusGroup` in AgentStatusTreeProvider routes a completed task to
+// "attention" when `task.review_status` is "pending" or "changes_requested",
+// and to "done" otherwise (approved / null / undefined).
+//
+// This logic lives entirely in the display layer (private method, tree
+// provider). `countAgentStatuses` only inspects `task.status`, NOT
+// `review_status`, so badge counts are unaffected by review state.
+// The tests below confirm that invariant.
+// ---------------------------------------------------------------------------
+
+describe("review_status — countAgentStatuses ignores it (display-layer only)", () => {
+	test("completed + review_status pending still counts as done in badge", () => {
+		const task: AgentTask = {
+			...makeTask("1", "completed"),
+			review_status: "pending",
+		};
+		const counts = countAgentStatuses([task]);
+		expect(counts.done).toBe(1);
+		expect(counts.attention).toBe(0);
+	});
+
+	test("completed + review_status changes_requested still counts as done in badge", () => {
+		const task: AgentTask = {
+			...makeTask("1", "completed"),
+			review_status: "changes_requested",
+		};
+		const counts = countAgentStatuses([task]);
+		expect(counts.done).toBe(1);
+		expect(counts.attention).toBe(0);
+	});
+
+	test("completed + review_status approved counts as done in badge", () => {
+		const task: AgentTask = {
+			...makeTask("1", "completed"),
+			review_status: "approved",
+		};
+		const counts = countAgentStatuses([task]);
+		expect(counts.done).toBe(1);
+		expect(counts.attention).toBe(0);
+	});
+
+	test("completed + review_status null counts as done in badge", () => {
+		const task: AgentTask = {
+			...makeTask("1", "completed"),
+			review_status: null,
+		};
+		const counts = countAgentStatuses([task]);
+		expect(counts.done).toBe(1);
+		expect(counts.attention).toBe(0);
+	});
+});
+
 describe("limbo tier — AgentStatusGroup type", () => {
 	test('"limbo" is a valid AgentStatusGroup value', () => {
 		// Compile-time check: assigning "limbo" to the union type must not error.
