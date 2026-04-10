@@ -129,37 +129,37 @@ describe("limbo tier — formatCountSummary ordering", () => {
 });
 
 // ---------------------------------------------------------------------------
-// review_status routing (display-layer only)
+// review_status routing (Slice 3: badge now mirrors the tree provider)
 //
 // `getNodeStatusGroup` in AgentStatusTreeProvider routes a completed task to
 // "attention" when `task.review_status` is "pending" or "changes_requested",
 // and to "done" otherwise (approved / null / undefined).
 //
-// This logic lives entirely in the display layer (private method, tree
-// provider). `countAgentStatuses` only inspects `task.status`, NOT
-// `review_status`, so badge counts are unaffected by review state.
-// The tests below confirm that invariant.
+// Slice 3 closed the gap that Slice 1 intentionally left: `countAgentStatuses`
+// now mirrors that same logic, routing completed tasks with `review_status` of
+// "pending" or "changes_requested" into the `attention` bucket so that badge
+// counts stay in sync with the tree provider display.
 // ---------------------------------------------------------------------------
 
-describe("review_status — countAgentStatuses ignores it (display-layer only)", () => {
-	test("completed + review_status pending still counts as done in badge", () => {
+describe("review_status — countAgentStatuses routes pending/changes_requested to attention", () => {
+	test("completed + review_status pending counts as attention in badge", () => {
 		const task: AgentTask = {
 			...makeTask("1", "completed"),
 			review_status: "pending",
 		};
 		const counts = countAgentStatuses([task]);
-		expect(counts.done).toBe(1);
-		expect(counts.attention).toBe(0);
+		expect(counts.attention).toBe(1);
+		expect(counts.done).toBe(0);
 	});
 
-	test("completed + review_status changes_requested still counts as done in badge", () => {
+	test("completed + review_status changes_requested counts as attention in badge", () => {
 		const task: AgentTask = {
 			...makeTask("1", "completed"),
 			review_status: "changes_requested",
 		};
 		const counts = countAgentStatuses([task]);
-		expect(counts.done).toBe(1);
-		expect(counts.attention).toBe(0);
+		expect(counts.attention).toBe(1);
+		expect(counts.done).toBe(0);
 	});
 
 	test("completed + review_status approved counts as done in badge", () => {
