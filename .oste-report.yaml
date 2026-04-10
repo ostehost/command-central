@@ -1,7 +1,11 @@
-task_id: "smoke-checklist-prep"
+task_id: "cc-agent-status-slice1"
 status: "success"
-summary: "Created manual smoke checklist for 0.5.1-77 prerelease covering 6 recently-changed features plus regression sniff"
+summary: "Added limbo display tier for completed_dirty/completed_stale, fixed counts, default-collapsed done, routed pending review_status to attention"
 files_changed:
-  - "research/SMOKE-CHECKLIST-macbook-prerelease-2026-04-07.md"
+  - "src/utils/agent-counts.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/utils/agent-counts.test.ts"
+  - "test/services/agent-status-bar-count.test.ts"
+  - "test/tree-view/agent-status-limbo-tier.test.ts"
 tests_passing: true
-next_steps: "Run the smoke checklist in VS Code; note the What's New notification targets version 0.6.0 so it likely won't fire on 0.5.1-77"
+next_steps: "Handoff-file detection and dead-process-running flagging as next truthfulness slices"
