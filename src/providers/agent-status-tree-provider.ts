@@ -216,7 +216,7 @@ export interface FolderGroupNode {
 	projects: ProjectGroupNode[];
 }
 
-export type AgentStatusGroup = "running" | "done" | "attention";
+export type AgentStatusGroup = "running" | "done" | "attention" | "limbo";
 
 export interface StatusGroupNode {
 	type: "statusGroup";
@@ -556,7 +556,8 @@ const VALID_TASK_STATUSES = new Set<AgentTaskStatus>([
 const TASK_STATUS_PRIORITY: Record<AgentStatusGroup, number> = {
 	running: 0,
 	attention: 1,
-	done: 2,
+	limbo: 2,
+	done: 3,
 };
 
 // PORT_LOADING_LABEL removed — ports row only renders with real data
@@ -566,6 +567,7 @@ const STATUS_GROUP_LABELS: Record<AgentStatusGroup, string> = {
 	running: "Running",
 	done: "Completed",
 	attention: "Failed & Stopped",
+	limbo: "Needs Review",
 };
 
 const STATUS_GROUP_ICONS: Record<AgentStatusGroup, vscode.ThemeIcon> = {
@@ -574,6 +576,10 @@ const STATUS_GROUP_ICONS: Record<AgentStatusGroup, vscode.ThemeIcon> = {
 	attention: new vscode.ThemeIcon(
 		"warning",
 		new vscode.ThemeColor("charts.orange"),
+	),
+	limbo: new vscode.ThemeIcon(
+		"question",
+		new vscode.ThemeColor("charts.yellow"),
 	),
 };
 
@@ -2863,12 +2869,9 @@ export class AgentStatusTreeProvider
 	private getNodeStatusGroup(node: SortableAgentNode): AgentStatusGroup {
 		const status = this.getNodeStatus(node);
 		if (status === "running") return "running";
-		if (
-			status === "completed" ||
-			status === "completed_dirty" ||
-			status === "completed_stale"
-		) {
-			return "done";
+		if (status === "completed") return "done";
+		if (status === "completed_dirty" || status === "completed_stale") {
+			return "limbo";
 		}
 		return "attention";
 	}
@@ -2889,7 +2892,7 @@ export class AgentStatusTreeProvider
 			grouped.set(statusGroup, bucket);
 		}
 
-		return (["running", "attention", "done"] as AgentStatusGroup[])
+		return (["running", "attention", "limbo", "done"] as AgentStatusGroup[])
 			.map((status) => {
 				const groupNodes = grouped.get(status) ?? [];
 				if (groupNodes.length === 0) return null;
@@ -5509,11 +5512,13 @@ export class AgentStatusTreeProvider
 
 	private createStatusGroupItem(node: StatusGroupNode): vscode.TreeItem {
 		const count = node.nodes.length;
+		const collapsibleState =
+			node.status !== "done" && this.statusGroupHasRecentItems(node)
+				? vscode.TreeItemCollapsibleState.Expanded
+				: vscode.TreeItemCollapsibleState.Collapsed;
 		const item = new vscode.TreeItem(
 			`${STATUS_GROUP_LABELS[node.status]} · ${count} ${count === 1 ? "agent" : "agents"}`,
-			this.statusGroupHasRecentItems(node)
-				? vscode.TreeItemCollapsibleState.Expanded
-				: vscode.TreeItemCollapsibleState.Collapsed,
+			collapsibleState,
 		);
 		item.id = `status-group:${node.status}`;
 		item.contextValue = "statusGroup";
