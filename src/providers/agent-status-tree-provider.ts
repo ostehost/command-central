@@ -28,6 +28,7 @@ import type {
 } from "../services/openclaw-config-service.js";
 import type { OpenClawTaskService } from "../services/openclaw-task-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
+import { isTmuxPaneAgentAlive } from "../utils/tmux-pane-health.js";
 import { ReviewTracker } from "../services/review-tracker.js";
 import type { TaskFlowService } from "../services/taskflow-service.js";
 import {
@@ -778,6 +779,10 @@ export class AgentStatusTreeProvider
 		string,
 		{ alive: boolean; checkedAt: number }
 	>();
+	private _tmuxPaneAgentCache = new Map<
+		string,
+		{ alive: boolean; checkedAt: number }
+	>();
 	private readonly _persistSessionHealthCache = new Map<
 		string,
 		{ alive: boolean; checkedAt: number }
@@ -1184,6 +1189,19 @@ export class AgentStatusTreeProvider
 		return alive;
 	}
 
+	private isTmuxPaneAgentHealthy(task: AgentTask): boolean {
+		const cacheTtlMs = 5_000;
+		const cacheKey = `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
+		const cached = this._tmuxPaneAgentCache.get(cacheKey);
+		const now = Date.now();
+		if (cached && now - cached.checkedAt < cacheTtlMs) {
+			return cached.alive;
+		}
+		const alive = isTmuxPaneAgentAlive(task.session_id, task.tmux_socket);
+		this._tmuxPaneAgentCache.set(cacheKey, { alive, checkedAt: now });
+		return alive;
+	}
+
 	/**
 	 * Checks whether a specific tmux window (by `@N` ID) still exists.
 	 * More accurate than `isTmuxSessionAlive` for multi-window sessions where
@@ -1288,6 +1306,7 @@ export class AgentStatusTreeProvider
 					)
 				: this.isTmuxSessionAlive(task.session_id, task.tmux_socket);
 			if (!windowAlive) return false;
+			if (!this.isTmuxPaneAgentHealthy(task)) return false;
 			return !looksStale;
 		}
 
@@ -1508,6 +1527,11 @@ export class AgentStatusTreeProvider
 			for (const cacheKey of this._tmuxSessionHealthCache.keys()) {
 				if (cacheKey.endsWith(`::${sessionId}`)) {
 					this._tmuxSessionHealthCache.delete(cacheKey);
+				}
+			}
+			for (const cacheKey of this._tmuxPaneAgentCache.keys()) {
+				if (cacheKey.endsWith(`::${sessionId}`)) {
+					this._tmuxPaneAgentCache.delete(cacheKey);
 				}
 			}
 			this._persistSessionHealthCache.delete(sessionId);
@@ -2133,13 +2157,20 @@ export class AgentStatusTreeProvider
 		) {
 			// Use window-level check when available for multi-window sessions.
 			if (task.tmux_window_id) {
-				return !this.isTmuxWindowAlive(
-					task.session_id,
-					task.tmux_window_id,
-					task.tmux_socket,
-				);
+				if (
+					!this.isTmuxWindowAlive(
+						task.session_id,
+						task.tmux_window_id,
+						task.tmux_socket,
+					)
+				) {
+					return true;
+				}
+			} else if (!this.isTmuxSessionAlive(task.session_id, task.tmux_socket)) {
+				return true;
 			}
-			return !this.isTmuxSessionAlive(task.session_id, task.tmux_socket);
+			// Session/window alive but agent process may be gone.
+			return !this.isTmuxPaneAgentHealthy(task);
 		}
 
 		if (this.hasLiveDiscoveredSession(task)) {
