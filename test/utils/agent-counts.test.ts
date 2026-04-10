@@ -38,7 +38,8 @@ describe("countAgentStatuses", () => {
 		expect(countAgentStatuses(tasks)).toEqual({
 			working: 2,
 			attention: 4,
-			done: 3,
+			limbo: 2,
+			done: 1,
 			total: 9,
 		});
 	});
@@ -47,6 +48,7 @@ describe("countAgentStatuses", () => {
 		expect(countAgentStatuses([])).toEqual({
 			working: 0,
 			attention: 0,
+			limbo: 0,
 			done: 0,
 			total: 0,
 		});
@@ -58,6 +60,7 @@ describe("formatCountSummary", () => {
 		const counts: AgentCounts = {
 			working: 2,
 			attention: 5,
+			limbo: 0,
 			done: 3,
 			total: 10,
 		};
@@ -69,6 +72,7 @@ describe("formatCountSummary", () => {
 		const counts: AgentCounts = {
 			working: 0,
 			attention: 0,
+			limbo: 0,
 			done: 5,
 			total: 6,
 		};
@@ -80,6 +84,7 @@ describe("formatCountSummary", () => {
 		const counts: AgentCounts = {
 			working: 0,
 			attention: 0,
+			limbo: 0,
 			done: 0,
 			total: 0,
 		};
@@ -91,12 +96,39 @@ describe("formatCountSummary", () => {
 		const counts: AgentCounts = {
 			working: 2,
 			attention: 7,
+			limbo: 0,
 			done: 1,
 			total: 10,
 		};
 
 		expect(formatCountSummary(counts, { includeAttention: true })).toBe(
 			"2 working · 7 attention · 1 done",
+		);
+	});
+
+	test("includes limbo count in summary when non-zero", () => {
+		const counts: AgentCounts = {
+			working: 1,
+			attention: 0,
+			limbo: 2,
+			done: 3,
+			total: 6,
+		};
+
+		expect(formatCountSummary(counts)).toBe("1 working · 2 limbo · 3 done");
+	});
+
+	test("limbo appears between attention and done in summary", () => {
+		const counts: AgentCounts = {
+			working: 1,
+			attention: 2,
+			limbo: 3,
+			done: 4,
+			total: 10,
+		};
+
+		expect(formatCountSummary(counts, { includeAttention: true })).toBe(
+			"1 working · 2 attention · 3 limbo · 4 done",
 		);
 	});
 });
