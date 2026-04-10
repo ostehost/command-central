@@ -37,6 +37,7 @@ import {
 } from "../types/openclaw-task-types.js";
 import {
 	type TaskFlow,
+	type TaskFlowTask,
 	taskflowStatusToIcon,
 	taskflowStatusToLabel,
 } from "../types/taskflow-types.js";
@@ -2286,6 +2287,7 @@ export class AgentStatusTreeProvider
 			const item = new vscode.TreeItem(element.label);
 			item.description = element.status;
 			item.iconPath = new vscode.ThemeIcon("circle-outline");
+			item.contextValue = "taskFlowChild";
 			return item;
 		}
 		return this.createDetailItem(element);
@@ -2482,7 +2484,10 @@ export class AgentStatusTreeProvider
 		}
 
 		if (element.type === "taskFlowGroup") {
-			return this.getTaskFlowDetailChildren(element.flow);
+			return [
+				...this.getTaskFlowDetailChildren(element.flow),
+				...this.getTaskFlowChildNodes(element.flow),
+			];
 		}
 
 		if (element.type === "backgroundTasks") {
@@ -5430,6 +5435,108 @@ export class AgentStatusTreeProvider
 		}
 
 		return details;
+	}
+
+	private getTaskFlowChildNodes(flow: TaskFlow): AgentNode[] {
+		const flowTasks = flow.tasks ?? [];
+		if (flowTasks.length === 0) return [];
+
+		const children: AgentNode[] = [];
+		const seen = new Set<string>();
+		for (const task of flowTasks) {
+			const child = this.resolveTaskFlowChildNode(flow, task);
+			const childKey = this.getTaskFlowChildNodeKey(child, task);
+			if (seen.has(childKey)) continue;
+			seen.add(childKey);
+			children.push(child);
+		}
+		return children;
+	}
+
+	private resolveTaskFlowChildNode(
+		flow: TaskFlow,
+		task: TaskFlowTask,
+	): AgentNode {
+		const launcherTask = this.findLauncherTaskForFlowTask(task);
+		if (launcherTask) {
+			return { type: "task", task: launcherTask };
+		}
+
+		const discoveredAgent = this.findDiscoveredAgentForFlowTask(task);
+		if (discoveredAgent) {
+			return { type: "discovered", agent: discoveredAgent };
+		}
+
+		const openclawTask = this.findOpenClawTaskForFlowTask(task);
+		if (openclawTask) {
+			return { type: "openclawTask", task: openclawTask };
+		}
+
+		return {
+			type: "taskFlowChild",
+			taskId: task.taskId,
+			flowId: flow.flowId,
+			label: this.getOpenClawTaskDisplayTitle(task),
+			status: openclawStatusToLabel(task.status),
+		};
+	}
+
+	private getTaskFlowChildNodeKey(
+		child: AgentNode,
+		task: TaskFlowTask,
+	): string {
+		switch (child.type) {
+			case "task":
+				return `task:${child.task.id}`;
+			case "discovered":
+				return `discovered:${child.agent.pid}`;
+			case "openclawTask":
+				return `openclaw:${child.task.taskId}`;
+			case "taskFlowChild":
+				return `placeholder:${task.taskId}`;
+			default:
+				return `other:${task.taskId}`;
+		}
+	}
+
+	private findLauncherTaskForFlowTask(task: TaskFlowTask): AgentTask | null {
+		return (
+			this.getLauncherTasks().find(
+				(launcherTask) =>
+					(task.childSessionKey != null &&
+						launcherTask.session_id != null &&
+						task.childSessionKey.includes(launcherTask.session_id)) ||
+					launcherTask.id === task.taskId ||
+					(task.label != null && launcherTask.id === task.label),
+			) ?? null
+		);
+	}
+
+	private findDiscoveredAgentForFlowTask(
+		task: TaskFlowTask,
+	): DiscoveredAgent | null {
+		if (!task.childSessionKey) return null;
+		const discoveredAgents =
+			this._allDiscoveredAgents.length > 0
+				? this._allDiscoveredAgents
+				: this._discoveredAgents;
+		return (
+			discoveredAgents.find(
+				(agent) => agent.sessionId === task.childSessionKey,
+			) ?? null
+		);
+	}
+
+	private findOpenClawTaskForFlowTask(task: TaskFlowTask): OpenClawTask | null {
+		const allOpenClawTasks = this.getNonLauncherOpenClawTasks();
+		return (
+			allOpenClawTasks.find(
+				(openclawTask) =>
+					openclawTask.taskId === task.taskId ||
+					(task.childSessionKey != null &&
+						openclawTask.childSessionKey === task.childSessionKey),
+			) ?? null
+		);
 	}
 
 	private formatTaskFlowDuration(flow: TaskFlow): string | null {

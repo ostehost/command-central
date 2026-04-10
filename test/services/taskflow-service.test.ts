@@ -122,6 +122,45 @@ describe("TaskFlowService", () => {
 		service.dispose();
 	});
 
+	test("preserves nested flow tasks from CLI output", () => {
+		execFileSyncResult = JSON.stringify({
+			count: 1,
+			status: null,
+			flows: [
+				{
+					flowId: "flow-with-tasks",
+					status: "running",
+					createdAt: now - 1000,
+					taskCount: 1,
+					completedCount: 0,
+					failedCount: 0,
+					tasks: [
+						{
+							taskId: "task-1",
+							runtime: "subagent",
+							ownerKey: "main",
+							scopeKind: "session",
+							task: "Do the thing",
+							status: "running",
+							deliveryStatus: "pending",
+							notifyPolicy: "done_only",
+							createdAt: now - 900,
+							childSessionKey: "session-123",
+						},
+					],
+				},
+			],
+		});
+		const service = new TaskFlowService();
+		service.start(() => {});
+
+		const flow = at(service.getFlows(), 0);
+		expect(flow.tasks).toHaveLength(1);
+		expect(flow.tasks?.[0]?.taskId).toBe("task-1");
+		expect(flow.tasks?.[0]?.childSessionKey).toBe("session-123");
+		service.dispose();
+	});
+
 	test("calls correct CLI command", () => {
 		const service = new TaskFlowService();
 		service.start(() => {});

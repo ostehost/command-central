@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { OpenClawTaskService } from "../../src/services/openclaw-task-service.js";
+import type { TaskFlowService } from "../../src/services/taskflow-service.js";
 import { countAgentStatuses } from "../../src/utils/agent-counts.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
@@ -66,8 +67,37 @@ describe("OpenClaw task nodes", () => {
 		};
 	}
 
+	function createFlow(
+		overrides: Partial<{
+			flowId: string;
+			status:
+				| "queued"
+				| "running"
+				| "waiting"
+				| "blocked"
+				| "succeeded"
+				| "failed"
+				| "cancelled"
+				| "lost";
+			tasks: ReturnType<typeof createTask>[];
+		}> = {},
+	) {
+		return {
+			flowId: "flow-1",
+			label: "Flow 1",
+			status: "running" as const,
+			createdAt: Date.now() - 10_000,
+			taskCount: overrides.tasks?.length ?? 1,
+			completedCount: 0,
+			failedCount: 0,
+			tasks: [createTask({ taskId: "bg-1", runtime: "subagent" })],
+			...overrides,
+		};
+	}
+
 	async function createProvider(
 		openclawTasks: ReturnType<typeof createTask>[],
+		flows: ReturnType<typeof createFlow>[] = [],
 	) {
 		setConfig({ groupByProject: false });
 		const { AgentStatusTreeProvider } = await import(
@@ -87,6 +117,9 @@ describe("OpenClaw task nodes", () => {
 		provider.setOpenClawTaskService({
 			getTasks: () => openclawTasks,
 		} as unknown as OpenClawTaskService);
+		provider.setTaskFlowService({
+			getFlows: () => flows,
+		} as unknown as TaskFlowService);
 		(
 			provider as unknown as {
 				_agentRegistry: null;
@@ -197,6 +230,74 @@ describe("OpenClaw task nodes", () => {
 			throw new Error("No summary node found");
 		}
 		expect(summary.label).toContain("2 background tasks");
+	});
+
+	test("task flow children reuse matching OpenClaw task nodes", async () => {
+		const task = createTask({
+			taskId: "bg-1",
+			runtime: "subagent",
+			childSessionKey: "session-abc123",
+		});
+		const provider = await createProvider(
+			[task],
+			[
+				createFlow({
+					tasks: [
+						createTask({
+							taskId: "bg-1",
+							runtime: "subagent",
+							childSessionKey: "session-abc123",
+						}),
+					],
+				}),
+			],
+		);
+
+		const root = provider.getChildren();
+		const flowsNode = root.find((node) => node.type === "taskflows");
+		if (!flowsNode || flowsNode.type !== "taskflows") {
+			throw new Error("No taskflows node found");
+		}
+		const groups = provider.getChildren(flowsNode);
+		const group = groups.find((node) => node.type === "taskFlowGroup");
+		if (!group || group.type !== "taskFlowGroup") {
+			throw new Error("No taskFlowGroup node found");
+		}
+		const children = provider.getChildren(group);
+		expect(
+			children.some(
+				(node) => node.type === "openclawTask" && node.task.taskId === "bg-1",
+			),
+		).toBe(true);
+	});
+
+	test("task flow children fall back to placeholders when unmatched", async () => {
+		const provider = await createProvider(
+			[],
+			[
+				createFlow({
+					tasks: [createTask({ taskId: "bg-unmatched", runtime: "subagent" })],
+				}),
+			],
+		);
+
+		const root = provider.getChildren();
+		const flowsNode = root.find((node) => node.type === "taskflows");
+		if (!flowsNode || flowsNode.type !== "taskflows") {
+			throw new Error("No taskflows node found");
+		}
+		const groups = provider.getChildren(flowsNode);
+		const group = groups.find((node) => node.type === "taskFlowGroup");
+		if (!group || group.type !== "taskFlowGroup") {
+			throw new Error("No taskFlowGroup node found");
+		}
+		const children = provider.getChildren(group);
+		expect(
+			children.some(
+				(node) =>
+					node.type === "taskFlowChild" && node.taskId === "bg-unmatched",
+			),
+		).toBe(true);
 	});
 
 	test("package contributions expose OpenClaw task context actions", async () => {

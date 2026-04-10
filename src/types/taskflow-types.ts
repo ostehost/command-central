@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import type { OpenClawTask } from "./openclaw-task-types.js";
 
 export interface TaskFlow {
 	flowId: string;
@@ -14,6 +15,11 @@ export interface TaskFlow {
 	failedCount: number;
 	cancelIntent?: boolean;
 	error?: string;
+	tasks?: TaskFlowTask[];
+}
+
+export interface TaskFlowTask extends OpenClawTask {
+	parentFlowId?: string;
 }
 
 /**
