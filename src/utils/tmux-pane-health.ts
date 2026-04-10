@@ -121,7 +121,9 @@ export function isTmuxPaneAgentAlive(
 
 	// Remove the seed pane pids (already checked via pane_current_command).
 	const descendantPids = [...visited].filter((p) => !panePids.includes(p));
-	if (descendantPids.length === 0) return false;
+	// Only assert dead when we actually enumerated panes; zero panes means we
+	// got no data → fail-open.
+	if (panePids.length > 0 && descendantPids.length === 0) return false;
 
 	// ── Step 4: batch-check comm for all discovered descendant pids ─────────
 	try {
