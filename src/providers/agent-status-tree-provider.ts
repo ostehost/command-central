@@ -2869,7 +2869,16 @@ export class AgentStatusTreeProvider
 	private getNodeStatusGroup(node: SortableAgentNode): AgentStatusGroup {
 		const status = this.getNodeStatus(node);
 		if (status === "running") return "running";
-		if (status === "completed") return "done";
+		if (status === "completed") {
+			if (
+				node.type === "task" &&
+				(node.task.review_status === "pending" ||
+					node.task.review_status === "changes_requested")
+			) {
+				return "attention";
+			}
+			return "done";
+		}
 		if (status === "completed_dirty" || status === "completed_stale") {
 			return "limbo";
 		}
