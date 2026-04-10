@@ -15,7 +15,11 @@ setupVSCodeMock();
 import type { AgentTask } from "../../src/providers/agent-status-tree-provider.js";
 import { AgentStatusBar } from "../../src/services/agent-status-bar.js";
 
-function makeTask(id: string, status: AgentTask["status"]): AgentTask {
+function makeTask(
+	id: string,
+	status: AgentTask["status"],
+	review_status?: AgentTask["review_status"],
+): AgentTask {
 	return {
 		id,
 		status,
@@ -27,6 +31,7 @@ function makeTask(id: string, status: AgentTask["status"]): AgentTask {
 		started_at: new Date().toISOString(),
 		attempts: 0,
 		max_attempts: 3,
+		...(review_status !== undefined ? { review_status } : {}),
 	};
 }
 
@@ -138,5 +143,20 @@ describe("AgentStatusBar count calculation", () => {
 		expect(mockItem.text).toContain("$(warning)");
 		expect(mockItem.text).toContain("1 attention");
 		expect(mockItem.text).toContain("1 done");
+	});
+
+	test("completed+pending and completed+approved → 1 attention and 1 done in badge", () => {
+		statusBar.update([
+			makeTask("a", "completed", "pending"),
+			makeTask("b", "completed", "approved"),
+		]);
+		expect(mockItem.text).toContain("1 attention");
+		expect(mockItem.text).toContain("1 done");
+	});
+
+	test("completed+changes_requested alone → attention with warning icon", () => {
+		statusBar.update([makeTask("a", "completed", "changes_requested")]);
+		expect(mockItem.text).toContain("$(warning)");
+		expect(mockItem.text).toContain("1 attention");
 	});
 });

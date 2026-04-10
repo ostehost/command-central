@@ -6,7 +6,11 @@ import {
 	formatCountSummary,
 } from "../../src/utils/agent-counts.js";
 
-function makeTask(id: string, status: AgentTask["status"]): AgentTask {
+function makeTask(
+	id: string,
+	status: AgentTask["status"],
+	review_status?: AgentTask["review_status"],
+): AgentTask {
 	return {
 		id,
 		status,
@@ -18,6 +22,7 @@ function makeTask(id: string, status: AgentTask["status"]): AgentTask {
 		started_at: new Date().toISOString(),
 		attempts: 0,
 		max_attempts: 3,
+		...(review_status !== undefined ? { review_status } : {}),
 	};
 }
 
@@ -52,6 +57,80 @@ describe("countAgentStatuses", () => {
 			done: 0,
 			total: 0,
 		});
+	});
+});
+
+describe("countAgentStatuses — review_status routing", () => {
+	test("completed + review_status pending → attention, not done", () => {
+		const tasks = [makeTask("t1", "completed", "pending")];
+		expect(countAgentStatuses(tasks)).toEqual({
+			working: 0,
+			attention: 1,
+			limbo: 0,
+			done: 0,
+			total: 1,
+		});
+	});
+
+	test("completed + review_status changes_requested → attention, not done", () => {
+		const tasks = [makeTask("t1", "completed", "changes_requested")];
+		expect(countAgentStatuses(tasks)).toEqual({
+			working: 0,
+			attention: 1,
+			limbo: 0,
+			done: 0,
+			total: 1,
+		});
+	});
+
+	test("completed + review_status approved → done", () => {
+		const tasks = [makeTask("t1", "completed", "approved")];
+		expect(countAgentStatuses(tasks)).toEqual({
+			working: 0,
+			attention: 0,
+			limbo: 0,
+			done: 1,
+			total: 1,
+		});
+	});
+
+	test("completed + no review_status → done (preserves existing behavior)", () => {
+		const tasks = [makeTask("t1", "completed")];
+		expect(countAgentStatuses(tasks)).toEqual({
+			working: 0,
+			attention: 0,
+			limbo: 0,
+			done: 1,
+			total: 1,
+		});
+	});
+
+	test("mixed scenario routes each task to the correct bucket", () => {
+		const tasks = [
+			makeTask("r1", "running"),
+			makeTask("c1", "completed", "approved"),
+			makeTask("c2", "completed", "pending"),
+			makeTask("d1", "completed_dirty"),
+		];
+		expect(countAgentStatuses(tasks)).toEqual({
+			working: 1,
+			attention: 1,
+			limbo: 1,
+			done: 1,
+			total: 4,
+		});
+	});
+
+	test("formatCountSummary with includeAttention shows attention segment for mixed scenario", () => {
+		const counts = countAgentStatuses([
+			makeTask("r1", "running"),
+			makeTask("c1", "completed", "approved"),
+			makeTask("c2", "completed", "pending"),
+			makeTask("d1", "completed_dirty"),
+		]);
+		expect(formatCountSummary(counts, { includeAttention: true })).toBe(
+			"1 working · 1 attention · 1 limbo · 1 done",
+		);
 	});
 });
 
