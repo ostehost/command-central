@@ -1,11 +1,20 @@
-task_id: "cc-agent-status-slice3-v1"
+task_id: "cc-agent-status-slice4-v1"
 status: "success"
-summary: "Route review_status into countAgentStatuses so status-bar badges stop counting awaiting-review tasks as done; badge now mirrors tree-provider grouping."
+summary: "Handoff-file detection: route clean completed tasks with confirmed-missing declared handoff file into the limbo (Needs Review) tier, with fail-open semantics and a surgical description hint."
 files_changed:
-  - "src/utils/agent-counts.ts"
-  - "test/utils/agent-counts.test.ts"
-  - "test/services/agent-status-bar-count.test.ts"
-  - "test/tree-view/agent-status-limbo-tier.test.ts"
-  - "research/DEV-NOTES-cc-agent-status-slice3-v1.md"
+  - "src/utils/handoff-file-health.ts"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/utils/handoff-file-health.test.ts"
+  - "test/tree-view/agent-status-handoff-file.test.ts"
+  - "research/DEV-NOTES-cc-agent-status-slice4-v1.md"
+tests:
+  helper_unit: 12
+  tree_provider_integration: 8
+  total: 20
 tests_passing: true
-next_steps: "Proceed with handoff-file detection or stream-liveness secondary signal (per RETRO-agent-status-truth-wave-v1). Slice 2 dead-process-running is already in flight on a separate worktree."
+commits:
+  - "b4be359 feat: add handoff-file-health helper (slice 4)"
+  - "4842a9c feat: route completed tasks with missing handoff to limbo (slice 4)"
+  - "e22c579 test: add handoff-file-health unit tests (slice 4)"
+  - "78219ce test: add handoff-file routing suite (slice 4)"
+next_steps: "Reconcile _handoffFileCache on registry reload; then pick up host-grouping or review-status follow-through from slice 1's recommendations."
