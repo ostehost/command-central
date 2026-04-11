@@ -64,7 +64,6 @@ mock.module("../../src/utils/port-detector.js", () => ({
 
 // ── Imports after mock module setup ──────────────────────────────────────────
 import {
-	type AgentNode,
 	AgentStatusTreeProvider,
 	type AgentTask,
 	type TaskRegistry,
@@ -75,7 +74,6 @@ import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 // ── Test infrastructure ───────────────────────────────────────────────────────
 
 // Prevent the provider constructor from reading the real tasks.json on disk.
-const _realReadRegistry = AgentStatusTreeProvider.prototype.readRegistry;
 AgentStatusTreeProvider.prototype.readRegistry = () => makeRegistry({});
 
 function makeRegistry(tasks: Record<string, AgentTask> = {}): TaskRegistry {
