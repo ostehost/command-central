@@ -121,6 +121,58 @@ describe("countAgentStatuses — review_status routing", () => {
 		});
 	});
 
+	// ── Joint regression: review_status + declared handoff_file ──────────────
+	// `countAgentStatuses` is stateless — it cannot stat the filesystem, so it
+	// routes purely on `status` and `review_status`. These cases pin down that
+	// presence of a `handoff_file` field on the task does NOT change the
+	// badge-count routing, which keeps the badge aligned with the tree provider
+	// whenever review_status is the deciding signal (pending / changes_requested).
+	// For approved+missing-handoff the badge and tree provider intentionally
+	// diverge — the tree provider demotes to limbo, but the badge has no way to
+	// know the handoff is missing and stays at `done`. This is the
+	// badge-count path proved by these tests.
+	test("joint: completed + review_status=pending + handoff_file declared → attention", () => {
+		const task: AgentTask = {
+			...makeTask("t1", "completed", "pending"),
+			handoff_file: "MISSING.md",
+		};
+		expect(countAgentStatuses([task])).toEqual({
+			working: 0,
+			attention: 1,
+			limbo: 0,
+			done: 0,
+			total: 1,
+		});
+	});
+
+	test("joint: completed + review_status=changes_requested + handoff_file declared → attention", () => {
+		const task: AgentTask = {
+			...makeTask("t1", "completed", "changes_requested"),
+			handoff_file: "MISSING.md",
+		};
+		expect(countAgentStatuses([task])).toEqual({
+			working: 0,
+			attention: 1,
+			limbo: 0,
+			done: 0,
+			total: 1,
+		});
+	});
+
+	test("joint: completed + review_status=approved + handoff_file declared → done (badge is fs-blind)", () => {
+		const task: AgentTask = {
+			...makeTask("t1", "completed", "approved"),
+			handoff_file: "MISSING.md",
+		};
+		expect(countAgentStatuses([task])).toEqual({
+			working: 0,
+			attention: 0,
+			limbo: 0,
+			done: 1,
+			total: 1,
+		});
+	});
+
 	test("formatCountSummary with includeAttention shows attention segment for mixed scenario", () => {
 		const counts = countAgentStatuses([
 			makeTask("r1", "running"),
