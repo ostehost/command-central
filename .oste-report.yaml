@@ -1,20 +1,8 @@
-task_id: "cc-agent-status-slice4-v1"
+task_id: "cc-agent-status-truth-integration-v1"
 status: "success"
-summary: "Handoff-file detection: route clean completed tasks with confirmed-missing declared handoff file into the limbo (Needs Review) tier, with fail-open semantics and a surgical description hint."
+summary: "Integration lane: reconciled Slices 1-4 of the agent-status truth wave onto one branch from main, picked Slice 4-B (enum + fail-open) over 4-A, added a joint regression test for the review_status x missing-handoff precedence, and documented the final routing chain."
 files_changed:
-  - "src/utils/handoff-file-health.ts"
-  - "src/providers/agent-status-tree-provider.ts"
-  - "test/utils/handoff-file-health.test.ts"
-  - "test/tree-view/agent-status-handoff-file.test.ts"
-  - "research/DEV-NOTES-cc-agent-status-slice4-v1.md"
-tests:
-  helper_unit: 12
-  tree_provider_integration: 8
-  total: 20
+  - "research/DEV-NOTES-cc-agent-status-truth-integration-v1.md"
+  - ".oste-report.yaml"
 tests_passing: true
-commits:
-  - "b4be359 feat: add handoff-file-health helper (slice 4)"
-  - "4842a9c feat: route completed tasks with missing handoff to limbo (slice 4)"
-  - "e22c579 test: add handoff-file-health unit tests (slice 4)"
-  - "78219ce test: add handoff-file routing suite (slice 4)"
-next_steps: "Reconcile _handoffFileCache on registry reload; then pick up host-grouping or review-status follow-through from slice 1's recommendations."
+next_steps: "Refresh stale agent-status-tree-provider.test.ts label assertions to match current summary-label format (pre-existing failure on main, not introduced by this wave). Then pick up the reviewer memo's deferred items: runtime-cost measurement on a 50+ task tree, pgrep edge-case guard (WARN-2.1), tmux timeout log (WARN-2.2), Windows platform guard (WARN-2.3), SPEC-agent-status-truth-ux-v1 addendum reflecting Slice 3, and _handoffFileCache reload reconciliation."
