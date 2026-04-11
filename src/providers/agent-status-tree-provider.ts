@@ -28,7 +28,6 @@ import type {
 } from "../services/openclaw-config-service.js";
 import type { OpenClawTaskService } from "../services/openclaw-task-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
-import { isTmuxPaneAgentAlive } from "../utils/tmux-pane-health.js";
 import { ReviewTracker } from "../services/review-tracker.js";
 import type { TaskFlowService } from "../services/taskflow-service.js";
 import {
@@ -50,6 +49,10 @@ import {
 	CLEARABLE_AGENT_TASK_STATUSES,
 	STALE_AGENT_STATUS_DESCRIPTION,
 } from "../utils/agent-task-registry.js";
+import {
+	checkDeclaredHandoff,
+	type DeclaredHandoffState,
+} from "../utils/handoff-file-health.js";
 import { getModelAlias } from "../utils/model-aliases.js";
 import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
 import type { ListeningPort } from "../utils/port-detector.js";
@@ -61,6 +64,7 @@ import {
 	TIME_PERIOD_LABELS,
 	type TimePeriod,
 } from "../utils/time-grouping.js";
+import { isTmuxPaneAgentAlive } from "../utils/tmux-pane-health.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
 
@@ -115,6 +119,7 @@ export interface AgentTask {
 	tmux_window_name?: string | null;
 	tmux_pane_id?: string | null;
 	bundle_path: string;
+	handoff_file?: string | null;
 	prompt_file: string;
 	started_at: string;
 	start_sha?: string | null;
@@ -645,6 +650,7 @@ function normalizeTask(
 		tmux_window_name: asString(raw["tmux_window_name"]) ?? null,
 		tmux_pane_id: asString(raw["tmux_pane_id"]) ?? null,
 		bundle_path: bundlePath,
+		handoff_file: asString(raw["handoff_file"]) ?? null,
 		prompt_file: promptFile,
 		started_at: asString(raw["started_at"]) ?? new Date().toISOString(),
 		start_sha: asString(raw["start_sha"]) ?? null,
@@ -782,6 +788,10 @@ export class AgentStatusTreeProvider
 	private _tmuxPaneAgentCache = new Map<
 		string,
 		{ alive: boolean; checkedAt: number }
+	>();
+	private _handoffFileCache = new Map<
+		string,
+		{ state: DeclaredHandoffState; checkedAt: number }
 	>();
 	private readonly _persistSessionHealthCache = new Map<
 		string,
@@ -1200,6 +1210,19 @@ export class AgentStatusTreeProvider
 		const alive = isTmuxPaneAgentAlive(task.session_id, task.tmux_socket);
 		this._tmuxPaneAgentCache.set(cacheKey, { alive, checkedAt: now });
 		return alive;
+	}
+
+	private getDeclaredHandoffState(task: AgentTask): DeclaredHandoffState {
+		const cacheTtlMs = 5_000;
+		const cacheKey = `${task.project_dir}::${task.handoff_file ?? ""}`;
+		const cached = this._handoffFileCache.get(cacheKey);
+		const now = Date.now();
+		if (cached && now - cached.checkedAt < cacheTtlMs) {
+			return cached.state;
+		}
+		const state = checkDeclaredHandoff(task);
+		this._handoffFileCache.set(cacheKey, { state, checkedAt: now });
+		return state;
 	}
 
 	/**
@@ -2907,6 +2930,12 @@ export class AgentStatusTreeProvider
 					node.task.review_status === "changes_requested")
 			) {
 				return "attention";
+			}
+			if (
+				node.type === "task" &&
+				this.getDeclaredHandoffState(node.task) === "missing"
+			) {
+				return "limbo";
 			}
 			return "done";
 		}
@@ -5744,6 +5773,17 @@ export class AgentStatusTreeProvider
 		}
 		if (task.status === "completed_stale") {
 			descriptionParts.push("stale");
+		}
+		const missingHandoffRelpath =
+			task.status === "completed" &&
+			task.review_status !== "pending" &&
+			task.review_status !== "changes_requested" &&
+			task.handoff_file &&
+			this.getDeclaredHandoffState(task) === "missing"
+				? task.handoff_file
+				: null;
+		if (missingHandoffRelpath) {
+			descriptionParts.push(`missing handoff: ${missingHandoffRelpath}`);
 		}
 		if (diffSummaryInline) {
 			descriptionParts.push(diffSummaryInline);
