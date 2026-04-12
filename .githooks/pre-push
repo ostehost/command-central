@@ -34,7 +34,7 @@ bun run dist -- --no-install --dry-run
 # --- Standalone mode: run global-equivalent checks too ---
 if [ -z "${__GIT_GLOBAL_HOOKS:-}" ]; then
   echo "🧪 Running tests..."
-  bun test 2>&1 | tail -5
+  bun run test 2>&1 | tail -5
 
   echo "🔍 Running full lint (CI mode)..."
   bunx biome ci .
