@@ -1,18 +1,10 @@
-task_id: "dogfood-test-audit-2026-04-05"
+task_id: "cc-cleanup-integration-0413c"
 status: "success"
-summary: "Full test suite audit: fixed 34 node:fs mock-bleed failures, timer leaks causing hangs, flaky timing test, and Bun recursive discovery hang"
+summary: "Audited current cleanup/integration state and wrote a scoped implementation spec for the next runtime-identity hardening slice."
 files_changed:
-  - "test/setup/global-test-cleanup.ts"
-  - "test/commands/launch-agent.test.ts"
-  - "test/commands/resume-session.test.ts"
-  - "test/services/session-store.test.ts"
-  - "test/services/review-tracker.test.ts"
-  - "test/services/project-icon-manager.test.ts"
-  - "test/services/infrastructure-health-status-bar.test.ts"
-  - "test/providers/cron-tree-provider.test.ts"
-  - "test/tree-view/agent-status-tree-provider.test.ts"
-  - "test/helpers/infrastructure-validation.test.ts"
-  - "package.json"
-  - "research/DOGFOOD-TEST-AUDIT-2026-04-05.md"
-tests_passing: true
-next_steps: "Monitor for Bun updates that fix recursive test discovery hang; revert explicit dir listing in test script when fixed"
+  - "research/SPEC-cleanup-integration-0413c.md"
+  - ".oste-report.yaml"
+test_commands:
+  - "bunx @biomejs/biome check --write research/SPEC-cleanup-integration-0413c.md .oste-report.yaml"
+tests_passing: null
+next_steps: "Implement the provider-only runtime identity hardening patch described in research/SPEC-cleanup-integration-0413c.md."
