@@ -74,8 +74,56 @@ describe("task terminal routing helpers", () => {
 			tmux_socket: "/tmp/project.tmux.sock",
 		});
 
-		expect(buildTaskTmuxAttachCommand(task)).toBe(
-			"'tmux' '-f' '/tmp/project.tmux.conf' '-S' '/tmp/project.tmux.sock' 'attach' '-t' 'agent-project-reviewer'",
-		);
+		expect(buildTaskTmuxAttachCommand(task)).toEqual([
+			"tmux",
+			"-f",
+			"/tmp/project.tmux.conf",
+			"-S",
+			"/tmp/project.tmux.sock",
+			"attach",
+			"-t",
+			"agent-project-reviewer",
+		]);
+	});
+
+	test("attach argv works with minimal task (no conf/socket)", () => {
+		const task = createTask({
+			session_id: "my-session",
+		});
+
+		expect(buildTaskTmuxAttachCommand(task)).toEqual([
+			"tmux",
+			"attach",
+			"-t",
+			"my-session",
+		]);
+	});
+
+	test("attach argv can be spread into execFileAsync args", () => {
+		const task = createTask({
+			session_id: "agent-project",
+			tmux_conf: "/tmp/cc.tmux.conf",
+			tmux_socket: "/tmp/cc.sock",
+		});
+
+		const argv = buildTaskTmuxAttachCommand(task);
+		// Simulates how extension.ts builds the open(1) args for Ghostty native:
+		//   execFileAsync("open", ["-a", "Ghostty", "--args", "-e", ...argv])
+		const openArgs = ["-a", "Ghostty", "--args", "-e", ...argv];
+
+		expect(openArgs).toEqual([
+			"-a",
+			"Ghostty",
+			"--args",
+			"-e",
+			"tmux",
+			"-f",
+			"/tmp/cc.tmux.conf",
+			"-S",
+			"/tmp/cc.sock",
+			"attach",
+			"-t",
+			"agent-project",
+		]);
 	});
 });

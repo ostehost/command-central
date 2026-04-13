@@ -1,5 +1,4 @@
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
-import { shellQuote } from "../utils/shell-command.js";
 
 type TaskTerminalRoutingTask = Pick<
 	AgentTask,
@@ -50,8 +49,9 @@ export function buildTaskTmuxAttachCommand(
 		TaskTerminalRoutingTask,
 		"session_id" | "tmux_conf" | "tmux_socket"
 	>,
-): string {
-	return ["tmux", ...buildTaskTmuxArgs(task, ["attach", "-t", task.session_id])]
-		.map((part) => shellQuote(part))
-		.join(" ");
+): string[] {
+	return [
+		"tmux",
+		...buildTaskTmuxArgs(task, ["attach", "-t", task.session_id]),
+	];
 }

@@ -1158,7 +1158,7 @@ export async function activate(
 					"Ghostty",
 					"--args",
 					"-e",
-					buildTaskTmuxAttachCommand(task),
+					...buildTaskTmuxAttachCommand(task),
 				]);
 				return true;
 			} catch {
