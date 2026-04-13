@@ -1,10 +1,13 @@
-task_id: "cc-cleanup-integration-0413c"
+task_id: "cc-runtime-identity-fix-0413d"
 status: "success"
-summary: "Audited current cleanup/integration state and wrote a scoped implementation spec for the next runtime-identity hardening slice."
+summary: "Hardened agent-status runtime identity dedupe and tooltip breadcrumbs inside the tree provider and tests."
 files_changed:
-  - "research/SPEC-cleanup-integration-0413c.md"
+  - "src/providers/agent-status-tree-provider.ts"
+  - "test/tree-view/agent-status-tree-provider.test.ts"
+  - "research/DEV-NOTES-cc-runtime-identity-fix-0413d.md"
   - ".oste-report.yaml"
 test_commands:
-  - "bunx @biomejs/biome check --write research/SPEC-cleanup-integration-0413c.md .oste-report.yaml"
-tests_passing: null
-next_steps: "Implement the provider-only runtime identity hardening patch described in research/SPEC-cleanup-integration-0413c.md."
+  - "bun test test/tree-view/agent-status-tree-provider.test.ts"
+  - "bunx tsc --noEmit"
+tests_passing: false
+next_steps: "Fix the unrelated TS2558 errors in test/services/whats-new-notification.test.ts if repo-wide typecheck must pass cleanly."

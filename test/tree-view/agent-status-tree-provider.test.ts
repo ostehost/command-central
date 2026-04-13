@@ -1032,20 +1032,71 @@ describe("AgentStatusTreeProvider", () => {
 			expect(provider.getTasks()[0]?.status).toBe("completed_stale");
 		});
 
-		test("keeps only newest running task per reused session id", () => {
+		test("does not collapse running tasks that only share session_id but have different runtime identity tuples", () => {
 			const now = Date.now();
 			const older = createMockTask({
 				id: "stale-running",
 				status: "running",
 				session_id: "agent-shared",
 				terminal_backend: "persist",
-				started_at: new Date(now - 2 * 60 * 60_000).toISOString(),
+				persist_socket: "/tmp/agent-shared-old.sock",
+				started_at: new Date(now - 10 * 60_000).toISOString(),
 			});
 			const newer = createMockTask({
 				id: "fresh-running",
 				status: "running",
 				session_id: "agent-shared",
 				terminal_backend: "persist",
+				persist_socket: "/tmp/agent-shared-fresh.sock",
+				started_at: new Date(now - 5 * 60_000).toISOString(),
+			});
+			const persistCache = (
+				provider as unknown as {
+					_persistSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._persistSessionHealthCache;
+			persistCache.set(getPersistSocketPath(older), {
+				alive: true,
+				checkedAt: Date.now(),
+			});
+			persistCache.set(getPersistSocketPath(newer), {
+				alive: true,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () =>
+				createMockRegistry({
+					[older.id]: older,
+					[newer.id]: newer,
+				});
+			provider.reload();
+
+			const displayStatuses = new Map(
+				provider.getTasks().map((task) => [task.id, task.status]),
+			);
+			expect(displayStatuses.get("stale-running")).toBe("running");
+			expect(displayStatuses.get("fresh-running")).toBe("running");
+		});
+
+		test("marks only the older sibling stopped when runtime identity tuple matches exactly", () => {
+			const now = Date.now();
+			const sharedSocket = "/tmp/agent-shared.sock";
+			const older = createMockTask({
+				id: "stale-running",
+				status: "running",
+				session_id: "agent-shared",
+				terminal_backend: "persist",
+				persist_socket: sharedSocket,
+				started_at: new Date(now - 10 * 60_000).toISOString(),
+			});
+			const newer = createMockTask({
+				id: "fresh-running",
+				status: "running",
+				session_id: "agent-shared",
+				terminal_backend: "persist",
+				persist_socket: sharedSocket,
 				started_at: new Date(now - 5 * 60_000).toISOString(),
 			});
 			(
@@ -1055,15 +1106,10 @@ describe("AgentStatusTreeProvider", () => {
 						{ alive: boolean; checkedAt: number }
 					>;
 				}
-			)._persistSessionHealthCache.set(getPersistSocketPath(older), {
+			)._persistSessionHealthCache.set(sharedSocket, {
 				alive: true,
 				checkedAt: Date.now(),
 			});
-			(
-				provider as unknown as {
-					_allDiscoveredAgents: Array<{ sessionId?: string }>;
-				}
-			)._allDiscoveredAgents = [{ sessionId: "agent-shared" }];
 			provider.readRegistry = () =>
 				createMockRegistry({
 					[older.id]: older,
@@ -1076,6 +1122,52 @@ describe("AgentStatusTreeProvider", () => {
 			);
 			expect(displayStatuses.get("fresh-running")).toBe("running");
 			expect(displayStatuses.get("stale-running")).toBe("stopped");
+		});
+
+		test("superseded sibling reason names the winning task id and runtime breadcrumbs", () => {
+			const now = Date.now();
+			const sharedSocket = "/tmp/agent-shared.sock";
+			const older = createMockTask({
+				id: "stale-running",
+				status: "running",
+				session_id: "agent-shared",
+				terminal_backend: "persist",
+				persist_socket: sharedSocket,
+				started_at: new Date(now - 10 * 60_000).toISOString(),
+			});
+			const newer = createMockTask({
+				id: "fresh-running",
+				status: "running",
+				session_id: "agent-shared",
+				terminal_backend: "persist",
+				persist_socket: sharedSocket,
+				started_at: new Date(now - 5 * 60_000).toISOString(),
+			});
+			(
+				provider as unknown as {
+					_persistSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._persistSessionHealthCache.set(sharedSocket, {
+				alive: true,
+				checkedAt: Date.now(),
+			});
+			provider.readRegistry = () =>
+				createMockRegistry({
+					[older.id]: older,
+					[newer.id]: newer,
+				});
+			provider.reload();
+
+			const staleTask = provider
+				.getTasks()
+				.find((task) => task.id === older.id);
+			expect(staleTask?.status).toBe("stopped");
+			expect(staleTask?.error_message).toContain("fresh-running");
+			expect(staleTask?.error_message).toContain("persist");
+			expect(staleTask?.error_message).toContain("socket=agent-shared.sock");
 		});
 	});
 
@@ -3147,16 +3239,33 @@ describe("AgentStatusTreeProvider", () => {
 		expect(item.label).not.toContain("🧪");
 	});
 
-	test("task tooltip stays concise and includes duration + dir", () => {
-		const task = createMockTask({ terminal_backend: "tmux" });
+	test("task tooltip includes exact timestamps and runtime identity breadcrumbs", () => {
+		const startedAt = "2026-04-13T14:00:00.000Z";
+		const completedAt = "2026-04-13T14:05:00.000Z";
+		const task = createMockTask({
+			status: "completed",
+			terminal_backend: "tmux",
+			tmux_socket: "/tmp/project.tmux.sock",
+			tmux_window_id: "@42",
+			started_at: startedAt,
+			completed_at: completedAt,
+			claude_session_id: "claude-session-abcdef1234567890",
+		});
 		const tooltip = (
 			provider.getTreeItem({ type: "task", task }).tooltip as { value: string }
 		).value;
 		expect(tooltip).toContain("**test-task-1**");
-		expect(tooltip).toContain("Status: running");
-		expect(tooltip).toContain("Duration: 1m");
+		expect(tooltip).toContain("Status: completed");
+		expect(tooltip).toContain(`Started: ${startedAt}`);
+		expect(tooltip).toContain(`Completed: ${completedAt}`);
+		expect(tooltip).toContain(
+			"Runtime: tmux · project=my-app · session=agent-my-app · window=@42 · socket=project.tmux.sock · bundle=My App.app",
+		);
+		expect(tooltip).toContain(
+			"Transcript: claude=claude-session-abcdef1234567890",
+		);
+		expect(tooltip).toContain("Duration: 5m");
 		expect(tooltip).toContain("Dir: `/Users/test/projects/my-app`");
-		expect(tooltip).not.toContain("Terminal: tmux");
 	});
 
 	test("task tooltip omits exit code details", () => {

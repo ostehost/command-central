@@ -1463,28 +1463,134 @@ export class AgentStatusTreeProvider
 		return Number.isFinite(startedAtMs) ? startedAtMs : 0;
 	}
 
-	private reconcileDuplicateRunningSessions(tasks: AgentTask[]): AgentTask[] {
-		const runningBySession = new Map<string, AgentTask[]>();
-		for (const task of tasks) {
-			if (task.status !== "running" || !task.session_id) continue;
-			// Tmux tasks with a unique window ID are independent processes in the
-			// same session — don't treat them as duplicate sessions.
-			const sessionKey =
-				(task.terminal_backend === "tmux" ||
-					task.terminal_backend === undefined) &&
-				task.tmux_window_id
-					? `${task.session_id}::${task.tmux_window_id}`
-					: task.session_id;
-			const existing = runningBySession.get(sessionKey);
-			if (existing) {
-				existing.push(task);
+	private getTaskRuntimeBackend(
+		task: AgentTask,
+	): NonNullable<AgentTask["terminal_backend"]> {
+		return task.terminal_backend ?? "tmux";
+	}
+
+	private getRunningRuntimeIdentityKey(task: AgentTask): string | null {
+		if (task.status !== "running") return null;
+
+		const backend = this.getTaskRuntimeBackend(task);
+		const bundlePath = task.bundle_path.trim();
+		const identity: Record<string, string> = {
+			backend,
+			projectDir: task.project_dir,
+		};
+
+		if (bundlePath) {
+			identity["bundlePath"] = bundlePath;
+		}
+
+		if (backend === "persist") {
+			const persistSocketPath =
+				task.persist_socket ?? this.getPersistSocketPath(task);
+			if (persistSocketPath) {
+				identity["persistSocket"] = persistSocketPath;
+			} else if (task.session_id) {
+				identity["sessionId"] = task.session_id;
 			} else {
-				runningBySession.set(sessionKey, [task]);
+				return null;
+			}
+			return JSON.stringify(identity);
+		}
+
+		if (backend === "tmux") {
+			if (!task.session_id) return null;
+			identity["tmuxSocket"] = task.tmux_socket ?? "__default__";
+			identity["sessionId"] = task.session_id;
+			identity["windowId"] = task.tmux_window_id ?? "__session__";
+			return JSON.stringify(identity);
+		}
+
+		if (!task.session_id) return null;
+		identity["sessionId"] = task.session_id;
+		return JSON.stringify(identity);
+	}
+
+	private getTaskRuntimeIdentityBreadcrumb(task: AgentTask): string | null {
+		const backend = this.getTaskRuntimeBackend(task);
+		const breadcrumbs: string[] = [backend];
+		const projectName = task.project_dir
+			? path.basename(task.project_dir)
+			: task.project_name;
+		if (projectName) {
+			breadcrumbs.push(`project=${projectName}`);
+		}
+
+		if (task.session_id) {
+			breadcrumbs.push(`session=${task.session_id}`);
+		}
+
+		if (backend === "persist") {
+			const persistSocketPath =
+				task.persist_socket ?? this.getPersistSocketPath(task);
+			if (persistSocketPath) {
+				breadcrumbs.push(`socket=${path.basename(persistSocketPath)}`);
+			}
+		} else if (backend === "tmux") {
+			if (task.tmux_window_id) {
+				breadcrumbs.push(`window=${task.tmux_window_id}`);
+			}
+			if (task.tmux_socket) {
+				breadcrumbs.push(`socket=${path.basename(task.tmux_socket)}`);
 			}
 		}
 
-		const staleTaskIds = new Set<string>();
-		for (const [sessionId, sessionTasks] of runningBySession.entries()) {
+		const bundlePath = task.bundle_path.trim();
+		if (bundlePath) {
+			breadcrumbs.push(`bundle=${path.basename(bundlePath)}`);
+		}
+
+		return breadcrumbs.length > 0 ? breadcrumbs.join(" · ") : null;
+	}
+
+	private getTaskTranscriptBreadcrumb(task: AgentTask): string | null {
+		const claudeSessionId = task.claude_session_id?.trim();
+		if (claudeSessionId) {
+			return claudeSessionId.length > 40
+				? `claude=${claudeSessionId.slice(0, 16)}...${claudeSessionId.slice(-8)}`
+				: `claude=${claudeSessionId}`;
+		}
+
+		const streamFile = task.stream_file?.trim();
+		return streamFile ? `stream=${path.basename(streamFile)}` : null;
+	}
+
+	private clearRuntimeHealthCache(task: AgentTask): void {
+		const persistSocketPath =
+			task.persist_socket ?? this.getPersistSocketPath(task);
+		if (persistSocketPath) {
+			this._persistSessionHealthCache.delete(persistSocketPath);
+		}
+
+		if (!task.session_id) return;
+
+		const tmuxSessionKey = `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
+		this._tmuxSessionHealthCache.delete(tmuxSessionKey);
+		if (task.tmux_window_id) {
+			this._tmuxSessionHealthCache.delete(
+				`${tmuxSessionKey}::${task.tmux_window_id}`,
+			);
+		}
+	}
+
+	private reconcileDuplicateRunningSessions(tasks: AgentTask[]): AgentTask[] {
+		const runningByRuntime = new Map<string, AgentTask[]>();
+		for (const task of tasks) {
+			const runtimeKey = this.getRunningRuntimeIdentityKey(task);
+			if (!runtimeKey) continue;
+			const existing = runningByRuntime.get(runtimeKey);
+			if (existing) {
+				existing.push(task);
+			} else {
+				runningByRuntime.set(runtimeKey, [task]);
+			}
+		}
+
+		const staleReasons = new Map<string, string>();
+		for (const sessionTasks of runningByRuntime.values()) {
 			if (sessionTasks.length <= 1) continue;
 			const newestTask = [...sessionTasks].sort((a, b) => {
 				const startedDiff =
@@ -1492,28 +1598,24 @@ export class AgentStatusTreeProvider
 				if (startedDiff !== 0) return startedDiff;
 				return b.id.localeCompare(a.id);
 			})[0];
+			if (!newestTask) continue;
+			const runtimeBreadcrumb =
+				this.getTaskRuntimeIdentityBreadcrumb(newestTask) ?? "the same runtime";
 			for (const task of sessionTasks) {
 				if (task.id === newestTask?.id) continue;
-				staleTaskIds.add(task.id);
-				const persistSocketPath = this.getPersistSocketPath(task);
-				if (persistSocketPath) {
-					this._persistSessionHealthCache.delete(persistSocketPath);
-				}
+				staleReasons.set(
+					task.id,
+					`Superseded by newer running task ${newestTask.id} on ${runtimeBreadcrumb}.`,
+				);
+				this.clearRuntimeHealthCache(task);
 			}
-			for (const cacheKey of this._tmuxSessionHealthCache.keys()) {
-				if (cacheKey.endsWith(`::${sessionId}`)) {
-					this._tmuxSessionHealthCache.delete(cacheKey);
-				}
-			}
-			this._persistSessionHealthCache.delete(sessionId);
 		}
 
 		return tasks.map((task) =>
-			staleTaskIds.has(task.id)
+			staleReasons.has(task.id)
 				? this.applyRuntimeStatusOverlay(task, {
 						status: "stopped",
-						reason:
-							"Superseded by a newer task on the same session. Showing as stopped.",
+						reason: staleReasons.get(task.id),
 					})
 				: task,
 		);
@@ -5844,6 +5946,8 @@ export class AgentStatusTreeProvider
 				? `${rawDescription.slice(0, 79)}…`
 				: rawDescription;
 		const duration = this.getTaskDuration(task);
+		const runtimeBreadcrumb = this.getTaskRuntimeIdentityBreadcrumb(task);
+		const transcriptBreadcrumb = this.getTaskTranscriptBreadcrumb(task);
 
 		const item = new vscode.TreeItem(
 			label,
@@ -5859,7 +5963,11 @@ export class AgentStatusTreeProvider
 					: modelDisplay
 						? `Model: ${modelDisplay.fullName}`
 						: null,
+				task.started_at ? `Started: ${task.started_at}` : null,
+				task.completed_at ? `Completed: ${task.completed_at}` : null,
 				duration ? `Duration: ${duration}` : null,
+				runtimeBreadcrumb ? `Runtime: ${runtimeBreadcrumb}` : null,
+				transcriptBreadcrumb ? `Transcript: ${transcriptBreadcrumb}` : null,
 				task.project_dir ? `Dir: \`${task.project_dir}\`` : null,
 			]
 				.filter(Boolean)
