@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 import {
 	resolveClaudeSessionIdForTask,
 	resolveClaudeTranscriptPathForTask,
@@ -68,6 +69,43 @@ export async function buildResumeCommand(
 				: "claude --continue";
 		}
 	}
+}
+
+/**
+ * Derive the expected /Applications/Projects/{projectId}.app path from a
+ * project directory or an explicit bundle_path stored on the task.
+ */
+export function resolveProjectBundlePath(
+	task: Pick<ResumeTask, "project_dir"> & { bundle_path?: string | null },
+): string | null {
+	// If the task already carries a concrete .app bundle path, prefer that.
+	const explicit = task.bundle_path?.trim();
+	if (
+		explicit?.endsWith(".app") &&
+		!explicit.startsWith("(") &&
+		fs.existsSync(explicit)
+	) {
+		return explicit;
+	}
+
+	// Convention: /Applications/Projects/<basename>.app
+	const basename = path.basename(task.project_dir);
+	if (!basename) return null;
+	const conventional = path.join(
+		"/Applications",
+		"Projects",
+		`${basename}.app`,
+	);
+	return fs.existsSync(conventional) ? conventional : null;
+}
+
+/**
+ * Check whether a usable project launcher bundle is available on disk.
+ */
+export function isProjectBundleAvailable(
+	task: Pick<ResumeTask, "project_dir"> & { bundle_path?: string | null },
+): boolean {
+	return resolveProjectBundlePath(task) !== null;
 }
 
 export async function resolveTaskTranscriptPath(

@@ -1,7 +1,11 @@
-task_id: "smoke-checklist-prep"
+task_id: "cc-dead-session-resume-poc-0413b"
 status: "success"
-summary: "Created manual smoke checklist for 0.5.1-77 prerelease covering 6 recently-changed features plus regression sniff"
+summary: "Implemented dead-session interactive resume flow with QuickPick UX, bundle detection, and contextual messaging"
 files_changed:
-  - "research/SMOKE-CHECKLIST-macbook-prerelease-2026-04-07.md"
+  - "src/commands/resume-session.ts"
+  - "src/extension.ts"
+  - "test/commands/resume-session.test.ts"
+  - "test/integration/agent-notification-ux.test.ts"
+  - "research/DEV-NOTES-dead-session-resume-poc-2026-04-13.md"
 tests_passing: true
-next_steps: "Run the smoke checklist in VS Code; note the What's New notification targets version 0.6.0 so it likely won't fire on 0.5.1-77"
+next_steps: "Consider auto-selecting Resume when only one option is available and the task was recently active"

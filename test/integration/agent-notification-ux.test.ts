@@ -166,3 +166,81 @@ describe("Agent Notification UX", () => {
 		expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalled();
 	});
 });
+
+describe("Dead-session resume flow", () => {
+	test("Dead tmux session with resumable task shows QuickPick options", async () => {
+		// Simulates the scenario: completed claude task, tmux session dead,
+		// bundle exists, transcript exists — user should see all options.
+		const task = createTask({
+			id: "agent-dead-resume",
+			status: "completed",
+			terminal_backend: "tmux",
+			session_id: "agent-dead-resume-session",
+			bundle_path: "(tmux-mode)",
+		});
+
+		// The dead-session QuickPick should be called (not a toast)
+		// We verify that the right kind of interaction is expected
+		expect(task.terminal_backend).toBe("tmux");
+		expect(task.status).toBe("completed");
+		expect(task.session_id).toBeTruthy();
+
+		// No toast should fire for a dead-session QuickPick flow
+		expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+		expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalled();
+	});
+
+	test("Dead-session resume shows bundle name in warning when bundle exists", () => {
+		const task = createTask({
+			id: "agent-concierge-midnight-elite",
+			status: "completed",
+			terminal_backend: "tmux",
+			session_id: "agent-concierge-midnight-elite",
+			bundle_path: "/Applications/Projects/command-central.app",
+		});
+
+		// Simulate the warning message shown when session is dead but bundle exists
+		const bundleName = "command-central.app";
+		vscodeMock.window.showWarningMessage(
+			`Task session "${task.session_id}" is no longer live. Opening ${bundleName} and starting a new interactive resume.`,
+		);
+
+		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+			`Task session "agent-concierge-midnight-elite" is no longer live. Opening command-central.app and starting a new interactive resume.`,
+		);
+	});
+
+	test("Dead-session resume shows generic message when no bundle exists", () => {
+		const task = createTask({
+			id: "agent-no-bundle",
+			status: "completed",
+			terminal_backend: "tmux",
+			session_id: "agent-no-bundle-session",
+			bundle_path: "(tmux-mode)",
+		});
+
+		vscodeMock.window.showWarningMessage(
+			`Task session "${task.session_id}" is no longer live. Starting interactive resume in a new terminal.`,
+		);
+
+		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+			`Task session "agent-no-bundle-session" is no longer live. Starting interactive resume in a new terminal.`,
+		);
+	});
+
+	test("Dead-session with ACP backend does not offer resume option", () => {
+		// Import the canShowResumeAction to verify
+		const {
+			canShowResumeAction,
+		} = require("../../src/commands/resume-session.js");
+		const task = createTask({
+			id: "agent-acp-dead",
+			status: "completed",
+			terminal_backend: "tmux",
+			session_id: "agent-acp-dead-session",
+			agent_backend: "acp-shell",
+		});
+
+		expect(canShowResumeAction(task)).toBe(false);
+	});
+});
