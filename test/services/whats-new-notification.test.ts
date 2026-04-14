@@ -52,20 +52,25 @@ function makeContext() {
 // The notification logic extracted from extension.ts for unit testing
 async function runWhatsNewLogic(
 	context: ReturnType<typeof makeContext>,
-	telemetry: { track: (event: string, props?: Record<string, unknown>) => void },
+	telemetry: {
+		track: (event: string, props?: Record<string, unknown>) => void;
+	},
 ) {
 	const vscode = await import("vscode");
-	const hasActivatedBefore = context.globalState.get<boolean>(
+	const hasActivatedBefore = context.globalState.get(
 		"commandCentral.hasActivatedBefore",
 		false,
-	);
-	const whatsNewShown = context.globalState.get<string>(
+	) as boolean;
+	const whatsNewShown = context.globalState.get(
 		"commandCentral.whatsNewShown",
 		"",
-	);
+	) as string;
 	if (hasActivatedBefore && whatsNewShown !== WHATS_NEW_VERSION) {
 		vscode.window.showInformationMessage(WHATS_NEW_MESSAGE, "Got it");
-		context.globalState.update("commandCentral.whatsNewShown", WHATS_NEW_VERSION);
+		context.globalState.update(
+			"commandCentral.whatsNewShown",
+			WHATS_NEW_VERSION,
+		);
 		telemetry.track("cc_whats_new_shown", { version: WHATS_NEW_VERSION });
 	}
 }

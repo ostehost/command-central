@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "generatedAt": "2026-04-13T17:48:42.398Z",
+  "commandCentral": {
+    "repo": "/Users/ostemini/projects/command-central",
+    "sha": "55ed08f4ec7bcea7ac29a44ad345ca3947e4f5a5"
+  },
+  "ghosttyLauncher": {
+    "repo": "/Users/ostemini/projects/ghostty-launcher",
+    "sha": "1b5bf980baa6833ec3946cc6a86fa2ad62b00937",
+    "launcherBinary": "/Users/ostemini/projects/ghostty-launcher/launcher"
+  },
+  "checks": [
+    {
+      "name": "command-central validation",
+      "status": "failed",
+      "command": "just verify",
+      "cwd": "/Users/ostemini/projects/command-central",
+      "startedAt": "2026-04-13T17:48:40.141Z",
+      "finishedAt": "2026-04-13T17:48:42.397Z",
+      "durationMs": 2256,
+      "output": "✨ Running complete verification...\n\n🔍 Running comprehensive validation...\n   • Code quality (Biome CI - read-only)\n   • Type checking\n   • Dead code detection (Knip)\n\n\u001b[0m\u001b[34mChecked \u001b[0m\u001b[0m\u001b[34m197\u001b[0m\u001b[0m\u001b[34m \u001b[0m\u001b[0m\u001b[34mfiles\u001b[0m\u001b[0m\u001b[34m in \u001b[0m\u001b[0m\u001b[34m131\u001b[0m\u001b[0m\u001b[2m\u001b[34mms\u001b[0m\u001b[0m\u001b[34m.\u001b[0m\u001b[0m\u001b[34m No fixes applied.\u001b[0m\ntest/services/whats-new-notification.test.ts(60,53): error TS2558: Expected 0 type arguments, but got 1.\ntest/services/whats-new-notification.test.ts(64,48): error TS2558: Expected 0 type arguments, but got 1.\nerror: Recipe `check` failed on line 166 with exit code 2\nerror: Recipe `verify` failed on line 211 with exit code 2",
+      "error": "Command exited with 2"
+    }
+  ],
+  "success": false
+}
