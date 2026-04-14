@@ -1,8 +1,11 @@
-task_id: "cc-agent-status-truth-integration-v1"
+task_id: "cc-dead-session-resume-poc-0413b"
 status: "success"
-summary: "Integration lane: reconciled Slices 1-4 of the agent-status truth wave onto one branch from main, picked Slice 4-B (enum + fail-open) over 4-A, added a joint regression test for the review_status x missing-handoff precedence, and documented the final routing chain."
+summary: "Implemented dead-session interactive resume flow with QuickPick UX, bundle detection, and contextual messaging"
 files_changed:
-  - "research/DEV-NOTES-cc-agent-status-truth-integration-v1.md"
-  - ".oste-report.yaml"
+  - "src/commands/resume-session.ts"
+  - "src/extension.ts"
+  - "test/commands/resume-session.test.ts"
+  - "test/integration/agent-notification-ux.test.ts"
+  - "research/DEV-NOTES-dead-session-resume-poc-2026-04-13.md"
 tests_passing: true
-next_steps: "Refresh stale agent-status-tree-provider.test.ts label assertions to match current summary-label format (pre-existing failure on main, not introduced by this wave). Then pick up the reviewer memo's deferred items: runtime-cost measurement on a 50+ task tree, pgrep edge-case guard (WARN-2.1), tmux timeout log (WARN-2.2), Windows platform guard (WARN-2.3), SPEC-agent-status-truth-ux-v1 addendum reflecting Slice 3, and _handoffFileCache reload reconciliation."
+next_steps: "Consider auto-selecting Resume when only one option is available and the task was recently active"
