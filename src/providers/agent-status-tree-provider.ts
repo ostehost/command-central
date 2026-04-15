@@ -1657,17 +1657,24 @@ export class AgentStatusTreeProvider
 				);
 				this.clearRuntimeHealthCache(task);
 			}
-			for (const cacheKey of this._tmuxSessionHealthCache.keys()) {
-				if (cacheKey.endsWith(`::${sessionId}`)) {
-					this._tmuxSessionHealthCache.delete(cacheKey);
+			const sessionId = newestTask.session_id;
+			if (sessionId) {
+				for (const cacheKey of this._tmuxSessionHealthCache.keys()) {
+					if (cacheKey.endsWith(`::${sessionId}`)) {
+						this._tmuxSessionHealthCache.delete(cacheKey);
+					}
+				}
+				for (const cacheKey of this._tmuxPaneAgentCache.keys()) {
+					if (cacheKey.endsWith(`::${sessionId}`)) {
+						this._tmuxPaneAgentCache.delete(cacheKey);
+					}
 				}
 			}
-			for (const cacheKey of this._tmuxPaneAgentCache.keys()) {
-				if (cacheKey.endsWith(`::${sessionId}`)) {
-					this._tmuxPaneAgentCache.delete(cacheKey);
-				}
+			const persistSocketPath =
+				newestTask.persist_socket ?? this.getPersistSocketPath(newestTask);
+			if (persistSocketPath) {
+				this._persistSessionHealthCache.delete(persistSocketPath);
 			}
-			this._persistSessionHealthCache.delete(sessionId);
 		}
 
 		return tasks.map((task) =>

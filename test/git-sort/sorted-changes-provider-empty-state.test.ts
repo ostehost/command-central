@@ -62,7 +62,7 @@ function setupGitExtensionMock(
 	mockGitApi: unknown,
 ) {
 	vscode.extensions.getExtension = mock(
-		() =>
+		<T>() =>
 			({
 				id: "vscode.git",
 				extensionUri: vscode.Uri.file("/mock/extension"),
@@ -72,8 +72,8 @@ function setupGitExtensionMock(
 				extensionKind: vscode.ExtensionKind.Workspace,
 				activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
 				exports: { getAPI: () => mockGitApi },
-			}) as import("vscode").Extension<any>,
-	);
+			}) as unknown as import("vscode").Extension<T>,
+	) as typeof vscode.extensions.getExtension;
 }
 
 describe("Empty State Message Distinction", () => {
