@@ -290,8 +290,8 @@ test-quality:
     @# Check active tests only (exclude _deleted and .legacy)
     @# Phase 1.3 achievement: Zero violations (all type assertions eliminated)
     @VIOLATIONS=`grep -r "as any" test --include="*.test.ts" --exclude-dir="_deleted" --exclude-dir=".legacy" 2>/dev/null | wc -l | tr -d ' '`; \
-    if [ $$VIOLATIONS -gt 0 ]; then \
-        echo "❌ Found 'as any' type assertions (current: $$VIOLATIONS, baseline: 0)"; \
+    if [ $VIOLATIONS -gt 0 ]; then \
+        echo "❌ Found 'as any' type assertions (current: $VIOLATIONS, baseline: 0)"; \
         echo ""; \
         grep -r "as any" test --include="*.test.ts" --exclude-dir="_deleted" --exclude-dir=".legacy" -l | sed 's/^/  - /'; \
         echo ""; \
@@ -303,8 +303,8 @@ test-quality:
 
     @# Check for reflection testing (private member access - excluding INTENTIONAL comments)
     @REFLECT=`grep -rE "\\(.*as any\\)\\." test --include="*.test.ts" --exclude-dir="_deleted" --exclude-dir=".legacy" 2>/dev/null | grep -v "INTENTIONAL" | wc -l | tr -d ' '`; \
-    if [ $$REFLECT -gt 0 ]; then \
-        echo "❌ Found $$REFLECT reflection tests (private member access without INTENTIONAL comment)"; \
+    if [ $REFLECT -gt 0 ]; then \
+        echo "❌ Found $REFLECT reflection tests (private member access without INTENTIONAL comment)"; \
         echo ""; \
         grep -rE "\\(.*as any\\)\\." test --include="*.test.ts" --exclude-dir="_deleted" --exclude-dir=".legacy" | grep -v "INTENTIONAL" | head -5 | sed 's/^/  - /'; \
         echo ""; \
