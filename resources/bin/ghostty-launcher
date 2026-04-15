@@ -805,6 +805,12 @@ BG_CONF
 	# Authoritative backend marker for bundle_backend_for_path() in oste-spawn.sh.
 	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHL_MULTIPLEXER string ${multiplexer}" "$plist" 2>/dev/null ||
 		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHL_MULTIPLEXER ${multiplexer}" "$plist"
+	# Optional orchestrator task identity tag so bundle launches can be
+	# correlated back to the task that created them.
+	if [[ -n "${GHOSTTY_TASK_ID:-}" ]]; then
+		/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_TASK_ID string ${GHOSTTY_TASK_ID}" "$plist" 2>/dev/null ||
+			/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_TASK_ID ${GHOSTTY_TASK_ID}" "$plist"
+	fi
 
 	# Register project-specific URL scheme for notification routing
 	local url_scheme="commandcentral-${safe_name}"
