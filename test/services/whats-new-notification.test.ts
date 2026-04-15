@@ -38,9 +38,9 @@ function makeContext() {
 
 	return {
 		globalState: {
-			get: mock(<T>(key: string, defaultValue?: T): T => {
-				return (store.has(key) ? store.get(key) : defaultValue) as T;
-			}),
+			get: mock((key: string, defaultValue?: unknown): unknown => {
+				return store.has(key) ? store.get(key) : defaultValue;
+			}) as unknown as <T>(key: string, defaultValue?: T) => T,
 			update: mock((key: string, value: unknown) => {
 				store.set(key, value);
 				return Promise.resolve();

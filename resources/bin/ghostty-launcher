@@ -36,13 +36,124 @@ readonly ELIGIBLE_PROJECTS_ROOT="${GHL_ELIGIBLE_PROJECTS_ROOT:-${HOME}/projects}
 
 # ── Settings parsing ──────────────────────────────────────────────────
 
-# Parse commandCentral.project.icon from .vscode/settings.json
+# Infer icon from project directory basename keywords.
+# Returns a single emoji or empty string if no keyword matches.
+_icon_from_name() {
+	local slug="$1"
+	case "$slug" in
+		# Infra / containers — must precede *doc* to avoid matching "docker"
+		*docker* | *k8s* | *kubernetes* | *terraform* | *infra* | *deploy* | *helm* | *ansible*)
+			echo "🏗️"
+			;;
+		*docs* | *documentation* | *wiki* | *book* | *manual* | *guide*)
+			echo "📚"
+			;;
+		*dashboard* | *admin* | *monitor* | *status* | *analytics*)
+			echo "📊"
+			;;
+		*api* | *server* | *backend* | *service* | *gateway*)
+			echo "⚙️"
+			;;
+		*cli* | *tool* | *launcher* | *utility*)
+			echo "🛠️"
+			;;
+		*config* | *dotfile*)
+			echo "🔧"
+			;;
+		*mobile* | *ios* | *android* | *flutter* | *react-native*)
+			echo "📱"
+			;;
+		*web* | *frontend* | *site* | *www*)
+			echo "🌐"
+			;;
+		*test* | *spec* | *qa* | *e2e*)
+			echo "🧪"
+			;;
+		*data* | *pipeline* | *etl*)
+			echo "🧠"
+			;;
+		*game* | *engine* | *unity* | *godot*)
+			echo "🎮"
+			;;
+		*bot* | *chat*)
+			echo "🤖"
+			;;
+		*lib* | *sdk* | *package* | *framework* | *plugin*)
+			echo "📦"
+			;;
+		*design* | *figma* | *sketch*)
+			echo "🎨"
+			;;
+		*auth* | *security* | *crypto*)
+			echo "🔒"
+			;;
+	esac
+}
+
+# Infer icon from well-known top-level files or directories.
+# Returns a single emoji or empty string if nothing recognized.
+_icon_from_files() {
+	local dir="$1"
+	if [[ -f "$dir/Dockerfile" ]] || [[ -f "$dir/docker-compose.yml" ]] || [[ -f "$dir/docker-compose.yaml" ]]; then
+		echo "🐳"
+	elif [[ -f "$dir/Cargo.toml" ]]; then
+		echo "🦀"
+	elif [[ -f "$dir/requirements.txt" ]] || [[ -f "$dir/pyproject.toml" ]] || [[ -f "$dir/setup.py" ]]; then
+		echo "🐍"
+	elif [[ -f "$dir/Gemfile" ]]; then
+		echo "💎"
+	elif [[ -f "$dir/package.json" ]]; then
+		echo "📦"
+	elif [[ -f "$dir/go.mod" ]]; then
+		echo "🔷"
+	elif [[ -f "$dir/mix.exs" ]]; then
+		echo "💧"
+	elif [[ -f "$dir/build.gradle" ]] || [[ -f "$dir/pom.xml" ]]; then
+		echo "☕"
+	elif [[ -d "$dir/.github" ]]; then
+		echo "🐙"
+	elif [[ -f "$dir/index.html" ]]; then
+		echo "🌐"
+	fi
+}
+
+# Resolve project icon via deterministic fallback chain:
+#   1. Explicit .vscode/settings.json icon
+#   2. Project directory name heuristics
+#   3. Top-level file / folder heuristics
+#   4. Default fallback (📁)
 parse_icon() {
 	local dir="$1"
+	local icon=""
+
+	# 1. Explicit settings.json icon (highest priority)
 	local settings="$dir/.vscode/settings.json"
 	if [[ -f "$settings" ]]; then
-		jq -r '."commandCentral.project.icon" // empty' "$settings" 2>/dev/null || true
+		icon=$(jq -r '."commandCentral.project.icon" // empty' "$settings" 2>/dev/null || true)
 	fi
+	if [[ -n "$icon" ]]; then
+		echo "$icon"
+		return
+	fi
+
+	# 2. Project name / folder slug heuristics
+	local slug
+	slug=$(basename "$dir" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+	icon=$(_icon_from_name "$slug")
+	if [[ -n "$icon" ]]; then
+		echo "$icon"
+		return
+	fi
+
+	# 3. Top-level file / folder heuristics (cheap stat checks only)
+	icon=$(_icon_from_files "$dir")
+	if [[ -n "$icon" ]]; then
+		echo "$icon"
+		return
+	fi
+
+	# 4. Default fallback
+	echo "📁"
 }
 
 # Parse commandCentral.terminal.backgroundImage.enabled from .vscode/settings.json
@@ -805,6 +916,11 @@ BG_CONF
 	# Authoritative backend marker for bundle_backend_for_path() in oste-spawn.sh.
 	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHL_MULTIPLEXER string ${multiplexer}" "$plist" 2>/dev/null ||
 		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHL_MULTIPLEXER ${multiplexer}" "$plist"
+	# Task identity tag, correlates this bundle to a specific orchestrator task.
+	if [[ -n "${GHOSTTY_TASK_ID:-}" ]]; then
+		/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_TASK_ID string ${GHOSTTY_TASK_ID}" "$plist" 2>/dev/null ||
+			/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_TASK_ID ${GHOSTTY_TASK_ID}" "$plist"
+	fi
 
 	# Register project-specific URL scheme for notification routing
 	local url_scheme="commandcentral-${safe_name}"
@@ -982,9 +1098,6 @@ main() {
 			local icon name
 			icon=$(parse_icon "$dir")
 			if [[ -n "$explicit_name" ]]; then
-				# Normalize explicit --name the same way parse_name does so
-				# callers (oste-spawn.sh, manual CLI) cannot reintroduce a
-				# dot-prefixed display identity that mismatches the filesystem.
 				local _normalized_explicit
 				_normalized_explicit=$(normalize_display_name "$explicit_name")
 				if [[ "$_normalized_explicit" != "$explicit_name" ]]; then
@@ -1018,7 +1131,7 @@ main() {
 			echo "  --multiplexer X        Force multiplexer (tmux|zellij). Overrides per-project setting."
 			echo "                         Default: zellij. Set GHL_DEFAULT_MULTIPLEXER to change globally."
 			echo "                         Or set commandCentral.terminal.multiplexer in .vscode/settings.json."
-			echo "  --parse-icon DIR       Print emoji icon from settings"
+			echo "  --parse-icon DIR       Print emoji icon (settings → name → files → default)"
 			echo "  --parse-name DIR       Print project name from settings"
 			echo "  --parse-multiplexer DIR  Print multiplexer setting from .vscode/settings.json"
 			echo "  --validate-launcher-project DIR"

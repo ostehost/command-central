@@ -14,6 +14,8 @@ mock.module("node:fs", () => realFs);
 const {
 	buildResumeCommand,
 	canShowResumeAction,
+	isProjectBundleAvailable,
+	resolveProjectBundlePath,
 	resolveResumeBackend,
 	resolveTaskTranscriptPath,
 	supportsInteractiveResume,
@@ -148,6 +150,132 @@ describe("resume-session helpers", () => {
 		});
 		try {
 			expect(await resolveTaskTranscriptPath(task, tmpDir)).toBe(streamPath);
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("project bundle availability", () => {
+	test("resolveProjectBundlePath returns explicit bundle_path when it exists on disk", () => {
+		const tmpDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "resume-bundle-test-"),
+		);
+		const fakeBundlePath = path.join(tmpDir, "my-project.app");
+		fs.mkdirSync(fakeBundlePath);
+		try {
+			const task = createTask({ bundle_path: fakeBundlePath });
+			expect(resolveProjectBundlePath(task)).toBe(fakeBundlePath);
+			expect(isProjectBundleAvailable(task)).toBe(true);
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	test("resolveProjectBundlePath ignores sentinel bundle_path values", () => {
+		const task = createTask({ bundle_path: "(test-mode)" });
+		expect(resolveProjectBundlePath(task)).toBeNull();
+		expect(isProjectBundleAvailable(task)).toBe(false);
+	});
+
+	test("resolveProjectBundlePath returns null for missing explicit bundle", () => {
+		const task = createTask({
+			bundle_path: "/nonexistent/path/to/bundle.app",
+		});
+		expect(resolveProjectBundlePath(task)).toBeNull();
+		expect(isProjectBundleAvailable(task)).toBe(false);
+	});
+
+	test("resolveProjectBundlePath falls back to /Applications/Projects convention", () => {
+		// This test verifies the convention path logic without requiring the
+		// actual /Applications/Projects directory. It checks the null fallback.
+		const task = createTask({
+			project_dir: "/tmp/unlikely-project-name-abc123",
+			bundle_path: "(tmux-mode)",
+		});
+		// Unless /Applications/Projects/unlikely-project-name-abc123.app exists,
+		// this should return null.
+		expect(resolveProjectBundlePath(task)).toBeNull();
+		expect(isProjectBundleAvailable(task)).toBe(false);
+	});
+});
+
+describe("dead-session resume decision logic", () => {
+	test("completed claude task is resumable", () => {
+		const task = createTask({
+			status: "completed",
+			agent_backend: "claude",
+		});
+		expect(canShowResumeAction(task)).toBe(true);
+		expect(supportsInteractiveResume(task)).toBe(true);
+	});
+
+	test("failed claude task is resumable", () => {
+		const task = createTask({
+			status: "failed",
+			agent_backend: "claude",
+		});
+		expect(canShowResumeAction(task)).toBe(true);
+		expect(supportsInteractiveResume(task)).toBe(true);
+	});
+
+	test("completed_stale claude task is resumable", () => {
+		const task = createTask({
+			status: "completed_stale",
+			agent_backend: "claude",
+		});
+		expect(canShowResumeAction(task)).toBe(true);
+		expect(supportsInteractiveResume(task)).toBe(true);
+	});
+
+	test("completed_dirty claude task is resumable", () => {
+		const task = createTask({
+			status: "completed_dirty",
+			agent_backend: "claude",
+		});
+		expect(canShowResumeAction(task)).toBe(true);
+		expect(supportsInteractiveResume(task)).toBe(true);
+	});
+
+	test("ACP task is never resumable", () => {
+		const task = createTask({
+			status: "completed",
+			agent_backend: "acp-shell",
+		});
+		expect(canShowResumeAction(task)).toBe(false);
+		expect(supportsInteractiveResume(task)).toBe(false);
+	});
+
+	test("codex and gemini tasks are resumable", () => {
+		const codexTask = createTask({
+			status: "completed",
+			agent_backend: "codex",
+		});
+		const geminiTask = createTask({
+			status: "completed",
+			agent_backend: "gemini",
+		});
+		expect(canShowResumeAction(codexTask)).toBe(true);
+		expect(supportsInteractiveResume(codexTask)).toBe(true);
+		expect(canShowResumeAction(geminiTask)).toBe(true);
+		expect(supportsInteractiveResume(geminiTask)).toBe(true);
+	});
+
+	test("unknown backend with session data is resumable", async () => {
+		const tmpDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "resume-session-test-"),
+		);
+		const task = createTask({
+			status: "completed",
+			agent_backend: undefined,
+			cli_name: undefined,
+			project_dir: "/tmp/unknown-project",
+		});
+		try {
+			expect(canShowResumeAction(task)).toBe(true);
+			expect(supportsInteractiveResume(task)).toBe(true);
+			// Falls back to claude --continue when no session file found
+			expect(await buildResumeCommand(task, tmpDir)).toBe("claude --continue");
 		} finally {
 			fs.rmSync(tmpDir, { recursive: true, force: true });
 		}

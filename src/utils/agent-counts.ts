@@ -3,6 +3,7 @@ import type { AgentTask } from "../providers/agent-status-tree-provider.js";
 export interface AgentCounts {
 	working: number;
 	attention: number;
+	limbo: number;
 	done: number;
 	total: number;
 }
@@ -15,6 +16,7 @@ export function countAgentStatuses(tasks: AgentTask[]): AgentCounts {
 	const counts: AgentCounts = {
 		working: 0,
 		attention: 0,
+		limbo: 0,
 		done: 0,
 		total: 0,
 	};
@@ -26,9 +28,18 @@ export function countAgentStatuses(tasks: AgentTask[]): AgentCounts {
 				counts.working++;
 				break;
 			case "completed":
+				if (
+					task.review_status === "pending" ||
+					task.review_status === "changes_requested"
+				) {
+					counts.attention++;
+				} else {
+					counts.done++;
+				}
+				break;
 			case "completed_dirty":
 			case "completed_stale":
-				counts.done++;
+				counts.limbo++;
 				break;
 			case "failed":
 			case "killed":
@@ -56,6 +67,7 @@ export function formatCountSummary(
 	if (options.includeAttention && attention > 0) {
 		parts.push(`${attention} attention`);
 	}
+	if (counts.limbo > 0) parts.push(`${counts.limbo} limbo`);
 	if (counts.done > 0) parts.push(`${counts.done} done`);
 	return parts.join(" · ") || "No agents";
 }

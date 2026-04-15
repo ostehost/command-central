@@ -50,6 +50,10 @@ import {
 	CLEARABLE_AGENT_TASK_STATUSES,
 	STALE_AGENT_STATUS_DESCRIPTION,
 } from "../utils/agent-task-registry.js";
+import {
+	checkDeclaredHandoff,
+	type DeclaredHandoffState,
+} from "../utils/handoff-file-health.js";
 import { getModelAlias } from "../utils/model-aliases.js";
 import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
 import type { ListeningPort } from "../utils/port-detector.js";
@@ -61,6 +65,7 @@ import {
 	TIME_PERIOD_LABELS,
 	type TimePeriod,
 } from "../utils/time-grouping.js";
+import { isTmuxPaneAgentAlive } from "../utils/tmux-pane-health.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
 
@@ -115,6 +120,7 @@ export interface AgentTask {
 	tmux_window_name?: string | null;
 	tmux_pane_id?: string | null;
 	bundle_path: string;
+	handoff_file?: string | null;
 	prompt_file: string;
 	started_at: string;
 	start_sha?: string | null;
@@ -217,7 +223,7 @@ export interface FolderGroupNode {
 	projects: ProjectGroupNode[];
 }
 
-export type AgentStatusGroup = "running" | "done" | "attention";
+export type AgentStatusGroup = "running" | "done" | "attention" | "limbo";
 
 export interface StatusGroupNode {
 	type: "statusGroup";
@@ -557,7 +563,8 @@ const VALID_TASK_STATUSES = new Set<AgentTaskStatus>([
 const TASK_STATUS_PRIORITY: Record<AgentStatusGroup, number> = {
 	running: 0,
 	attention: 1,
-	done: 2,
+	limbo: 2,
+	done: 3,
 };
 
 // PORT_LOADING_LABEL removed — ports row only renders with real data
@@ -567,6 +574,7 @@ const STATUS_GROUP_LABELS: Record<AgentStatusGroup, string> = {
 	running: "Running",
 	done: "Completed",
 	attention: "Failed & Stopped",
+	limbo: "Needs Review",
 };
 
 const STATUS_GROUP_ICONS: Record<AgentStatusGroup, vscode.ThemeIcon> = {
@@ -575,6 +583,10 @@ const STATUS_GROUP_ICONS: Record<AgentStatusGroup, vscode.ThemeIcon> = {
 	attention: new vscode.ThemeIcon(
 		"warning",
 		new vscode.ThemeColor("charts.orange"),
+	),
+	limbo: new vscode.ThemeIcon(
+		"question",
+		new vscode.ThemeColor("charts.yellow"),
 	),
 };
 
@@ -639,6 +651,7 @@ function normalizeTask(
 		tmux_window_name: asString(raw["tmux_window_name"]) ?? null,
 		tmux_pane_id: asString(raw["tmux_pane_id"]) ?? null,
 		bundle_path: bundlePath,
+		handoff_file: asString(raw["handoff_file"]) ?? null,
 		prompt_file: promptFile,
 		started_at: asString(raw["started_at"]) ?? new Date().toISOString(),
 		start_sha: asString(raw["start_sha"]) ?? null,
@@ -772,6 +785,14 @@ export class AgentStatusTreeProvider
 	private readonly _tmuxSessionHealthCache = new Map<
 		string,
 		{ alive: boolean; checkedAt: number }
+	>();
+	private _tmuxPaneAgentCache = new Map<
+		string,
+		{ alive: boolean; checkedAt: number }
+	>();
+	private _handoffFileCache = new Map<
+		string,
+		{ state: DeclaredHandoffState; checkedAt: number }
 	>();
 	private readonly _persistSessionHealthCache = new Map<
 		string,
@@ -1179,6 +1200,32 @@ export class AgentStatusTreeProvider
 		return alive;
 	}
 
+	private isTmuxPaneAgentHealthy(task: AgentTask): boolean {
+		const cacheTtlMs = 5_000;
+		const cacheKey = `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
+		const cached = this._tmuxPaneAgentCache.get(cacheKey);
+		const now = Date.now();
+		if (cached && now - cached.checkedAt < cacheTtlMs) {
+			return cached.alive;
+		}
+		const alive = isTmuxPaneAgentAlive(task.session_id, task.tmux_socket);
+		this._tmuxPaneAgentCache.set(cacheKey, { alive, checkedAt: now });
+		return alive;
+	}
+
+	private getDeclaredHandoffState(task: AgentTask): DeclaredHandoffState {
+		const cacheTtlMs = 5_000;
+		const cacheKey = `${task.project_dir}::${task.handoff_file ?? ""}`;
+		const cached = this._handoffFileCache.get(cacheKey);
+		const now = Date.now();
+		if (cached && now - cached.checkedAt < cacheTtlMs) {
+			return cached.state;
+		}
+		const state = checkDeclaredHandoff(task);
+		this._handoffFileCache.set(cacheKey, { state, checkedAt: now });
+		return state;
+	}
+
 	/**
 	 * Checks whether a specific tmux window (by `@N` ID) still exists.
 	 * More accurate than `isTmuxSessionAlive` for multi-window sessions where
@@ -1283,6 +1330,7 @@ export class AgentStatusTreeProvider
 					)
 				: this.isTmuxSessionAlive(task.session_id, task.tmux_socket);
 			if (!windowAlive) return false;
+			if (!this.isTmuxPaneAgentHealthy(task)) return false;
 			return !looksStale;
 		}
 
@@ -1609,6 +1657,17 @@ export class AgentStatusTreeProvider
 				);
 				this.clearRuntimeHealthCache(task);
 			}
+			for (const cacheKey of this._tmuxSessionHealthCache.keys()) {
+				if (cacheKey.endsWith(`::${sessionId}`)) {
+					this._tmuxSessionHealthCache.delete(cacheKey);
+				}
+			}
+			for (const cacheKey of this._tmuxPaneAgentCache.keys()) {
+				if (cacheKey.endsWith(`::${sessionId}`)) {
+					this._tmuxPaneAgentCache.delete(cacheKey);
+				}
+			}
+			this._persistSessionHealthCache.delete(sessionId);
 		}
 
 		return tasks.map((task) =>
@@ -2230,13 +2289,20 @@ export class AgentStatusTreeProvider
 		) {
 			// Use window-level check when available for multi-window sessions.
 			if (task.tmux_window_id) {
-				return !this.isTmuxWindowAlive(
-					task.session_id,
-					task.tmux_window_id,
-					task.tmux_socket,
-				);
+				if (
+					!this.isTmuxWindowAlive(
+						task.session_id,
+						task.tmux_window_id,
+						task.tmux_socket,
+					)
+				) {
+					return true;
+				}
+			} else if (!this.isTmuxSessionAlive(task.session_id, task.tmux_socket)) {
+				return true;
 			}
-			return !this.isTmuxSessionAlive(task.session_id, task.tmux_socket);
+			// Session/window alive but agent process may be gone.
+			return !this.isTmuxPaneAgentHealthy(task);
 		}
 
 		if (this.hasLiveDiscoveredSession(task)) {
@@ -2970,12 +3036,24 @@ export class AgentStatusTreeProvider
 	private getNodeStatusGroup(node: SortableAgentNode): AgentStatusGroup {
 		const status = this.getNodeStatus(node);
 		if (status === "running") return "running";
-		if (
-			status === "completed" ||
-			status === "completed_dirty" ||
-			status === "completed_stale"
-		) {
+		if (status === "completed") {
+			if (
+				node.type === "task" &&
+				(node.task.review_status === "pending" ||
+					node.task.review_status === "changes_requested")
+			) {
+				return "attention";
+			}
+			if (
+				node.type === "task" &&
+				this.getDeclaredHandoffState(node.task) === "missing"
+			) {
+				return "limbo";
+			}
 			return "done";
+		}
+		if (status === "completed_dirty" || status === "completed_stale") {
+			return "limbo";
 		}
 		return "attention";
 	}
@@ -2996,7 +3074,7 @@ export class AgentStatusTreeProvider
 			grouped.set(statusGroup, bucket);
 		}
 
-		return (["running", "attention", "done"] as AgentStatusGroup[])
+		return (["running", "attention", "limbo", "done"] as AgentStatusGroup[])
 			.map((status) => {
 				const groupNodes = grouped.get(status) ?? [];
 				if (groupNodes.length === 0) return null;
@@ -5718,11 +5796,13 @@ export class AgentStatusTreeProvider
 
 	private createStatusGroupItem(node: StatusGroupNode): vscode.TreeItem {
 		const count = node.nodes.length;
+		const collapsibleState =
+			node.status !== "done" && this.statusGroupHasRecentItems(node)
+				? vscode.TreeItemCollapsibleState.Expanded
+				: vscode.TreeItemCollapsibleState.Collapsed;
 		const item = new vscode.TreeItem(
 			`${STATUS_GROUP_LABELS[node.status]} · ${count} ${count === 1 ? "agent" : "agents"}`,
-			this.statusGroupHasRecentItems(node)
-				? vscode.TreeItemCollapsibleState.Expanded
-				: vscode.TreeItemCollapsibleState.Collapsed,
+			collapsibleState,
 		);
 		item.id = `status-group:${node.status}`;
 		item.contextValue = "statusGroup";
@@ -5908,6 +5988,17 @@ export class AgentStatusTreeProvider
 		}
 		if (task.status === "completed_stale") {
 			descriptionParts.push("stale");
+		}
+		const missingHandoffRelpath =
+			task.status === "completed" &&
+			task.review_status !== "pending" &&
+			task.review_status !== "changes_requested" &&
+			task.handoff_file &&
+			this.getDeclaredHandoffState(task) === "missing"
+				? task.handoff_file
+				: null;
+		if (missingHandoffRelpath) {
+			descriptionParts.push(`missing handoff: ${missingHandoffRelpath}`);
 		}
 		if (diffSummaryInline) {
 			descriptionParts.push(diffSummaryInline);

@@ -13,6 +13,8 @@ import * as enableSortCommand from "./commands/enable-sort.js";
 import {
 	buildResumeCommand,
 	canShowResumeAction,
+	isProjectBundleAvailable,
+	resolveProjectBundlePath,
 	resolveResumeBackend,
 	resolveTaskTranscriptPath,
 	supportsInteractiveResume,
@@ -1156,7 +1158,7 @@ export async function activate(
 					"Ghostty",
 					"--args",
 					"-e",
-					buildTaskTmuxAttachCommand(task),
+					...buildTaskTmuxAttachCommand(task),
 				]);
 				return true;
 			} catch {
@@ -1197,10 +1199,18 @@ export async function activate(
 				}
 			}
 
+			// Session is dead — provide contextual messaging.
+			const bundlePath = resolveProjectBundlePath(task);
 			if (task.session_id && isValidSessionId(task.session_id)) {
-				vscode.window.showWarningMessage(
-					`Task session "${task.session_id}" is no longer live. Opening the project launcher and starting a new interactive resume.`,
-				);
+				if (bundlePath) {
+					vscode.window.showWarningMessage(
+						`Task session "${task.session_id}" is no longer live. Opening ${path.basename(bundlePath)} and starting a new interactive resume.`,
+					);
+				} else {
+					vscode.window.showWarningMessage(
+						`Task session "${task.session_id}" is no longer live. Starting interactive resume in a new terminal.`,
+					);
+				}
 			}
 
 			await runCommandInProjectTerminalWithFallback(
@@ -1353,22 +1363,94 @@ export async function activate(
 					}
 
 					if (task.terminal_backend === "tmux" && !hasLiveTmuxSession) {
+						// Dead session: offer resume/transcript/launcher via QuickPick
+						const isResumable =
+							canShowResumeAction(task) &&
+							supportsInteractiveResume(task) &&
+							task.status !== "running";
 						const streamFile = agentStatusProvider?.resolveStreamFilePath(task);
-						if (streamFile) {
-							vscode.window.showInformationMessage(
-								`Task session "${task.session_id}" is no longer live. Opening the latest transcript instead.`,
+						const transcriptPath =
+							streamFile ?? (await resolveTaskTranscriptPath(task)) ?? null;
+						const hasBundlePath = projectDir && isProjectBundleAvailable(task);
+
+						type DeadSessionPickItem = vscode.QuickPickItem & {
+							action: "resume" | "transcript" | "launcher" | "diff";
+						};
+						const deadItems: DeadSessionPickItem[] = [];
+
+						if (isResumable && projectDir) {
+							deadItems.push({
+								label: "$(debug-start) Resume in Interactive Mode",
+								description:
+									"Start a new interactive resume in the project terminal",
+								action: "resume",
+							});
+						}
+						if (transcriptPath) {
+							deadItems.push({
+								label: "$(file) View Session Transcript",
+								description: path.basename(transcriptPath),
+								action: "transcript",
+							});
+						}
+						if (hasBundlePath && projectDir) {
+							deadItems.push({
+								label: "$(terminal) Open Project Launcher",
+								description: resolveProjectBundlePath(task) ?? projectDir,
+								action: "launcher",
+							});
+						}
+						deadItems.push({
+							label: "$(diff) View Diff",
+							description: "Show the changes this task made",
+							action: "diff",
+						});
+
+						if (deadItems.length === 1) {
+							// Only diff available — just do it directly.
+							await vscode.commands.executeCommand(
+								"commandCentral.viewAgentDiff",
+								{ type: "task", task },
 							);
-							await openTranscriptInEditor(streamFile);
 							return;
 						}
 
-						if (projectDir) {
-							vscode.window.showWarningMessage(
-								`Task session "${task.session_id}" is no longer live. Opening the project launcher instead.`,
+						const deadPick =
+							await vscode.window.showQuickPick<DeadSessionPickItem>(
+								deadItems,
+								{
+									placeHolder: `Session "${task.session_id}" is no longer live — choose an action`,
+								},
 							);
+						if (!deadPick) return;
+
+						if (deadPick.action === "resume") {
+							const resumeCmd = await buildResumeCommand(task);
+							if (resumeCmd && projectDir) {
+								await runResumeInTaskTerminal(task, resumeCmd);
+							} else {
+								vscode.window.showWarningMessage(
+									"Could not build a resume command for this task.",
+								);
+							}
+							return;
+						}
+						if (deadPick.action === "transcript" && transcriptPath) {
+							await openTranscriptInEditor(transcriptPath);
+							return;
+						}
+						if (deadPick.action === "launcher" && projectDir) {
 							await terminalManager?.runInProjectTerminal(projectDir);
 							return;
 						}
+						if (deadPick.action === "diff") {
+							await vscode.commands.executeCommand(
+								"commandCentral.viewAgentDiff",
+								{ type: "task", task },
+							);
+							return;
+						}
+						return;
 					}
 
 					vscode.window.showInformationMessage(
@@ -2103,19 +2185,27 @@ export async function activate(
 								task.bundle_path !== "(tmux-mode)"),
 					);
 
+					const bundlePath = resolveProjectBundlePath(task);
+					const terminalTarget = bundlePath
+						? path.basename(bundlePath)
+						: "project terminal";
+
 					type ResumeQuickPickItem = vscode.QuickPickItem & {
 						action: "resume" | "focus" | "transcript";
 					};
 					const items: ResumeQuickPickItem[] = [];
 					if (resumeCommand) {
+						const backendDetail =
+							backend === "codex"
+								? `Run \`codex resume --last\` in ${terminalTarget}`
+								: backend === "gemini"
+									? `Run \`gemini -p --resume latest\` in ${terminalTarget}`
+									: hasLiveTmuxSession
+										? "Steer the resume command into the existing session"
+										: `Run \`claude --resume\` in ${terminalTarget}`;
 						items.push({
-							label: "Resume in Interactive Mode",
-							description:
-								backend === "codex"
-									? "Run `codex resume --last` in the project terminal"
-									: backend === "gemini"
-										? "Run `gemini -p --resume latest` in the project terminal"
-										: "Run `claude --resume` for this task, or `claude --continue` as fallback",
+							label: "$(debug-start) Resume in Interactive Mode",
+							description: backendDetail,
 							action: "resume",
 						});
 					}
