@@ -14,6 +14,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { LoggerService } from "../../src/services/logger-service.js";
+import type { TreeElement } from "../../src/types/tree-element.js";
 import {
 	createMockExtensionContext,
 	createMockLogger,
@@ -71,7 +72,6 @@ function setupGitExtensionMock(
 				extensionKind: vscode.ExtensionKind.Workspace,
 				activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
 				exports: { getAPI: () => mockGitApi },
-				// biome-ignore lint/suspicious/noExplicitAny: GitExtension mock
 			}) as import("vscode").Extension<any>,
 	);
 }
@@ -140,8 +140,9 @@ describe("Regression: catch block shows 'No changes' instead of 'Open a Git repo
 
 		// Track messages on the TreeView
 		const activityBar = createMessageTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(activityBar.view as any);
+		provider.setActivityBarTreeView(
+			activityBar.view as unknown as import("vscode").TreeView<TreeElement>,
+		);
 
 		await provider.initialize();
 		const children = await provider.getChildren();
@@ -155,10 +156,10 @@ describe("Regression: catch block shows 'No changes' instead of 'Open a Git repo
 		expect(activityBar.view.message).toBe("No changes to display.");
 
 		// Should also log the error for debugging
-		// biome-ignore lint/suspicious/noExplicitAny: mock type access
-		const errorCalls = (mockLogger.error as any).mock.calls;
+		const errorCalls = (
+			mockLogger.error as unknown as { mock: { calls: unknown[][] } }
+		).mock.calls;
 		const sortedChangesErrors = errorCalls.filter(
-			// biome-ignore lint/suspicious/noExplicitAny: mock call args
 			(call: any[]) =>
 				typeof call[0] === "string" &&
 				call[0].includes("Failed to get sorted changes"),

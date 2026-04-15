@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realFs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type * as vscode from "vscode";
 
 // Mock vscode
 mock.module("vscode", () => ({}));
@@ -23,8 +24,11 @@ mock.module("node:fs", () => ({
 import { resolveTasksFilePath } from "../../src/utils/tasks-file-resolver.js";
 
 function mockWorkspaceFolder(fsPath: string) {
-	// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-	return { uri: { fsPath }, name: path.basename(fsPath), index: 0 } as any;
+	return {
+		uri: { fsPath },
+		name: path.basename(fsPath),
+		index: 0,
+	} as unknown as vscode.WorkspaceFolder;
 }
 
 describe("resolveTasksFilePath", () => {

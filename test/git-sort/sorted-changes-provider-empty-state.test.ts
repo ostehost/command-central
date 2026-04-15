@@ -14,6 +14,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realFsPromises from "node:fs/promises";
 import type { LoggerService } from "../../src/services/logger-service.js";
+import type { TreeElement } from "../../src/types/tree-element.js";
 import {
 	createMockExtensionContext,
 	createMockLogger,
@@ -71,7 +72,6 @@ function setupGitExtensionMock(
 				extensionKind: vscode.ExtensionKind.Workspace,
 				activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
 				exports: { getAPI: () => mockGitApi },
-				// biome-ignore lint/suspicious/noExplicitAny: GitExtension API has dynamic export structure
 			}) as import("vscode").Extension<any>,
 	);
 }
@@ -114,8 +114,9 @@ describe("Empty State Message Distinction", () => {
 
 		// Set up tree view to track messages
 		const activityBar = createMessageTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(activityBar.view as any);
+		provider.setActivityBarTreeView(
+			activityBar.view as unknown as import("vscode").TreeView<TreeElement>,
+		);
 
 		await provider.initialize();
 		const children = await provider.getChildren();
@@ -144,8 +145,9 @@ describe("Empty State Message Distinction", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const activityBar = createMessageTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(activityBar.view as any);
+		provider.setActivityBarTreeView(
+			activityBar.view as unknown as import("vscode").TreeView<TreeElement>,
+		);
 
 		await provider.initialize();
 		const children = await provider.getChildren();
@@ -191,8 +193,9 @@ describe("Empty State Message Distinction", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const activityBar = createMessageTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(activityBar.view as any);
+		provider.setActivityBarTreeView(
+			activityBar.view as unknown as import("vscode").TreeView<TreeElement>,
+		);
 
 		await provider.initialize();
 		const children = await provider.getChildren();
@@ -245,8 +248,9 @@ describe("Empty State Message Distinction", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const activityBar = createMessageTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(activityBar.view as any);
+		provider.setActivityBarTreeView(
+			activityBar.view as unknown as import("vscode").TreeView<TreeElement>,
+		);
 
 		await provider.initialize();
 		const children = await provider.getChildren();
@@ -294,10 +298,12 @@ describe("Empty State Message Distinction", () => {
 
 		const activityBar = createMessageTrackingTreeView();
 		const panel = createMessageTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(activityBar.view as any);
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setPanelTreeView(panel.view as any);
+		provider.setActivityBarTreeView(
+			activityBar.view as unknown as import("vscode").TreeView<TreeElement>,
+		);
+		provider.setPanelTreeView(
+			panel.view as unknown as import("vscode").TreeView<TreeElement>,
+		);
 
 		await provider.initialize();
 		await provider.getChildren();

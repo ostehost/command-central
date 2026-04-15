@@ -18,6 +18,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realFsPromises from "node:fs/promises";
+import type { GroupingStateManager } from "../../src/services/grouping-state-manager.js";
 import type { LoggerService } from "../../src/services/logger-service.js";
 import {
 	createMockExtensionContext,
@@ -44,7 +45,6 @@ function setupGitExtensionMock(
 				extensionKind: vscode.ExtensionKind.Workspace,
 				activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
 				exports: { getAPI: () => mockGitApi },
-				// biome-ignore lint/suspicious/noExplicitAny: GitExtension mock
 			}) as import("vscode").Extension<any>,
 	);
 }
@@ -111,8 +111,7 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 			undefined,
 			undefined,
 			undefined,
-			// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-			createMockGroupingStateManager(true) as any,
+			createMockGroupingStateManager(true) as unknown as GroupingStateManager,
 		);
 
 		await provider.initialize();
@@ -181,8 +180,7 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 			undefined,
 			undefined,
 			undefined,
-			// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-			createMockGroupingStateManager(true) as any,
+			createMockGroupingStateManager(true) as unknown as GroupingStateManager,
 		);
 
 		await provider.initialize();
@@ -253,8 +251,7 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 			undefined,
 			undefined,
 			undefined,
-			// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-			createMockGroupingStateManager(true) as any,
+			createMockGroupingStateManager(true) as unknown as GroupingStateManager,
 		);
 
 		await provider.initialize();

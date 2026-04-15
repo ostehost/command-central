@@ -35,13 +35,124 @@ readonly PROJECTS_DIR="/Applications/Projects"
 
 # ── Settings parsing ──────────────────────────────────────────────────
 
-# Parse commandCentral.project.icon from .vscode/settings.json
+# Infer icon from project directory basename keywords.
+# Returns a single emoji or empty string if no keyword matches.
+_icon_from_name() {
+	local slug="$1"
+	case "$slug" in
+		# Infra / containers — must precede *doc* to avoid matching "docker"
+		*docker* | *k8s* | *kubernetes* | *terraform* | *infra* | *deploy* | *helm* | *ansible*)
+			echo "🏗️"
+			;;
+		*docs* | *documentation* | *wiki* | *book* | *manual* | *guide*)
+			echo "📚"
+			;;
+		*dashboard* | *admin* | *monitor* | *status* | *analytics*)
+			echo "📊"
+			;;
+		*api* | *server* | *backend* | *service* | *gateway*)
+			echo "⚙️"
+			;;
+		*cli* | *tool* | *launcher* | *utility*)
+			echo "🛠️"
+			;;
+		*config* | *dotfile*)
+			echo "🔧"
+			;;
+		*mobile* | *ios* | *android* | *flutter* | *react-native*)
+			echo "📱"
+			;;
+		*web* | *frontend* | *site* | *www*)
+			echo "🌐"
+			;;
+		*test* | *spec* | *qa* | *e2e*)
+			echo "🧪"
+			;;
+		*data* | *pipeline* | *etl*)
+			echo "🧠"
+			;;
+		*game* | *engine* | *unity* | *godot*)
+			echo "🎮"
+			;;
+		*bot* | *chat*)
+			echo "🤖"
+			;;
+		*lib* | *sdk* | *package* | *framework* | *plugin*)
+			echo "📦"
+			;;
+		*design* | *figma* | *sketch*)
+			echo "🎨"
+			;;
+		*auth* | *security* | *crypto*)
+			echo "🔒"
+			;;
+	esac
+}
+
+# Infer icon from well-known top-level files or directories.
+# Returns a single emoji or empty string if nothing recognized.
+_icon_from_files() {
+	local dir="$1"
+	if [[ -f "$dir/Dockerfile" ]] || [[ -f "$dir/docker-compose.yml" ]] || [[ -f "$dir/docker-compose.yaml" ]]; then
+		echo "🐳"
+	elif [[ -f "$dir/Cargo.toml" ]]; then
+		echo "🦀"
+	elif [[ -f "$dir/requirements.txt" ]] || [[ -f "$dir/pyproject.toml" ]] || [[ -f "$dir/setup.py" ]]; then
+		echo "🐍"
+	elif [[ -f "$dir/Gemfile" ]]; then
+		echo "💎"
+	elif [[ -f "$dir/package.json" ]]; then
+		echo "📦"
+	elif [[ -f "$dir/go.mod" ]]; then
+		echo "🔷"
+	elif [[ -f "$dir/mix.exs" ]]; then
+		echo "💧"
+	elif [[ -f "$dir/build.gradle" ]] || [[ -f "$dir/pom.xml" ]]; then
+		echo "☕"
+	elif [[ -d "$dir/.github" ]]; then
+		echo "🐙"
+	elif [[ -f "$dir/index.html" ]]; then
+		echo "🌐"
+	fi
+}
+
+# Resolve project icon via deterministic fallback chain:
+#   1. Explicit .vscode/settings.json icon
+#   2. Project directory name heuristics
+#   3. Top-level file / folder heuristics
+#   4. Default fallback (📁)
 parse_icon() {
 	local dir="$1"
+	local icon=""
+
+	# 1. Explicit settings.json icon (highest priority)
 	local settings="$dir/.vscode/settings.json"
 	if [[ -f "$settings" ]]; then
-		jq -r '."commandCentral.project.icon" // empty' "$settings" 2>/dev/null || true
+		icon=$(jq -r '."commandCentral.project.icon" // empty' "$settings" 2>/dev/null || true)
 	fi
+	if [[ -n "$icon" ]]; then
+		echo "$icon"
+		return
+	fi
+
+	# 2. Project name / folder slug heuristics
+	local slug
+	slug=$(basename "$dir" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+	icon=$(_icon_from_name "$slug")
+	if [[ -n "$icon" ]]; then
+		echo "$icon"
+		return
+	fi
+
+	# 3. Top-level file / folder heuristics (cheap stat checks only)
+	icon=$(_icon_from_files "$dir")
+	if [[ -n "$icon" ]]; then
+		echo "$icon"
+		return
+	fi
+
+	# 4. Default fallback
+	echo "📁"
 }
 
 # Parse commandCentral.terminal.backgroundImage.enabled from .vscode/settings.json
@@ -78,6 +189,31 @@ parse_background_fit() {
 	if [[ -f "$settings" ]]; then
 		jq -r '."commandCentral.terminal.backgroundImage.fit" // empty' "$settings" 2>/dev/null || true
 	fi
+}
+
+# Parse commandCentral.terminal.multiplexer from .vscode/settings.json
+# Returns "tmux", "zellij", or empty (caller picks default)
+parse_multiplexer() {
+	local dir="$1"
+	local settings="$dir/.vscode/settings.json"
+	if [[ -f "$settings" ]]; then
+		jq -r '."commandCentral.terminal.multiplexer" // empty' "$settings" 2>/dev/null || true
+	fi
+}
+
+# Locate the config repo's zellij baseline directory.
+# Returns the parent of zellij/ (so caller does $repo/zellij/config.kdl).
+# Empty string if no candidate is found — caller should fall back to a
+# minimal embedded default.
+find_zellij_baseline_repo() {
+	local candidate
+	for candidate in "${GHL_CONFIG_REPO:-}" "${HOME}/projects/config" "${HOME}/.config"; do
+		if [[ -n "$candidate" ]] && [[ -f "$candidate/zellij/config.kdl" ]]; then
+			echo "$candidate"
+			return 0
+		fi
+	done
+	return 1
 }
 
 # Parse commandCentral.project.name from .vscode/settings.json
@@ -157,7 +293,7 @@ EOF
 # ── PATH detection ──────────────────────────────────────────────────
 # (Removed: detect_homebrew_path / build_tool_path)
 # PATH is no longer baked at bundle creation time. The generated
-# launch-persist.sh starts $SHELL -l, which rebuilds PATH from
+# launch-tmux.sh starts $SHELL -l inside tmux, which rebuilds PATH from
 # /etc/paths, /etc/paths.d/*, and user init files at launch time.
 
 # ── Validation ───────────────────────────────────────────────────────
@@ -353,21 +489,6 @@ create_bundle() {
 		return 1
 	fi
 
-	# Build persist binary if needed
-	local persist_dir
-	persist_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/persist"
-	local persist_binary="${persist_dir}/persist"
-	if [[ ! -x "$persist_binary" ]]; then
-		if [[ ! -f "${persist_dir}/persist.c" ]]; then
-			echo "Error: persist source not found at ${persist_dir}/persist.c" >&2
-			return 1
-		fi
-		if ! make -C "$persist_dir" build >/dev/null 2>&1; then
-			echo "Error: Failed to build persist binary" >&2
-			return 1
-		fi
-	fi
-
 	echo "Creating project bundle ${name}.app..." >&2
 	echo "  Ghostty source: ${GHOSTTY_APP} (${GHOSTTY_SOURCE})" >&2
 
@@ -405,27 +526,53 @@ create_bundle() {
 
 	local session_id="agent-${safe_name}"
 
-	# Copy user's base config, stripping shell/command settings that conflict with persist
+	# ── Multiplexer selection ─────────────────────────────────────
+	# Precedence: --multiplexer CLI flag > .vscode/settings.json
+	#           > GHL_DEFAULT_MULTIPLEXER env > "zellij" baseline.
+	local multiplexer
+	multiplexer=$(parse_multiplexer "$project_dir")
+	multiplexer="${MULTIPLEXER_OVERRIDE:-${multiplexer:-${GHL_DEFAULT_MULTIPLEXER:-zellij}}}"
+	case "$multiplexer" in
+		tmux | zellij) ;;
+		*)
+			echo "Error: unknown multiplexer '$multiplexer' (expected: tmux, zellij)" >&2
+			return 1
+			;;
+	esac
+	echo "  Multiplexer: ${multiplexer}" >&2
+
+	# Copy user's base ghostty config, stripping shell/command settings that
+	# conflict with the bundle launcher. Both multiplexer branches need this.
 	if [[ -f "${HOME}/.config/ghostty/config" ]]; then
 		grep -v -E '^(command|shell-integration)\s*=' "${HOME}/.config/ghostty/config" >"$config_dir/config" || true
 	else
 		touch "$config_dir/config"
 	fi
 
-	# Copy persist binary into bundle
-	cp "$persist_binary" "${temp_contents}/MacOS/persist"
-	chmod +x "${temp_contents}/MacOS/persist"
+	if [[ "$multiplexer" == "tmux" ]]; then
+		cat >"${config_dir}/tmux.conf" <<'TMUX_CONF'
+set -g status on
+set -g status-position bottom
+set -g status-interval 2
+set -g mouse on
+set -g history-limit 50000
+set -g allow-passthrough on
+set -g automatic-rename off
+set -g allow-rename off
+set -g renumber-windows on
+set -g base-index 1
+set -g status-left " #{session_name} "
+set -g status-right " F2/F3 switch | F8 detach "
+bind -n F2 previous-window
+bind -n F3 next-window
+bind -n F8 detach-client
+TMUX_CONF
 
-	# Create persist launch script inside the bundle
-	local sock_dir="\${HOME}/.local/share/cc/sockets"
-	cat >"${config_dir}/launch-persist.sh" <<LAUNCH
+		# Create tmux launch script inside the bundle
+		cat >"${config_dir}/launch-tmux.sh" <<LAUNCH
 #!/bin/bash
-# Minimal PATH for this script's own commands (mkdir).
-# NOT exported — the login shell (-l) rebuilds PATH from /etc/paths,
-# /etc/paths.d/*, and user init files (~/.zprofile, ~/.bash_profile,
-# Fish conf.d/), giving full parity with a regular Ghostty terminal.
-# Tools installed after bundle creation are visible without rebuild.
-PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
+SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
 
 # Validate project directory exists
 PROJECT_DIR="${project_dir}"
@@ -436,25 +583,176 @@ if [[ ! -d "\$PROJECT_DIR" ]]; then
   exit 1
 fi
 
-PERSIST="${contents}/MacOS/persist"
-SOCK_DIR="${sock_dir}"
-SOCKET="\${SOCK_DIR}/${session_id}.sock"
+SESSION_ID="\${GHOSTTY_SESSION_ID:-${session_id}}"
+SOCKET_DIR="\${XDG_STATE_HOME:-\$HOME/.local/state}/ghostty-launcher/tmux"
+runtime_slug="\${SESSION_ID#agent-}"
+if (( \${#runtime_slug} > 32 )); then
+  runtime_slug="\${runtime_slug:0:32}-\$(printf '%s' "\$runtime_slug" | cksum | awk '{print \$1}')"
+fi
+TMUX_SOCKET="\${GHOSTTY_TMUX_SOCKET:-\${SOCKET_DIR}/\${runtime_slug}.sock}"
+TMUX_CONF="\${GHOSTTY_TMUX_CONF:-\${SCRIPT_DIR}/tmux.conf}"
 
-# Create socket directory if needed
-mkdir -p "\$SOCK_DIR"
-
-# If session already exists, attach to it
-if "\$PERSIST" -s "\$SOCKET" >/dev/null 2>&1; then
-  exec "\$PERSIST" -a "\$SOCKET"
+if ! command -v tmux >/dev/null 2>&1; then
+  echo "Error: tmux is required. Install with: brew install tmux" >&2
+  exec "\${SHELL:-/bin/zsh}" -l
 fi
 
-# Start new persist session with user's login shell.
-# Login-shell semantics (-l) ensure full init-file processing so PATH
-# includes tools installed after bundle creation (Homebrew, npm, etc.).
-"\$PERSIST" -n "\$SOCKET" "\${SHELL:-/bin/zsh}" -l
-exec "\$PERSIST" -a "\$SOCKET"
+mkdir -p "\$SOCKET_DIR"
+tmux_cmd=(tmux -f "\$TMUX_CONF" -S "\$TMUX_SOCKET")
+
+# Clean stale socket files before bootstrap.
+if [[ -e "\$TMUX_SOCKET" ]] && ! "\${tmux_cmd[@]}" list-sessions >/dev/null 2>&1; then
+  rm -f "\$TMUX_SOCKET"
+fi
+
+# If session already exists, attach to it
+if "\${tmux_cmd[@]}" has-session -t "\$SESSION_ID" 2>/dev/null; then
+  exec "\${tmux_cmd[@]}" attach-session -t "\$SESSION_ID"
+fi
+
+# Create new session in project dir with login shell, then attach.
+# If another launcher instance wins the race, fall back to attach.
+if ! "\${tmux_cmd[@]}" new-session -d -s "\$SESSION_ID" -c "\$PROJECT_DIR" /bin/bash -l 2>/dev/null; then
+  if "\${tmux_cmd[@]}" has-session -t "\$SESSION_ID" 2>/dev/null; then
+    exec "\${tmux_cmd[@]}" attach-session -t "\$SESSION_ID"
+  fi
+  echo "Error: tmux failed to create session '\$SESSION_ID'" >&2
+  exit 1
+fi
+
+exec "\${tmux_cmd[@]}" attach-session -t "\$SESSION_ID"
 LAUNCH
-	chmod +x "${config_dir}/launch-persist.sh"
+		chmod +x "${config_dir}/launch-tmux.sh"
+	else
+		# ── Zellij branch ─────────────────────────────────────────
+		# Bundle structure:
+		#   ghostty-config/ghostty/launch-zellij.sh         (the launch script)
+		#   ghostty-config/ghostty/zellij/layout.kdl        (per-project layout)
+		#   ghostty-config/ghostty/zellij/config.kdl        (embedded baseline)
+		#   ghostty-config/ghostty/zellij/themes/*.kdl      (embedded themes)
+		mkdir -p "${config_dir}/zellij/themes"
+
+		# IMPORTANT: zellij does NOT expand environment variables in layout files.
+		# Resolve $SHELL at bundle-create time and bake the literal path into the
+		# layout, otherwise zellij would try to execvp("${SHELL:-/bin/zsh}").
+		local user_shell="${SHELL:-/bin/zsh}"
+		if [[ ! -x "$user_shell" ]]; then
+			user_shell="/bin/zsh"
+		fi
+
+		# Embed the per-project layout. KDL `command` is a pane attribute, NOT
+		# a child node — `pane command="X" { args ... }` is correct.
+		cat >"${config_dir}/zellij/layout.kdl" <<KDL
+// layout.kdl — generated per-project layout for ${name}
+//
+// Bottom bar uses zellij:compact-bar (single line, hides keybind hints by
+// default) instead of the default zellij:status-bar (two-line, always shows
+// keybind hints + QuickNav). Saves a row of vertical space and reduces noise.
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=1 borderless=true {
+            plugin location="zellij:compact-bar"
+        }
+    }
+
+    tab name="main" focus=true {
+        pane command="${user_shell}" {
+            args "-l"
+        }
+    }
+
+    tab name="logs" {
+        pane split_direction="horizontal" {
+            pane name="git log" command="git" {
+                args "log" "--oneline" "--decorate" "--all" "--graph" "-n" "30"
+            }
+            pane name="status" command="${user_shell}" {
+                args "-l"
+            }
+        }
+    }
+}
+KDL
+
+		# Embed a snapshot of the user's zellij baseline from the config repo,
+		# or fall back to a minimal default if the repo is not available.
+		local zellij_repo
+		if zellij_repo=$(find_zellij_baseline_repo); then
+			cp "${zellij_repo}/zellij/config.kdl" "${config_dir}/zellij/config.kdl"
+			if [[ -d "${zellij_repo}/zellij/themes" ]]; then
+				cp -R "${zellij_repo}/zellij/themes/." "${config_dir}/zellij/themes/" 2>/dev/null || true
+			fi
+			echo "  Zellij baseline: copied from ${zellij_repo}/zellij" >&2
+		else
+			cat >"${config_dir}/zellij/config.kdl" <<'ZELLIJ_FALLBACK'
+// Minimal embedded fallback (config repo not found at bundle-create time)
+mouse_mode true
+default_mode "normal"
+copy_on_select true
+show_startup_tips false
+pane_frames false
+ZELLIJ_FALLBACK
+			echo "  Zellij baseline: minimal embedded fallback (no config repo found)" >&2
+		fi
+
+		# Create zellij launch script inside the bundle
+		cat >"${config_dir}/launch-zellij.sh" <<LAUNCH
+#!/bin/bash
+PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
+SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
+
+# Validate project directory exists
+PROJECT_DIR="${project_dir}"
+if [[ ! -d "\$PROJECT_DIR" ]]; then
+  echo "Error: Project directory no longer exists: \$PROJECT_DIR" >&2
+  echo "The directory may have been moved or deleted after bundle creation." >&2
+  exit 1
+fi
+
+SESSION_ID="\${GHOSTTY_SESSION_ID:-${session_id}}"
+LAYOUT_PATH="\$SCRIPT_DIR/zellij/layout.kdl"
+
+# ZELLIJ_CONFIG_DIR points at the bundle's embedded snapshot — never at
+# ~/.config/zellij. Bundles are fully self-contained.
+# ZELLIJ_SOCKET_DIR is the only real zellij isolation knob; per-bundle
+# value gives socket-level isolation between projects.
+# (ZELLIJ_CACHE_DIR and ZELLIJ_RUNTIME_DIR are NOT real zellij env vars.)
+export ZELLIJ_CONFIG_DIR="\$SCRIPT_DIR/zellij"
+export ZELLIJ_SOCKET_DIR="\${XDG_STATE_HOME:-\$HOME/.local/state}/ghostty-launcher/zellij/${safe_name}"
+mkdir -p "\$ZELLIJ_SOCKET_DIR"
+
+# Zellij freezes env vars at session-create time. GHOSTTY_BUNDLE_ID is set
+# by Info.plist LSEnvironment when Ghostty launches us; explicit export
+# documents the contract for child shells (Claude Code, etc.).
+export GHOSTTY_BUNDLE_ID="\${GHOSTTY_BUNDLE_ID:-${bundle_id}}"
+
+if ! command -v zellij >/dev/null 2>&1; then
+  echo "Error: zellij is required. Install with: brew install zellij" >&2
+  echo "Falling back to plain shell." >&2
+  cd "\$PROJECT_DIR" || true
+  exec "\${SHELL:-/bin/zsh}" -l
+fi
+
+# Idempotent attach: parse list-sessions, strip both [Created Xh ago] and
+# (current)/(EXITED) annotations, exact-match on session name.
+existing=\$(zellij list-sessions --no-formatting 2>/dev/null | sed -E 's/[[:space:]]*[[(].*\$//' | awk '{print \$1}')
+if printf '%s\n' "\$existing" | grep -qx "\$SESSION_ID"; then
+  exec zellij attach "\$SESSION_ID"
+fi
+
+cd "\$PROJECT_DIR" || exit 1
+# Use --new-session-with-layout (-n) to CREATE a new session with the layout.
+# The bare --session NAME --layout LAYOUT form is interpreted as "attach to existing
+# session and add layout as a new tab" — fails with "There is no active session!" on
+# first launch. The -n form is the canonical "create new session with layout" command.
+exec zellij -n "\$LAYOUT_PATH" --session "\$SESSION_ID"
+LAUNCH
+		chmod +x "${config_dir}/launch-zellij.sh"
+	fi
 
 	# Append project-specific settings
 	cat >>"$config_dir/config" <<CONF
@@ -462,7 +760,7 @@ LAUNCH
 # --- Project: ${name} ---
 working-directory = ${project_dir}
 title = ${name}
-command = ${contents}/Resources/ghostty-config/ghostty/launch-persist.sh
+command = ${contents}/Resources/ghostty-config/ghostty/launch-${multiplexer}.sh
 
 # --- Notifications ---
 # Bell triggers Dock bounce + badge + macOS notification
@@ -523,6 +821,15 @@ BG_CONF
 		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_USE_TERMINAL_NOTIFIER 1" "$plist"
 	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_APP_NAME string ${name}" "$plist" 2>/dev/null ||
 		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_APP_NAME ${name}" "$plist"
+	# Authoritative backend marker for bundle_backend_for_path() in oste-spawn.sh.
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHL_MULTIPLEXER string ${multiplexer}" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHL_MULTIPLEXER ${multiplexer}" "$plist"
+	# Task identity tag — correlates this bundle to a specific orchestrator task.
+	# Set by oste-spawn.sh via GHOSTTY_TASK_ID env var before invoking the launcher.
+	if [[ -n "${GHOSTTY_TASK_ID:-}" ]]; then
+		/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_TASK_ID string ${GHOSTTY_TASK_ID}" "$plist" 2>/dev/null ||
+			/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_TASK_ID ${GHOSTTY_TASK_ID}" "$plist"
+	fi
 
 	# Register project-specific URL scheme for notification routing
 	local url_scheme="commandcentral-${safe_name}"
@@ -534,6 +841,21 @@ BG_CONF
 	/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string ${url_scheme}" "$plist"
 	/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$plist"
 	/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string ${url_scheme}" "$plist"
+
+	# ── Suppress Sparkle "Enable Automatic Updates?" first-launch prompt ──
+	# Each per-project bundle has a unique CFBundleIdentifier, so Sparkle treats
+	# each one as a separate app and shows the first-launch prompt. Setting these
+	# Info.plist defaults disables auto-update entirely. Bundles should NOT
+	# auto-update — they're derivatives of /Applications/Ghostty.app and would
+	# lose their modifications. To pick up a new Ghostty version: just rebuild
+	/usr/libexec/PlistBuddy -c "Add :SUEnableAutomaticChecks bool false" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :SUEnableAutomaticChecks false" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :SUAutomaticallyUpdate bool false" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :SUAutomaticallyUpdate false" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :SUHasLaunchedBefore bool true" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :SUHasLaunchedBefore true" "$plist"
+	/usr/libexec/PlistBuddy -c "Add :SUSendProfileInfo bool false" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :SUSendProfileInfo false" "$plist"
 
 	# Ad-hoc code sign the bundle BEFORE fileicon (order matters)
 	if ! codesign --force --deep --sign - "$temp_app_path" 2>/dev/null; then
@@ -596,6 +918,36 @@ BG_CONF
 # ── Main ─────────────────────────────────────────────────────────────
 
 main() {
+	# Pre-pass: extract --multiplexer flag from anywhere in argv and export
+	# MULTIPLEXER_OVERRIDE for create_bundle to consume. Removes the flag
+	# from "$@" so subcommand parsing below doesn't have to handle it.
+	local _argv=()
+	local _i=0
+	local _argc=$#
+	while [[ $_i -lt $_argc ]]; do
+		_i=$((_i + 1))
+		case "$1" in
+			--multiplexer)
+				if [[ -z "${2:-}" ]]; then
+					echo "Error: --multiplexer requires a value (tmux|zellij)" >&2
+					exit 1
+				fi
+				export MULTIPLEXER_OVERRIDE="$2"
+				shift 2
+				_i=$((_i + 1))
+				;;
+			--multiplexer=*)
+				export MULTIPLEXER_OVERRIDE="${1#--multiplexer=}"
+				shift
+				;;
+			*)
+				_argv+=("$1")
+				shift
+				;;
+		esac
+	done
+	set -- "${_argv[@]+"${_argv[@]}"}"
+
 	case "${1:-}" in
 		--parse-icon)
 			[[ -z "${2:-}" ]] && exit 1
@@ -605,6 +957,10 @@ main() {
 			[[ -z "${2:-}" ]] && exit 1
 			parse_name "$2"
 			;;
+		--parse-multiplexer)
+			[[ -z "${2:-}" ]] && exit 1
+			parse_multiplexer "$2"
+			;;
 		--generate-icon)
 			# --generate-icon EMOJI OUTPUT_PATH
 			[[ -z "${2:-}" ]] && exit 1
@@ -612,18 +968,40 @@ main() {
 			generate_emoji_icns "$2" "$3"
 			;;
 		--create-bundle)
-			# --create-bundle DIR [--output OUTPUT_DIR]
+			# --create-bundle DIR [--name NAME] [--output OUTPUT_DIR]
 			[[ -z "${2:-}" ]] && exit 1
 			local dir="$2"
 			dir="$(cd "$dir" && pwd)"
+			shift 2
 			local output_dir="$PROJECTS_DIR"
-			if [[ "${3:-}" == "--output" ]] && [[ -n "${4:-}" ]]; then
-				output_dir="$4"
-			fi
+			local name_override=""
+			while [[ $# -gt 0 ]]; do
+				case "$1" in
+					--output)
+						output_dir="${2:-}"
+						[[ -z "$output_dir" ]] && {
+							echo "Error: --output requires a value" >&2
+							exit 1
+						}
+						shift 2
+						;;
+					--name)
+						name_override="${2:-}"
+						[[ -z "$name_override" ]] && {
+							echo "Error: --name requires a value" >&2
+							exit 1
+						}
+						shift 2
+						;;
+					*)
+						shift
+						;;
+				esac
+			done
 			mkdir -p "$output_dir"
 			local icon name
 			icon=$(parse_icon "$dir")
-			name=$(parse_name "$dir")
+			name="${name_override:-$(parse_name "$dir")}"
 			create_bundle "$dir" "$name" "$icon" "$output_dir"
 			;;
 		--session-id)
@@ -638,16 +1016,20 @@ main() {
 			echo "agent-${safe}"
 			;;
 		--version | -v)
-			echo "v${VERSION}"
+			echo "ghostty-launcher v${VERSION}"
 			;;
 		--help | -h)
 			echo "Ghostty Launcher v${VERSION}"
 			echo "Usage: launcher [OPTIONS] <project-dir>"
 			echo ""
 			echo "Options:"
-			echo "  --parse-icon DIR       Print emoji icon from settings"
+			echo "  --multiplexer X        Force multiplexer (tmux|zellij). Overrides per-project setting."
+			echo "                         Default: zellij. Set GHL_DEFAULT_MULTIPLEXER to change globally."
+			echo "                         Or set commandCentral.terminal.multiplexer in .vscode/settings.json."
+			echo "  --parse-icon DIR       Print emoji icon (settings → name → files → default)"
 			echo "  --parse-name DIR       Print project name from settings"
-			echo "  --create-bundle DIR    Create .app bundle for DIR"
+			echo "  --parse-multiplexer DIR  Print multiplexer setting from .vscode/settings.json"
+			echo "  --create-bundle DIR    Create .app bundle for DIR [--name NAME] [--output DIR]"
 			echo "  --session-id DIR       Print session ID for DIR"
 			echo "  --version              Print version"
 			echo "  --help                 Show this help"
