@@ -14,6 +14,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realFsPromises from "node:fs/promises";
 import type { LoggerService } from "../../src/services/logger-service.js";
+import type { TreeElement } from "../../src/types/tree-element.js";
 import {
 	createMockExtensionContext,
 	createMockLogger,
@@ -53,20 +54,16 @@ function setupGitExtensionMock(
 	vscode: typeof import("vscode"),
 	mockGitApi: unknown,
 ) {
-	vscode.extensions.getExtension = mock(
-		(_id: string) =>
-			({
-				id: "vscode.git",
-				extensionUri: vscode.Uri.file("/mock/extension"),
-				extensionPath: "/mock/extension",
-				isActive: true,
-				packageJSON: {},
-				extensionKind: vscode.ExtensionKind.Workspace,
-				activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
-				exports: { getAPI: () => mockGitApi },
-				// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-			}) as any,
-	);
+	vscode.extensions.getExtension = mock((_id: string) => ({
+		id: "vscode.git",
+		extensionUri: vscode.Uri.file("/mock/extension"),
+		extensionPath: "/mock/extension",
+		isActive: true,
+		packageJSON: {},
+		extensionKind: vscode.ExtensionKind.Workspace,
+		activate: mock(() => Promise.resolve({ getAPI: () => mockGitApi })),
+		exports: { getAPI: () => mockGitApi },
+	})) as unknown as typeof vscode.extensions.getExtension;
 }
 
 describe("Badge/Title Count Synchronization", () => {
@@ -113,8 +110,9 @@ describe("Badge/Title Count Synchronization", () => {
 
 		// Set up title-tracking tree view
 		const { view } = createTitleTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(view as any);
+		provider.setActivityBarTreeView(
+			view as unknown as import("vscode").TreeView<TreeElement>,
+		);
 
 		// Mock repo with 3 modified files
 		const mockRepo = {
@@ -189,8 +187,9 @@ describe("Badge/Title Count Synchronization", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const { view } = createTitleTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(view as any);
+		provider.setActivityBarTreeView(
+			view as unknown as import("vscode").TreeView<TreeElement>,
+		);
 
 		await provider.initialize();
 		const children = await provider.getChildren();
@@ -210,8 +209,9 @@ describe("Badge/Title Count Synchronization", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const { view } = createTitleTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(view as any);
+		provider.setActivityBarTreeView(
+			view as unknown as import("vscode").TreeView<TreeElement>,
+		);
 
 		setupGitExtensionMock(vscode, {
 			repositories: [],
@@ -236,8 +236,9 @@ describe("Badge/Title Count Synchronization", () => {
 		const provider = new SortedGitChangesProvider(mockLogger, mockContext);
 
 		const { view } = createTitleTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(view as any);
+		provider.setActivityBarTreeView(
+			view as unknown as import("vscode").TreeView<TreeElement>,
+		);
 
 		// Repo that throws during access
 		setupGitExtensionMock(vscode, {
@@ -284,10 +285,12 @@ describe("Badge/Title Count Synchronization", () => {
 
 		const activityBar = createTitleTrackingTreeView();
 		const panel = createTitleTrackingTreeView();
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setActivityBarTreeView(activityBar.view as any);
-		// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-		provider.setPanelTreeView(panel.view as any);
+		provider.setActivityBarTreeView(
+			activityBar.view as unknown as import("vscode").TreeView<TreeElement>,
+		);
+		provider.setPanelTreeView(
+			panel.view as unknown as import("vscode").TreeView<TreeElement>,
+		);
 
 		// Mock repo with files
 		const mockRepo = {

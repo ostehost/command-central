@@ -93,10 +93,8 @@ describe("Nested Repository Detection", () => {
 		};
 
 		vscode.extensions.getExtension = mock(
-			() =>
-				// biome-ignore lint/suspicious/noExplicitAny: GitExtension API has dynamic export structure
-				mockGitExtension as any,
-		);
+			() => mockGitExtension,
+		) as unknown as typeof vscode.extensions.getExtension;
 
 		return { mockGitApi, mockRepos };
 	}

@@ -416,9 +416,14 @@ async function cleanupOldReleases(maxReleases: number) {
 				const patchDiff = parseInt(versionB[3]) - parseInt(versionA[3]);
 				if (patchDiff !== 0) return patchDiff;
 
+				// Stable releases sort newer than prereleases with the same core version.
+				const hasPreA = versionA[4] !== undefined;
+				const hasPreB = versionB[4] !== undefined;
+				if (hasPreA !== hasPreB) return hasPreA ? 1 : -1;
+
 				// Compare prerelease numbers numerically (e.g. -13 vs -9)
-				const preA = versionA[4] ? parseInt(versionA[4]) : 0;
-				const preB = versionB[4] ? parseInt(versionB[4]) : 0;
+				const preA = hasPreA ? parseInt(versionA[4]) : 0;
+				const preB = hasPreB ? parseInt(versionB[4]) : 0;
 				return preB - preA;
 			}); // Now properly sorted newest first
 

@@ -36,8 +36,9 @@ beforeEach(() => {
 	};
 
 	vscodeMock = setupVSCodeMock();
-	// biome-ignore lint/suspicious/noExplicitAny: test mock cast
-	vscodeMock.window.createStatusBarItem = mock(() => mockStatusBarItem) as any;
+	vscodeMock.window.createStatusBarItem = mock(
+		() => mockStatusBarItem,
+	) as unknown as typeof vscodeMock.window.createStatusBarItem;
 });
 
 async function loadModule() {
