@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import type { AgentTaskStatus } from "../providers/agent-status-tree-provider.js";
 import type { OpenClawTaskStatus } from "../types/openclaw-task-types.js";
 
@@ -121,58 +120,4 @@ export function getOpenClawTaskQuickActions(
 	return OPENCLAW_STATUS_ACTIONS[status].map(
 		(id) => OPENCLAW_QUICK_ACTIONS[id],
 	);
-}
-
-// ── ACP task quick actions ────────────────────────────────────────────
-
-export type AcpQuickActionId = "cancelAcp" | "showDetails";
-
-const ACP_QUICK_ACTIONS: Record<AcpQuickActionId, AgentQuickActionDefinition> =
-	{
-		cancelAcp: {
-			id: "cancelAcp",
-			label: "Cancel Task",
-			command: "commandCentral.cancelAcpTask",
-		},
-		showDetails: {
-			id: "showDetails",
-			label: "Show Details",
-			command: "commandCentral.showOpenClawTaskDetail",
-		},
-	};
-
-const ACP_STATUS_ACTIONS: Partial<
-	Record<OpenClawTaskStatus, AcpQuickActionId[]>
-> = {
-	queued: ["cancelAcp", "showDetails"],
-	running: ["cancelAcp", "showDetails"],
-	succeeded: ["showDetails"],
-	failed: ["showDetails"],
-	timed_out: ["showDetails"],
-	cancelled: ["showDetails"],
-	lost: ["showDetails"],
-	blocked: ["showDetails"],
-};
-
-/**
- * Get quick actions for an ACP-runtime OpenClaw task.
- * Cancel is only offered for active (queued/running) tasks.
- *
- * @param runtime - Must be "acp"; returns empty array for other runtimes.
- */
-export function getAcpTaskQuickActions(
-	status: OpenClawTaskStatus,
-	runtime: string,
-): AgentQuickActionDefinition[] {
-	if (runtime !== "acp") return [];
-	const ids = ACP_STATUS_ACTIONS[status] ?? ["showDetails"];
-	return ids.map((id) => ACP_QUICK_ACTIONS[id]);
-}
-
-/**
- * Synchronously cancel an ACP task.
- * Only call this when `runtime === "acp"`.
- */
-export function cancelAcpTask(taskId: string): void {
-	execFileSync("openclaw", ["tasks", "cancel", taskId]);
 }

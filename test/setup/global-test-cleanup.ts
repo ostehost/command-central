@@ -26,11 +26,28 @@ const _realNodeFs = { ..._realNodeFsLive };
 // (typed-mocks.ts → terminal-launcher-service.ts → logger-service.ts → vscode)
 mock.module("vscode", () => createVSCodeMock());
 
+// Snapshot process.env at preload so we can restore it after every test.
+// 12+ test files mutate process.env (NODE_ENV, agent config keys, etc.) and
+// most don't restore explicitly. Without this, env values leak across files
+// and produce flakes that depend on file load order.
+const _envSnapshot: Record<string, string | undefined> = { ...process.env };
+
 // Force cleanup after EVERY test
 // Note: Test files call setupVSCodeMock() in beforeEach to re-register fresh mocks
 afterEach(() => {
 	// Restore all mocks to prevent pollution
 	mock.restore();
+
+	// Restore process.env to its preload state.
+	// 1. Delete keys that were added by the test
+	for (const k of Object.keys(process.env)) {
+		if (!(k in _envSnapshot)) delete process.env[k];
+	}
+	// 2. Restore keys that the test mutated (or deleted)
+	for (const [k, v] of Object.entries(_envSnapshot)) {
+		if (v === undefined) delete process.env[k];
+		else process.env[k] = v;
+	}
 });
 
 // Safety net: unref() all setInterval AND setTimeout handles so they don't

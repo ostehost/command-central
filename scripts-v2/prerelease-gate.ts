@@ -403,7 +403,7 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 	} else {
 		await runStep(
 			"command-central validation",
-			["just", "verify"],
+			["just", "ci"],
 			config.commandCentralRepo,
 		);
 	}

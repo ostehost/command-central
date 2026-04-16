@@ -13,7 +13,15 @@
  * All system calls are mocked — no real processes are inspected.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+	afterAll,
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	mock,
+	test,
+} from "bun:test";
 import * as realChildProcess from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -138,6 +146,14 @@ describe("Agent Discovery E2E Pipeline", () => {
 		);
 
 		watcher = new SessionWatcher("/tmp/test-sessions");
+	});
+
+	afterEach(() => {
+		watcher.dispose();
+	});
+
+	afterAll(() => {
+		process.kill = originalKill;
 	});
 
 	// ── 1. Claude Code agent discovery (session-file path) ──────────

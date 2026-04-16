@@ -1,6 +1,20 @@
-# VS Code Extension - Command Central
-# Core workflow commands for development
-# Run 'just' to see all available commands
+# Command Central — VS Code Extension
+#
+# Reference implementation of the cross-project standard.
+# See ~/projects/config/STANDARDS.md for the contract.
+#
+# The five canonical recipes (must exist in every project):
+#   check  → read-only validation (lint + format-check + typecheck)
+#   fix    → auto-fix lint + format issues (modifies files)
+#   test   → run all tests
+#   ready  → fix + check + test (one-shot dev flow before push)
+#   ci     → strict, no leniency (warnings = errors); what CI runs
+#
+# Aliases: t (test), f (fix), r (ready)
+
+alias t := test
+alias f := fix
+alias r := ready
 
 # Show available commands (default)
 default:
@@ -8,25 +22,25 @@ default:
     @echo "│         Command Central - Core Workflow         │"
     @echo "╰──────────────────────────────────────────────────╯"
     @echo ""
-    @echo "Essential Commands:"
-    @echo "  just install     Install dependencies from bun.lock (first time)"
+    @echo "Standard Recipes (cross-project — see ~/projects/config/STANDARDS.md):"
+    @echo "  just check       Read-only validation (lint + tsc + knip)"
+    @echo "  just fix         Auto-fix formatting and linting issues"
+    @echo "  just test        Run all tests"
+    @echo "  just ready       fix + check + test  (one-shot before push)"
+    @echo "  just ci          Strict validation + tests (warnings = errors)"
+    @echo "  Aliases:         t (test), f (fix), r (ready)"
+    @echo ""
+    @echo "Project Workflow:"
+    @echo "  just install     Install dependencies from bun.lock"
     @echo "  just add         Add new package (e.g., just add zod)"
     @echo "  just update      Update dependencies interactively (Bun 1.3+)"
     @echo "  just info        Show package information (e.g., just info zod)"
     @echo "  just dev         Start development with hot reload"
-    @echo "  just pre-commit  Developer workflow (fix + verify) - recommended!"
     @echo "  just dist        Build distribution (smart version-aware builds)"
     @echo "  just prerelease  Run prerelease gate + build prerelease artifact"
     @echo ""
-    @echo "Code Quality (Cross-Project Pattern):"
-    @echo "  just check       Comprehensive validation (Biome CI + tsc + knip)"
-    @echo "  just fix         Auto-fix formatting and linting issues"
-    @echo "  just test        Run all tests (pure testing, no side effects)"
-    @echo "  just verify      Complete validation + tests (CI workflow)"
-    @echo "  just pre-commit  Fix → verify (one-command workflow)"
-    @echo ""
     @echo "Testing (Enterprise-Grade):"
-    @echo "  just test                Run all tests (575 tests, ~8s)"
+    @echo "  just test                Run all tests (1365 tests, ~5s)"
     @echo "  just test-quality        Check for test anti-patterns (CI gate)"
     @echo "  just test-validate       Prevent orphaned tests"
     @echo "  just test-unit           Fast unit tests only"
@@ -146,7 +160,7 @@ dev *path="": ghostty
 
 # ──────────────────────────────────────────────────────────
 # CROSS-PROJECT WORKFLOW COMMANDS
-# Pattern: check → fix → test → verify
+# Pattern: check → fix → test → ready
 # Works identically across TypeScript, Python, Rust, etc.
 # ──────────────────────────────────────────────────────────
 
@@ -183,56 +197,30 @@ fix:
     @echo "✅ All fixable issues resolved!"
     @echo "💡 Run 'just check' to verify remaining issues"
 
-# Strict validation (for CI - zero tolerance)
-# Pattern: CI-optimized validation
-#   - All checks from 'check' command
-#   - Knip failures WILL block
-#   - Exit 1 on any issues
-check-strict:
-    @echo "🔍 Running strict validation (CI mode)..."
-    @echo "   • Code quality (Biome CI - read-only)"
-    @echo "   • Type checking"
-    @echo "   • Dead code detection (Knip - strict)"
+# Standard recipe: ready
+#   fix + check + test — the one-shot "I'm ready to push" flow.
+#   Replaces the older `just pre-commit` (renamed to avoid collision with the
+#   pre-commit framework binary on PATH). See STANDARDS.md.
+ready:
+    @echo "🚀 ready: fix → check → test"
+    @echo ""
+    @just fix
+    @echo ""
+    @just check
+    @echo ""
+    @just test
+
+# Standard recipe: ci
+#   Strict validation + tests (warnings as errors). Exactly what CI runs.
+#   Read-only — does not modify files. Knip failures block.
+ci:
+    @echo "🚀 ci: strict check + test (warnings = errors)"
     @echo ""
     @bunx @biomejs/biome ci ./src ./test ./scripts-v2
     @bunx tsc --noEmit
     @bunx knip
     @echo ""
-    @echo "✅ All strict checks passed!"
-
-# Complete validation + testing (local development)
-# Pattern: Language-agnostic verification
-#   - Run all validation checks (check)
-#   - Run all tests (test)
-#   - Development-friendly (warnings don't block)
-verify:
-    @echo "✨ Running complete verification..."
-    @echo ""
-    @just check && just test
-    @echo ""
-    @echo "✅ All checks passed, ready to commit!"
-
-# Developer pre-commit workflow (fix → verify)
-# Pattern: Language-agnostic pre-commit
-#   - Auto-fix issues (fix)
-#   - Validate everything (verify)
-#   - One command for complete pre-commit workflow
-pre-commit:
-    @echo "🚀 Pre-commit workflow..."
-    @echo ""
-    @just fix
-    @echo ""
-    @just verify
-
-# CI/CD workflow (strict validation + tests)
-# Pattern: Explicit CI command for pipelines
-#   - Clear intent: CI runs 'just ci'
-#   - Uses strict mode (Knip failures block)
-#   - Runs comprehensive validation + tests
-ci:
-    @echo "🚀 CI/CD Pipeline..."
-    @echo ""
-    @just check-strict && just test
+    @just test
     @echo ""
     @echo "✅ CI checks passed!"
 
@@ -265,10 +253,7 @@ test *args="":
     elif [ -z "{{args}}" ]; then \
         echo "🧪 Running test suite..."; \
         echo ""; \
-        bun test test/commands/ test/config/ test/discovery/ test/events/ test/git-sort/ test/helpers/ test/mocks/ test/package-json/ test/ghostty/ test/integration/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/; \
-        echo ""; \
-        echo "🧪 Running isolated mock tests..."; \
-        bun test test/discovery-e2e/; \
+        bun run test; \
         echo ""; \
         just test-quality; \
     else \
@@ -356,19 +341,18 @@ test-unit:
     @echo "   • Core services"
     @echo "   • Utilities"
     @echo ""
-    @bun run _test:git2 && \
-     bun run _test:git4 && \
-     bun run _test:git5 && \
-     bun run _test:core && \
-     bun run _test:mocks
+    @bun run _test:git-sort && \
+     bun run _test:core
 
 # Run integration tests only
 test-integration:
     @echo "🔗 Running integration tests..."
     @echo "   • Multi-workspace scenarios"
+    @echo "   • Discovery end-to-end"
     @echo "   • Tree view patterns"
     @echo ""
     @bun run _test:integration && \
+     bun run _test:discovery-e2e && \
      bun run _test:tree-view-patterns
 
 # Run tests with coverage report
@@ -399,7 +383,8 @@ test-list:
     echo "│           Test Suite Organization              │"; \
     echo "╰────────────────────────────────────────────────╯"; \
     echo ""; \
-    echo "📋 Test Files (46 total):"; \
+    count=$(find test -name "*.test.ts" -not -path "*/legacy/*" 2>/dev/null | wc -l | tr -d ' '); \
+    echo "📋 Test Files ($count total):"; \
     echo ""; \
     tree test -P "*.test.ts" --prune -I "node_modules" -L 2; \
     echo ""; \
@@ -508,7 +493,7 @@ dist *args="--patch": _check-launcher-sync _check-terminal-sync
 # Hard-fail prerelease integration gate (cross-repo)
 prerelease-gate *args="":
     @echo "🚧 Running prerelease gate..."
-    @echo "   • Command Central validation (just verify)"
+    @echo "   • Command Central validation (just ci)"
     @echo "   • Ghostty Launcher validation (just check)"
     @echo "   • Cross-repo launcher contract checks"
     @echo "   • Provenance artifact (CC + launcher SHAs)"
@@ -568,13 +553,26 @@ knip-verbose:
     @echo ""
     bunx knip --reporter verbose
 
-# Auto-fix safe issues (review with git diff after)
+# Auto-fix dead code via knip + run check to catch cascading issues
+# Safe but iterative: knip --fix removes one layer of dead code, which
+# typically exposes another layer (functions whose only callers were just
+# removed). Run repeatedly until `just check` passes.
+#
+# IMPORTANT: knip's "unused" detection depends on knip.json — make sure test
+# files are listed as entry points, otherwise knip will incorrectly flag
+# exports that ARE used by tests.
 knip-fix:
-    @echo "🔧 Auto-fixing safe dead code issues..."
+    @echo "🔧 Auto-fixing dead code (iterative — re-run if cascade)..."
     @echo ""
     bunx knip --fix
     @echo ""
-    @echo "⚠️  Review changes with: git diff"
+    @echo "🧹 Running 'just fix' to format any rough edges..."
+    @just fix
+    @echo ""
+    @echo "🔎 Running 'just check' to surface cascading issues..."
+    @just check || (echo "" && echo "⚠️  Cascade detected — re-run 'just knip-fix' to remove next layer." && echo "   Or hand-fix the items shown above." && exit 1)
+    @echo ""
+    @echo "✅ Knip cleanup complete. Review changes with: git diff"
 
 # Find unused files only
 knip-files:

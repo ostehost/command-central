@@ -3,12 +3,12 @@
  *
  * Bug: When a git repo exists but has NO uncommitted changes, the sidebar shows
  * "Open a Git repository to see time-sorted changes." (from viewsWelcome).
- * This is wrong — that message should only show when there's truly no git repo.
+ * This is wrong, that message should only show when there's truly no git repo.
  *
  * Fix: Use TreeView.message API which takes PRIORITY over viewsWelcome.
- * - No git repo → message stays undefined (viewsWelcome handles it)
- * - Repo exists, zero changes → message = "No changes to display."
- * - Repo exists, has changes → message = undefined (cleared)
+ * - No git repo, message stays undefined (viewsWelcome handles it)
+ * - Repo exists, zero changes, message = "No changes to display."
+ * - Repo exists, has changes, message = undefined (cleared)
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -100,7 +100,7 @@ describe("Empty State Message Distinction", () => {
 		mockLogger = createMockLogger();
 	});
 
-	test("no git API → message stays undefined (viewsWelcome handles it)", async () => {
+	test("no git API, message stays undefined (viewsWelcome handles it)", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -126,7 +126,7 @@ describe("Empty State Message Distinction", () => {
 		expect(activityBar.view.message).toBeUndefined();
 	});
 
-	test("git API with no repositories → message stays undefined (viewsWelcome handles it)", async () => {
+	test("git API with no repositories, message stays undefined (viewsWelcome handles it)", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -157,7 +157,7 @@ describe("Empty State Message Distinction", () => {
 		expect(activityBar.view.message).toBeUndefined();
 	});
 
-	test("repo exists, zero working+index changes → message is 'No changes to display.'", async () => {
+	test("repo exists, zero working+index changes, message is 'No changes to display.'", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -205,7 +205,7 @@ describe("Empty State Message Distinction", () => {
 		expect(activityBar.view.message).toBe("No changes to display.");
 	});
 
-	test("repo exists, has changes → message is undefined (cleared)", async () => {
+	test("repo exists, has changes, message is undefined (cleared)", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -228,7 +228,7 @@ describe("Empty State Message Distinction", () => {
 						uri: vscode.Uri.file("/workspace/file1.ts"),
 						originalUri: vscode.Uri.file("/workspace/file1.ts"),
 						renameUri: undefined,
-						status: 5, // Modified
+						status: 5,
 					},
 				],
 				indexChanges: [],

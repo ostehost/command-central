@@ -113,7 +113,7 @@ describe("TaskFlowService", () => {
 
 	test("parses valid flow list output", () => {
 		execFileSyncResult = JSON.stringify(sampleFlows);
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
 
 		const flows = service.getFlows();
@@ -151,7 +151,7 @@ describe("TaskFlowService", () => {
 				},
 			],
 		});
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
 
 		const flow = at(service.getFlows(), 0);
@@ -162,7 +162,7 @@ describe("TaskFlowService", () => {
 	});
 
 	test("calls correct CLI command", () => {
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
 
 		expect(at(execFileSyncCalls, 0).cmd).toBe("openclaw");
@@ -180,7 +180,7 @@ describe("TaskFlowService", () => {
 		err.code = "ENOENT";
 		execFileSyncResult = err;
 
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
 
 		expect(service.getFlows()).toHaveLength(0);
@@ -190,7 +190,7 @@ describe("TaskFlowService", () => {
 
 	test("handles non-zero exit and keeps last known state", () => {
 		execFileSyncResult = JSON.stringify(sampleFlows);
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
 		expect(service.getFlows()).toHaveLength(1);
 
@@ -244,7 +244,7 @@ describe("TaskFlowService", () => {
 			],
 		};
 		execFileSyncResult = JSON.stringify(flowsWithMixed);
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
 
 		const active = service.getActiveFlows();
@@ -288,7 +288,7 @@ describe("TaskFlowService", () => {
 			],
 		};
 		execFileSyncResult = JSON.stringify(manyFlows);
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
 
 		const recent = service.getRecentFlows(2);
@@ -301,7 +301,7 @@ describe("TaskFlowService", () => {
 	test("debounce fires only once for rapid file changes", async () => {
 		execFileSyncResult = JSON.stringify(sampleFlows);
 		let callbackCount = 0;
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {
 			callbackCount++;
 		});
@@ -310,7 +310,7 @@ describe("TaskFlowService", () => {
 		watchCallback?.("change", "runs.sqlite-wal");
 		watchCallback?.("change", "runs.sqlite-wal");
 
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
@@ -318,19 +318,19 @@ describe("TaskFlowService", () => {
 	test("file watcher triggers reload callback", async () => {
 		execFileSyncResult = JSON.stringify(sampleFlows);
 		let callbackCount = 0;
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {
 			callbackCount++;
 		});
 
 		watchCallback?.("change", "runs.sqlite");
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
 
 	test("cancelFlow calls correct CLI command", async () => {
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
 
 		await service.cancelFlow("flow-1");
@@ -345,7 +345,7 @@ describe("TaskFlowService", () => {
 	});
 
 	test("dispose cleans up watcher and timer", () => {
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
 
 		service.dispose();
@@ -355,7 +355,7 @@ describe("TaskFlowService", () => {
 
 	test("handles empty string output", () => {
 		execFileSyncResult = "";
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
 
 		expect(service.getFlows()).toHaveLength(0);
@@ -374,7 +374,7 @@ describe("TaskFlowService", () => {
 			},
 		];
 		execFileSyncResult = JSON.stringify(arrayFlows);
-		const service = new TaskFlowService();
+		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
 
 		expect(service.getFlows()).toHaveLength(1);

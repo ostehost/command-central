@@ -1,9 +1,15 @@
 # Test Suite Documentation
 
 **Status**: Enterprise-Grade Test Infrastructure
-**Total Tests**: 46 files (593 tests)
+**Total Tests**: 1365 tests across 100 files (validate via `just test-validate`)
 **Partition Coverage**: 100% (validated automatically)
 **Quality Checks**: Integrated with all test runs
+**Full suite runtime**: ~5s
+
+> Note: 7 pre-existing tests in `agent-status-tree-provider.test.ts` fail
+> due to stale assertions vs. updated production code (e.g., removed
+> "Transcript:" tooltip text, model field handling). These are not flake
+> — they are out-of-date tests that need their expectations updated.
 
 ---
 
@@ -39,24 +45,17 @@ just test ./test/utils/config-validator.test.ts
 
 ## Test Organization
 
-All 46 test files (593 tests) are organized by category and automatically validated to prevent orphaned tests.
+All 100 active test files are organized by category and automatically validated to prevent orphaned tests.
 
 ### Directory Structure
 
-```
-test/
-├── git-sort/            # Git change sorting (24 files)
-├── providers/           # UI providers (9 files)
-├── services/            # Business logic (13 files)
-├── state/               # State management (3 files)
-├── integration/         # Multi-component (10 files)
-├── tree-view/           # TreeView patterns (11 files)
-├── utils/               # Utilities (13 files)
-├── commands/            # Command handlers (3 files)
-├── config/              # Configuration (2 files)
-├── e2e/                 # End-to-end (1 file)
-└── helpers/             # Test infrastructure
-```
+Run `find test -name '*.test.ts' -not -path '*/legacy/*' | wc -l` for the
+authoritative current count. Per-directory counts come from `just test list`.
+
+> **discovery-e2e**: This directory is intentionally isolated from the main
+> `test` script (it mocks `node:fs` globally, which causes hangs when run
+> with other files in the same bun process). It runs in its own bun process
+> via `_test:discovery-e2e` (used by `just test-integration`).
 
 ---
 
@@ -67,7 +66,7 @@ test/
 **The Solution**: Automatic validation on every `just test` run.
 
 ```bash
-# Validates all 46 test files are properly partitioned
+# Validates all active test files are properly partitioned
 just test:validate
 
 # Output shows any orphaned tests:
@@ -97,12 +96,12 @@ just test:validate
 
 | Command | Speed | Use Case |
 |---------|-------|----------|
-| `just test` | ~7-8s | Before committing (full suite + validation) |
-| `just test:unit` | ~7-8s | Fast feedback during development |
-| `just test:integration` | ~7-8s | Component interaction tests |
-| `just test:watch` | Continuous | TDD (re-run on file changes) |
-| `just test:coverage` | ~7-8s | Analyze coverage gaps |
-| `just test:validate` | <1s | Ensure no orphaned tests |
+| `just test` | ~5s | Before committing (full suite + validation) |
+| `just test-unit` | ~0.5s | Fast feedback during development (459 tests) |
+| `just test-integration` | ~5s | Component interaction tests (incl. discovery-e2e) |
+| `just test-watch` | Continuous | TDD (re-run on file changes) |
+| `just test-coverage` | ~5s | Analyze coverage gaps |
+| `just test-validate` | <1s | Ensure no orphaned tests |
 | `just test list` | <1s | Show test organization |
 
 ---
@@ -190,7 +189,7 @@ describe("Component Name - Feature Area", () => {
 
 This ensures:
 1. Code quality checks pass
-2. All 593 tests run
+2. All 1365 tests run (~5s)
 3. No orphaned tests exist
 4. No regressions introduced
 

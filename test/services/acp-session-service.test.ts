@@ -108,7 +108,7 @@ describe("AcpSessionService", () => {
 
 	test("uses --runtime acp flag in CLI call", () => {
 		execFileSyncResult = JSON.stringify(sampleAcpTasks);
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {});
 
 		expect(at(execFileSyncCalls, 0).cmd).toBe("openclaw");
@@ -119,7 +119,7 @@ describe("AcpSessionService", () => {
 
 	test("parses valid ACP task list output", () => {
 		execFileSyncResult = JSON.stringify(sampleAcpTasks);
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {});
 
 		const tasks = service.getTasks();
@@ -132,7 +132,7 @@ describe("AcpSessionService", () => {
 	test("filters out non-ACP runtime tasks from response", () => {
 		// Even if the CLI returns non-acp tasks, we filter them out
 		execFileSyncResult = JSON.stringify([...sampleAcpTasks, nonAcpTask]);
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {});
 
 		const tasks = service.getTasks();
@@ -146,7 +146,7 @@ describe("AcpSessionService", () => {
 		err.code = "ENOENT";
 		execFileSyncResult = err;
 
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {});
 
 		expect(service.getTasks()).toHaveLength(0);
@@ -156,7 +156,7 @@ describe("AcpSessionService", () => {
 
 	test("handles non-zero exit and keeps last known state", () => {
 		execFileSyncResult = JSON.stringify(sampleAcpTasks);
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {});
 		expect(service.getTasks()).toHaveLength(2);
 
@@ -172,7 +172,7 @@ describe("AcpSessionService", () => {
 
 	test("getRunningTasks returns only queued and running tasks", () => {
 		execFileSyncResult = JSON.stringify(sampleAcpTasks);
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {});
 
 		const running = service.getRunningTasks();
@@ -183,7 +183,7 @@ describe("AcpSessionService", () => {
 
 	test("getTaskById returns the correct task", () => {
 		execFileSyncResult = JSON.stringify(sampleAcpTasks);
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {});
 
 		const task = service.getTaskById("acp-1");
@@ -195,7 +195,7 @@ describe("AcpSessionService", () => {
 	test("debounce fires only once for rapid file changes", async () => {
 		execFileSyncResult = JSON.stringify(sampleAcpTasks);
 		let callbackCount = 0;
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {
 			callbackCount++;
 		});
@@ -204,7 +204,7 @@ describe("AcpSessionService", () => {
 		watchCallback?.("change", "runs.sqlite-wal");
 		watchCallback?.("change", "runs.sqlite-wal");
 
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
@@ -212,13 +212,13 @@ describe("AcpSessionService", () => {
 	test("file watcher triggers reload on runs.sqlite change", async () => {
 		execFileSyncResult = JSON.stringify(sampleAcpTasks);
 		let callbackCount = 0;
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {
 			callbackCount++;
 		});
 
 		watchCallback?.("change", "runs.sqlite");
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
@@ -226,19 +226,19 @@ describe("AcpSessionService", () => {
 	test("file watcher ignores unrelated file changes", async () => {
 		execFileSyncResult = JSON.stringify(sampleAcpTasks);
 		let callbackCount = 0;
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {
 			callbackCount++;
 		});
 
 		watchCallback?.("change", "some-other-file.db");
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(callbackCount).toBe(0);
 		service.dispose();
 	});
 
 	test("cancelTask calls correct CLI command", async () => {
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {});
 
 		await service.cancelTask("acp-1");
@@ -248,7 +248,7 @@ describe("AcpSessionService", () => {
 	});
 
 	test("dispose cleans up watcher and timer", () => {
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {});
 
 		service.dispose();
@@ -258,7 +258,7 @@ describe("AcpSessionService", () => {
 
 	test("returns empty array for empty CLI output", () => {
 		execFileSyncResult = "";
-		const service = new AcpSessionService();
+		const service = new AcpSessionService({ debounceMs: 1 });
 		service.start(() => {});
 
 		expect(service.getTasks()).toHaveLength(0);

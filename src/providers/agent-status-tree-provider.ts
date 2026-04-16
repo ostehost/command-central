@@ -2927,10 +2927,11 @@ export class AgentStatusTreeProvider
 	}
 
 	private formatSummaryCounts(counts: AgentCounts): string {
+		const doneTotal = counts.done + counts.limbo;
 		const parts = [
 			counts.working > 0 ? `${counts.working} working` : null,
 			counts.attention > 0 ? `${counts.attention} ⏹` : null,
-			counts.done > 0 ? `${counts.done} ✓` : null,
+			doneTotal > 0 ? `${doneTotal} ✓` : null,
 		];
 
 		return (

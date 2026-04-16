@@ -63,11 +63,11 @@ export function formatCountSummary(
 ): string {
 	const parts: string[] = [];
 	const attention = getAttentionCount(counts);
+	const doneTotal = counts.done + counts.limbo;
 	if (counts.working > 0) parts.push(`${counts.working} working`);
 	if (options.includeAttention && attention > 0) {
 		parts.push(`${attention} attention`);
 	}
-	if (counts.limbo > 0) parts.push(`${counts.limbo} limbo`);
-	if (counts.done > 0) parts.push(`${counts.done} done`);
+	if (doneTotal > 0) parts.push(`${doneTotal} done`);
 	return parts.join(" · ") || "No agents";
 }

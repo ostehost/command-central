@@ -259,33 +259,3 @@ export class LoggerService {
 		this.outputChannel.dispose();
 	}
 }
-
-// Singleton instance for the extension
-let loggerInstance: LoggerService | undefined;
-
-/**
- * Get or create the singleton logger instance
- */
-export function getLogger(): LoggerService {
-	if (!loggerInstance) {
-		loggerInstance = new LoggerService("Command Central: Terminal");
-	}
-	return loggerInstance;
-}
-
-/**
- * Set the singleton logger instance (useful for testing)
- */
-export function setLogger(logger: LoggerService): void {
-	loggerInstance = logger;
-}
-
-/**
- * Reset the singleton logger instance
- */
-export function resetLogger(): void {
-	if (loggerInstance) {
-		loggerInstance.dispose();
-		loggerInstance = undefined;
-	}
-}

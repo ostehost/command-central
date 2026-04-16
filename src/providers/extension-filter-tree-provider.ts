@@ -78,19 +78,10 @@ export class ExtensionFilterTreeProvider
 		private stateManager: FilterStateManager,
 		private workspaceDisplayNames: Map<string, string> = new Map(),
 	) {
-		console.log(
-			"[TreeProvider] Constructor called, subscribing to state changes",
-		);
 		// Subscribe to state changes to refresh tree automatically
-		this.stateChangeDisposable = this.stateManager.onDidChange((event) => {
-			console.log(
-				`[TreeProvider] State changed: ${event.extension} / ${event.workspace} / ${event.enabled}`,
-			);
-			console.log("[TreeProvider] Firing onDidChangeTreeData to refresh UI");
+		this.stateChangeDisposable = this.stateManager.onDidChange(() => {
 			this._onDidChangeTreeData.fire(undefined);
-			console.log("[TreeProvider] onDidChangeTreeData fired");
 		});
-		console.log("[TreeProvider] State change subscription established");
 	}
 
 	/**
@@ -112,14 +103,10 @@ export class ExtensionFilterTreeProvider
 		workspaceDisplayNames: Map<string, string>,
 		_stateManager?: FilterStateManager,
 	): void {
-		console.log(
-			`[TreeProvider] updateData called with ${extensionData.length} extensions`,
-		);
 		this.extensionData = extensionData;
 		this.workspaceDisplayNames = workspaceDisplayNames;
 
 		// Trigger tree refresh
-		console.log("[TreeProvider] Triggering immediate tree refresh");
 		this._onDidChangeTreeData.fire(undefined);
 	}
 
@@ -251,12 +238,6 @@ export class ExtensionFilterTreeProvider
 			relevantWorkspaces, // NEW: Only check workspaces that have this extension
 		);
 
-		console.log(
-			`[TreeProvider] Building item for ${node.extension}: ` +
-				`globally enabled = ${isEnabled}, ` +
-				`relevant workspaces = [${relevantWorkspaces.join(", ")}]`,
-		);
-
 		item.checkboxState = isEnabled
 			? vscode.TreeItemCheckboxState.Checked
 			: vscode.TreeItemCheckboxState.Unchecked;
@@ -302,11 +283,7 @@ export class ExtensionFilterTreeProvider
 	 * such as after checkbox state changes.
 	 */
 	forceRefresh(): void {
-		console.log(
-			"[TreeProvider] forceRefresh() called - firing onDidChangeTreeData",
-		);
 		this._onDidChangeTreeData.fire(undefined);
-		console.log("[TreeProvider] Tree refresh fired");
 	}
 
 	/**

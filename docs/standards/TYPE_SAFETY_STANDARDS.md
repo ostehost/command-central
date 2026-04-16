@@ -312,8 +312,8 @@ just test
 # 3. Verify quality gates pass
 just test-quality
 
-# 4. Complete verification
-just verify
+# 4. Strict verification (warnings = errors)
+just ci
 ```
 
 ### When You Need `as any`

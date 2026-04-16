@@ -82,8 +82,8 @@ just dist --major    # major version
 # Development mode (warnings only)
 just check
 
-# CI mode (strict)
-just check-strict
+# CI mode (strict — warnings block)
+just ci
 ```
 
 ### Launcher out of sync

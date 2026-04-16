@@ -19,6 +19,16 @@ repos:
         stages: [pre-commit]
         description: 'Run comprehensive validation (read-only, CI-optimized)'
 
+      # Fast unit test gate (~0.5s, ~459 tests)
+      # Catches regressions before they hit main. Full suite runs in CI.
+      - id: unit-tests
+        name: Unit Tests (fast subset)
+        entry: just test-unit
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        description: 'Run fast unit tests to catch regressions before commit'
+
       # Optional: Auto-fix before committing
       # Uncomment to automatically fix code quality issues
       # - id: auto-fix

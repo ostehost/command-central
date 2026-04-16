@@ -59,13 +59,14 @@ just sync-launcher      # Sync from development repo
 ### Step 1: Validate
 
 ```bash
-# Run complete validation
-just verify
+# Run strict validation (warnings = errors)
+just ci
 
 # Expected output:
 # ✅ Biome CI passed
 # ✅ TypeScript compiled
-# ✅ 624 tests passed
+# ✅ Knip strict passed
+# ✅ 1365 tests passed
 # ✅ No test quality issues
 ```
 
@@ -90,7 +91,7 @@ The dist command:
 5. Archives release
 
 `just prerelease-gate` hard-fails on:
-- `just verify` in Command Central
+- `just ci` in Command Central
 - `just check` in `~/projects/ghostty-launcher`
 - launcher CLI contract drift (`--session-id` and required flags)
 - provenance artifact generation

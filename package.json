@@ -1831,14 +1831,12 @@
   },
   "scripts": {
     "dev": "bun run scripts-v2/dev.ts",
-    "test": "bun test test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/ test/mocks/ test/package-json/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
+    "test": "bun test test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/ test/package-json/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
     "dist": "bun run scripts-v2/dist-simple.ts",
-    "_test:git2": "bun test test/git-sort/sorted-changes-provider.test.ts",
-    "_test:git4": "bun test test/git-sort/circuit-breaker.test.ts test/git-sort/scm-sorter.test.ts",
-    "_test:git5": "bun test test/git-sort/deleted-file-tracker.test.ts test/git-sort/storage-adapter.test.ts",
-    "_test:core": "bun test test/utils test/services test/security",
+    "_test:git-sort": "bun test test/git-sort/",
+    "_test:core": "bun test test/utils test/services",
     "_test:integration": "bun test test/integration/",
-    "_test:mocks": "bun test test/mocks/",
+    "_test:discovery-e2e": "bun test test/discovery-e2e/",
     "_test:tree-view-patterns": "bun test test/tree-view/",
     "build": "bun run scripts-v2/dist-simple.ts"
   },

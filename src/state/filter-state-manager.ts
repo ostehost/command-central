@@ -93,9 +93,6 @@ export class FilterStateManager implements vscode.Disposable {
 		this.filterState.setExtensionEnabled(workspace, extension, enabled);
 
 		// Fire change event
-		console.log(
-			`[FilterStateManager] Firing event: ${extension} / ${workspace} / ${enabled}`,
-		);
 		this._onDidChange.fire({ extension, workspace, enabled });
 	}
 

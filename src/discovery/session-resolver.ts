@@ -30,7 +30,7 @@ type ClaudeTaskResolutionInput = Pick<
  *
  * Example: `/Users/ostemini/projects/command-central` → `-Users-ostemini-projects-command-central`
  */
-export function escapeProjectPath(projectDir: string): string {
+function escapeProjectPath(projectDir: string): string {
 	return projectDir.replace(/\//g, "-");
 }
 

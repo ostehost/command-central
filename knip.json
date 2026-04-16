@@ -1,0 +1,23 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/extension.ts",
+    "scripts-v2/**/*.ts",
+    "test/**/*.test.ts",
+    "test/setup/**/*.ts",
+    "test/helpers/**/*.ts"
+  ],
+  "project": [
+    "src/**/*.ts",
+    "scripts-v2/**/*.ts"
+  ],
+  "ignore": [
+    "test/**/*.fixture.ts",
+    "test/**/*.legacy.ts"
+  ],
+  "ignoreDependencies": [
+    "@biomejs/biome",
+    "playwright"
+  ],
+  "ignoreExportsUsedInFile": true
+}

@@ -117,6 +117,7 @@ export class AgentRegistry implements vscode.Disposable {
 		this.scanTimer = setInterval(() => {
 			this.doProcessScan();
 		}, interval);
+		this.scanTimer.unref?.();
 	}
 
 	/** Stop periodic process scanning. */

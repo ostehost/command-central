@@ -384,7 +384,7 @@ export function overrideWindowMethod(
  */
 export function createMockWorkspaceConfiguration(
 	values?: Record<string, unknown>,
-): import("../../src/types/vscode-types.js").WorkspaceConfiguration {
+): import("vscode").WorkspaceConfiguration {
 	return {
 		get: <T>(key: string, defaultValue?: T): T | undefined => {
 			if (values && key in values) {
@@ -398,6 +398,7 @@ export function createMockWorkspaceConfiguration(
 		update: (_section: string, _value: unknown): Thenable<void> => {
 			return Promise.resolve();
 		},
+		inspect: () => undefined,
 	};
 }
 

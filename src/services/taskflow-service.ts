@@ -5,7 +5,7 @@ import * as path from "node:path";
 import type * as vscode from "vscode";
 import type { TaskFlow } from "../types/taskflow-types.js";
 
-const DEBOUNCE_MS = 150;
+const DEFAULT_DEBOUNCE_MS = 150;
 const CLI_TIMEOUT_MS = 5000;
 const LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 const TASKS_DIR = path.join(os.homedir(), ".openclaw", "tasks");
@@ -18,6 +18,11 @@ export class TaskFlowService implements vscode.Disposable {
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	private onChange: (() => void) | null = null;
 	private _isInstalled = true;
+	private readonly debounceMs: number;
+
+	constructor(opts: { debounceMs?: number } = {}) {
+		this.debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+	}
 
 	get isInstalled(): boolean {
 		return this._isInstalled;
@@ -129,7 +134,7 @@ export class TaskFlowService implements vscode.Disposable {
 		this.debounceTimer = setTimeout(() => {
 			this.reload();
 			this.onChange?.();
-		}, DEBOUNCE_MS);
+		}, this.debounceMs);
 	}
 
 	private execCli(args: string[]): Promise<string> {

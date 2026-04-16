@@ -64,9 +64,11 @@ function loadTestPartitions(): Map<string, Set<string>> {
 
 	const partitions = new Map<string, Set<string>>();
 
-	// Extract all test partition scripts (those starting with _test:)
+	// Extract active test coverage from the main test script plus explicit
+	// partition scripts. This keeps validation aligned with what `bun run test`
+	// and `just test` actually execute.
 	for (const [scriptName, scriptCommand] of Object.entries(scripts)) {
-		if (!scriptName.startsWith("_test:")) continue;
+		if (!(scriptName === "test" || scriptName.startsWith("_test:"))) continue;
 		if (typeof scriptCommand !== "string") continue;
 
 		// Parse the bun test command to extract file patterns

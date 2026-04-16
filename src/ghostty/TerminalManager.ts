@@ -13,7 +13,7 @@ import type { LoggerService } from "../services/logger-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
 
 /** Custom error types for better error handling */
-export class LauncherNotFoundError extends Error {
+class LauncherNotFoundError extends Error {
 	constructor(
 		message: string,
 		public readonly searchedPaths: string[] = [],

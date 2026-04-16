@@ -88,7 +88,7 @@ describe("CronService", () => {
 
 	test("parses valid openclaw cron list output", () => {
 		execFileSyncResult = JSON.stringify(sampleJobs);
-		const service = new CronService();
+		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
 
 		const jobs = service.getJobs();
@@ -100,7 +100,7 @@ describe("CronService", () => {
 
 	test("parses output with jobs wrapper object", () => {
 		execFileSyncResult = JSON.stringify({ jobs: sampleJobs });
-		const service = new CronService();
+		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
 
 		expect(service.getJobs()).toHaveLength(2);
@@ -112,7 +112,7 @@ describe("CronService", () => {
 		err.code = "ENOENT";
 		execFileSyncResult = err;
 
-		const service = new CronService();
+		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
 
 		expect(service.getJobs()).toHaveLength(0);
@@ -123,7 +123,7 @@ describe("CronService", () => {
 	test("handles non-zero exit — keeps last known state", () => {
 		// First load succeeds
 		execFileSyncResult = JSON.stringify(sampleJobs);
-		const service = new CronService();
+		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
 		expect(service.getJobs()).toHaveLength(2);
 
@@ -141,7 +141,7 @@ describe("CronService", () => {
 
 	test("enable calls correct CLI command", async () => {
 		execFileSyncResult = "[]";
-		const service = new CronService();
+		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
 
 		await service.enableJob("job-1");
@@ -153,7 +153,7 @@ describe("CronService", () => {
 
 	test("disable calls correct CLI command", async () => {
 		execFileSyncResult = "[]";
-		const service = new CronService();
+		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
 
 		await service.disableJob("job-2");
@@ -163,7 +163,7 @@ describe("CronService", () => {
 
 	test("runJob calls correct CLI command", async () => {
 		execFileSyncResult = "[]";
-		const service = new CronService();
+		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
 
 		await service.runJob("job-1");
@@ -174,7 +174,7 @@ describe("CronService", () => {
 	test("file watcher triggers reload callback", async () => {
 		execFileSyncResult = "[]";
 		let callbackCount = 0;
-		const service = new CronService();
+		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {
 			callbackCount++;
 		});
@@ -183,7 +183,7 @@ describe("CronService", () => {
 		watchCallback?.("change", "jobs.json");
 
 		// Wait for debounce (150ms)
-		await new Promise((r) => setTimeout(r, 200));
+		await new Promise((r) => setTimeout(r, 20));
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
@@ -191,7 +191,7 @@ describe("CronService", () => {
 	test("debounce fires only once for rapid changes", async () => {
 		execFileSyncResult = "[]";
 		let callbackCount = 0;
-		const service = new CronService();
+		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {
 			callbackCount++;
 		});
@@ -201,14 +201,14 @@ describe("CronService", () => {
 		watchCallback?.("change", "jobs.json");
 		watchCallback?.("change", "jobs.json");
 
-		await new Promise((r) => setTimeout(r, 200));
+		await new Promise((r) => setTimeout(r, 20));
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
 
 	test("dispose cleans up watcher and timer", () => {
 		execFileSyncResult = "[]";
-		const service = new CronService();
+		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
 
 		service.dispose();
@@ -218,7 +218,7 @@ describe("CronService", () => {
 
 	test("handles empty stdout", () => {
 		execFileSyncResult = "";
-		const service = new CronService();
+		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
 		expect(service.getJobs()).toHaveLength(0);
 		service.dispose();

@@ -96,6 +96,11 @@ import type { ReviewTracker } from "../../src/services/review-tracker.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 // Prevent the provider constructor from reading real tasks.json on disk.
+// Save the real method to globalThis BEFORE clobbering so the extracted
+// readRegistry tests can recover it. See
+// test/tree-view/agent-status-tree-provider-read-registry.test.ts.
+(globalThis as Record<string, unknown>)["__realAgentStatusReadRegistry"] ??=
+	AgentStatusTreeProvider.prototype.readRegistry;
 AgentStatusTreeProvider.prototype.readRegistry = () => makeRegistry({});
 
 function makeRegistry(tasks: Record<string, AgentTask> = {}): TaskRegistry {

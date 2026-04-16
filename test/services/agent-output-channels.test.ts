@@ -80,7 +80,7 @@ describe("AgentOutputChannels", () => {
 		).timers;
 		timers.set(
 			"task-1",
-			setTimeout(() => {}, 999999),
+			setInterval(() => {}, 999999),
 		);
 
 		expect(channels.isStreaming("task-1")).toBe(true);

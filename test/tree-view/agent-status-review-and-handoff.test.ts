@@ -94,6 +94,10 @@ import type { ReviewTracker } from "../../src/services/review-tracker.js";
 import { countAgentStatuses } from "../../src/utils/agent-counts.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
+// Save the real method to globalThis BEFORE clobbering so extracted readRegistry
+// tests can recover it. See agent-status-tree-provider-read-registry.test.ts.
+(globalThis as Record<string, unknown>)["__realAgentStatusReadRegistry"] ??=
+	AgentStatusTreeProvider.prototype.readRegistry;
 AgentStatusTreeProvider.prototype.readRegistry = () => makeRegistry({});
 
 function makeRegistry(tasks: Record<string, AgentTask> = {}): TaskRegistry {

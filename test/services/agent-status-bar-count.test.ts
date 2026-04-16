@@ -127,15 +127,15 @@ describe("AgentStatusBar count calculation", () => {
 		expect(mockItem.text).toContain("1 done");
 	});
 
-	test("counts completed_dirty/completed_stale as limbo and stopped as attention", () => {
+	test("counts completed_dirty/completed_stale as done and stopped as attention", () => {
 		statusBar.update([
 			makeTask("c", "completed_dirty"),
 			makeTask("a", "completed_stale"),
 			makeTask("b", "stopped"),
 		]);
-		expect(mockItem.text).toContain("2 limbo");
+		expect(mockItem.text).toContain("2 done");
 		expect(mockItem.text).toContain("1 attention");
-		expect(mockItem.text).not.toContain("done");
+		expect(mockItem.text).not.toContain("limbo");
 	});
 
 	test("treats killed as failed", () => {

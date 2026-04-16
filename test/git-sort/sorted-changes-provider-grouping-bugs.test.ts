@@ -4,7 +4,7 @@
  * Bug 1 (timestamp error on empty input):
  *   When grouping is enabled and one group has 0 files (e.g., no staged files),
  *   enrichWithTimestamps([]) logged "No files with valid timestamps" and showed
- *   a user-facing error toast. Empty input is normal — not an error.
+ *   a user-facing error toast. Empty input is normal, not an error.
  *   Root cause: no early-return for empty arrays in enrichWithTimestamps().
  *
  * Bug 2 (missing group header icons):
@@ -73,9 +73,6 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 	});
 
 	test("no staged files does not log timestamp error or show error toast", async () => {
-		// Reproduces: grouping enabled, 0 staged files, enrichWithTimestamps([])
-		// was called → logged "No files with valid timestamps" + showed error toast.
-		// This is the exact scenario from the bug report.
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -89,10 +86,10 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 						uri: vscode.Uri.file("/workspace/file1.ts"),
 						originalUri: vscode.Uri.file("/workspace/file1.ts"),
 						renameUri: undefined,
-						status: 5, // MODIFIED
+						status: 5,
 					},
 				],
-				indexChanges: [], // NO staged files — triggers the bug
+				indexChanges: [],
 				onDidChange: mock(() => ({ dispose: () => {} })),
 			},
 			diffWithHEAD: mock(() => Promise.resolve([])),
@@ -117,7 +114,6 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 		await provider.initialize();
 		await provider.getChildren();
 
-		// The bug: enrichWithTimestamps([]) logged this error
 		const errorCalls = (
 			mockLogger.error as unknown as { mock: { calls: unknown[][] } }
 		).mock.calls;
@@ -128,7 +124,6 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 		);
 		expect(timestampErrors.length).toBe(0);
 
-		// The bug also showed a user-facing error toast
 		const showErrorCalls = (
 			vscode.window.showErrorMessage as unknown as {
 				mock: { calls: unknown[][] };
@@ -143,8 +138,6 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 	});
 
 	test("no working files does not log timestamp error or show error toast", async () => {
-		// Same bug, inverse case: 0 working files, some staged files.
-		// enrichWithTimestamps([]) was called for the working array.
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
@@ -153,13 +146,13 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 		const mockRepo = {
 			rootUri: vscode.Uri.file("/workspace"),
 			state: {
-				workingTreeChanges: [], // NO working files — triggers the bug
+				workingTreeChanges: [],
 				indexChanges: [
 					{
 						uri: vscode.Uri.file("/workspace/staged.ts"),
 						originalUri: vscode.Uri.file("/workspace/staged.ts"),
 						renameUri: undefined,
-						status: 0, // INDEX_MODIFIED
+						status: 0,
 					},
 				],
 				onDidChange: mock(() => ({ dispose: () => {} })),
@@ -198,14 +191,11 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 	});
 
 	test("staged and working files appear in separate groups", async () => {
-		// Guards against the reported symptom: "staged files appearing under Working."
-		// If someone merges the arrays or breaks the grouping path, this catches it.
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
 		);
 
-		// Align workspace folder with mock repo so findRepositoryForFile matches
 		Object.defineProperty(vscode.workspace, "workspaceFolders", {
 			value: [
 				{ uri: vscode.Uri.file("/workspace"), name: "workspace", index: 0 },
@@ -222,7 +212,7 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 						uri: vscode.Uri.file("/workspace/working.ts"),
 						originalUri: vscode.Uri.file("/workspace/working.ts"),
 						renameUri: undefined,
-						status: 5, // MODIFIED
+						status: 5,
 					},
 				],
 				indexChanges: [
@@ -230,7 +220,7 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 						uri: vscode.Uri.file("/workspace/staged.ts"),
 						originalUri: vscode.Uri.file("/workspace/staged.ts"),
 						renameUri: undefined,
-						status: 0, // INDEX_MODIFIED
+						status: 0,
 					},
 				],
 				onDidChange: mock(() => ({ dispose: () => {} })),
@@ -257,7 +247,6 @@ describe("Regression: enrichWithTimestamps false error on empty input", () => {
 		await provider.initialize();
 		const children = await provider.getChildren();
 
-		// Must be 2 separate groups, not 1 merged group
 		expect(children.length).toBe(2);
 
 		const staged = children[0] as { statusType: string; totalCount: number };
@@ -280,9 +269,6 @@ describe("Regression: group header icons reference deleted SVGs", () => {
 	});
 
 	test("staged group header uses branded SVG icons", async () => {
-		// Previously: getGitStatusIcon("staged") returned URI to
-		// resources/icons/git-status/light/staged.svg — deleted in 7ab54ce.
-		// Now: SVGs are restored as branded icons with { light, dark } paths.
 		const { SortedGitChangesProvider } = await import(
 			"../../src/git-sort/sorted-changes-provider.js"
 		);

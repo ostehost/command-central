@@ -61,31 +61,41 @@ These are **non-negotiable** for this project:
 
 ## Commands Reference
 
+This project follows the cross-project five-recipe standard documented in
+`~/projects/config/STANDARDS.md`. Always prefer `just <recipe>` over invoking
+bun/biome/tsc directly — the recipes are the stable interface.
+
 ```bash
-# Development
-bun dev                              # Dev server with hot reload
-bun run build                        # Production build
-bun run typecheck                    # TypeScript type checking
+# The Five Standard Recipes (use these for every project)
+just check       # Read-only validation (biome ci + tsc + knip)
+just fix         # Auto-fix lint + format
+just test        # Run full test suite (~5s)
+just ready       # fix + check + test  (one-shot before push)  [alias: just r]
+just ci          # Strict gate (warnings = errors); what CI runs
 
-# Testing
-bun test                             # Run all tests
+# Aliases
+just t           # → just test
+just f           # → just fix
+just r           # → just ready
 
-# Code Quality
-bun run check                        # Biome lint + format check
-bun run check:fix                    # Auto-fix lint + format issues
-bun run lint                         # Lint only
-bun run format                       # Format only
+# Project-specific
+just dev                             # Dev server with hot reload
+just dist                            # Build VSIX (auto-bump patch)
+just dist --minor / --major / --current / --dry-run / --prerelease
+just prerelease                      # Cross-repo gate + build prerelease
+just sync-all                        # Sync launcher + terminal binaries
 
-# Distribution
-bun dist                             # Build (skips prod if version exists)
-bun dist --patch                     # Bump patch version and build
-bun dist --minor                     # Bump minor version and build
-bun dist --major                     # Bump major version and build
-bun dist --dry-run                   # Preview without building
+# Test sub-commands (when full `just test` is too slow)
+just test-unit                       # Fast unit subset (~0.5s, 459 tests)
+just test-integration                # Integration + isolated discovery-e2e
+just test-watch                      # TDD watch mode
 
-# Installing locally
+# Installing the built extension locally
 code --install-extension releases/command-central-X.X.X.vsix
 ```
+
+See `WORKFLOW.md` for the full workflow guide and the migration history
+(2026-04-16: `verify`/`pre-commit`/`check-strict` retired).
 
 ## Architecture & Conventions
 

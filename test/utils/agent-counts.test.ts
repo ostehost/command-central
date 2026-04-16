@@ -181,7 +181,7 @@ describe("countAgentStatuses — review_status routing", () => {
 			makeTask("d1", "completed_dirty"),
 		]);
 		expect(formatCountSummary(counts, { includeAttention: true })).toBe(
-			"1 working · 1 attention · 1 limbo · 1 done",
+			"1 working · 1 attention · 2 done",
 		);
 	});
 });
@@ -237,7 +237,7 @@ describe("formatCountSummary", () => {
 		);
 	});
 
-	test("includes limbo count in summary when non-zero", () => {
+	test("folds limbo into done count in summary when non-zero", () => {
 		const counts: AgentCounts = {
 			working: 1,
 			attention: 0,
@@ -246,10 +246,10 @@ describe("formatCountSummary", () => {
 			total: 6,
 		};
 
-		expect(formatCountSummary(counts)).toBe("1 working · 2 limbo · 3 done");
+		expect(formatCountSummary(counts)).toBe("1 working · 5 done");
 	});
 
-	test("limbo appears between attention and done in summary", () => {
+	test("limbo folds into done after attention in summary", () => {
 		const counts: AgentCounts = {
 			working: 1,
 			attention: 2,
@@ -259,7 +259,7 @@ describe("formatCountSummary", () => {
 		};
 
 		expect(formatCountSummary(counts, { includeAttention: true })).toBe(
-			"1 working · 2 attention · 3 limbo · 4 done",
+			"1 working · 2 attention · 7 done",
 		);
 	});
 });

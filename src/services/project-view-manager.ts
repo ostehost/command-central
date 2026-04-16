@@ -89,14 +89,10 @@ export class ProjectViewManager {
 	 * - No-op if file not in git changes
 	 */
 	private setupActiveFileTracking(): void {
-		console.log("🔍 [ACTIVE FILE TRACKING] Setting up active file tracking...");
 		this.logger.info("🔍 Setting up active file tracking...");
 
 		this.context.subscriptions.push(
 			vscode.window.onDidChangeActiveTextEditor(async (editor) => {
-				console.log(
-					`📝 [ACTIVE FILE TRACKING] Editor changed: ${editor ? editor.document.uri.fsPath : "undefined"}`,
-				);
 				this.logger.debug(
 					`📝 Editor changed: ${editor ? editor.document.uri.fsPath : "undefined"}`,
 				);
@@ -118,15 +114,6 @@ export class ProjectViewManager {
 				}
 
 				const fileUri = editor.document.uri;
-				console.log(
-					`🎯 [ACTIVE FILE TRACKING] Attempting to reveal: ${fileUri.fsPath}`,
-				);
-				console.log(
-					`📊 [ACTIVE FILE TRACKING] Registered views count: ${this.registeredViews.size}`,
-				);
-				console.log(
-					`📊 [ACTIVE FILE TRACKING] TreeView providers count: ${this.treeViewProviders.size}`,
-				);
 				this.logger.info(`🎯 Attempting to reveal: ${fileUri.fsPath}`);
 				this.logger.debug(
 					`📊 Registered views count: ${this.registeredViews.size}`,
@@ -174,7 +161,6 @@ export class ProjectViewManager {
 					const item = provider.findItemByUri(fileUri);
 					if (item) {
 						itemsFound++;
-						console.log(`[ACTIVE FILE] Revealing in view ID: ${_viewId}`);
 						this.logger.info(
 							`✅ View ${viewsChecked}: Found item! Revealing...`,
 						);

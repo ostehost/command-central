@@ -110,7 +110,7 @@ describe("OpenClawTaskService", () => {
 
 	test("parses valid openclaw tasks list output", () => {
 		execFileSyncResult = JSON.stringify(sampleTasks);
-		const service = new OpenClawTaskService();
+		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {});
 
 		const tasks = service.getTasks();
@@ -124,7 +124,7 @@ describe("OpenClawTaskService", () => {
 		err.code = "ENOENT";
 		execFileSyncResult = err;
 
-		const service = new OpenClawTaskService();
+		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {});
 
 		expect(service.getTasks()).toHaveLength(0);
@@ -134,7 +134,7 @@ describe("OpenClawTaskService", () => {
 
 	test("handles non-zero exit and keeps last known state", () => {
 		execFileSyncResult = JSON.stringify(sampleTasks);
-		const service = new OpenClawTaskService();
+		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {});
 		expect(service.getTasks()).toHaveLength(1);
 
@@ -151,7 +151,7 @@ describe("OpenClawTaskService", () => {
 	test("debounce fires only once for rapid file changes", async () => {
 		execFileSyncResult = JSON.stringify(sampleTasks);
 		let callbackCount = 0;
-		const service = new OpenClawTaskService();
+		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {
 			callbackCount++;
 		});
@@ -160,7 +160,7 @@ describe("OpenClawTaskService", () => {
 		watchCallback?.("change", "runs.sqlite-wal");
 		watchCallback?.("change", "runs.sqlite-wal");
 
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
@@ -168,19 +168,19 @@ describe("OpenClawTaskService", () => {
 	test("file watcher triggers reload callback", async () => {
 		execFileSyncResult = JSON.stringify(sampleTasks);
 		let callbackCount = 0;
-		const service = new OpenClawTaskService();
+		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {
 			callbackCount++;
 		});
 
 		watchCallback?.("change", "runs.sqlite");
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
 
 	test("cancelTask calls correct CLI command", async () => {
-		const service = new OpenClawTaskService();
+		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {});
 
 		await service.cancelTask("task-1");
@@ -190,7 +190,7 @@ describe("OpenClawTaskService", () => {
 	});
 
 	test("setNotifyPolicy calls correct CLI command", async () => {
-		const service = new OpenClawTaskService();
+		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {});
 
 		await service.setNotifyPolicy("task-1", "state_changes");
@@ -204,7 +204,7 @@ describe("OpenClawTaskService", () => {
 	});
 
 	test("dispose cleans up watcher and timer", () => {
-		const service = new OpenClawTaskService();
+		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {});
 
 		service.dispose();

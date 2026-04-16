@@ -4,11 +4,11 @@
  * Bug: When getChildren() encounters an internal error (e.g., enrichWithTimestamps
  * throws), the catch block called setEmptyStateMessage(false) which set the
  * TreeView.message to undefined. This allowed the viewsWelcome content
- * ("Open a Git repository to see time-sorted changes.") to show — misleading
+ * ("Open a Git repository to see time-sorted changes.") to show, misleading
  * because a repo DOES exist, the error is internal.
  *
  * Fix: The catch block now calls setEmptyStateMessage(true) which sets
- * TreeView.message to "No changes to display." — this takes priority over
+ * TreeView.message to "No changes to display." which takes priority over
  * viewsWelcome and correctly indicates the issue is not about missing repos.
  */
 
@@ -100,7 +100,7 @@ describe("Regression: catch block shows 'No changes' instead of 'Open a Git repo
 			configurable: true,
 		});
 
-		// Create a repo whose state throws when accessed — triggers catch block
+		// Create a repo whose state throws when accessed, triggers catch block
 		// without needing mock.module on git-timestamps (which poisons other tests)
 		let callCount = 0;
 		const mockRepo = {
@@ -117,7 +117,7 @@ describe("Regression: catch block shows 'No changes' instead of 'Open a Git repo
 							uri: vscode.Uri.file("/workspace/file1.ts"),
 							originalUri: vscode.Uri.file("/workspace/file1.ts"),
 							renameUri: undefined,
-							status: 5, // MODIFIED
+							status: 5,
 						},
 					],
 					indexChanges: [],
@@ -150,9 +150,9 @@ describe("Regression: catch block shows 'No changes' instead of 'Open a Git repo
 		// Tree should return empty (error occurred)
 		expect(children).toEqual([]);
 
-		// CRITICAL: Message must be "No changes to display." — NOT undefined.
+		// CRITICAL: Message must be "No changes to display." not undefined.
 		// If message is undefined, viewsWelcome shows "Open a Git repository..."
-		// which is WRONG because a repo exists; the issue is internal.
+		// which is WRONG because a repo exists, the issue is internal.
 		expect(activityBar.view.message).toBe("No changes to display.");
 
 		// Should also log the error for debugging

@@ -86,8 +86,8 @@ describe("limbo tier — countAgentStatuses routing", () => {
 	});
 });
 
-describe("limbo tier — formatCountSummary ordering", () => {
-	test("limbo appears before done in summary output", () => {
+describe("limbo tier — formatCountSummary folds limbo into done", () => {
+	test("limbo tasks are folded into the done tally in summary output", () => {
 		const counts: AgentCounts = {
 			working: 0,
 			attention: 0,
@@ -96,12 +96,11 @@ describe("limbo tier — formatCountSummary ordering", () => {
 			total: 3,
 		};
 		const summary = formatCountSummary(counts);
-		expect(summary).toBe("2 limbo · 1 done");
-		// Verify ordering: limbo index < done index
-		expect(summary.indexOf("limbo")).toBeLessThan(summary.indexOf("done"));
+		expect(summary).toBe("3 done");
+		expect(summary).not.toContain("limbo");
 	});
 
-	test("limbo appears after attention when includeAttention is true", () => {
+	test("limbo-only tasks show as done after attention when includeAttention is true", () => {
 		const counts: AgentCounts = {
 			working: 0,
 			attention: 1,
@@ -110,8 +109,8 @@ describe("limbo tier — formatCountSummary ordering", () => {
 			total: 3,
 		};
 		const summary = formatCountSummary(counts, { includeAttention: true });
-		expect(summary).toBe("1 attention · 2 limbo");
-		expect(summary.indexOf("attention")).toBeLessThan(summary.indexOf("limbo"));
+		expect(summary).toBe("1 attention · 2 done");
+		expect(summary).not.toContain("limbo");
 	});
 
 	test("limbo is omitted from summary when zero", () => {

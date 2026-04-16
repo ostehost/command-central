@@ -16,6 +16,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import {
 	extractFlagsFromHelp,
@@ -200,10 +201,14 @@ describe("smoke: focus — launcher script lookup", () => {
 		const mod = await import(modulePath);
 		lookupLauncherFocusScript = mod.lookupLauncherFocusScript;
 	});
-
 	test("lookupLauncherFocusScript resolves the launcher repo helper script", () => {
-		const expected =
-			"/Users/ostemini/projects/ghostty-launcher/scripts/oste-focus.applescript";
+		const expected = path.join(
+			os.homedir(),
+			"projects",
+			"ghostty-launcher",
+			"scripts",
+			"oste-focus.applescript",
+		);
 		expect(fs.existsSync(expected)).toBe(true);
 		expect(lookupLauncherFocusScript()).toBe(expected);
 	});
