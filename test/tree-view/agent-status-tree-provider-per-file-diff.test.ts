@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+function getExecArgs(fnArgs: unknown[]): string[] {
+	return (fnArgs[1] as string[] | undefined) ?? [];
+}
+
 let execOutput = "";
 let execError: Error | null = null;
 let lastExecArgs: string[] = [];
 let execCalls: string[][] = [];
 
-const mockExecFileSync = mock((_cmd: string, args: string[]) => {
+const mockExecFileSync = mock((...fnArgs: unknown[]) => {
+	const args = getExecArgs(fnArgs);
 	lastExecArgs = args;
 	execCalls.push(args);
 	if (execError) throw execError;
@@ -36,7 +41,8 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		execError = null;
 		lastExecArgs = [];
 		execCalls = [];
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		mockExecFileSync.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			if (execError) throw execError;
@@ -47,7 +53,8 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 	test("parses running-agent diff output from working tree and includes file statuses", () => {
 		const provider = new AgentStatusTreeProvider();
 		mockExecFileSync.mockReset();
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		mockExecFileSync.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			if (args.includes("--name-status")) {
@@ -74,7 +81,8 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		const provider = new AgentStatusTreeProvider();
 		mockExecFileSync.mockReset();
 		execCalls = [];
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		mockExecFileSync.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			if (args.includes("--name-status")) {
@@ -99,7 +107,8 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		const provider = new AgentStatusTreeProvider();
 		mockExecFileSync.mockReset();
 		execCalls = [];
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		mockExecFileSync.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			if (args.includes("--name-status")) {
@@ -135,7 +144,8 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		const provider = new AgentStatusTreeProvider();
 		mockExecFileSync.mockReset();
 		let calls = 0;
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		mockExecFileSync.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			calls += 1;
@@ -169,7 +179,8 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 	test("maps explicit A/M/D statuses from name-status output", () => {
 		const provider = new AgentStatusTreeProvider();
 		mockExecFileSync.mockReset();
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		mockExecFileSync.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			if (args.includes("--name-status")) {

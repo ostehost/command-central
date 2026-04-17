@@ -28,7 +28,7 @@ type ClaudeTaskResolutionInput = Pick<
  * Escape a project directory path the same way Claude Code does.
  * All `/` characters are replaced with `-`.
  *
- * Example: `/Users/ostemini/projects/command-central` → `-Users-ostemini-projects-command-central`
+ * Example: `~/projects/command-central` → `-Users-yourname-projects-command-central`
  */
 function escapeProjectPath(projectDir: string): string {
 	return projectDir.replace(/\//g, "-");

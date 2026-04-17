@@ -191,7 +191,9 @@ describe("SessionStore", () => {
 		// This tests the actual derivation logic for a known-existing bundle
 		const store = new SessionStore(storePath);
 		// command-central.app exists in /Applications/Projects/ on this machine
-		const result = store.lookup("/Users/ostemini/projects/command-central");
+		const result = store.lookup(
+			path.join(os.homedir(), "projects", "command-central"),
+		);
 		if (fs.existsSync("/Applications/Projects/command-central.app")) {
 			expect(result).toEqual({
 				bundlePath: "/Applications/Projects/command-central.app",
