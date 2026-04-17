@@ -2341,7 +2341,7 @@ export class AgentStatusTreeProvider
 
 		if (hasRunning && !this.autoRefreshTimer) {
 			const config = vscode.workspace.getConfiguration("commandCentral");
-			const intervalMs = config.get<number>("agentStatus.autoRefreshMs", 5000);
+			const intervalMs = config.get<number>("agentStatus.autoRefreshMs", 30000);
 			this.autoRefreshTimer = setInterval(() => {
 				this.checkStaleTransitions();
 				this.checkStuckTransitions();

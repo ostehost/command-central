@@ -220,7 +220,8 @@ ci:
     @bunx tsc --noEmit
     @bunx knip
     @echo ""
-    @just test
+    @bun run test:coverage
+    @just test-quality
     @echo ""
     @echo "✅ CI checks passed!"
 

@@ -62,6 +62,15 @@ export class AgentRegistry implements vscode.Disposable {
 	private scanning = false;
 	private lastSessionAgentCount = 0;
 	private lastPrunedDeadAgents = 0;
+	/**
+	 * Serialized snapshot of the last `onDidChange`-eligible state. We only
+	 * fire the event when this changes so the Agent Status TreeView doesn't
+	 * re-render on every 5s poll when nothing has actually changed. The
+	 * shape we hash is intentionally the tuple that actually affects
+	 * downstream consumers — discovered agents + a shallow digest of session
+	 * counts — not arbitrary scanner bookkeeping.
+	 */
+	private lastEmittedSnapshot: string | null = null;
 
 	private _onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChange = this._onDidChange.event;
@@ -70,6 +79,31 @@ export class AgentRegistry implements vscode.Disposable {
 	readonly onDidChangeAgents = this._onDidChange.event;
 
 	private disposables: vscode.Disposable[] = [];
+
+	/**
+	 * Fire onDidChange only if the consumer-visible state has changed since
+	 * the last emission. Prevents spurious TreeView re-renders on every
+	 * poll interval when nothing about the discovered agent set moved.
+	 */
+	private fireIfChanged(): void {
+		const snapshot = JSON.stringify({
+			agents: this.discoveredAgents.map((a) => ({
+				pid: a.pid,
+				sessionId: a.sessionId,
+				projectDir: a.projectDir,
+				source: a.source,
+				cli_name: a.cli_name,
+				agent_backend: a.agent_backend,
+				startTime:
+					a.startTime instanceof Date ? a.startTime.getTime() : a.startTime,
+			})),
+			sessionAgentCount: this.lastSessionAgentCount,
+			prunedDeadAgents: this.lastPrunedDeadAgents,
+		});
+		if (snapshot === this.lastEmittedSnapshot) return;
+		this.lastEmittedSnapshot = snapshot;
+		this._onDidChange.fire();
+	}
 
 	constructor(sessionsDir?: string, options?: AgentRegistryOptions) {
 		this.sessionWatcher = new SessionWatcher(sessionsDir);
@@ -112,7 +146,7 @@ export class AgentRegistry implements vscode.Disposable {
 	startPolling(intervalMs?: number): void {
 		this.stopPolling();
 		const config = vscode.workspace.getConfiguration("commandCentral");
-		const configInterval = config.get<number>("discovery.pollInterval", 5000);
+		const configInterval = config.get<number>("discovery.pollInterval", 30000);
 		const interval = Math.max(intervalMs ?? configInterval, 2000);
 		this.scanTimer = setInterval(() => {
 			this.doProcessScan();
@@ -201,7 +235,7 @@ export class AgentRegistry implements vscode.Disposable {
 				...sessionAgents,
 				...agents,
 			]);
-			this._onDidChange.fire();
+			this.fireIfChanged();
 		} finally {
 			this.scanning = false;
 		}
@@ -217,7 +251,7 @@ export class AgentRegistry implements vscode.Disposable {
 			...sessionAgents,
 			...processOnly,
 		]);
-		this._onDidChange.fire();
+		this.fireIfChanged();
 	}
 
 	/**

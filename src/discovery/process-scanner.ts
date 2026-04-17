@@ -11,11 +11,32 @@
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { promisify } from "node:util";
 import type { DiscoveredAgent } from "./types.js";
 import { resolveWorktree } from "./worktree-resolver.js";
 
-const defaultExecFileAsync = promisify(execFile);
+// IMPORTANT: Do NOT `const defaultExecFileAsync = promisify(execFile)` at
+// module scope. `promisify` reads the current value of `execFile` at
+// module-load time and binds to it forever, which bypasses any
+// `mock.module("node:child_process", ...)` installed later by tests. The
+// symptom is: tests mock child_process, but ProcessScanner still shells
+// out to the real `ps`/`lsof`, leaking real child processes whose stdout
+// pipes keep libuv handles alive and the event loop busy into subsequent
+// test files (observed as 6-20s of extra wall time). Instead, wrap `execFile` in
+// a closure so the identifier resolves via its ES live binding on every
+// call — whatever `mock.module` last installed is what we use.
+function defaultExecFileAsync(
+	file: string,
+	args: ReadonlyArray<string>,
+	options: { timeout?: number; encoding?: BufferEncoding },
+): Promise<{ stdout: string; stderr: string }> {
+	return new Promise((resolve, reject) => {
+		execFile(file, args as string[], options, (err, stdout, stderr) => {
+			if (err) reject(err);
+			else
+				resolve({ stdout: String(stdout ?? ""), stderr: String(stderr ?? "") });
+		});
+	});
+}
 
 /** Timeout for shell commands (ms) */
 const CMD_TIMEOUT = 5_000;

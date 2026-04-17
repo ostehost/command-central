@@ -11,9 +11,25 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { promisify } from "node:util";
 
-const execFileAsync = promisify(execFile);
+// IMPORTANT: `promisify(execFile)` captured at module scope snapshots the
+// real execFile reference at load time and bypasses any later
+// `mock.module("node:child_process", ...)`. Use a closure so the
+// identifier resolves via ES live binding on every call. See
+// src/discovery/process-scanner.ts for the full rationale.
+function execFileAsync(
+	file: string,
+	args: ReadonlyArray<string>,
+	options: { timeout?: number },
+): Promise<{ stdout: string; stderr: string }> {
+	return new Promise((resolve, reject) => {
+		execFile(file, args as string[], options, (err, stdout, stderr) => {
+			if (err) reject(err);
+			else
+				resolve({ stdout: String(stdout ?? ""), stderr: String(stderr ?? "") });
+		});
+	});
+}
 const require = createRequire(import.meta.url);
 
 const WINDOW_FOCUS_TIMEOUT_MS = 12_000;

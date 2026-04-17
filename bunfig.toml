@@ -16,7 +16,14 @@ prefer-offline = true
 [test]
 # Test configuration
 root = "./test"
-coverage = true
+# Coverage is OFF by default because several test files call
+# `mock.module("node:fs", ...)` at module scope. Bun pre-loads every test
+# file before running any test, so those fs mocks go global during
+# discovery. Coverage then tries to read source files via fs and hits the
+# mock's ENOENT path, which stalls catastrophically (observed 146s for
+# 188 tests vs 0.009s with coverage off on the same machine).
+# Opt in per-invocation with `bun test --coverage` (used by `just ci`).
+coverage = false
 coverageReporter = ["text"]
 coverageSkipTestFiles = true
 # Exclude legacy tests from test runs
