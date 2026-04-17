@@ -1,66 +1,37 @@
 /**
  * AgentStatusTreeProvider — readRegistry tests (isolated)
  *
- * EXTRACTED from agent-status-tree-provider.test.ts to escape intra-suite
- * pollution. Two sibling files (agent-status-handoff-file.test.ts and
- * agent-status-review-and-handoff.test.ts) clobber
- * `AgentStatusTreeProvider.prototype.readRegistry` at module scope to suppress
- * their constructor's tasks.json read. Because bun loads test files into a
- * shared worker, the giant test file captured a stub instead of the real
- * method when these polluters loaded first.
+ * Uses the shared tree-view helper so this file participates in the same
+ * module-mock graph as the rest of the tree-view suite. Importing the provider
+ * directly from source here lets Bun cache a different child_process/fs world
+ * for AgentStatusTreeProvider, which makes sibling files silently fall back to
+ * real git/tmux calls in mixed runs.
  *
- * Fix: the real method is now captured at PRELOAD time
- * (`test/setup/global-test-cleanup.ts`) and stashed on globalThis. These
- * tests read it from there, so they're immune to prototype pollution.
- *
- * Do NOT clobber the prototype in this file — use per-instance overrides only.
+ * The real readRegistry implementation is stashed on globalThis before the
+ * helper clobbers the prototype for constructor safety.
  */
 
-import { describe, expect, mock, test } from "bun:test";
-import * as realChildProcess from "node:child_process";
-import * as fs from "node:fs";
+import { describe, expect, test } from "bun:test";
+
+const fs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof import("node:fs");
+
 import * as path from "node:path";
-
-// ── Module mocks (must be set up before importing source) ───────────────
-
-const execFileSyncMock = mock((...fnArgs: unknown[]) =>
-	realChildProcess.execFileSync(
-		fnArgs[0] as string,
-		fnArgs[1] as string[] | undefined,
-		fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
-	),
-);
-
-mock.module("node:child_process", () => ({
-	...realChildProcess,
-	execFileSync: execFileSyncMock,
-}));
-
-mock.module("../../src/utils/port-detector.js", () => ({
-	detectListeningPorts: mock(() => []),
-	detectListeningPortsAsync: mock(async () => []),
-}));
-
+import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 import {
 	AgentStatusTreeProvider,
 	type TaskRegistry,
-} from "../../src/providers/agent-status-tree-provider.js";
-import { setupVSCodeMock } from "../helpers/vscode-mock.js";
+} from "./_helpers/agent-status-tree-provider-test-base.js";
 
-// ── Capture the real readRegistry from the global preload ───────────────
-// See test/setup/global-test-cleanup.ts for where this is stashed. Falling
-// back to the prototype lets this file work even if the preload changes.
 const realReadRegistry = ((globalThis as Record<string, unknown>)[
 	"__realAgentStatusReadRegistry"
 ] ?? AgentStatusTreeProvider.prototype.readRegistry) as () => TaskRegistry;
-
-// ── Tests ───────────────────────────────────────────────────────────────
 
 describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 	function makeProvider(): AgentStatusTreeProvider {
 		setupVSCodeMock();
 		const provider = new AgentStatusTreeProvider();
-		// Override per-instance so the constructor's reload doesn't blow up.
 		provider.readRegistry = () => ({ version: 2, tasks: {} });
 		return provider;
 	}

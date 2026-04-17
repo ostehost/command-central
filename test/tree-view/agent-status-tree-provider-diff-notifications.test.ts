@@ -7,7 +7,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import * as realChildProcess from "node:child_process";
+
+const realChildProcess = (globalThis as Record<string, unknown>)[
+	"__realNodeChildProcess"
+] as typeof import("node:child_process");
+
 import * as path from "node:path";
 import type * as vscode from "vscode";
 import { OpenClawConfigService } from "../../src/services/openclaw-config-service.js";

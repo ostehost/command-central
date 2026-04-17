@@ -1,42 +1,37 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
-let execOutput = "";
-let execError: Error | null = null;
-let lastExecArgs: string[] = [];
-let execCalls: string[][] = [];
-
-const mockExecFileSync = mock((_cmd: string, args: string[]) => {
-	lastExecArgs = args;
-	execCalls.push(args);
-	if (execError) throw execError;
-	return execOutput;
-});
-
-mock.module("node:child_process", () => ({
-	execFileSync: mockExecFileSync,
-}));
-
-const mockDetectListeningPorts = mock(
-	() => [] as Array<{ port: number; pid: number; process: string }>,
-);
-mock.module("../../src/utils/port-detector.js", () => ({
-	detectListeningPortsAsync: mockDetectListeningPorts,
-}));
+function getExecArgs(fnArgs: unknown[]): string[] {
+	return (fnArgs[1] as string[] | undefined) ?? [];
+}
 
 import {
-	AgentStatusTreeProvider,
+	type AgentStatusTreeProvider,
 	type AgentTask,
-} from "../../src/providers/agent-status-tree-provider.js";
-import { setupVSCodeMock } from "../helpers/vscode-mock.js";
+	createProviderHarness,
+	disposeHarness,
+	type ProviderHarness,
+} from "./_helpers/agent-status-tree-provider-test-base.js";
 
 describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
+	let h: ProviderHarness;
+	let provider: AgentStatusTreeProvider;
+	let execFileSyncMock: ProviderHarness["execFileSyncMock"];
+	let lastExecArgs: string[];
+	let execCalls: string[][];
+	let execOutput: string;
+	let execError: Error | null;
+
 	beforeEach(() => {
-		setupVSCodeMock();
-		execOutput = "";
-		execError = null;
+		h = createProviderHarness();
+		provider = h.provider;
+		execFileSyncMock = h.execFileSyncMock;
 		lastExecArgs = [];
 		execCalls = [];
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		execOutput = "";
+		execError = null;
+		execFileSyncMock.mockReset();
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			if (execError) throw execError;
@@ -44,10 +39,14 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		});
 	});
 
+	afterEach(() => {
+		disposeHarness(h);
+	});
+
 	test("parses running-agent diff output from working tree and includes file statuses", () => {
-		const provider = new AgentStatusTreeProvider();
-		mockExecFileSync.mockReset();
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		execFileSyncMock.mockReset();
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			if (args.includes("--name-status")) {
@@ -67,14 +66,13 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 			{ filePath: "src/a.ts", additions: 10, deletions: 2, status: "M" },
 			{ filePath: "README.md", additions: 5, deletions: 0, status: "A" },
 		]);
-		provider.dispose();
 	});
 
 	test("uses startCommit..HEAD for completed-agent diffs", () => {
-		const provider = new AgentStatusTreeProvider();
-		mockExecFileSync.mockReset();
+		execFileSyncMock.mockReset();
 		execCalls = [];
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			if (args.includes("--name-status")) {
@@ -92,14 +90,13 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		expect(result).toEqual([
 			{ filePath: "src/b.ts", additions: 1, deletions: 1, status: "M" },
 		]);
-		provider.dispose();
 	});
 
 	test("marks binary files with sentinel counts", () => {
-		const provider = new AgentStatusTreeProvider();
-		mockExecFileSync.mockReset();
+		execFileSyncMock.mockReset();
 		execCalls = [];
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			if (args.includes("--name-status")) {
@@ -118,24 +115,21 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 				status: "A",
 			},
 		]);
-		provider.dispose();
 	});
 
 	test("returns empty array when git fails", () => {
 		execError = new Error("not a git repo");
-		const provider = new AgentStatusTreeProvider();
 
 		const result = provider.getPerFileDiffs("/tmp/not-a-repo");
 
 		expect(result).toEqual([]);
-		provider.dispose();
 	});
 
 	test("falls back to HEAD~1..HEAD when startCommit ref is stale", () => {
-		const provider = new AgentStatusTreeProvider();
-		mockExecFileSync.mockReset();
 		let calls = 0;
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		execFileSyncMock.mockReset();
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			calls += 1;
@@ -147,6 +141,7 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 			}
 			return "3\t1\tsrc/fallback.ts\n";
 		});
+
 		const result = provider.getPerFileDiffs(
 			"/tmp/project",
 			"stale-commit",
@@ -163,13 +158,12 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		expect(result).toEqual([
 			{ filePath: "src/fallback.ts", additions: 3, deletions: 1, status: "M" },
 		]);
-		provider.dispose();
 	});
 
 	test("maps explicit A/M/D statuses from name-status output", () => {
-		const provider = new AgentStatusTreeProvider();
-		mockExecFileSync.mockReset();
-		mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+		execFileSyncMock.mockReset();
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
 			lastExecArgs = args;
 			execCalls.push(args);
 			if (args.includes("--name-status")) {
@@ -190,12 +184,10 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 			},
 			{ filePath: "src/deleted.ts", additions: 0, deletions: 6, status: "D" },
 		]);
-		provider.dispose();
 	});
 
 	test("getDiffSummary uses start_sha so header matches per-file diff range", () => {
 		execOutput = "10\t2\tsrc/a.ts\n5\t0\tREADME.md\n";
-		const provider = new AgentStatusTreeProvider();
 		const task = {
 			status: "completed",
 			project_dir: "/tmp/project",
@@ -214,6 +206,5 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 			"abc123..HEAD",
 		]);
 		expect(result).toBe("2 files · +15 / -2");
-		provider.dispose();
 	});
 });

@@ -87,7 +87,21 @@ export function createVSCodeMock() {
 				dispose: mock(),
 			})),
 			getConfiguration: mock((_section?: string) => ({
-				get: mock((_key: string, defaultValue?: unknown) => defaultValue),
+				// Default config mock: return the caller's defaultValue EXCEPT for
+				// a small allowlist of keys where the production default would
+				// kick off real subprocesses / watchers that leak through the
+				// bun-test process. Disabling discovery here stops
+				// `AgentStatusTreeProvider` from instantiating a real
+				// `AgentRegistry`, which otherwise fires fire-and-forget
+				// `ps`/`lsof` spawns during every test that constructs a
+				// provider — observed as +24s wall time across the tree-view
+				// suite when a single test file bypassed the shared harness.
+				// Individual tests that need discovery on should override via
+				// `setAgentStatusConfig(vscodeMock, { "discovery.enabled": true })`.
+				get: mock((key: string, defaultValue?: unknown) => {
+					if (key === "discovery.enabled") return false;
+					return defaultValue;
+				}),
 				update: mock((_section: string, _value: unknown, _target?: unknown) =>
 					Promise.resolve(),
 				),

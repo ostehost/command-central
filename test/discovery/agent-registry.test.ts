@@ -5,34 +5,102 @@
  * process-scanned agents. Dedup, priority, and event emission.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+	afterAll,
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	mock,
+	test,
+} from "bun:test";
+import { createVSCodeMock } from "../helpers/vscode-mock.js";
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
-import * as realChildProcess from "node:child_process";
-import * as realFs from "node:fs";
+// IMPORTANT: Do NOT use `import * as realFs from "node:fs"` (or
+// child_process) here. Bun's namespace imports are live bindings. By the
+// time this file loads, earlier test files have already installed fs/cp
+// mocks via mock.module(), so a local namespace spread would spread the
+// MOCKED module back into our factory — creating self-referential mocks
+// that ENOENT on every real path and cascading into slow recovery paths.
+// Use the frozen snapshots stashed by test/setup/global-test-cleanup.ts
+// (via bunfig preload) before any test file loads.
+const realFs = (globalThis as Record<string, unknown>)["__realNodeFs"] as
+	| typeof import("node:fs")
+	| undefined;
+const realChildProcess = (globalThis as Record<string, unknown>)[
+	"__realNodeChildProcess"
+] as typeof import("node:child_process") | undefined;
+if (!realFs || !realChildProcess) {
+	throw new Error(
+		"globalThis.__realNodeFs / __realNodeChildProcess missing — is test/setup/global-test-cleanup.ts still in bunfig preload?",
+	);
+}
 
-// Mock child_process for ProcessScanner
+// Mock child_process for ProcessScanner / SessionWatcher.
+// IMPORTANT: because module mocks are process-global in Bun, this mock must
+// only intercept the specific discovery calls this file cares about and pass
+// everything else through to the real child_process implementation.
+type ExecFileCallback = (
+	err: Error | null,
+	result: { stdout: string; stderr: string },
+) => void;
+function returnExecFileResult(cb: ExecFileCallback | undefined, stdout = "") {
+	if (cb) cb(null, { stdout, stderr: "" });
+	return { on: () => ({}) };
+}
 mock.module("node:child_process", () => ({
 	...realChildProcess,
 	execFile: (
-		_cmd: string,
-		_args: string[],
-		_opts: Record<string, unknown>,
-		cb?: (
-			err: Error | null,
-			result: { stdout: string; stderr: string },
-		) => void,
+		cmd: string,
+		args: string[],
+		optsOrCb?: Record<string, unknown> | ExecFileCallback,
+		cb?: ExecFileCallback,
 	) => {
-		if (cb) cb(null, { stdout: "", stderr: "" });
-		return { on: () => ({}) };
+		const callback = typeof optsOrCb === "function" ? optsOrCb : cb;
+		if (
+			cmd === "ps" &&
+			args[0] === "-eo" &&
+			args[1] === "pid,ppid,lstart,command"
+		) {
+			return returnExecFileResult(callback, "");
+		}
+		if (typeof optsOrCb === "function") {
+			return (
+				realChildProcess.execFile as unknown as (...a: unknown[]) => unknown
+			)(cmd, args, optsOrCb);
+		}
+		if (cb) {
+			return (
+				realChildProcess.execFile as unknown as (...a: unknown[]) => unknown
+			)(cmd, args, optsOrCb, cb);
+		}
+		return (
+			realChildProcess.execFile as unknown as (...a: unknown[]) => unknown
+		)(cmd, args, optsOrCb);
 	},
-	execFileSync: (_cmd: string, args: string[]) => {
-		const pid = Number(args[1]);
-		const command =
-			pidCommands[pid] ?? `/usr/local/bin/claude --resume pid-${pid}`;
-		if (!command) throw new Error("ESRCH");
-		return `${command}\n`;
+	execFileSync: (
+		cmd: string,
+		args: string[],
+		opts?: Record<string, unknown>,
+	) => {
+		if (
+			cmd === "ps" &&
+			args[0] === "-p" &&
+			args[2] === "-o" &&
+			args[3] === "command="
+		) {
+			const pid = Number(args[1]);
+			const command =
+				pidCommands[pid] ?? `/usr/local/bin/claude --resume pid-${pid}`;
+			if (!command) throw new Error("ESRCH");
+			return `${command}
+`;
+		}
+		return (
+			realChildProcess.execFileSync as unknown as (...a: unknown[]) => unknown
+		)(cmd, args, opts);
 	},
 }));
 
@@ -41,52 +109,51 @@ let sessionFiles: Record<string, string> = {};
 let dirContents: string[] = [];
 let pidCommands: Record<number, string> = {};
 
+// Bun's `mock.module()` is global-for-the-process and `mock.restore()`
+// does not undo it, so these overrides stay active for every subsequent
+// test in the suite. We therefore pass through to realFs whenever the
+// call isn't targeted at the session-file paths this file controls,
+// otherwise unrelated tests' fs operations (mkdtempSync, writeFileSync,
+// readFileSync of source/config files, etc.) get mocked mid-run and
+// either stall or fail.
+// biome-ignore lint/suspicious/noExplicitAny: pass-through wrapper
+type AnyArgs = any[];
 mock.module("node:fs", () => ({
 	...realFs,
-	readdirSync: () => dirContents,
-	readFileSync: (filePath: string, _enc: string) => {
-		const parts = filePath.split("/");
+	readdirSync: ((...args: AnyArgs) => {
+		// dirContents is the SessionWatcher scenario contract. When a test
+		// has populated it, use it; otherwise fall back to real readdirSync
+		// so we don't break unrelated tests' filesystem reads.
+		if (dirContents.length > 0) return dirContents;
+		return (realFs?.readdirSync as (...a: AnyArgs) => unknown)(...args);
+	}) as typeof realFs.readdirSync,
+	readFileSync: ((...args: AnyArgs) => {
+		const [filePath, enc] = args as [string, string | undefined];
+		const parts = String(filePath).split("/");
 		const filename = parts.at(-1);
-		if (filename === undefined) throw new Error("ENOENT");
-		const content = sessionFiles[filename];
-		if (content === undefined) throw new Error("ENOENT");
-		return content;
-	},
+		if (filename !== undefined) {
+			const content = sessionFiles[filename];
+			if (content !== undefined) return content;
+		}
+		return (realFs?.readFileSync as (...a: AnyArgs) => unknown)(
+			filePath,
+			enc as never,
+		);
+	}) as typeof realFs.readFileSync,
+	// SessionWatcher expects to install a watcher; other tests don't rely
+	// on watch, so returning a stub here is fine.
 	watch: () => ({
 		close: mock(() => {}),
 		on: mock(() => {}),
 	}),
 }));
 
-// Mock vscode
-mock.module("vscode", () => ({
-	workspace: {
-		getConfiguration: () => ({
-			get: (_key: string, defaultValue: unknown) => defaultValue,
-		}),
-		onDidChangeConfiguration: () => ({ dispose: () => {} }),
-	},
-	EventEmitter: class MockEventEmitter<T = void> {
-		private listeners: Array<(e: T) => void> = [];
-		event = (listener: (e: T) => void) => {
-			this.listeners.push(listener);
-			return {
-				dispose: () => {
-					const idx = this.listeners.indexOf(listener);
-					if (idx >= 0) this.listeners.splice(idx, 1);
-				},
-			};
-		};
-		fire(data: T): void {
-			for (const listener of this.listeners) listener(data);
-		}
-		dispose(): void {
-			this.listeners = [];
-		}
-	},
-}));
+// Reuse the global preload vscode mock from test/setup/global-test-cleanup.ts.
+// A file-local module-scope vscode mock here leaks into later files because
+// Bun keeps module mocks process-global for the whole test run.
 
-// Mock process.kill for isProcessAlive
+// Mock process.kill for isProcessAlive. Module-scope monkey-patch that we
+// restore in afterAll so other test files see the real `process.kill` again.
 const originalKill = process.kill;
 let alivePids: Set<number> = new Set();
 process.kill = ((pid: number, signal?: number) => {
@@ -98,6 +165,13 @@ process.kill = ((pid: number, signal?: number) => {
 		? originalKill.call(process, pid)
 		: originalKill.call(process, pid, signal);
 }) as typeof process.kill;
+
+afterAll(() => {
+	process.kill = originalKill;
+	mock.module("node:fs", () => realFs);
+	mock.module("node:child_process", () => realChildProcess);
+	mock.module("vscode", () => createVSCodeMock());
+});
 
 import { AgentRegistry } from "../../src/discovery/agent-registry.js";
 
@@ -134,6 +208,17 @@ describe("AgentRegistry", () => {
 			launcherTasksProvider: () => trackedLauncherTasks,
 			idleStreamThresholdMs: 5 * 60_000,
 		});
+	});
+
+	// Every test in this file invokes `registry.start()`, which fires off a
+	// non-awaited `doProcessScan()` Promise, a setInterval poller, a
+	// SessionWatcher fs.watch, and a workspace.onDidChangeConfiguration
+	// disposable. Without explicit teardown those leak into the next test
+	// file's event loop and show up as 5-10s stalls entering its beforeEach.
+	// dispose() clears the interval, disposes the SessionWatcher and the
+	// EventEmitter, and disposes the config-change listener.
+	afterEach(() => {
+		registry?.dispose();
 	});
 
 	// ── Merging launcher + discovered agents ─────────────────────────

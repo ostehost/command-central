@@ -12,7 +12,11 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import * as realFsPromises from "node:fs/promises";
+
+const realFsPromises = (globalThis as Record<string, unknown>)[
+	"__realNodeFsPromises"
+] as typeof import("node:fs/promises");
+
 import type { LoggerService } from "../../src/services/logger-service.js";
 import type { TreeElement } from "../../src/types/tree-element.js";
 import {

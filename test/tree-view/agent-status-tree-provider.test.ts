@@ -7,7 +7,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import * as realChildProcess from "node:child_process";
+
+const realChildProcess = (globalThis as Record<string, unknown>)[
+	"__realNodeChildProcess"
+] as typeof import("node:child_process");
+
 import * as os from "node:os";
 import * as path from "node:path";
 

@@ -7,7 +7,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import * as realChildProcess from "node:child_process";
+import * as os from "node:os";
+
+const realChildProcess = (globalThis as Record<string, unknown>)[
+	"__realNodeChildProcess"
+] as typeof import("node:child_process");
+
 import * as path from "node:path";
 import {
 	type AgentStatusTreeProvider,
@@ -424,8 +429,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 		});
 
 		test("uses task tmux_socket for tmux health checks instead of the default socket", () => {
-			const socketPath =
-				"/Users/ostemini/.local/state/ghostty-launcher/tmux/test-task.sock";
+			const socketPath = path.join(
+				os.homedir(),
+				".local",
+				"state",
+				"ghostty-launcher",
+				"tmux",
+				"test-task.sock",
+			);
 			const task = createMockTask({
 				id: "tmux-dedicated-socket",
 				status: "running",

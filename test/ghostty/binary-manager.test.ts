@@ -18,8 +18,12 @@ const fsRmSyncMock = mock(() => undefined);
 const fsRenameSyncMock = mock(() => undefined);
 const fsWriteFileSyncMock = mock(() => undefined);
 
-import * as realChildProcess from "node:child_process";
-import * as realFs from "node:fs";
+const realChildProcess = (globalThis as Record<string, unknown>)[
+	"__realNodeChildProcess"
+] as typeof import("node:child_process");
+const realFs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof import("node:fs");
 
 mock.module("node:fs", () => ({
 	...realFs,

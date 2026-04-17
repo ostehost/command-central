@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -9,17 +9,26 @@ import type { AgentTask } from "../../src/providers/agent-status-tree-provider.j
 const realFs = (globalThis as Record<string, unknown>)[
 	"__realNodeFs"
 ] as typeof fs;
-mock.module("node:fs", () => realFs);
+let buildResumeCommand: typeof import("../../src/commands/resume-session.js")["buildResumeCommand"];
+let canShowResumeAction: typeof import("../../src/commands/resume-session.js")["canShowResumeAction"];
+let isProjectBundleAvailable: typeof import("../../src/commands/resume-session.js")["isProjectBundleAvailable"];
+let resolveProjectBundlePath: typeof import("../../src/commands/resume-session.js")["resolveProjectBundlePath"];
+let resolveResumeBackend: typeof import("../../src/commands/resume-session.js")["resolveResumeBackend"];
+let resolveTaskTranscriptPath: typeof import("../../src/commands/resume-session.js")["resolveTaskTranscriptPath"];
+let supportsInteractiveResume: typeof import("../../src/commands/resume-session.js")["supportsInteractiveResume"];
 
-const {
-	buildResumeCommand,
-	canShowResumeAction,
-	isProjectBundleAvailable,
-	resolveProjectBundlePath,
-	resolveResumeBackend,
-	resolveTaskTranscriptPath,
-	supportsInteractiveResume,
-} = await import("../../src/commands/resume-session.js");
+beforeAll(async () => {
+	mock.module("node:fs", () => realFs);
+	({
+		buildResumeCommand,
+		canShowResumeAction,
+		isProjectBundleAvailable,
+		resolveProjectBundlePath,
+		resolveResumeBackend,
+		resolveTaskTranscriptPath,
+		supportsInteractiveResume,
+	} = await import("../../src/commands/resume-session.js"));
+});
 
 function createTask(overrides: Partial<AgentTask> = {}): AgentTask {
 	return {

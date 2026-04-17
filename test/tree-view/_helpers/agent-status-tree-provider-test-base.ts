@@ -19,14 +19,29 @@
  */
 
 import { mock } from "bun:test";
-import * as realChildProcess from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
 
 // ── Module mocks (auto-applied on import) ─────────────────────────────
 
-// Keep importers on real node:fs even if other files in the worker mock it.
-const fs = require("node:fs") as typeof import("node:fs");
+// IMPORTANT: Do NOT use `import * as realChildProcess from "node:child_process"`
+// or `require("node:fs")` here. Both read the CURRENT state of the module at
+// load time — but this helper is typically imported AFTER earlier test files
+// have already called `mock.module("node:child_process", ...)` /
+// `mock.module("node:fs", ...)` at their own module scope. The "real" refs we
+// captured would actually be the mocked modules, and spreading them below
+// produces self-referential mocks that stall the event loop (observed as
+// +40s wall-time when any tree-view/*.test.ts that imports this helper joins
+// a mixed-suite run on a lightly loaded box). Use the frozen snapshots that
+// test/setup/global-test-cleanup.ts stashes on `globalThis` before any test
+// file loads. See also src/discovery/process-scanner.ts for the related
+// promisify trap.
+const realChildProcess = (globalThis as Record<string, unknown>)[
+	"__realNodeChildProcess"
+] as typeof import("node:child_process");
+const fs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof import("node:fs");
 mock.module("node:fs", () => fs);
 
 const execFileSyncMock = mock((...fnArgs: unknown[]) =>
@@ -348,14 +363,49 @@ export function createProviderHarness(): ProviderHarness {
 		) {
 			return openclawAuditJson;
 		}
-		return realChildProcess.execFileSync(
-			cmd,
-			args,
-			fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
-		);
+		const __trace = process.env["CC_HARNESS_TRACE"] === "1";
+		const __key = __trace ? `${cmd} ${(args ?? []).slice(0, 2).join(" ")}` : "";
+		const __counts = (globalThis as Record<string, unknown>)[
+			"__ccHarnessCallCounts"
+		] as Map<string, number> | undefined;
+		const __ms = (globalThis as Record<string, unknown>)[
+			"__ccHarnessMsByCmd"
+		] as Map<string, number> | undefined;
+		if (__trace && __counts)
+			__counts.set(__key, (__counts.get(__key) ?? 0) + 1);
+		const __t0 = __trace ? performance.now() : 0;
+		try {
+			return realChildProcess.execFileSync(
+				cmd,
+				args,
+				fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+			);
+		} finally {
+			if (__trace && __ms) {
+				const dt = performance.now() - __t0;
+				__ms.set(__key, (__ms.get(__key) ?? 0) + dt);
+			}
+		}
 	});
 
+	const __trace = process.env["CC_HARNESS_TRACE"] === "1";
+	const __bucket = (label: string, dt: number) => {
+		if (!__trace) return;
+		const b = (globalThis as Record<string, unknown>)["__ccHarnessStageMs"] as
+			| Map<string, { n: number; ms: number }>
+			| undefined;
+		if (!b) return;
+		const cur = b.get(label) ?? { n: 0, ms: 0 };
+		cur.n += 1;
+		cur.ms += dt;
+		b.set(label, cur);
+	};
+	const __now = () => (__trace ? performance.now() : 0);
+
+	let __t = __now();
 	const vscodeMock = setupVSCodeMock();
+	__bucket("setupVSCodeMock", __now() - __t);
+
 	const projectIconManagerMock: ProjectIconManagerMock = {
 		getIconForProject: mock(() => "🧩"),
 		setCustomIcon: mock(() => Promise.resolve()),
@@ -366,18 +416,24 @@ export function createProviderHarness(): ProviderHarness {
 	);
 	vscodeMock.window.showWarningMessage = mock(() => Promise.resolve(undefined));
 
+	__t = __now();
 	const provider = new AgentStatusTreeProvider(
 		projectIconManagerMock as unknown as ConstructorParameters<
 			typeof AgentStatusTreeProvider
 		>[0],
 	);
+	__bucket("new AgentStatusTreeProvider", __now() - __t);
+
 	provider.setReviewTracker(
 		new InMemoryReviewTracker() as unknown as Parameters<
 			typeof provider.setReviewTracker
 		>[0],
 	);
 	provider.readRegistry = () => createMockRegistry({});
+
+	__t = __now();
 	provider.reload();
+	__bucket("provider.reload()", __now() - __t);
 
 	return {
 		provider,

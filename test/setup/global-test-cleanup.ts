@@ -10,16 +10,89 @@
  * The vscode mock must be registered at module scope to intercept static imports.
  */
 
-import { afterEach, mock } from "bun:test";
-// Cache real node:fs BEFORE any test file can mock it.
+import { afterAll, afterEach, mock } from "bun:test";
+// Cache real core modules BEFORE any test file can mock them.
 // IMPORTANT: Spread into a plain object to freeze the reference. In Bun,
 // `import * as ns` creates a live namespace that mutates when mock.module()
 // is called — spreading breaks the live binding so the real functions survive.
+// Test files should use these snapshots via `globalThis.__realNodeFs` /
+// `globalThis.__realNodeChildProcess` instead of taking their own
+// `import * as real...` spread, which is already too late once another
+// test file has installed a mock during bun's discovery phase.
+import * as _realNodeChildProcessLive from "node:child_process";
 import * as _realNodeFsLive from "node:fs";
+import * as _realNodeFsPromisesLive from "node:fs/promises";
 import { createVSCodeMock } from "../helpers/vscode-mock.js";
 
 const _realNodeFs = { ..._realNodeFsLive };
+const _realNodeFsPromises = { ..._realNodeFsPromisesLive };
+const _realNodeChildProcess = { ..._realNodeChildProcessLive };
 (globalThis as Record<string, unknown>)["__realNodeFs"] = _realNodeFs;
+(globalThis as Record<string, unknown>)["__realNodeFsPromises"] =
+	_realNodeFsPromises;
+(globalThis as Record<string, unknown>)["__realNodeChildProcess"] =
+	_realNodeChildProcess;
+
+// Optional instrumentation: set CC_HARNESS_TRACE=1 to dump per-command
+// fall-through counts + wall-time from the AgentStatusTreeProvider test
+// harness at process exit. Diagnostic only — cheap when disabled.
+if (process.env["CC_HARNESS_TRACE"] === "1") {
+	const counts = new Map<string, number>();
+	const ms = new Map<string, number>();
+	const stageMs = new Map<string, { n: number; ms: number }>();
+	(globalThis as Record<string, unknown>)["__ccHarnessCallCounts"] = counts;
+	(globalThis as Record<string, unknown>)["__ccHarnessMsByCmd"] = ms;
+	(globalThis as Record<string, unknown>)["__ccHarnessStageMs"] = stageMs;
+
+	const dump = () => {
+		const traceFile = "/tmp/cc-harness-trace.log";
+		const lines: string[] = ["── CC_HARNESS_TRACE ──"];
+
+		lines.push("", "## Harness stage timings (per-test setup cost)");
+		const stageRows = [...stageMs.entries()].sort((a, b) => b[1].ms - a[1].ms);
+		let stageTotal = 0;
+		for (const [k, v] of stageRows) {
+			stageTotal += v.ms;
+			lines.push(
+				`  ${v.ms.toFixed(0).padStart(8)}ms  ${String(v.n).padStart(5)}×  ${k}`,
+			);
+		}
+		lines.push(
+			`  ${stageTotal.toFixed(0).padStart(8)}ms  TOTAL harness stages`,
+		);
+
+		lines.push("", "## Fall-through execFileSync commands");
+		const cmdRows = [...counts.entries()]
+			.map(([k, n]) => [k, n, ms.get(k) ?? 0] as [string, number, number])
+			.sort((a, b) => b[2] - a[2]);
+		let cmdTotal = 0;
+		let cmdCalls = 0;
+		for (const [k, n, t] of cmdRows) {
+			cmdTotal += t;
+			cmdCalls += n;
+			lines.push(
+				`  ${t.toFixed(0).padStart(8)}ms  ${String(n).padStart(5)}×  ${k}`,
+			);
+		}
+		lines.push(
+			`  ${cmdTotal.toFixed(0).padStart(8)}ms  ${String(cmdCalls).padStart(5)}×  TOTAL fall-through`,
+		);
+
+		const out = `${lines.join("\n")}\n`;
+		try {
+			_realNodeFs.writeFileSync(traceFile, out);
+		} catch {
+			/* swallow */
+		}
+		process.stderr.write(out);
+	};
+	process.on("exit", dump);
+	process.on("beforeExit", dump);
+	// Bun's test runner does not reliably fire process exit handlers. An
+	// afterAll at preload scope runs once after the full suite completes
+	// inside each worker, which is what we want for trace output.
+	afterAll(dump);
+}
 
 // Register vscode mock GLOBALLY before any test file imports modules
 // This runs ONCE at worker startup - fixes static import issue

@@ -6,6 +6,8 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as os from "node:os";
+import * as path from "node:path";
 
 type ExecFileCallback = (
 	err: Error | null,
@@ -16,6 +18,14 @@ let existingPaths = new Set<string>();
 let configuredLauncherPath: string | null = null;
 let execFileResults: Array<{ err: Error | null; stdout: string }> = [];
 let execFileCalls: Array<{ file: string; args: string[] }> = [];
+
+const defaultFocusScriptPath = path.join(
+	os.homedir(),
+	"projects",
+	"ghostty-launcher",
+	"scripts",
+	"oste-focus.applescript",
+);
 
 mock.module("node:fs", () => ({
 	existsSync: mock((candidate: string) => existingPaths.has(candidate)),
@@ -77,8 +87,7 @@ beforeEach(() => {
 
 describe("lookupLauncherFocusScript", () => {
 	test("returns the default launcher script path when it exists", () => {
-		const expected =
-			"/Users/ostemini/projects/ghostty-launcher/scripts/oste-focus.applescript";
+		const expected = defaultFocusScriptPath;
 		existingPaths.add(expected);
 
 		expect(lookupLauncherFocusScript()).toBe(expected);
@@ -99,8 +108,7 @@ describe("lookupLauncherFocusScript", () => {
 
 describe("focusGhosttyWindowBySession", () => {
 	test("calls osascript with launcher bundle ID and session ID", async () => {
-		const scriptPath =
-			"/Users/ostemini/projects/ghostty-launcher/scripts/oste-focus.applescript";
+		const scriptPath = defaultFocusScriptPath;
 		existingPaths.add(scriptPath);
 		execFileResults = [{ err: null, stdout: "" }];
 
@@ -151,8 +159,7 @@ describe("focusGhosttyWindowBySession", () => {
 	});
 
 	test("activates the launcher app without window matching when no session ID is provided", async () => {
-		const scriptPath =
-			"/Users/ostemini/projects/ghostty-launcher/scripts/oste-focus.applescript";
+		const scriptPath = defaultFocusScriptPath;
 		existingPaths.add(scriptPath);
 		execFileResults = [{ err: null, stdout: "" }];
 
@@ -169,8 +176,7 @@ describe("focusGhosttyWindowBySession", () => {
 	});
 
 	test("falls back to opening the launcher app when osascript fails (legacy)", async () => {
-		const scriptPath =
-			"/Users/ostemini/projects/ghostty-launcher/scripts/oste-focus.applescript";
+		const scriptPath = defaultFocusScriptPath;
 		existingPaths.add(scriptPath);
 		execFileResults = [
 			{ err: new Error("osascript failed"), stdout: "" },

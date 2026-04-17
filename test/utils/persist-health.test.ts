@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import * as realChildProcess from "node:child_process";
-import * as realFs from "node:fs";
+
+const realChildProcess = (globalThis as Record<string, unknown>)[
+	"__realNodeChildProcess"
+] as typeof import("node:child_process");
+const realFs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof import("node:fs");
 
 const execFileSyncMock = mock((..._args: unknown[]) => "");
 const existsSyncMock = mock((_path: string) => false);
