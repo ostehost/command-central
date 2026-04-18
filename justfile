@@ -38,6 +38,7 @@ default:
     @echo "  just dev         Start development with hot reload"
     @echo "  just dist        Build distribution (smart version-aware builds)"
     @echo "  just prerelease  Run prerelease gate + build prerelease artifact"
+    @echo "  just cut-preview One-command preview RC: preflight + sync + gate + dist"
     @echo ""
     @echo "Testing (Enterprise-Grade):"
     @echo "  just test                Run all tests (1365 tests, ~5s)"
@@ -505,6 +506,85 @@ prerelease-gate *args="":
 prerelease *args="--prerelease":
     @just prerelease-gate
     @just dist "{{args}}"
+
+# ──────────────────────────────────────────────────────────
+# CUT PREVIEW — single-entry release flow
+# ──────────────────────────────────────────────────────────
+#
+# The one command to cut a new preview RC. Idempotent-ish: safe to
+# re-run after an aborted gate, since release-churn files are on the
+# preflight allowlist. Composes existing recipes — does not replace them.
+#
+#   1. _preview-preflight — refuse if either repo is dirty (outside
+#                           the release-churn allowlist) or launcher
+#                           repo missing. Warn if not on hub machine.
+#   2. sync-launcher      — pull canonical launcher into resources/bin/.
+#   3. _preview-rehearsal — local `just ci` to fail fast before the
+#                           full cross-repo gate spins up.
+#   4. prerelease         — existing recipe: gate + dist --prerelease.
+#   5. handoff message    — remind the user what's left (reload, smoke,
+#                           commit). No auto-commit (read-only git policy).
+
+cut-preview *args="--prerelease":
+    @echo "╭──────────────────────────────────────────────────╮"
+    @echo "│  Cut Preview — command-central                   │"
+    @echo "╰──────────────────────────────────────────────────╯"
+    @just _preview-preflight
+    @just sync-launcher
+    @just _preview-rehearsal
+    @just prerelease "{{args}}"
+    @echo ""
+    @echo "╭──────────────────────────────────────────────────╮"
+    @echo "│  Next steps (manual)                             │"
+    @echo "├──────────────────────────────────────────────────┤"
+    @echo "│  1. Cmd+Shift+P → 'Developer: Reload Window'     │"
+    @echo "│  2. Smoke test the extension in VS Code          │"
+    @echo "│  3. Review git status, stage + commit the churn  │"
+    @echo "│  4. Do NOT push/tag — user drives git            │"
+    @echo "╰──────────────────────────────────────────────────╯"
+
+# Preflight: refuse dirty trees (both repos), warn off-hub.
+_preview-preflight:
+    @echo ""
+    @echo "🔎 Preflight..."
+    @set -eu; \
+    ALLOW='^.. (resources/bin/ghostty-launcher|resources/bin/\.launcher-version|resources/app/\.terminal-version|package\.json|releases/|research/prerelease-gate/)'; \
+    CC_UNEXPECTED="$(git status --porcelain | grep -vE "$ALLOW" || true)"; \
+    if [ -n "$CC_UNEXPECTED" ]; then \
+        echo "❌ command-central has uncommitted changes outside the release-churn allowlist:"; \
+        echo "$CC_UNEXPECTED"; \
+        echo ""; \
+        echo "   Commit or stash unrelated work before cutting a preview."; \
+        exit 1; \
+    fi; \
+    LAUNCHER_REPO="$HOME/projects/ghostty-launcher"; \
+    if [ ! -d "$LAUNCHER_REPO" ]; then \
+        echo "❌ $LAUNCHER_REPO not found — cannot run cross-repo gate."; \
+        exit 1; \
+    fi; \
+    LAUNCHER_STATUS="$(cd "$LAUNCHER_REPO" && git status --porcelain)"; \
+    if [ -n "$LAUNCHER_STATUS" ]; then \
+        echo "❌ ~/projects/ghostty-launcher has uncommitted changes:"; \
+        (cd "$LAUNCHER_REPO" && git status --short); \
+        echo ""; \
+        echo "   A clean provenance SHA is required for the gate artifact."; \
+        echo "   Commit the launcher work first, then re-run 'just cut-preview'."; \
+        exit 1; \
+    fi; \
+    if [ "$(whoami)" != "ostehost" ]; then \
+        echo "⚠️  Running as $(whoami), not ostehost (hub)."; \
+        echo "   Preview cuts are preferred on hub (per machine memory)."; \
+        echo "   Continuing..."; \
+    fi; \
+    echo "   ✓ Both repos clean"; \
+    echo "   ✓ Host: $(whoami)@$(hostname -s)"
+
+# Rehearse the CC-side gate locally (same strict check the gate runs first).
+_preview-rehearsal:
+    @echo ""
+    @echo "🎭 Rehearsing just ci before the cross-repo gate..."
+    @just ci
+    @echo "   ✓ Rehearsal passed"
 
 # Clean build artifacts
 clean:
