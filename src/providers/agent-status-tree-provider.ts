@@ -475,6 +475,94 @@ function getStatusDisplayLabel(status: AgentTaskStatus): string {
 	}
 }
 
+/**
+ * Static classification of a task's terminal surface, derived only from the
+ * launcher-recorded metadata (terminal_backend, ghostty_bundle_id,
+ * bundle_path). Used to narrate — in tree item labels and tooltips — what
+ * clicking "Focus Terminal" will actually target, BEFORE the user clicks.
+ *
+ * This is complementary to the runtime-truth gate (shouldTrustBundleSurface)
+ * in extension.ts: that gate probes tmux liveness at click time to decide
+ * between bundle focus and fresh attach. This classifier only reads static
+ * metadata, so it is cheap enough to run on every tree render. Liveness is
+ * intentionally NOT probed here — a launcher-bundle task with a dead tmux
+ * session is still classified as "launcher-bundle", because metadata is what
+ * the task declares; liveness shapes *which* open strategy wins, not *what
+ * surface* the task authoritatively owns.
+ *
+ * See 98caa1e (fresh-attach notification) and 1a52857 (bundle-trust gate) for
+ * the full backend-truthful contract.
+ */
+export type TaskSurfaceKind =
+	| "launcher-bundle"
+	| "tmux-fresh-attach"
+	| "persist"
+	| "applescript"
+	| "unknown";
+
+export interface TaskSurfaceSummary {
+	kind: TaskSurfaceKind;
+	/** Full sentence for the tooltip. Always non-empty. */
+	tooltipLine: string;
+	/**
+	 * Compact inline tag for the tree item description. Null for the
+	 * happy-path launcher-bundle surface (no noise on the common case).
+	 */
+	shortTag: string | null;
+}
+
+export function classifyTaskSurface(task: AgentTask): TaskSurfaceSummary {
+	const hasLauncherBundle =
+		Boolean(task.ghostty_bundle_id) ||
+		(Boolean(task.bundle_path) &&
+			task.bundle_path !== "(tmux-mode)" &&
+			task.bundle_path !== "(test-mode)");
+
+	if (task.terminal_backend === "tmux") {
+		if (hasLauncherBundle) {
+			return {
+				kind: "launcher-bundle",
+				tooltipLine:
+					"Surface: launcher Ghostty bundle · tmux session (focus raises the bundle window)",
+				shortTag: null,
+			};
+		}
+		return {
+			kind: "tmux-fresh-attach",
+			tooltipLine:
+				"Surface: tmux session only — no launcher bundle; focus spawns a fresh Ghostty attach",
+			shortTag: "tmux · fresh attach",
+		};
+	}
+	if (task.terminal_backend === "persist") {
+		return {
+			kind: "persist",
+			tooltipLine:
+				"Surface: persist backend — no visible Ghostty window (headless socket lane)",
+			shortTag: "persist",
+		};
+	}
+	if (task.terminal_backend === "applescript") {
+		return {
+			kind: "applescript",
+			tooltipLine: "Surface: AppleScript Ghostty (no launcher bundle)",
+			shortTag: "applescript",
+		};
+	}
+	if (hasLauncherBundle) {
+		return {
+			kind: "launcher-bundle",
+			tooltipLine: "Surface: launcher Ghostty bundle",
+			shortTag: null,
+		};
+	}
+	return {
+		kind: "unknown",
+		tooltipLine: "Surface: no authoritative terminal surface recorded",
+		shortTag: "surface?",
+	};
+}
+
 const ROLE_ICONS: Record<AgentRole, string> = {
 	planner: "🔬",
 	developer: "🔨",
@@ -6243,6 +6331,15 @@ export class AgentStatusTreeProvider
 		if (isReviewed) {
 			descriptionParts.push("✓");
 		}
+		const surfaceSummary = classifyTaskSurface(task);
+		// Surface tags are the loudest signal for running tasks — a click
+		// routes to a different strategy depending on kind. Skip for done
+		// tasks: the click opens a QuickPick, not a focus, so the surface is
+		// not the actionable fact. Launcher-bundle tasks get a null tag so
+		// the common case stays clean.
+		if (task.status === "running" && surfaceSummary.shortTag) {
+			descriptionParts.push(surfaceSummary.shortTag);
+		}
 		const rawDescription = isStuck
 			? `${descriptionParts.join(" · ")} (possibly stuck)`
 			: interactiveAwaiting
@@ -6275,6 +6372,7 @@ export class AgentStatusTreeProvider
 				duration ? `Duration: ${duration}` : null,
 				runtimeBreadcrumb ? `Runtime: ${runtimeBreadcrumb}` : null,
 				transcriptBreadcrumb ? `Transcript: ${transcriptBreadcrumb}` : null,
+				surfaceSummary.tooltipLine,
 				task.project_dir ? `Dir: \`${task.project_dir}\`` : null,
 			]
 				.filter(Boolean)

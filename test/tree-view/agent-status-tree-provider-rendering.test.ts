@@ -636,4 +636,88 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 			}
 		});
 	});
+
+	describe("surface clarity (backend-truthful labels)", () => {
+		const tooltipText = (item: { tooltip?: unknown }): string => {
+			const tip = item.tooltip as { value?: string } | string | undefined;
+			if (!tip) return "";
+			if (typeof tip === "string") return tip;
+			return tip.value ?? "";
+		};
+
+		test("launcher-bundle tmux task: tooltip names surface, no description tag", () => {
+			const task = createMockTask({
+				status: "running",
+				terminal_backend: "tmux",
+				ghostty_bundle_id: "dev.partnerai.ghostty.my-app",
+				bundle_path: "/Applications/Projects/My App.app",
+			});
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(tooltipText(item)).toContain("launcher Ghostty bundle");
+			expect(item.description).not.toContain("fresh attach");
+			expect(item.description).not.toContain("surface?");
+		});
+
+		test("tmux-only task: fresh-attach tag appears in description", () => {
+			const task = createMockTask({
+				status: "running",
+				terminal_backend: "tmux",
+				ghostty_bundle_id: null,
+				bundle_path: "(tmux-mode)",
+			});
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("tmux · fresh attach");
+			expect(tooltipText(item)).toContain(
+				"no launcher bundle; focus spawns a fresh Ghostty attach",
+			);
+		});
+
+		test("persist backend: description tagged and tooltip explains headless", () => {
+			const task = createMockTask({
+				status: "running",
+				terminal_backend: "persist",
+				bundle_path: "(tmux-mode)",
+			});
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("persist");
+			expect(tooltipText(item)).toContain("persist backend");
+			expect(tooltipText(item)).toContain("no visible Ghostty window");
+		});
+
+		test("unknown surface: surface? tag + tooltip disclosure", () => {
+			const task = createMockTask({
+				status: "running",
+				terminal_backend: undefined,
+				ghostty_bundle_id: null,
+				bundle_path: "(tmux-mode)",
+			});
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("surface?");
+			expect(tooltipText(item)).toContain(
+				"no authoritative terminal surface recorded",
+			);
+		});
+
+		test("completed tmux-only task: tooltip still shows surface, description omits tag", () => {
+			const task = createMockTask({
+				status: "completed",
+				terminal_backend: "tmux",
+				ghostty_bundle_id: null,
+				bundle_path: "(tmux-mode)",
+				started_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+				completed_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+			});
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "task", task });
+			// Done tasks open a QuickPick, not a focus — tag would be noise.
+			expect(item.description).not.toContain("fresh attach");
+			expect(tooltipText(item)).toContain(
+				"no launcher bundle; focus spawns a fresh Ghostty attach",
+			);
+		});
+	});
 });
