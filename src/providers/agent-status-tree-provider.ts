@@ -3793,7 +3793,7 @@ export class AgentStatusTreeProvider
 		const parentDir = path.dirname(normalizedProjectDir);
 		const workspaceParents = this.getWorkspaceParentGroups();
 		const parentInfo = workspaceParents.get(parentDir);
-		if (!parentInfo || !parentInfo.workspaceDirs.has(normalizedProjectDir)) {
+		if (!parentInfo?.workspaceDirs.has(normalizedProjectDir)) {
 			return null;
 		}
 

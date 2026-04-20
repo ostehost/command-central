@@ -184,7 +184,7 @@ export class SortedGitChangesProvider
 
 			// Activate and get API
 			const git = await gitExtension.activate();
-			if (!git || !git.getAPI) {
+			if (!git?.getAPI) {
 				this.logger.error("Cannot access Git API");
 				return;
 			}
@@ -716,7 +716,7 @@ export class SortedGitChangesProvider
 	 */
 	async openChange(item: GitChangeItem): Promise<void> {
 		// Validate input
-		if (!item || !item.uri) {
+		if (!item?.uri) {
 			this.logger.error("openChange called with invalid item", { item });
 			vscode.window.showErrorMessage("Cannot open change: Invalid item");
 			return;
@@ -1768,7 +1768,7 @@ export class SortedGitChangesProvider
 		}
 
 		// Root level - return time groups
-		if (!this.gitApi || !this.gitApi.repositories.length) {
+		if (!this.gitApi?.repositories.length) {
 			this.setEmptyStateMessage(false);
 			this.resetCountAndTitles();
 			return [];
@@ -2447,7 +2447,7 @@ export class SortedGitChangesProvider
 	 * Follows VS Code Git API conventions for all deletion statuses
 	 */
 	private isDeletedFile(change: Change | GitChangeItem): boolean {
-		if (!change || !change.uri) {
+		if (!change?.uri) {
 			return false;
 		}
 

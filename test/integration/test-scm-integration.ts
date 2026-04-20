@@ -24,7 +24,7 @@ export async function testSCMIntegration(): Promise<
 		// Activate git extension
 		const git = await gitExtension.activate();
 
-		if (!git || !git.getAPI) {
+		if (!git?.getAPI) {
 			console.error("❌ CRITICAL: Cannot access Git API");
 			return "ABORT_PROJECT";
 		}
@@ -32,7 +32,7 @@ export async function testSCMIntegration(): Promise<
 		// Get Git API
 		const api = git.getAPI(1);
 
-		if (!api || !api.repositories) {
+		if (!api?.repositories) {
 			console.error("❌ CRITICAL: Cannot access Git repositories");
 			return "ABORT_PROJECT";
 		}
