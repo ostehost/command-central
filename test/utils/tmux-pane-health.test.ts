@@ -25,9 +25,8 @@ mock.module("node:child_process", () => ({
 	execFileSync: execFileSyncMock,
 }));
 
-const { isTmuxPaneAgentAlive, AGENT_PROCESS_NAMES } = await import(
-	"../../src/utils/tmux-pane-health.js"
-);
+const { isTmuxPaneAgentAlive, inspectTmuxPaneAgent, AGENT_PROCESS_NAMES } =
+	await import("../../src/utils/tmux-pane-health.js");
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -277,5 +276,85 @@ describe("isTmuxPaneAgentAlive", () => {
 				`${name} should be alive`,
 			).toBe(true);
 		}
+	});
+});
+
+describe("inspectTmuxPaneAgent (tri-state evidence)", () => {
+	beforeEach(() => {
+		execFileSyncMock.mockReset();
+	});
+
+	test("returns 'alive' when pane_current_command is an agent (positive evidence)", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({ tmux: "claude|12345\n" }),
+		);
+		expect(inspectTmuxPaneAgent("agent-interactive-claude")).toBe("alive");
+	});
+
+	test("returns 'alive' when descendant comm matches an agent name", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: "bash|1234\n",
+				pgrep: "5678\n",
+				ps: "claude\n",
+			}),
+		);
+		expect(inspectTmuxPaneAgent("agent-bash-claude")).toBe("alive");
+	});
+
+	test("returns 'dead' when panes enumerate cleanly but no agent is found", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: "bash|1234\n",
+				pgrep: "5678\n",
+				ps: "node\nbash\n",
+			}),
+		);
+		expect(inspectTmuxPaneAgent("cc-dead-lane")).toBe("dead");
+	});
+
+	test("returns 'unknown' when tmux list-panes throws (fail-open)", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: () => {
+					throw new Error("tmux: no server running");
+				},
+			}),
+		);
+		expect(inspectTmuxPaneAgent("agent-anywhere")).toBe("unknown");
+	});
+
+	test("returns 'unknown' for invalid session ids", () => {
+		expect(inspectTmuxPaneAgent("bad session/id")).toBe("unknown");
+		expect(inspectTmuxPaneAgent("")).toBe("unknown");
+		expect(execFileSyncMock).not.toHaveBeenCalled();
+	});
+
+	test("returns 'unknown' when tmux yields no pane lines", () => {
+		execFileSyncMock.mockImplementation(makeExecImpl({ tmux: "" }));
+		expect(inspectTmuxPaneAgent("agent-empty-panes")).toBe("unknown");
+	});
+
+	test("isTmuxPaneAgentAlive treats 'unknown' as alive (fail-open)", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: () => {
+					throw new Error("tmux: no server running");
+				},
+			}),
+		);
+		expect(isTmuxPaneAgentAlive("agent-x")).toBe(true);
+	});
+
+	test("isTmuxPaneAgentAlive treats 'dead' as dead", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: "bash|1234\n",
+				pgrep: () => {
+					throw Object.assign(new Error("no children"), { status: 1 });
+				},
+			}),
+		);
+		expect(isTmuxPaneAgentAlive("cc-dead-lane")).toBe(false);
 	});
 });

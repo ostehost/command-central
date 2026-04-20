@@ -70,7 +70,10 @@ import {
 	type TimePeriod,
 } from "../utils/time-grouping.js";
 import { defaultTimingRecorder } from "../utils/timing-recorder.js";
-import { isTmuxPaneAgentAlive } from "../utils/tmux-pane-health.js";
+import {
+	inspectTmuxPaneAgent,
+	type TmuxPaneAgentEvidence,
+} from "../utils/tmux-pane-health.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
 
@@ -795,6 +798,10 @@ export class AgentStatusTreeProvider
 		string,
 		{ alive: boolean; checkedAt: number }
 	>();
+	private _tmuxPaneAgentEvidenceCache = new Map<
+		string,
+		{ evidence: TmuxPaneAgentEvidence; checkedAt: number }
+	>();
 	private _handoffFileCache = new Map<
 		string,
 		{ state: DeclaredHandoffState; checkedAt: number }
@@ -1206,16 +1213,30 @@ export class AgentStatusTreeProvider
 	}
 
 	private isTmuxPaneAgentHealthy(task: AgentTask): boolean {
+		// Backward-compat: caller treats "unknown" (fail-open) as healthy and
+		// only "dead" (positively confirmed absent) as unhealthy.
+		return this.getTmuxPaneAgentEvidence(task) !== "dead";
+	}
+
+	private getTmuxPaneAgentEvidence(task: AgentTask): TmuxPaneAgentEvidence {
 		const cacheTtlMs = 5_000;
 		const cacheKey = `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
-		const cached = this._tmuxPaneAgentCache.get(cacheKey);
 		const now = Date.now();
+		const cached = this._tmuxPaneAgentEvidenceCache.get(cacheKey);
 		if (cached && now - cached.checkedAt < cacheTtlMs) {
-			return cached.alive;
+			return cached.evidence;
 		}
-		const alive = isTmuxPaneAgentAlive(task.session_id, task.tmux_socket);
-		this._tmuxPaneAgentCache.set(cacheKey, { alive, checkedAt: now });
-		return alive;
+		const evidence = inspectTmuxPaneAgent(task.session_id, task.tmux_socket);
+		this._tmuxPaneAgentEvidenceCache.set(cacheKey, {
+			evidence,
+			checkedAt: now,
+		});
+		// Also seed the legacy boolean cache so any direct readers stay in sync.
+		this._tmuxPaneAgentCache.set(cacheKey, {
+			alive: evidence !== "dead",
+			checkedAt: now,
+		});
+		return evidence;
 	}
 
 	private getDeclaredHandoffState(task: AgentTask): DeclaredHandoffState {
@@ -1335,14 +1356,43 @@ export class AgentStatusTreeProvider
 					)
 				: this.isTmuxSessionAlive(task.session_id, task.tmux_socket);
 			if (!windowAlive) return false;
-			if (!this.isTmuxPaneAgentHealthy(task)) return false;
+			const paneEvidence = this.getTmuxPaneAgentEvidence(task);
+			if (paneEvidence === "dead") return false;
+			// Positive pane evidence is authoritative for launcher-managed work:
+			// the user is actively in the lane (interactive Claude / awaiting
+			// input). Don't downgrade to stale just because the JSONL stream is
+			// silent — interactive REPL turns frequently produce no stream.
+			if (paneEvidence === "alive") return true;
+			// "unknown" (fail-open): if discovery cross-validates the session is
+			// live, that is also positive evidence of the lane being alive.
+			if (this.hasLiveDiscoveredSession(task)) return true;
 			return !looksStale;
 		}
 
-		if (this.hasLiveDiscoveredSession(task)) {
-			return !looksStale;
-		}
+		// Non-tmux, non-persist (e.g. external terminal discovery). If process
+		// discovery confirms the session is live, treat that as positive
+		// evidence of an active lane and skip the stream-staleness downgrade.
+		if (this.hasLiveDiscoveredSession(task)) return true;
 		return !looksStale;
+	}
+
+	/**
+	 * True when there is positive evidence that the launcher-managed lane is
+	 * still alive — distinct from "we couldn't tell". Used to suppress
+	 * stuck-warning UI for tasks that are interactive/awaiting-input rather
+	 * than actually wedged.
+	 */
+	private hasPositiveLivenessEvidence(task: AgentTask): boolean {
+		if (task.status !== "running") return false;
+		if (
+			(task.terminal_backend === "tmux" ||
+				task.terminal_backend === undefined) &&
+			isValidSessionId(task.session_id)
+		) {
+			if (this.getTmuxPaneAgentEvidence(task) === "alive") return true;
+		}
+		if (this.hasLiveDiscoveredSession(task)) return true;
+		return false;
 	}
 
 	private toDisplayTask(task: AgentTask): AgentTask {
@@ -1686,6 +1736,11 @@ export class AgentStatusTreeProvider
 				for (const cacheKey of this._tmuxPaneAgentCache.keys()) {
 					if (cacheKey.endsWith(`::${sessionId}`)) {
 						this._tmuxPaneAgentCache.delete(cacheKey);
+					}
+				}
+				for (const cacheKey of this._tmuxPaneAgentEvidenceCache.keys()) {
+					if (cacheKey.endsWith(`::${sessionId}`)) {
+						this._tmuxPaneAgentEvidenceCache.delete(cacheKey);
 					}
 				}
 			}
@@ -3810,14 +3865,28 @@ export class AgentStatusTreeProvider
 
 		if (this.isAgentStuck(t)) {
 			const thresholdMinutes = this.getStuckThresholdMinutes();
-			details.push({
-				type: "detail",
-				label: `No activity for ${thresholdMinutes} minutes`,
-				value: "",
-				taskId: t.id,
-				icon: "alert",
-				iconColor: "charts.yellow",
-			});
+			if (this.hasPositiveLivenessEvidence(t)) {
+				// Live launcher-managed lane: stream silence is most likely the
+				// user composing input in an interactive REPL. Surface honestly
+				// rather than warning them that their own session is stuck.
+				details.push({
+					type: "detail",
+					label: `Interactive — no stream activity for ${thresholdMinutes} minutes`,
+					value: "",
+					taskId: t.id,
+					icon: "comment-discussion",
+					iconColor: "charts.blue",
+				});
+			} else {
+				details.push({
+					type: "detail",
+					label: `No activity for ${thresholdMinutes} minutes`,
+					value: "",
+					taskId: t.id,
+					icon: "alert",
+					iconColor: "charts.yellow",
+				});
+			}
 		}
 
 		// ── 2. Prompt — smart truncation ────────────────────────────────
@@ -6074,7 +6143,13 @@ export class AgentStatusTreeProvider
 		});
 		const labelParts = [projectIcon, roleIcon, task.id].filter(Boolean);
 		const label = labelParts.join(" ");
-		const isStuck = this.isAgentStuck(task);
+		const stuckRaw = this.isAgentStuck(task);
+		const interactiveAwaiting =
+			stuckRaw && this.hasPositiveLivenessEvidence(task);
+		// Only surface "(possibly stuck)" when stuck heuristics fire AND we have
+		// no positive liveness evidence. Live launcher-managed interactive
+		// Claude lanes get the more honest "(interactive)" hint instead.
+		const isStuck = stuckRaw && !interactiveAwaiting;
 		const diffSummaryInline = this.getCachedDiffSummaryForTask(task);
 		const descriptionParts: string[] = [];
 		if (!this.isProjectGroupingEnabled()) {
@@ -6125,7 +6200,9 @@ export class AgentStatusTreeProvider
 		}
 		const rawDescription = isStuck
 			? `${descriptionParts.join(" · ")} (possibly stuck)`
-			: descriptionParts.join(" · ");
+			: interactiveAwaiting
+				? `${descriptionParts.join(" · ")} (interactive)`
+				: descriptionParts.join(" · ");
 		const description =
 			rawDescription.length > 80
 				? `${rawDescription.slice(0, 79)}…`

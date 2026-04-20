@@ -54,9 +54,15 @@ mock.module("node:child_process", () => ({
 
 // ── Mock tmux-pane-health — controlled per-test ───────────────────────────────
 // Default: alive (fail-open). Per-test: mockImplementation(() => false) for dead.
+// Both the legacy boolean and the tri-state inspector are mocked together so
+// callers that switched to inspectTmuxPaneAgent stay in sync with test intent.
 const mockIsTmuxPaneAgentAlive = mock(() => true);
+const mockInspectTmuxPaneAgent = mock(
+	() => "alive" as "alive" | "dead" | "unknown",
+);
 mock.module("../../src/utils/tmux-pane-health.js", () => ({
 	isTmuxPaneAgentAlive: mockIsTmuxPaneAgentAlive,
+	inspectTmuxPaneAgent: mockInspectTmuxPaneAgent,
 }));
 
 // ── Mock port-detector to avoid real lsof calls ─────────────────────────────
@@ -196,8 +202,10 @@ describe("dead-process-running detection (slice 2)", () => {
 				fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
 			);
 		});
-		// Default pane check: alive (fail-open).
+		// Default pane check: alive (fail-open). Mirror in the tri-state mock —
+		// "unknown" maps to fail-open (treated as alive by isTmuxPaneAgentHealthy).
 		mockIsTmuxPaneAgentAlive.mockImplementation(() => true);
+		mockInspectTmuxPaneAgent.mockImplementation(() => "unknown");
 
 		const vscodeMock = setupVSCodeMock();
 		const getConfigurationMock = mock((_section?: string) => ({
@@ -256,6 +264,7 @@ describe("dead-process-running detection (slice 2)", () => {
 		seedSessionAlive(provider, task);
 		// Pane check: no agent found → false (the "dead-process-running" signal).
 		mockIsTmuxPaneAgentAlive.mockImplementation(() => false);
+		mockInspectTmuxPaneAgent.mockImplementation(() => "dead");
 
 		provider.readRegistry = () => makeRegistry({ [task.id]: task });
 		provider.reload();
@@ -346,6 +355,7 @@ describe("dead-process-running detection (slice 2)", () => {
 		const task = makeTask({ id: "count-test-dead" });
 		seedSessionAlive(provider, task);
 		mockIsTmuxPaneAgentAlive.mockImplementation(() => false);
+		mockInspectTmuxPaneAgent.mockImplementation(() => "dead");
 
 		provider.readRegistry = () => makeRegistry({ [task.id]: task });
 		provider.reload();

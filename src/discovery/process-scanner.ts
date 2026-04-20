@@ -398,15 +398,26 @@ export class ProcessScanner {
 			}
 			const backend = this.detectBackend(command);
 			if (!backend || !this.isAgentModeProcess(command, backend)) {
-				diagnostics.filtered.push({
-					pid,
-					ppid,
-					command,
-					startTime,
-					binaryName,
-					reason: "interactive-process",
-				});
-				continue;
+				// Launcher truth override: if a launcher task claims this PID, the
+				// process is a known launcher-managed lane (typically interactive
+				// Claude in a Ghostty/tmux REPL with no `-p` flag). Retain it as
+				// discovery evidence so the tree provider can cross-validate
+				// liveness via `_allDiscoveredAgents`. Without this, launcher-
+				// managed interactive Claude looks invisible to discovery and the
+				// running task can be wrongly downgraded to "stopped" once the
+				// stream goes silent. We still filter unmatched interactive
+				// Claude — discovery should not pretend every REPL is a task.
+				if (!this.isLauncherClaimedPid(pid)) {
+					diagnostics.filtered.push({
+						pid,
+						ppid,
+						command,
+						startTime,
+						binaryName,
+						reason: "interactive-process",
+					});
+					continue;
+				}
 			}
 			if (NOISE_RE.test(command)) {
 				diagnostics.filtered.push({
@@ -536,6 +547,18 @@ export class ProcessScanner {
 		return internalPrefixes.some(
 			(prefix) => dir === prefix.slice(0, -1) || dir.startsWith(prefix),
 		);
+	}
+
+	private isLauncherClaimedPid(pid: number): boolean {
+		for (const task of this.launcherTasksProvider()) {
+			if (!task) continue;
+			const taskPid =
+				typeof task.pid === "number" && Number.isFinite(task.pid)
+					? task.pid
+					: null;
+			if (taskPid !== null && taskPid === pid) return true;
+		}
+		return false;
 	}
 
 	private isAgentModeProcess(
