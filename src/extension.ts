@@ -103,6 +103,28 @@ let testCountStatusBar:
 let mainLogger: LoggerService;
 let gitSortLogger: LoggerService;
 
+/**
+ * Whether a task should route through the session-store's cached bundle mapping.
+ *
+ * The session store caches projectDir → (bundleId, bundlePath). That mapping is
+ * correct for bundle-hosted tasks that share the same bundle as the most recent
+ * spawn, but it collapses to the wrong target for tmux-mode tasks (spawned with
+ * --tmux, ghostty_bundle_id null, bundle_path "(tmux-mode)") that happen to live
+ * in the same project directory. Routing those through the cached bundle opens
+ * a sibling task's window, not the task the user clicked on.
+ *
+ * Discovered agents have no task record, so the cached mapping is all we have;
+ * allow them through.
+ */
+export function taskMatchesSessionStoreBundle(
+	task: AgentTask | undefined,
+	mapping: { bundleId: string; bundlePath: string },
+): boolean {
+	if (!task) return true;
+	if (!task.ghostty_bundle_id) return false;
+	return task.ghostty_bundle_id === mapping.bundleId;
+}
+
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
@@ -1289,9 +1311,16 @@ export async function activate(
 
 					// Strategy 0: Session store lookup (works for discovered agents too)
 					// Uses open -a (no System Events) + tmux select-window for precise targeting.
+					//
+					// For launcher tasks, only route via the cached mapping when the task
+					// actually belongs to that bundle. A tmux-mode task (ghostty_bundle_id
+					// null, bundle_path "(tmux-mode)") shares a project_dir with bundle-hosted
+					// tasks but lives on an unrelated tmux socket — falling into the cached
+					// bundle would silently surface whatever session that bundle is displaying
+					// (typically another completed task in the same repo).
 					if (projectDir) {
 						const mapping = sessionStore.lookup(projectDir);
-						if (mapping) {
+						if (mapping && taskMatchesSessionStoreBundle(task, mapping)) {
 							if (
 								await focusGhosttyBundleAndTmuxWindow(
 									mapping.bundleId || mapping.bundlePath,

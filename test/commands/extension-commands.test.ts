@@ -920,3 +920,49 @@ describe("changeProjectIcon command", () => {
 		expect(isValid).toBe(false);
 	});
 });
+
+describe("taskMatchesSessionStoreBundle (Strategy 0 guard)", () => {
+	const mapping = {
+		bundleId: "dev.partnerai.ghostty.ghostty-launcher",
+		bundlePath: "/Applications/Projects/ghostty-launcher.app",
+	};
+
+	test("allows discovered agents (no task) to use the cached mapping", async () => {
+		const { taskMatchesSessionStoreBundle } = await import(
+			"../../src/extension.js"
+		);
+		expect(taskMatchesSessionStoreBundle(undefined, mapping)).toBe(true);
+	});
+
+	test("allows launcher tasks whose ghostty_bundle_id matches the mapping", async () => {
+		const { taskMatchesSessionStoreBundle } = await import(
+			"../../src/extension.js"
+		);
+		const task = createTask({
+			ghostty_bundle_id: "dev.partnerai.ghostty.ghostty-launcher",
+		});
+		expect(taskMatchesSessionStoreBundle(task, mapping)).toBe(true);
+	});
+
+	test("rejects tmux-mode tasks (ghostty_bundle_id null) to prevent cross-task collapse", async () => {
+		const { taskMatchesSessionStoreBundle } = await import(
+			"../../src/extension.js"
+		);
+		const task = createTask({
+			ghostty_bundle_id: null,
+			bundle_path: "(tmux-mode)",
+			terminal_backend: "tmux",
+		});
+		expect(taskMatchesSessionStoreBundle(task, mapping)).toBe(false);
+	});
+
+	test("rejects launcher tasks whose ghostty_bundle_id differs from the mapping", async () => {
+		const { taskMatchesSessionStoreBundle } = await import(
+			"../../src/extension.js"
+		);
+		const task = createTask({
+			ghostty_bundle_id: "dev.partnerai.ghostty.some-other-project",
+		});
+		expect(taskMatchesSessionStoreBundle(task, mapping)).toBe(false);
+	});
+});
