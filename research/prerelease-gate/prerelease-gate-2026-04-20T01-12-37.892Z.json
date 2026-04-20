@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "generatedAt": "2026-04-20T01:12:37.892Z",
+  "commandCentral": {
+    "repo": "/Users/ostehost/projects/command-central",
+    "sha": "6671a0bd0738ac9bdea37ebf6f5f20158f055a82"
+  },
+  "ghosttyLauncher": {
+    "repo": "/Users/ostehost/projects/ghostty-launcher",
+    "sha": "3b4a58b7385c28dc4dad99623d74772a0c0b96a5",
+    "launcherBinary": "/Users/ostehost/projects/ghostty-launcher/launcher"
+  },
+  "checks": [
+    {
+      "name": "command-central validation",
+      "status": "passed",
+      "command": "just ci",
+      "cwd": "/Users/ostehost/projects/command-central",
+      "startedAt": "2026-04-20T01:12:17.683Z",
+      "finishedAt": "2026-04-20T01:12:25.785Z",
+      "durationMs": 8102,
+      "output": "🚀 ci: strict check + test (warnings = errors)\n\n\u001b[0m\u001b[34mChecked \u001b[0m\u001b[0m\u001b[34m210\u001b[0m\u001b[0m\u001b[34m \u001b[0m\u001b[0m\u001b[34mfiles\u001b[0m\u001b[0m\u001b[34m in \u001b[0m\u001b[0m\u001b[34m114\u001b[0m\u001b[0m\u001b[2m\u001b[34mms\u001b[0m\u001b[0m\u001b[34m.\u001b[0m\u001b[0m\u001b[34m No fixes applied.\u001b[0m\n\nbun test v1.3.9 (cf6cdbbb)\n🔍 Test quality checks...\n\n✅ Zero 'as any' type assertions (Phase 1.3 achievement maintained)\n✅ Quality checks passed!\n   • Zero 'as any' assertions in active tests\n   • Zero reflection tests (private access)\n   • Zero skipped tests\n\n✅ CI checks passed!\n$ bun test --coverage test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/ test/package-json/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/\n\ntest/integration/tasks-json-startup-smoke.test.ts:\n[Command Central] Falling back to an empty tasks registry for /var/folders/7d/mcjl6z6n22v9gq7t5nwqr0_r0000gp/T/cc-tasks-smoke-ABq8Y7/tasks.json: tasks.json is empty\ncan't find session: agent-task-1\ncan't find session: agent-legacy-task\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-shared-visibility\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\ncan't find window: legacy-session\ncan't find window: new-id\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\nerror connecting to /tmp/project.tmux.sock (No such file or directory)\ncan't find window: agent-my-app\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\ncan't find window: agent-my-app\nerror connecting to /Users/ostehost/.local/state/ghostty-launcher/tmux/test-task.sock (No such file or directory)\nerror connecting to /tmp/test-tmux.sock (No such file or directory)\ncan't find window: agent-my-app\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/Users/test/projects/my-app': No such file or directory\nfatal: cannot change to '/some/project': No such file or directory\nfatal: cannot change to '/some/project': No such file or directory\nfatal: cannot change to '/some/project': No such file or directory\n\n 1367 pass\n 0 fail\n 2846 expect() calls\nRan 1367 tests across 105 files. [4.64s]"
+    },
+    {
+      "name": "ghostty-launcher validation",
+      "status": "passed",
+      "command": "just check",
+      "cwd": "/Users/ostehost/projects/ghostty-launcher",
+      "startedAt": "2026-04-20T01:12:25.785Z",
+      "finishedAt": "2026-04-20T01:12:37.823Z",
+      "durationMs": 12038,
+      "output": "✅ Static checks passed (format + lint)\nshfmt -d -i 0 -ci launcher test/*.sh test/lib/*.sh scripts/lib/*.sh scripts/oste-*.sh\nshellcheck -x --severity=warning launcher test/*.sh test/lib/*.sh scripts/lib/*.sh scripts/oste-*.sh"
+    },
+    {
+      "name": "launcher cli parse-name sanity",
+      "status": "passed",
+      "command": "/Users/ostehost/projects/ghostty-launcher/launcher --parse-name /Users/ostehost/projects/command-central",
+      "cwd": "/Users/ostehost/projects/ghostty-launcher",
+      "startedAt": "2026-04-20T01:12:37.836Z",
+      "finishedAt": "2026-04-20T01:12:37.853Z",
+      "durationMs": 17,
+      "output": "Command Central"
+    },
+    {
+      "name": "launcher cli parse-icon sanity",
+      "status": "passed",
+      "command": "/Users/ostehost/projects/ghostty-launcher/launcher --parse-icon /Users/ostehost/projects/command-central",
+      "cwd": "/Users/ostehost/projects/ghostty-launcher",
+      "startedAt": "2026-04-20T01:12:37.853Z",
+      "finishedAt": "2026-04-20T01:12:37.870Z",
+      "durationMs": 17,
+      "output": "🎛️"
+    },
+    {
+      "name": "launcher cli session-id sanity",
+      "status": "passed",
+      "command": "/Users/ostehost/projects/ghostty-launcher/launcher --session-id /Users/ostehost/projects/command-central",
+      "cwd": "/Users/ostehost/projects/ghostty-launcher",
+      "startedAt": "2026-04-20T01:12:37.870Z",
+      "finishedAt": "2026-04-20T01:12:37.892Z",
+      "durationMs": 22,
+      "output": "agent-command-central"
+    },
+    {
+      "name": "cross-repo launcher contract",
+      "status": "passed",
+      "command": "/Users/ostehost/projects/ghostty-launcher/launcher --help",
+      "cwd": "/Users/ostehost/projects/ghostty-launcher",
+      "startedAt": "2026-04-20T01:12:37.823Z",
+      "finishedAt": "2026-04-20T01:12:37.892Z",
+      "durationMs": 69
+    }
+  ],
+  "success": true
+}
