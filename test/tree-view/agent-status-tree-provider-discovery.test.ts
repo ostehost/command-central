@@ -383,6 +383,30 @@ describe("AgentStatusTreeProvider — discovery", () => {
 					[dayCompleted.id]: dayCompleted,
 					[oldCompleted.id]: oldCompleted,
 				});
+			(
+				provider as unknown as {
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+					_tmuxPaneAgentCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxSessionHealthCache = new Map([
+				[getTmuxHealthCacheKey(running), { alive: true, checkedAt: now }],
+			]);
+			(
+				provider as unknown as {
+					_tmuxPaneAgentCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				}
+			)._tmuxPaneAgentCache = new Map([
+				[getTmuxHealthCacheKey(running), { alive: true, checkedAt: now }],
+			]);
 			provider.reload();
 			(
 				provider as unknown as {
