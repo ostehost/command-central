@@ -343,6 +343,42 @@ is_projects_container_path() {
 	[[ "$resolved_output" == "$PROJECTS_DIR" ]]
 }
 
+# Return 0 when the given absolute, physical path lives under a macOS TCC-gated
+# user folder. Each per-project bundle has a unique CFBundleIdentifier, so the
+# first launch of every new bundle is a first-time access from macOS's point of
+# view. Baking a working-directory under ~/Documents, ~/Desktop, ~/Downloads,
+# iCloud Drive, Pictures, Movies, or Music causes a file-access consent dialog
+# that looks unrelated to what the user was doing (e.g. spawning an agent).
+is_tcc_protected_path() {
+	local path="$1"
+	local home="${HOME:-}"
+	[[ -n "$home" ]] || return 1
+	# Resolve HOME to its physical form so the comparison is symmetric with the
+	# caller's resolve_path (which uses `pwd -P`). On macOS the user's real home
+	# is typically not aliased, but /var symlinks to /private/var break naive
+	# prefix checks against mktemp-based HOMEs in tests.
+	local resolved_home
+	if resolved_home=$(cd "$home" 2>/dev/null && pwd -P); then
+		home="$resolved_home"
+	fi
+	local root
+	for root in \
+		"$home/Documents" \
+		"$home/Desktop" \
+		"$home/Downloads" \
+		"$home/Pictures" \
+		"$home/Movies" \
+		"$home/Music" \
+		"$home/Library/Mobile Documents"; do
+		case "$path" in
+			"$root" | "$root"/*)
+				return 0
+				;;
+		esac
+	done
+	return 1
+}
+
 validate_launcher_eligible_project() {
 	local project_dir="$1"
 	local resolved_project_dir
@@ -513,7 +549,29 @@ create_bundle() {
 		return 1
 	fi
 
+	# Fence: refuse bundles whose project_dir resolves under a macOS TCC-gated
+	# folder. The bundle's baked working-directory and the launch script's cd
+	# into $PROJECT_DIR both access that path on first launch, which triggers
+	# a "<bundle> would like to access files in your Documents folder" dialog
+	# for every fresh CFBundleIdentifier. Override with
+	# GHL_ALLOW_TCC_PROTECTED_PROJECT=1 if you genuinely need a project there.
+	local _resolved_project_dir
+	if _resolved_project_dir=$(resolve_path "$project_dir" 2>/dev/null); then
+		if [[ "${GHL_ALLOW_TCC_PROTECTED_PROJECT:-0}" != "1" ]] &&
+			is_tcc_protected_path "$_resolved_project_dir"; then
+			echo "Error: Project directory resolves under a macOS TCC-gated folder: ${_resolved_project_dir}" >&2
+			echo "       A bundle with a working-directory in ~/Documents, ~/Desktop, ~/Downloads," >&2
+			echo "       iCloud Drive, Pictures, Movies, or Music triggers a surprise file-access" >&2
+			echo "       consent prompt on first launch of every new bundle identifier." >&2
+			echo "       Move the project under a plain path such as ~/projects, or set" >&2
+			echo "       GHL_ALLOW_TCC_PROTECTED_PROJECT=1 to override." >&2
+			return 1
+		fi
+	fi
+
+	local _output_is_canonical=0
 	if is_projects_container_path "$output_dir"; then
+		_output_is_canonical=1
 		if ! validate_launcher_eligible_project "$project_dir"; then
 			return 1
 		fi
@@ -987,17 +1045,22 @@ BG_CONF
 		return 1
 	fi
 
-	# Register with Launch Services. This is best-effort: macOS can emit
-	# Spotlight/LaunchServices scan errors for freshly created bundles even
-	# when the app itself is valid and already on disk.
-	local lsregister_err
-	lsregister_err=$(mktemp)
-	if ! /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app_path" \
-		2>"$lsregister_err"; then
-		echo "Warning: Launch Services registration failed for ${app_path}" >&2
-		cat "$lsregister_err" >&2
+	# Register with Launch Services only for canonical bundles (under
+	# /Applications/Projects). Test and one-off outputs elsewhere do not need
+	# a global LaunchServices entry, and registering transient bundle ids just
+	# enlarges the set of identities macOS may later prompt TCC consent for.
+	# This is best-effort: macOS can emit Spotlight/LaunchServices scan errors
+	# for freshly created bundles even when the app itself is valid and on disk.
+	if [[ "$_output_is_canonical" == "1" ]]; then
+		local lsregister_err
+		lsregister_err=$(mktemp)
+		if ! /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app_path" \
+			2>"$lsregister_err"; then
+			echo "Warning: Launch Services registration failed for ${app_path}" >&2
+			cat "$lsregister_err" >&2
+		fi
+		rm -f "$lsregister_err"
 	fi
-	rm -f "$lsregister_err"
 
 	# Refresh Dock to show custom icon immediately
 	# Note: killall Dock would refresh icons but disrupts Cmd+Tab and user workflow.
