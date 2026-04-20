@@ -55,6 +55,10 @@ import {
 	type DeclaredHandoffState,
 } from "../utils/handoff-file-health.js";
 import { getModelAlias } from "../utils/model-aliases.js";
+import {
+	readPendingReviewReceipt,
+	receiptToOverlay,
+} from "../utils/pending-review-probe.js";
 import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
 import type { ListeningPort } from "../utils/port-detector.js";
 import { detectListeningPortsAsync } from "../utils/port-detector.js";
@@ -1342,6 +1346,18 @@ export class AgentStatusTreeProvider
 	}
 
 	private toDisplayTask(task: AgentTask): AgentTask {
+		// Pending-review receipt is ground truth — the launcher's
+		// oste-complete.sh writes it the moment the agent actually finishes,
+		// which can land before tasks.json is updated. Trust it over both the
+		// CC-local staleness cache and the runtime health inference.
+		if (task.status === "running") {
+			const receipt = readPendingReviewReceipt(task.id);
+			const overlay = receipt ? receiptToOverlay(receipt) : null;
+			if (overlay) {
+				return this.applyRuntimeStatusOverlay(task, overlay);
+			}
+		}
+
 		const staleReason = this.staleTaskReasons.get(task.id);
 		if (staleReason) {
 			return this.applyRuntimeStatusOverlay(task, {
@@ -1400,6 +1416,7 @@ export class AgentStatusTreeProvider
 			reason?: string;
 			completedAt?: string;
 			exitCode?: number | null;
+			endCommit?: string | null;
 		},
 	): AgentTask {
 		return {
@@ -1413,6 +1430,7 @@ export class AgentStatusTreeProvider
 						? (task.exit_code ?? 0)
 						: task.exit_code
 					: overlay.exitCode,
+			end_commit: overlay.endCommit ?? task.end_commit,
 			error_message:
 				overlay.status === "stopped" ||
 				overlay.status === "failed" ||
