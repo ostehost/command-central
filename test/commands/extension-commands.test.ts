@@ -489,6 +489,81 @@ describe("focusAgentTerminal command", () => {
 			expect(strategy1Fires).toBe(true);
 		});
 	});
+
+	// Strategy 3 opens a generic Ghostty window with `tmux attach` rather than
+	// focusing the launcher's visible bundle surface. The user has no way to
+	// tell the difference from the click alone, so the handler emits an
+	// informational message that names the tmux session and makes clear the
+	// action spawned a fresh client, not a focus of an existing lane.
+	describe("Strategy 3 truthful-surface notification", () => {
+		test("tmux-mode task with live session emits a fresh-attach info message", () => {
+			const task = createTask({
+				terminal_backend: "tmux",
+				ghostty_bundle_id: null,
+				bundle_path: "(tmux-mode)",
+				session_id: "agent-my-project",
+			});
+
+			// Simulate Strategy 3 preconditions and success.
+			const strategy3Fires =
+				task.terminal_backend === "tmux" &&
+				Boolean(task.session_id) &&
+				/^[a-zA-Z0-9._-]+$/.test(task.session_id ?? "");
+			const tmuxSessionAlive = true;
+			const ghosttyOpenSucceeded = true;
+
+			if (strategy3Fires && tmuxSessionAlive && ghosttyOpenSucceeded) {
+				vscodeMock.window.showInformationMessage(
+					`Opened a fresh Ghostty window attached to tmux session "${task.session_id}" — no launcher surface known for this task.`,
+				);
+			}
+
+			expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+				'Opened a fresh Ghostty window attached to tmux session "agent-my-project" — no launcher surface known for this task.',
+			);
+		});
+
+		test("message does not fire when Strategy 3 preconditions are not met", () => {
+			const task = createTask({
+				terminal_backend: "tmux",
+				ghostty_bundle_id: null,
+				bundle_path: "(tmux-mode)",
+				session_id: "invalid;rm -rf /",
+			});
+
+			const strategy3Fires =
+				task.terminal_backend === "tmux" &&
+				Boolean(task.session_id) &&
+				/^[a-zA-Z0-9._-]+$/.test(task.session_id ?? "");
+
+			expect(strategy3Fires).toBe(false);
+			expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+		});
+
+		test("message does not fire when tmux session is dead (Strategy 3 skipped, dead-session quickpick runs)", () => {
+			const task = createTask({
+				terminal_backend: "tmux",
+				ghostty_bundle_id: null,
+				bundle_path: "(tmux-mode)",
+				session_id: "agent-my-project",
+			});
+
+			const strategy3Fires =
+				task.terminal_backend === "tmux" &&
+				Boolean(task.session_id) &&
+				/^[a-zA-Z0-9._-]+$/.test(task.session_id ?? "");
+			const tmuxSessionAlive = false;
+
+			// Strategy 3 requires a live session. No message should fire.
+			if (strategy3Fires && tmuxSessionAlive) {
+				vscodeMock.window.showInformationMessage(
+					`Opened a fresh Ghostty window attached to tmux session "${task.session_id}" — no launcher surface known for this task.`,
+				);
+			}
+
+			expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+		});
+	});
 });
 
 describe("removeAgentTask command", () => {

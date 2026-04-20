@@ -1432,9 +1432,15 @@ export async function activate(
 						}
 					}
 
-					// Strategy 3: tmux-only — open Ghostty with tmux attach (REQUIRES live session).
-					// Reuse the up-front probe when we already have the answer so we don't
-					// double up on tmux has-session shells.
+					// Strategy 3: tmux-only — spawn a fresh Ghostty client via
+					// `open -a Ghostty --args -e tmux attach ...`. This is NOT a
+					// focus of the launcher's visible bundle surface; it creates a
+					// new tmux client onto the authoritative session. Reserved for
+					// the case where no authoritative bundle surface is known (or
+					// the known one refused to focus). REQUIRES a live session.
+					//
+					// Reuse the up-front probe when we already have the answer so
+					// we don't double up on tmux has-session shells.
 					let hasLiveTmuxSession = false;
 					if (
 						task.terminal_backend === "tmux" &&
@@ -1444,6 +1450,14 @@ export async function activate(
 						hasLiveTmuxSession =
 							probedTmuxSessionAlive ?? (await isTaskTmuxSessionAlive(task));
 						if (hasLiveTmuxSession && (await openGhosttyTmuxAttach(task))) {
+							// Tell the user we spawned a fresh tmux client rather than
+							// focusing an existing launcher surface. Without this
+							// notification, a click silently conjures a new Ghostty
+							// window and the user has no way to tell whether CC
+							// targeted the right lane.
+							vscode.window.showInformationMessage(
+								`Opened a fresh Ghostty window attached to tmux session "${task.session_id}" — no launcher surface known for this task.`,
+							);
 							return;
 						}
 					}
