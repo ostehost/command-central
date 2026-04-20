@@ -125,11 +125,14 @@ function computeStats(label: string, entry: RingEntry): TimingStats {
 }
 
 function percentile(sortedAsc: number[], q: number): number {
+	// "Top (1-q) of samples" semantics — for small ring buffers this collapses
+	// p95 toward the maximum so a single slow outlier in the last 20 samples
+	// is visible in the diagnostics report instead of being averaged away.
+	// For larger N it behaves like a normal floor-rank percentile.
 	if (sortedAsc.length === 0) return 0;
-	if (sortedAsc.length === 1) return sortedAsc[0] ?? 0;
 	const idx = Math.min(
 		sortedAsc.length - 1,
-		Math.max(0, Math.ceil(q * sortedAsc.length) - 1),
+		Math.max(0, Math.floor(q * sortedAsc.length)),
 	);
 	return sortedAsc[idx] ?? 0;
 }

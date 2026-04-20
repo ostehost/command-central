@@ -281,12 +281,18 @@ export class ProcessScanner {
 			}),
 		);
 
+		this.timingRecorder.record(
+			"scan.cwdResolveTotal",
+			performance.now() - cwdResolveStart,
+		);
+
 		this.lastDiagnostics = {
 			...this.lastDiagnostics,
 			retained,
 			filtered,
 		};
 
+		this.timingRecorder.record("scan.total", performance.now() - scanStart);
 		return results.filter((a): a is DiscoveredAgent => a !== null);
 	}
 

@@ -18,6 +18,7 @@ import * as vscode from "vscode";
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
 import type { OpenClawTask } from "../types/openclaw-task-types.js";
 import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
+import { defaultTimingRecorder } from "../utils/timing-recorder.js";
 import {
 	type ProcessScanDiagnostics,
 	ProcessScanner,
@@ -228,6 +229,7 @@ export class AgentRegistry implements vscode.Disposable {
 	private async doProcessScan(): Promise<void> {
 		if (this.scanning) return; // debounce
 		this.scanning = true;
+		const start = performance.now();
 		try {
 			const agents = await this.processScanner.scan();
 			const sessionAgents = this.getLiveSessionAgents();
@@ -237,6 +239,10 @@ export class AgentRegistry implements vscode.Disposable {
 			]);
 			this.fireIfChanged();
 		} finally {
+			defaultTimingRecorder.record(
+				"registry.doProcessScan",
+				performance.now() - start,
+			);
 			this.scanning = false;
 		}
 	}

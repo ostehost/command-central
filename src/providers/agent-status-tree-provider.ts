@@ -65,6 +65,7 @@ import {
 	TIME_PERIOD_LABELS,
 	type TimePeriod,
 } from "../utils/time-grouping.js";
+import { defaultTimingRecorder } from "../utils/timing-recorder.js";
 import { isTmuxPaneAgentAlive } from "../utils/tmux-pane-health.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
@@ -1902,14 +1903,26 @@ export class AgentStatusTreeProvider
 	}
 
 	reload(): void {
+		const reloadStart = performance.now();
 		const generation = ++this._reloadGeneration;
 		const isInitial = this._initialReadInProgress;
 		if (isInitial) {
 			this._onDidChangeTreeData.fire(undefined);
 		}
 		this._registryLoadIssue = null;
+		const readStart = performance.now();
 		const nextRegistry = this.readRegistry();
-		if (generation !== this._reloadGeneration) return;
+		defaultTimingRecorder.record(
+			"tree.readRegistry",
+			performance.now() - readStart,
+		);
+		if (generation !== this._reloadGeneration) {
+			defaultTimingRecorder.record(
+				"tree.reload",
+				performance.now() - reloadStart,
+			);
+			return;
+		}
 		this.registry = nextRegistry;
 		this._initialReadInProgress = false;
 		this._allDiscoveredAgents = this._agentRegistry
@@ -1936,6 +1949,10 @@ export class AgentStatusTreeProvider
 		this.setHasAgentsContext();
 		this.updateDockBadge();
 		this._onDidChangeTreeData.fire(undefined);
+		defaultTimingRecorder.record(
+			"tree.reload",
+			performance.now() - reloadStart,
+		);
 	}
 
 	/** Check for running→completed/failed transitions and fire notifications */
@@ -2416,6 +2433,18 @@ export class AgentStatusTreeProvider
 	}
 
 	getTreeItem(element: AgentNode): vscode.TreeItem {
+		const timingStart = performance.now();
+		try {
+			return this.getTreeItemImpl(element);
+		} finally {
+			defaultTimingRecorder.record(
+				`tree.getTreeItem.${element.type}`,
+				performance.now() - timingStart,
+			);
+		}
+	}
+
+	private getTreeItemImpl(element: AgentNode): vscode.TreeItem {
 		if (element.type === "summary") {
 			return this.createSummaryItem(element);
 		}
@@ -2469,6 +2498,16 @@ export class AgentStatusTreeProvider
 	}
 
 	getChildren(element?: AgentNode): AgentNode[] {
+		const timingStart = performance.now();
+		const label = `tree.getChildren.${element?.type ?? "root"}`;
+		try {
+			return this.getChildrenImpl(element);
+		} finally {
+			defaultTimingRecorder.record(label, performance.now() - timingStart);
+		}
+	}
+
+	private getChildrenImpl(element?: AgentNode): AgentNode[] {
 		if (!element) {
 			let allTasks = this.getScopedLauncherTasks();
 			let discovered = this.getScopedDiscoveredAgents();
@@ -4137,12 +4176,26 @@ export class AgentStatusTreeProvider
 		element: AgentNode,
 	): Thenable<vscode.TreeItem> {
 		if (element.type === "task" && element.task.status === "running") {
-			return this.getLastOutputLine(element.task).then((line) => {
-				if (line) {
-					item.description = `${item.description} | ${line}`;
-				}
-				return item;
-			});
+			const start = performance.now();
+			return this.getLastOutputLine(element.task).then(
+				(line) => {
+					defaultTimingRecorder.record(
+						"tree.resolveTreeItem.runningTask",
+						performance.now() - start,
+					);
+					if (line) {
+						item.description = `${item.description} | ${line}`;
+					}
+					return item;
+				},
+				(err) => {
+					defaultTimingRecorder.record(
+						"tree.resolveTreeItem.runningTask",
+						performance.now() - start,
+					);
+					throw err;
+				},
+			);
 		}
 		return Promise.resolve(item);
 	}
@@ -4953,6 +5006,13 @@ export class AgentStatusTreeProvider
 			for (const line of this.getOpenClawTaskLedgerLines()) {
 				lines.push(line);
 			}
+			const timingLinesDisabled = defaultTimingRecorder.formatReportLines();
+			if (timingLinesDisabled.length > 0) {
+				lines.push("");
+				for (const line of timingLinesDisabled) {
+					lines.push(line);
+				}
+			}
 			return lines.join("\n");
 		}
 
@@ -5011,6 +5071,14 @@ export class AgentStatusTreeProvider
 		lines.push("");
 		for (const line of this.getOpenClawTaskLedgerLines()) {
 			lines.push(line);
+		}
+
+		const timingLines = defaultTimingRecorder.formatReportLines();
+		if (timingLines.length > 0) {
+			lines.push("");
+			for (const line of timingLines) {
+				lines.push(line);
+			}
 		}
 
 		return lines.join("\n");
