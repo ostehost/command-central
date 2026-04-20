@@ -11,6 +11,10 @@
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
+import {
+	defaultTimingRecorder,
+	type TimingRecorder,
+} from "../utils/timing-recorder.js";
 import type { DiscoveredAgent } from "./types.js";
 import { resolveWorktree } from "./worktree-resolver.js";
 
@@ -128,6 +132,7 @@ export interface ProcessScannerOptions {
 	staleProcessAgeMs?: number;
 	staleStreamThresholdMs?: number;
 	nowProvider?: NowProviderFn;
+	timingRecorder?: TimingRecorder;
 }
 
 export type ProcessScanFilterReason =
@@ -163,6 +168,7 @@ export class ProcessScanner {
 	private staleProcessAgeMs: number;
 	private staleStreamThresholdMs: number;
 	private nowProvider: NowProviderFn;
+	private timingRecorder: TimingRecorder;
 	private lastDiagnostics: ProcessScanDiagnostics = {
 		psRowCount: 0,
 		agentLikeCandidateCount: 0,
@@ -187,6 +193,7 @@ export class ProcessScanner {
 			options?.staleStreamThresholdMs ?? DEFAULT_STALE_STREAM_THRESHOLD_MS,
 		);
 		this.nowProvider = options?.nowProvider ?? (() => Date.now());
+		this.timingRecorder = options?.timingRecorder ?? defaultTimingRecorder;
 	}
 
 	/**
@@ -194,15 +201,25 @@ export class ProcessScanner {
 	 * Returns one DiscoveredAgent per unique PID.
 	 */
 	async scan(): Promise<DiscoveredAgent[]> {
-		const psLines = await this.getPsOutput();
-		const candidates = this.parsePsOutput(psLines);
+		const scanStart = performance.now();
+		const psLines = await this.timingRecorder.timeAsync(
+			"scan.getPsOutput",
+			() => this.getPsOutput(),
+		);
+		const candidates = this.timingRecorder.time("scan.parsePsOutput", () =>
+			this.parsePsOutput(psLines),
+		);
 		const retained: ProcessScanDiagnosticEntry[] = [];
 		const filtered = [...this.lastDiagnostics.filtered];
 
+		const cwdResolveStart = performance.now();
 		// Resolve CWDs in parallel (bounded by candidate count, typically < 10)
 		const results = await Promise.all(
 			candidates.map(async (c) => {
-				const lsofCwd = await this.getProcessCwd(c.pid);
+				const lsofCwd = await this.timingRecorder.timeAsync(
+					"scan.getProcessCwd",
+					() => this.getProcessCwd(c.pid),
+				);
 				const explicitDir = this.extractExplicitProjectDir(c.command);
 				const projectDir = explicitDir ?? lsofCwd;
 				if (!projectDir) {
@@ -227,7 +244,10 @@ export class ProcessScanner {
 					return null;
 				}
 				const meta = this.parseClaudeArgs(c.command);
-				const worktree = await this.resolveWorktreeFn(projectDir);
+				const worktree = await this.timingRecorder.timeAsync(
+					"scan.resolveWorktree",
+					() => this.resolveWorktreeFn(projectDir),
+				);
 				const agent: DiscoveredAgent = {
 					pid: c.pid,
 					ppid: c.ppid,
