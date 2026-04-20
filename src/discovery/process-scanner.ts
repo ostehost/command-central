@@ -54,12 +54,21 @@ const CLAUDE_CLI_HINT_RE =
 	/(?:^|\/)claude(?:\.js)?(?:\s|$)|\/claude-code\/|@anthropic-ai\/claude-code/i;
 const CLI_TOKEN_PREFIX = String.raw`(?:^|[\s"'])`;
 const CLI_TOKEN_SUFFIX = String.raw`(?=$|[\s"'])`;
+// Path-segment class: matches one segment of a path (no whitespace, quotes, or
+// slashes). Excluding `/` is critical — using `[^\s"']*` allows the inner
+// quantifier to also consume slashes, which makes `(?:[^\s"']*/)*` ambiguous
+// and produces catastrophic backtracking on long command lines (multi-second
+// regex evaluation observed against real `claude`-with-embedded-prompt ps
+// rows). Forcing each iteration to consume exactly one segment + slash keeps
+// the match deterministic and linear.
+const PATH_SEGMENT_CLASS = String.raw`[^\s"'/]*`;
+const PATH_TAIL_CLASS = String.raw`[^\s"'/]+`;
 const CODEX_CLI_HINT_RE = new RegExp(
 	[
 		// Direct executable token (for example: codex, /usr/local/bin/codex, codex-cli)
-		`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*codex(?:-cli)?(?:\\.js)?${CLI_TOKEN_SUFFIX}`,
+		`${CLI_TOKEN_PREFIX}(?:${PATH_SEGMENT_CLASS}/)*codex(?:-cli)?(?:\\.js)?${CLI_TOKEN_SUFFIX}`,
 		// Known npm package path invocations
-		`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*node_modules/@openai/codex(?:/[^\\s"']+)*${CLI_TOKEN_SUFFIX}`,
+		`${CLI_TOKEN_PREFIX}(?:${PATH_SEGMENT_CLASS}/)*node_modules/@openai/codex(?:/${PATH_TAIL_CLASS})*${CLI_TOKEN_SUFFIX}`,
 		// npx/pnpm dlx package-name token
 		`${CLI_TOKEN_PREFIX}@openai/codex${CLI_TOKEN_SUFFIX}`,
 	].join("|"),
@@ -68,9 +77,9 @@ const CODEX_CLI_HINT_RE = new RegExp(
 const GEMINI_CLI_HINT_RE = new RegExp(
 	[
 		// Direct executable token (for example: gemini, /usr/local/bin/gemini, gemini-cli)
-		`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*gemini(?:-cli)?(?:\\.js)?${CLI_TOKEN_SUFFIX}`,
+		`${CLI_TOKEN_PREFIX}(?:${PATH_SEGMENT_CLASS}/)*gemini(?:-cli)?(?:\\.js)?${CLI_TOKEN_SUFFIX}`,
 		// Known npm package path invocations
-		`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*node_modules/@google/gemini-cli(?:/[^\\s"']+)*${CLI_TOKEN_SUFFIX}`,
+		`${CLI_TOKEN_PREFIX}(?:${PATH_SEGMENT_CLASS}/)*node_modules/@google/gemini-cli(?:/${PATH_TAIL_CLASS})*${CLI_TOKEN_SUFFIX}`,
 		// npx/pnpm dlx package-name token
 		`${CLI_TOKEN_PREFIX}@google/gemini-cli${CLI_TOKEN_SUFFIX}`,
 	].join("|"),
@@ -87,7 +96,7 @@ const AGENT_CLI_RE = new RegExp(
 
 const NOISE_RE = /electron|renderer|gpu-process|crashpad|--type=/i;
 const EXCLUDED_BINARY_RE = new RegExp(
-	`${CLI_TOKEN_PREFIX}(?:[^\\s"']*/)*(?:terminal-notifier|osascript|notify-send)${CLI_TOKEN_SUFFIX}`,
+	`${CLI_TOKEN_PREFIX}(?:${PATH_SEGMENT_CLASS}/)*(?:terminal-notifier|osascript|notify-send)${CLI_TOKEN_SUFFIX}`,
 	"i",
 );
 const SHELL_BINARY_RE = /^(?:-)?(?:bash|zsh|fish|sh|ksh|tcsh|csh|dash)$/i;

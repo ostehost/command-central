@@ -294,6 +294,40 @@ describe("ProcessScanner", () => {
 			expect(results).toHaveLength(2);
 			expect(results.map((entry) => entry.pid)).toEqual([500, 600]);
 		});
+
+		// Regression: long claude command lines (e.g. orchestrator-launched claude
+		// processes whose entire prompt is baked into argv) used to trigger
+		// catastrophic backtracking in CODEX_CLI_HINT_RE / GEMINI_CLI_HINT_RE /
+		// EXCLUDED_BINARY_RE because `(?:[^\s"']*/)*` allowed the inner class to
+		// also consume `/`. A single 4KB ps row could burn 2-4 seconds of CPU and
+		// pin the extension host as "unresponsive" in Agent Status.
+		test("parsePsOutput stays linear on long ps rows with many slashes", () => {
+			const longPrompt =
+				"/Users/me/projects/foo/bar/baz/qux/quux/corge/grault/garply/aaa".repeat(
+					60,
+				);
+			const longClaudeRow = `12345 1 Sun Apr 19 17:21:34 2026 claude ${longPrompt} end`;
+			// 50 rows simulates a busy macOS box with several orchestrator children.
+			const rows = Array.from(
+				{ length: 50 },
+				(_, i) =>
+					`${10000 + i} 1 Sun Apr 19 17:21:34 2026 claude ${longPrompt} end`,
+			);
+			const psOutput = [
+				"  PID  PPID STARTED                       COMMAND",
+				longClaudeRow,
+				...rows,
+			].join("\n");
+
+			const start = performance.now();
+			scanner.parsePsOutput(psOutput);
+			const elapsedMs = performance.now() - start;
+
+			// Pre-fix this took 30+ seconds for a single row of similar shape.
+			// 500ms gives generous headroom for slow CI while still catching any
+			// regression to exponential backtracking.
+			expect(elapsedMs).toBeLessThan(500);
+		});
 	});
 
 	// ── parseClaudeArgs ──────────────────────────────────────────────
