@@ -5,6 +5,16 @@
 **Author:** implementation agent (autonomous research)
 **Outcome:** Research + convention proposal. No code change landed.
 
+> **⚠️ Superseded — 2026-04-20.** The "adoption sidecar" recommendation in this
+> document was reviewed against a stricter native-OpenClaw / Claude-Code bar
+> in `research/COMMAND-CENTRAL-NATIVE-MANUAL-ADOPTION-CONTRACT-2026-04-20.md`
+> and **rejected**. Do not implement `AdoptSidecarWatcher`, do not add
+> `commandCentral.discovery.adoptDir`, do not document the `cc-adopt` fish
+> helper. The native contract is `oste-launch` (already wrapped by CC's
+> `Launch Agent` command); the near-term roadmap item is `oste adopt-pid` in
+> `oste-cli`, not a new discovery source in Command Central. Read the verdict
+> document first before acting on any recommendation below.
+
 ---
 
 ## Problem statement
