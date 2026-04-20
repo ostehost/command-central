@@ -645,6 +645,40 @@ describe("AgentRegistry", () => {
 			expect(discovered).toHaveLength(1);
 			expect(discovered[0]?.pid).toBe(1500);
 		});
+
+		test("external Claude in same project_dir as launcher lane stays visible", () => {
+			// Truth-hierarchy guard: a launcher task running in project /shared
+			// must NOT hide an ad-hoc interactive Claude the user separately
+			// spawned in the same folder. Previously the coarse project_dir set
+			// filter over-claimed here and swallowed the external session.
+			sessionFiles["1600.json"] = JSON.stringify({
+				pid: 1600,
+				sessionId: "external-user-claude",
+				cwd: "/shared-project-coexist",
+				startedAt: Date.now() - 60 * 60_000, // 1h ago, outside 15min window
+			});
+			dirContents = ["1600.json"];
+			alivePids.add(1600);
+
+			registry.start();
+
+			const launcherTasks = [
+				createMockTask({
+					id: "launcher-lane-1",
+					status: "running",
+					session_id: "launcher-internal-sess",
+					project_dir: "/shared-project-coexist",
+					started_at: new Date().toISOString(),
+					agent_backend: "claude",
+					pid: 999999,
+				}),
+			];
+			const discovered = registry.getDiscoveredAgents(launcherTasks);
+
+			expect(discovered).toHaveLength(1);
+			expect(discovered[0]?.pid).toBe(1600);
+			expect(discovered[0]?.sessionId).toBe("external-user-claude");
+		});
 	});
 
 	// ── ACP session suppression (4th discovery source) ──────────────

@@ -166,40 +166,36 @@ export class AgentRegistry implements vscode.Disposable {
 	/**
 	 * Get discovered agents that are NOT already in the launcher task list.
 	 * This is the list that should be merged into the tree view.
+	 *
+	 * Suppression rule (launcher truth hierarchy, step 3):
+	 *   Only hide a discovered agent when it is almost certainly the same
+	 *   process the launcher is already tracking. Matching is delegated to
+	 *   `matchesLauncherTask()` which requires one of:
+	 *     - PID equality, OR
+	 *     - session_id equality, OR
+	 *     - same project_dir PLUS compatible backend PLUS start-time within
+	 *       a 15-minute window.
+	 *
+	 *   An earlier version of this method used a coarse `Set<projectDir>`
+	 *   that hid ANY discovered Claude sharing a project directory with a
+	 *   running launcher task. That over-claimed: if the user spawned an
+	 *   ad-hoc interactive Claude in the same folder as a launcher lane, it
+	 *   vanished from the tree. The tighter per-task check keeps external
+	 *   interactive Claude sessions honest-visible alongside launcher work.
 	 */
 	getDiscoveredAgents(launcherTasks: AgentTask[]): DiscoveredAgent[] {
-		const launcherPids = new Set<number>();
-		const launcherSessionIds = new Set<string>();
-		const launcherProjectDirs = new Set<string>();
+		const runningLauncherTasks = launcherTasks.filter(
+			(task) => task.status === "running",
+		);
 
-		for (const task of launcherTasks) {
-			// Only hide discovered agents for actively running launcher entries.
-			// Non-running launcher entries should not mask a live discovered agent.
-			if (task.status === "running") {
-				const maybePid = (task as AgentTask & { pid?: unknown }).pid;
-				if (typeof maybePid === "number" && Number.isFinite(maybePid)) {
-					launcherPids.add(maybePid);
-				}
-				if (task.session_id) {
-					launcherSessionIds.add(task.session_id);
-				}
-				if (task.project_dir) {
-					launcherProjectDirs.add(task.project_dir);
-				}
-			}
-		}
-
-		// Merge session-watcher + process-scanner, dedup by PID
 		const merged = this.mergeDiscoverySources();
 
-		// Filter out anything already tracked by the launcher
-		return merged.filter((agent) => {
-			if (launcherPids.has(agent.pid)) return false;
-			if (agent.sessionId && launcherSessionIds.has(agent.sessionId))
-				return false;
-			if (launcherProjectDirs.has(agent.projectDir)) return false;
-			return true;
-		});
+		return merged.filter(
+			(agent) =>
+				!runningLauncherTasks.some((task) =>
+					this.matchesLauncherTask(agent, task),
+				),
+		);
 	}
 
 	/** Get all raw discovered agents (before launcher dedup) */

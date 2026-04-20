@@ -1395,11 +1395,49 @@ export class AgentStatusTreeProvider
 		return false;
 	}
 
+	/**
+	 * Reconcile a raw tasks.json record into a display-ready AgentTask.
+	 *
+	 * Source-of-truth hierarchy (highest → lowest):
+	 *
+	 *   Tier 1 — Launcher-local authoritative state
+	 *     1a. tasks.json terminal status (completed / failed / stopped / ...)
+	 *         is already final; return unchanged.
+	 *     1b. Pending-review receipt (`/tmp/oste-pending-review/<id>.json`)
+	 *         written by `oste-complete.sh` the moment the agent really
+	 *         finishes. Overlays a `running` entry that tasks.json has not
+	 *         yet caught up to.
+	 *
+	 *   Tier 2 — Launcher-local secondary signals
+	 *     2a. CC staleness cache (`staleTaskReasons`) populated during prior
+	 *         reconciliations — sticky so a task doesn't bounce back to
+	 *         `running` once we've decided it's stale.
+	 *     2b. JSONL stream terminal event (`turn.completed` / `turn.failed`
+	 *         / `result`). Authoritative when present because the launcher-
+	 *         spawned agent writes it directly.
+	 *
+	 *   Tier 3 — Liveness overlay (does NOT decide status on its own)
+	 *     Tmux pane evidence + discovered-session presence are consulted by
+	 *     `isRunningTaskHealthy()` only to decide whether to keep trusting a
+	 *     `running` status. They can never promote or demote a task without
+	 *     corroborating Tier 1/2 signals.
+	 *
+	 *   Tier 4 — Last-resort inference (only when Tier 1–3 say "unhealthy")
+	 *     4a. `exit_code === 0` or `completed_at` set → completed.
+	 *     4b. non-zero `exit_code` → failed.
+	 *     4c. Commits since start → completed_dirty.
+	 *     4d. Default → stopped.
+	 *
+	 *   See research/COMMAND-CENTRAL-LAUNCHER-TRUTH-HIERARCHY-2026-04-20.md
+	 *   for the full rationale.
+	 */
 	private toDisplayTask(task: AgentTask): AgentTask {
-		// Pending-review receipt is ground truth — the launcher's
-		// oste-complete.sh writes it the moment the agent actually finishes,
-		// which can land before tasks.json is updated. Trust it over both the
-		// CC-local staleness cache and the runtime health inference.
+		// Tier 1b — Pending-review receipt is ground truth for a running task.
+		// The launcher's oste-complete.sh writes it the moment the agent
+		// actually finishes, which can land before tasks.json is updated. Trust
+		// it over both the CC-local staleness cache and the runtime health
+		// inference. For non-running statuses, tasks.json itself is already
+		// Tier 1a authoritative, so we don't probe.
 		if (task.status === "running") {
 			const receipt = readPendingReviewReceipt(task.id);
 			const overlay = receipt ? receiptToOverlay(receipt) : null;
@@ -1408,6 +1446,7 @@ export class AgentStatusTreeProvider
 			}
 		}
 
+		// Tier 2a — Staleness cache (sticky CC-local decision).
 		const staleReason = this.staleTaskReasons.get(task.id);
 		if (staleReason) {
 			return this.applyRuntimeStatusOverlay(task, {
@@ -1415,20 +1454,26 @@ export class AgentStatusTreeProvider
 				reason: staleReason,
 			});
 		}
-		if (task.status !== "running") return task;
+		if (task.status !== "running") return task; // Tier 1a: terminal → keep.
 
+		// Tier 2b — JSONL stream terminal event.
 		const streamTerminalState = this.getStreamTerminalState(task);
 		if (streamTerminalState) {
 			return this.applyRuntimeStatusOverlay(task, streamTerminalState);
 		}
 
+		// Tier 3 — Liveness overlay. `isRunningTaskHealthy()` folds tmux pane
+		// evidence and discovered-session presence into a single verdict. If it
+		// still says "healthy", keep the task as running.
 		if (this.isRunningTaskHealthy(task)) return task;
 
-		// The process is dead, but check for completion evidence before
-		// defaulting to "stopped".  Many tasks finish successfully but the
-		// completion hook doesn't fire (race / Ghostty lifecycle), leaving
-		// tasks.json stuck at "running".  Exit code and completed_at are
-		// ground-truth signals that should override the inference.
+		// Tier 4 — Last-resort inference. The process is gone; we have no
+		// receipt, no stream terminal event, and liveness signals say dead.
+		// Look for completion evidence before defaulting to "stopped". Many
+		// tasks finish successfully but the completion hook doesn't fire
+		// (race / Ghostty lifecycle), leaving tasks.json stuck at "running".
+		// Exit code and completed_at are ground-truth signals that should
+		// override the inference.
 		if (task.exit_code === 0 || (task.exit_code == null && task.completed_at)) {
 			return this.applyRuntimeStatusOverlay(task, {
 				status: "completed",
