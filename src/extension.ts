@@ -1201,9 +1201,21 @@ export async function activate(
 			await selectTaskTmuxWindow(task);
 
 			try {
+				// Ghostty's own macOS help text: "Use `open -na Ghostty.app` … or
+				// `open -na ghostty.app --args --foo=bar` to pass arguments."
+				// Without `-n`, `open -a Ghostty --args …` just activates an already-
+				// running stock Ghostty and the Cocoa launch is short-circuited —
+				// `--args -e tmux attach …` is silently discarded, no new window is
+				// created, and the Strategy 3 "fresh attach" narration becomes false.
+				// Passing `-n` forces a new stock-Ghostty instance so the attach
+				// actually runs and the visible surface the user sees is the one we
+				// just claimed to open. Pinning via `-b com.mitchellh.ghostty`
+				// avoids any `-a Ghostty` name-lookup ambiguity against a launcher
+				// bundle whose CFBundleName contains "Ghostty".
 				await execFileAsync("open", [
-					"-a",
-					"Ghostty",
+					"-n",
+					"-b",
+					"com.mitchellh.ghostty",
 					"--args",
 					"-e",
 					...buildTaskTmuxAttachCommand(task),
@@ -1433,9 +1445,15 @@ export async function activate(
 					}
 
 					// Strategy 3: tmux-only — spawn a fresh Ghostty client via
-					// `open -a Ghostty --args -e tmux attach ...`. This is NOT a
-					// focus of the launcher's visible bundle surface; it creates a
-					// new tmux client onto the authoritative session. Reserved for
+					// `open -n -b com.mitchellh.ghostty --args -e tmux attach ...`.
+					// This is NOT a focus of the launcher's visible bundle surface;
+					// it creates a new stock-Ghostty instance attached to the
+					// authoritative session. The `-n` is required: without it macOS
+					// activates an already-running Ghostty and silently drops the
+					// `--args`, which would make the info message below false (no
+					// new window would actually appear). Pinning the stock bundle
+					// id (`-b com.mitchellh.ghostty`) avoids any `-a Ghostty`
+					// name-lookup ambiguity against a launcher bundle. Reserved for
 					// the case where no authoritative bundle surface is known (or
 					// the known one refused to focus). REQUIRES a live session.
 					//

@@ -108,12 +108,26 @@ describe("task terminal routing helpers", () => {
 
 		const argv = buildTaskTmuxAttachCommand(task);
 		// Simulates how extension.ts builds the open(1) args for Ghostty native:
-		//   execFileAsync("open", ["-a", "Ghostty", "--args", "-e", ...argv])
-		const openArgs = ["-a", "Ghostty", "--args", "-e", ...argv];
+		//   execFileAsync("open", [
+		//     "-n", "-b", "com.mitchellh.ghostty", "--args", "-e", ...argv,
+		//   ])
+		// `-n` is required on macOS per Ghostty's own help text — without it
+		// the --args are dropped when a Ghostty is already running. Pinning
+		// `-b com.mitchellh.ghostty` avoids `-a Ghostty` name-lookup ambiguity
+		// against a launcher bundle.
+		const openArgs = [
+			"-n",
+			"-b",
+			"com.mitchellh.ghostty",
+			"--args",
+			"-e",
+			...argv,
+		];
 
 		expect(openArgs).toEqual([
-			"-a",
-			"Ghostty",
+			"-n",
+			"-b",
+			"com.mitchellh.ghostty",
 			"--args",
 			"-e",
 			"tmux",

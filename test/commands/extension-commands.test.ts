@@ -94,7 +94,7 @@ describe("focusAgentTerminal command", () => {
 
 		// Strategy 1 won't fire (no ghostty_bundle_id)
 		// Strategy 2 won't fire (bundle_path is "(tmux-mode)")
-		// Strategy 3 fires: tmux backend + valid session_id → open -a Ghostty
+		// Strategy 3 fires: tmux backend + valid session_id → open -n -b Ghostty
 		const shouldUseGhostty =
 			task.terminal_backend === "tmux" &&
 			task.session_id &&
@@ -102,17 +102,24 @@ describe("focusAgentTerminal command", () => {
 
 		expect(shouldUseGhostty).toBeTruthy();
 
-		// Strategy 3 should call: open -a Ghostty --args -e "tmux attach -t SESSION"
-		// NOT vscode.window.createTerminal
+		// Strategy 3 should call:
+		//   open -n -b com.mitchellh.ghostty --args -e "tmux attach -t SESSION"
+		// The `-n` forces a new Ghostty instance per Ghostty's own macOS help
+		// text ("Use `open -na Ghostty.app`"); without it the --args are
+		// dropped when a Ghostty is already running. `-b <bundle-id>` pins the
+		// stock bundle and avoids `-a Ghostty` name-lookup ambiguity against a
+		// launcher bundle. NOT vscode.window.createTerminal.
 		const expectedArgs = [
-			"-a",
-			"Ghostty",
+			"-n",
+			"-b",
+			"com.mitchellh.ghostty",
 			"--args",
 			"-e",
 			`tmux attach -t ${task.session_id}`,
 		];
-		expect(expectedArgs[1]).toBe("Ghostty");
-		expect(expectedArgs[4]).toContain("tmux attach -t");
+		expect(expectedArgs[0]).toBe("-n");
+		expect(expectedArgs[2]).toBe("com.mitchellh.ghostty");
+		expect(expectedArgs[5]).toContain("tmux attach -t");
 	});
 
 	test("Strategy 3 does not call vscode.window.createTerminal", () => {
@@ -162,7 +169,7 @@ describe("focusAgentTerminal command", () => {
 			session_id: "valid-session",
 		});
 
-		// Simulate open -a Ghostty failing (Ghostty not installed)
+		// Simulate open -n -b com.mitchellh.ghostty failing (Ghostty not installed)
 		const ghosttyFailed = true;
 
 		if (ghosttyFailed) {
