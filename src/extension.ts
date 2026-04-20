@@ -1444,6 +1444,29 @@ export async function activate(
 						}
 					}
 
+					// Strategy 2.5: conventional project launcher bundle
+					// For tmux-mode tasks with no task-specific launcher surface,
+					// prefer the canonical /Applications/Projects/<project>.app
+					// bundle when it exists. This keeps clicks inside the proper
+					// project launcher terminal instead of falling back to a stock
+					// Ghostty tmux attach window.
+					const projectBundlePath = resolveProjectBundlePath(task);
+					if (
+						task.terminal_backend === "tmux" &&
+						projectBundlePath &&
+						bundleSurfaceTrusted
+					) {
+						if (
+							await focusGhosttyBundleAndTmuxWindow(projectBundlePath, {
+								socket: task.tmux_socket,
+								windowId: task.tmux_window_id,
+								sessionId: task.session_id,
+							})
+						) {
+							return;
+						}
+					}
+
 					// Strategy 3: tmux-only — spawn a fresh Ghostty client via
 					// `open -n -b com.mitchellh.ghostty --args -e tmux attach ...`.
 					// This is NOT a focus of the launcher's visible bundle surface;

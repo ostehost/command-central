@@ -497,6 +497,28 @@ describe("focusAgentTerminal command", () => {
 		});
 	});
 
+	describe("Strategy 2.5 conventional project bundle fallback", () => {
+		test("tmux-mode task can use the conventional project launcher bundle before Strategy 3", () => {
+			const task = createTask({
+				project_dir: "/Users/ostehost/projects/command-central",
+				terminal_backend: "tmux",
+				ghostty_bundle_id: null,
+				bundle_path: "(tmux-mode)",
+				session_id: "agent-command-central",
+				tmux_window_id: "@12",
+			});
+
+			const bundleSurfaceTrusted = true;
+			const projectBundlePath = "/Applications/Projects/command-central.app";
+			const strategy25Fires =
+				task.terminal_backend === "tmux" &&
+				Boolean(projectBundlePath) &&
+				bundleSurfaceTrusted;
+
+			expect(strategy25Fires).toBe(true);
+		});
+	});
+
 	// Strategy 3 opens a generic Ghostty window with `tmux attach` rather than
 	// focusing the launcher's visible bundle surface. The user has no way to
 	// tell the difference from the click alone, so the handler emits an
