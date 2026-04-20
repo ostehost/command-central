@@ -125,6 +125,32 @@ export function taskMatchesSessionStoreBundle(
 	return task.ghostty_bundle_id === mapping.bundleId;
 }
 
+/**
+ * Whether the task's bundle-hosted Ghostty surface can be treated as the
+ * authoritative live lane when the user clicks focus.
+ *
+ * For a running tmux-backed task, the only source of truth for the live lane
+ * is the tmux session itself; the launcher's visible Ghostty window is just
+ * one possible client onto it. When the tmux session has died out from under
+ * us (but tasks.json hasn't caught up), `open -a` on the bundle raises a
+ * stale or garbled surface — a sibling task's window, an orphaned pane, or
+ * a freshly relaunched empty bundle — and pretends it represents this task.
+ *
+ * Completed / failed / stopped tasks don't have a live lane to protect, so
+ * bundle focus is always allowed. Same for non-tmux tasks and for tasks
+ * with no session id to verify.
+ */
+export function shouldTrustBundleSurface(
+	task: AgentTask,
+	tmuxSessionAlive: boolean | null,
+): boolean {
+	if (task.status !== "running") return true;
+	if (task.terminal_backend !== "tmux") return true;
+	if (!task.session_id || !isValidSessionId(task.session_id)) return true;
+	if (tmuxSessionAlive === null) return true;
+	return tmuxSessionAlive;
+}
+
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
@@ -1309,6 +1335,29 @@ export async function activate(
 					}
 					telemetry.track("cc_agent_focused");
 
+					// Launcher-truth gate: for a running tmux-backed task, the live
+					// lane lives in the tmux session — the launcher bundle's visible
+					// Ghostty surface is only a window onto it. When the session is
+					// dead, bundle-focused strategies raise a stale/garbled surface
+					// (sibling task's window, orphaned pane, or a fresh empty bundle
+					// from `open -a`) and silently pretend it belongs to this task.
+					// Probe liveness once up front so Strategies 0–2 can step aside
+					// when the bundle surface would be lying; Strategy 3 reuses the
+					// same answer rather than shelling out twice.
+					const runningTmuxTaskWithSession =
+						!!task &&
+						task.status === "running" &&
+						task.terminal_backend === "tmux" &&
+						!!task.session_id &&
+						isValidSessionId(task.session_id);
+					let probedTmuxSessionAlive: boolean | null = null;
+					if (runningTmuxTaskWithSession && task) {
+						probedTmuxSessionAlive = await isTaskTmuxSessionAlive(task);
+					}
+					const bundleSurfaceTrusted = task
+						? shouldTrustBundleSurface(task, probedTmuxSessionAlive)
+						: true;
+
 					// Strategy 0: Session store lookup (works for discovered agents too)
 					// Uses open -a (no System Events) + tmux select-window for precise targeting.
 					//
@@ -1318,7 +1367,7 @@ export async function activate(
 					// tasks but lives on an unrelated tmux socket — falling into the cached
 					// bundle would silently surface whatever session that bundle is displaying
 					// (typically another completed task in the same repo).
-					if (projectDir) {
+					if (projectDir && bundleSurfaceTrusted) {
 						const mapping = sessionStore.lookup(projectDir);
 						if (mapping && taskMatchesSessionStoreBundle(task, mapping)) {
 							if (
@@ -1350,7 +1399,11 @@ export async function activate(
 
 					// Strategy 1: tmux backend with ghostty bundle
 					// Uses open -a (no System Events) + tmux select-window.
-					if (task.terminal_backend === "tmux" && task.ghostty_bundle_id) {
+					if (
+						task.terminal_backend === "tmux" &&
+						task.ghostty_bundle_id &&
+						bundleSurfaceTrusted
+					) {
 						if (
 							await focusGhosttyBundleAndTmuxWindow(task.ghostty_bundle_id, {
 								socket: task.tmux_socket,
@@ -1366,7 +1419,8 @@ export async function activate(
 					if (
 						task.bundle_path &&
 						task.bundle_path !== "(test-mode)" &&
-						task.bundle_path !== "(tmux-mode)"
+						task.bundle_path !== "(tmux-mode)" &&
+						bundleSurfaceTrusted
 					) {
 						const fsModule = await import("node:fs");
 						if (
@@ -1378,14 +1432,17 @@ export async function activate(
 						}
 					}
 
-					// Strategy 3: tmux-only — open Ghostty with tmux attach (REQUIRES live session)
+					// Strategy 3: tmux-only — open Ghostty with tmux attach (REQUIRES live session).
+					// Reuse the up-front probe when we already have the answer so we don't
+					// double up on tmux has-session shells.
 					let hasLiveTmuxSession = false;
 					if (
 						task.terminal_backend === "tmux" &&
 						task.session_id &&
 						isValidSessionId(task.session_id)
 					) {
-						hasLiveTmuxSession = await isTaskTmuxSessionAlive(task);
+						hasLiveTmuxSession =
+							probedTmuxSessionAlive ?? (await isTaskTmuxSessionAlive(task));
 						if (hasLiveTmuxSession && (await openGhosttyTmuxAttach(task))) {
 							return;
 						}

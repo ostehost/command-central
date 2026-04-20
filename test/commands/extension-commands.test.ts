@@ -395,6 +395,100 @@ describe("focusAgentTerminal command", () => {
 			"No terminal available for this agent.",
 		);
 	});
+
+	// Regression coverage for the launcher-truth gate introduced for running
+	// tmux-backed tasks. When the tmux session is dead, bundle-focused
+	// strategies must step aside so the user lands on the dead-session
+	// quickpick (transcript / diff / resume / launcher) rather than a stale
+	// Ghostty surface raised by `open -a`.
+	describe("bundle-surface trust gate for running tmux-backed tasks", () => {
+		test("running task + dead tmux session skips Strategy 0 (session-store cache)", async () => {
+			const { shouldTrustBundleSurface } = await import(
+				"../../src/extension.js"
+			);
+			const task = createTask({
+				status: "running",
+				terminal_backend: "tmux",
+				session_id: "agent-project",
+				ghostty_bundle_id: "dev.partnerai.ghostty.project",
+			});
+			const trusted = shouldTrustBundleSurface(task, false);
+			// Strategy 0 gating: `if (projectDir && bundleSurfaceTrusted) { ... }`
+			expect(trusted).toBe(false);
+		});
+
+		test("running task + dead tmux session skips Strategy 1 (launcher bundle focus)", async () => {
+			const { shouldTrustBundleSurface } = await import(
+				"../../src/extension.js"
+			);
+			const task = createTask({
+				status: "running",
+				terminal_backend: "tmux",
+				session_id: "agent-project",
+				ghostty_bundle_id: "dev.partnerai.ghostty.project",
+			});
+			// Strategy 1 now requires `bundleSurfaceTrusted` in addition to
+			// terminal_backend === "tmux" && ghostty_bundle_id.
+			const strategy1Fires =
+				task.terminal_backend === "tmux" &&
+				Boolean(task.ghostty_bundle_id) &&
+				shouldTrustBundleSurface(task, false);
+			expect(strategy1Fires).toBe(false);
+		});
+
+		test("running task + dead tmux session skips Strategy 2 (direct bundle path)", async () => {
+			const { shouldTrustBundleSurface } = await import(
+				"../../src/extension.js"
+			);
+			const task = createTask({
+				status: "running",
+				terminal_backend: "tmux",
+				session_id: "agent-project",
+				ghostty_bundle_id: null,
+				bundle_path: "/Applications/Projects/project.app",
+			});
+			const strategy2Fires =
+				!!task.bundle_path &&
+				task.bundle_path !== "(test-mode)" &&
+				task.bundle_path !== "(tmux-mode)" &&
+				shouldTrustBundleSurface(task, false);
+			expect(strategy2Fires).toBe(false);
+		});
+
+		test("running task + LIVE tmux session still fires Strategy 1 (bundle focus)", async () => {
+			const { shouldTrustBundleSurface } = await import(
+				"../../src/extension.js"
+			);
+			const task = createTask({
+				status: "running",
+				terminal_backend: "tmux",
+				session_id: "agent-project",
+				ghostty_bundle_id: "dev.partnerai.ghostty.project",
+			});
+			const strategy1Fires =
+				task.terminal_backend === "tmux" &&
+				Boolean(task.ghostty_bundle_id) &&
+				shouldTrustBundleSurface(task, true);
+			expect(strategy1Fires).toBe(true);
+		});
+
+		test("completed task with dead tmux session still fires bundle strategies (no running lane to protect)", async () => {
+			const { shouldTrustBundleSurface } = await import(
+				"../../src/extension.js"
+			);
+			const task = createTask({
+				status: "completed",
+				terminal_backend: "tmux",
+				session_id: "agent-project",
+				ghostty_bundle_id: "dev.partnerai.ghostty.project",
+			});
+			const strategy1Fires =
+				task.terminal_backend === "tmux" &&
+				Boolean(task.ghostty_bundle_id) &&
+				shouldTrustBundleSurface(task, false);
+			expect(strategy1Fires).toBe(true);
+		});
+	});
 });
 
 describe("removeAgentTask command", () => {
@@ -964,5 +1058,108 @@ describe("taskMatchesSessionStoreBundle (Strategy 0 guard)", () => {
 			ghostty_bundle_id: "dev.partnerai.ghostty.some-other-project",
 		});
 		expect(taskMatchesSessionStoreBundle(task, mapping)).toBe(false);
+	});
+});
+
+describe("shouldTrustBundleSurface (launcher-truth gate)", () => {
+	test("running tmux-backed task with a live tmux session trusts the bundle surface", async () => {
+		const { shouldTrustBundleSurface } = await import("../../src/extension.js");
+		const task = createTask({
+			status: "running",
+			terminal_backend: "tmux",
+			session_id: "agent-project",
+			ghostty_bundle_id: "dev.partnerai.ghostty.project",
+		});
+		expect(shouldTrustBundleSurface(task, true)).toBe(true);
+	});
+
+	test("running tmux-backed task with a dead tmux session does NOT trust the bundle surface", async () => {
+		const { shouldTrustBundleSurface } = await import("../../src/extension.js");
+		const task = createTask({
+			status: "running",
+			terminal_backend: "tmux",
+			session_id: "agent-project",
+			ghostty_bundle_id: "dev.partnerai.ghostty.project",
+		});
+		// Launcher truth says the live lane is gone — the bundle's visible
+		// Ghostty surface (if any) is stale and must not be treated as
+		// authoritative for a "focus" click.
+		expect(shouldTrustBundleSurface(task, false)).toBe(false);
+	});
+
+	test("completed tmux-backed task always trusts the bundle surface", async () => {
+		const { shouldTrustBundleSurface } = await import("../../src/extension.js");
+		const task = createTask({
+			status: "completed",
+			terminal_backend: "tmux",
+			session_id: "agent-project",
+			ghostty_bundle_id: "dev.partnerai.ghostty.project",
+		});
+		// Completed tasks don't have a live lane to protect; the bundle
+		// still hosts the agent's final transcript and is the right surface
+		// to raise for review.
+		expect(shouldTrustBundleSurface(task, false)).toBe(true);
+		expect(shouldTrustBundleSurface(task, true)).toBe(true);
+	});
+
+	test("failed and stopped tmux-backed tasks trust the bundle surface regardless of tmux", async () => {
+		const { shouldTrustBundleSurface } = await import("../../src/extension.js");
+		for (const status of ["failed", "stopped", "completed_dirty"] as const) {
+			const task = createTask({
+				status,
+				terminal_backend: "tmux",
+				session_id: "agent-project",
+				ghostty_bundle_id: "dev.partnerai.ghostty.project",
+			});
+			expect(shouldTrustBundleSurface(task, false)).toBe(true);
+		}
+	});
+
+	test("non-tmux running tasks trust the bundle surface (no tmux invariant to violate)", async () => {
+		const { shouldTrustBundleSurface } = await import("../../src/extension.js");
+		const task = createTask({
+			status: "running",
+			terminal_backend: "persist",
+			session_id: "agent-project",
+			ghostty_bundle_id: "dev.partnerai.ghostty.project",
+		});
+		expect(shouldTrustBundleSurface(task, false)).toBe(true);
+		expect(shouldTrustBundleSurface(task, null)).toBe(true);
+	});
+
+	test("running tmux tasks with no session id trust the bundle surface (cannot verify liveness)", async () => {
+		const { shouldTrustBundleSurface } = await import("../../src/extension.js");
+		const task = createTask({
+			status: "running",
+			terminal_backend: "tmux",
+			session_id: "",
+			ghostty_bundle_id: "dev.partnerai.ghostty.project",
+		});
+		expect(shouldTrustBundleSurface(task, null)).toBe(true);
+	});
+
+	test("running tmux tasks with unsafe session ids trust the bundle surface (we refuse to shell out)", async () => {
+		const { shouldTrustBundleSurface } = await import("../../src/extension.js");
+		const task = createTask({
+			status: "running",
+			terminal_backend: "tmux",
+			session_id: "bad;rm -rf /",
+			ghostty_bundle_id: "dev.partnerai.ghostty.project",
+		});
+		// isValidSessionId would reject this, so we never probe. Fall back
+		// to trusting the surface — there's nothing safer to do without
+		// liveness information.
+		expect(shouldTrustBundleSurface(task, null)).toBe(true);
+	});
+
+	test("null liveness (probe skipped) trusts the surface — do not block when we have no evidence", async () => {
+		const { shouldTrustBundleSurface } = await import("../../src/extension.js");
+		const task = createTask({
+			status: "running",
+			terminal_backend: "tmux",
+			session_id: "agent-project",
+			ghostty_bundle_id: "dev.partnerai.ghostty.project",
+		});
+		expect(shouldTrustBundleSurface(task, null)).toBe(true);
 	});
 });
