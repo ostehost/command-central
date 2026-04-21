@@ -25,6 +25,30 @@ Rationale:
 - This matches the existing CronService and OpenClawConfigService patterns
 - No API keys or auth needed — same-host CLI access
 
+## 2026-04-21 refinement: keep the watchdog thin
+
+Current reality:
+- `src/services/openclaw-task-service.ts` already exists and watches the native OpenClaw task ledger.
+- `src/services/taskflow-service.ts` already exists and watches native OpenClaw TaskFlow state.
+- The remaining problem is not "how do we add more monitoring," it is "how do we compose truth without inventing a second control plane."
+
+Hard guardrails:
+- **OpenClaw task ledger + TaskFlow are primary truth for OpenClaw-native work.**
+- **Launcher `tasks.json` + pending-review receipts are lane-local compatibility truth for Ghostty-launched work until a true write surface exists.**
+- **`TaskCompleted` is the authoritative completion signal, `SessionEnd` is a safety net, and reapers/watchdogs are recovery paths only.**
+- **A watchdog may quarantine, dispatch, or repair, but it must not become the canonical source of runtime truth.**
+- **Do not add sidecar adoption files, shadow registries, LLM-transformed telemetry, or demo-only heuristics to make the tree look smarter than the system really is.**
+
+That means the ideal split is:
+- **OpenClaw** owns task identity, flow identity, blocked/waiting state, cron state, and delivery state.
+- **Ghostty Launcher** owns terminal launch receipts, bundle/session identity, lane-local completion artifacts, and deterministic recovery for broken interactive surfaces.
+- **Command Central** stays read-only over those evidence planes and renders the composed state, including disagreement when layers diverge.
+
+Practical next move:
+- keep improving evidence composition and UX in CC, especially for live interactive Claude lanes and task focus routing
+- keep shrinking launcher watchdog scope toward deterministic repair/orchestration only
+- do not ship any feature that requires the watchdog to guess what the authoritative system declined to say
+
 ---
 
 ## Phase 1: OpenClaw Task Service (M3.5 scope — 2-3 sessions)
