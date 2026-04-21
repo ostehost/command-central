@@ -1,15 +1,10 @@
 # Test Suite Documentation
 
-**Status**: Enterprise-Grade Test Infrastructure
-**Total Tests**: 1365 tests across 100 files (validate via `just test-validate`)
-**Partition Coverage**: 100% (validated automatically)
+**Status**: Enterprise-grade test infrastructure
+**Suite Size**: Run `just test` for the current pass count and `just test-list` for the current file inventory
+**Partition Coverage**: Validated automatically by `just test-validate`
 **Quality Checks**: Integrated with all test runs
 **Full suite runtime**: ~5s
-
-> Note: 7 pre-existing tests in `agent-status-tree-provider.test.ts` fail
-> due to stale assertions vs. updated production code (e.g., removed
-> "Transcript:" tooltip text, model field handling). These are not flake
-> — they are out-of-date tests that need their expectations updated.
 
 ---
 
@@ -20,37 +15,37 @@
 just test
 
 # Fast feedback during development
-just test:unit                 # ~7-8s, unit tests only
+just test-unit                 # ~7-8s, unit tests only
 
 # Test-Driven Development
-just test:watch                # Re-run on file changes
+just test-watch                # Re-run on file changes
 
 # Validation (prevents orphaned tests)
-just test:validate             # Run automatically with 'just test'
+just test-validate             # Run automatically with 'just test'
 
 # Coverage analysis
-just test:coverage             # See what's tested
+just test-coverage             # See what's tested
 
 # Integration tests
-just test:integration          # Component interaction tests
+just test-integration          # Component interaction tests
 
 # Specific directory
 just test git-sort             # Test one area
 
 # Specific file
-just test ./test/utils/config-validator.test.ts
+just test ./test/utils/tasks-file-resolver.test.ts
 ```
 
 ---
 
 ## Test Organization
 
-All 100 active test files are organized by category and automatically validated to prevent orphaned tests.
+Active test files are organized by category and automatically validated to prevent orphaned tests.
 
 ### Directory Structure
 
 Run `find test -name '*.test.ts' -not -path '*/legacy/*' | wc -l` for the
-authoritative current count. Per-directory counts come from `just test list`.
+authoritative current count. Per-directory counts come from `just test-list`.
 
 > **discovery-e2e**: This directory is intentionally isolated from the main
 > `test` script (it mocks `node:fs` globally, which causes hangs when run
@@ -67,7 +62,7 @@ authoritative current count. Per-directory counts come from `just test list`.
 
 ```bash
 # Validates all active test files are properly partitioned
-just test:validate
+just test-validate
 
 # Output shows any orphaned tests:
 # ✅ Perfect! All tests are in partitions (100.0% coverage)
@@ -82,7 +77,7 @@ just test:validate
 
 2. Validate it's included:
    ```bash
-   just test:validate
+   just test-validate
    ```
 
 3. If orphaned, add to partition in `package.json`:
@@ -97,12 +92,12 @@ just test:validate
 | Command | Speed | Use Case |
 |---------|-------|----------|
 | `just test` | ~5s | Before committing (full suite + validation) |
-| `just test-unit` | ~0.5s | Fast feedback during development (459 tests) |
+| `just test-unit` | ~0.5s | Fast feedback during development |
 | `just test-integration` | ~5s | Component interaction tests (incl. discovery-e2e) |
 | `just test-watch` | Continuous | TDD (re-run on file changes) |
 | `just test-coverage` | ~5s | Analyze coverage gaps |
 | `just test-validate` | <1s | Ensure no orphaned tests |
-| `just test list` | <1s | Show test organization |
+| `just test-list` | <1s | Show test organization |
 
 ---
 
@@ -170,7 +165,7 @@ describe("Component Name - Feature Area", () => {
 - ✅ Test behavior, not implementation
 - ✅ Use descriptive test names
 - ✅ Keep tests independent
-- ✅ Run `just test:validate` when adding tests
+- ✅ Run `just test-validate` when adding tests
 
 ### DON'T ❌
 
@@ -189,11 +184,11 @@ describe("Component Name - Feature Area", () => {
 
 This ensures:
 1. Code quality checks pass
-2. All 1365 tests run (~5s)
+2. The full test suite runs (~5s)
 3. No orphaned tests exist
 4. No regressions introduced
 
 ---
 
-**Last Updated**: 2025-10-18
+**Last Updated**: 2026-04-21
 **Validation**: Automatic via `just test`

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { waitFor } from "../helpers/wait-for.js";
 
 // Track execFileSync / execFile calls
 let execFileSyncResult: string | Error = "[]";
@@ -182,8 +183,10 @@ describe("CronService", () => {
 		// Simulate file change
 		watchCallback?.("change", "jobs.json");
 
-		// Wait for debounce (150ms)
-		await new Promise((r) => setTimeout(r, 20));
+		await waitFor(() => callbackCount === 1, {
+			message:
+				"CronService watcher should trigger exactly one debounced reload",
+		});
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
@@ -201,7 +204,10 @@ describe("CronService", () => {
 		watchCallback?.("change", "jobs.json");
 		watchCallback?.("change", "jobs.json");
 
-		await new Promise((r) => setTimeout(r, 20));
+		await waitFor(() => callbackCount === 1, {
+			message:
+				"CronService debounce should collapse rapid file changes into one reload",
+		});
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { GitSorter } from "../../src/git-sort/scm-sorter.js";
 import { overrideWindowMethod } from "../helpers/typed-mocks.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
+import { waitFor } from "../helpers/wait-for.js";
 import { createMockSCMSorter } from "../types/command-test-mocks.js";
 
 describe("enable-sort command", () => {
@@ -134,8 +135,15 @@ describe("disable-sort command", () => {
 
 		await execute(mockSorter);
 
-		// Wait for the .then() callback to execute
-		await new Promise((resolve) => setTimeout(resolve, 10));
+		await waitFor(
+			() => {
+				expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+				return true;
+			},
+			{
+				message: "Expected Re-enable selection to trigger the enable command",
+			},
+		);
 
 		// Verify the enable command was executed
 		expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
@@ -156,8 +164,16 @@ describe("disable-sort command", () => {
 
 		await execute(mockSorter);
 
-		// Wait for the .then() callback to execute
-		await new Promise((resolve) => setTimeout(resolve, 10));
+		await waitFor(
+			() => {
+				expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+				return true;
+			},
+			{
+				message:
+					"Dismissed disable-sort notification should not run the enable command",
+			},
+		);
 
 		// Verify the enable command was NOT executed
 		expect(vscode.commands.executeCommand).not.toHaveBeenCalled();

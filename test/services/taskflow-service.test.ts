@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-
 import {
 	isTerminalFlowStatus,
 	taskflowStatusToIcon,
 	taskflowStatusToLabel,
 } from "../../src/types/taskflow-types.js";
+import { waitFor } from "../helpers/wait-for.js";
 
 let execFileSyncResult: string | Error = '{"count":0,"status":null,"flows":[]}';
 let execFileSyncCalls: Array<{ cmd: string; args: string[] }> = [];
@@ -310,7 +310,10 @@ describe("TaskFlowService", () => {
 		watchCallback?.("change", "runs.sqlite-wal");
 		watchCallback?.("change", "runs.sqlite-wal");
 
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await waitFor(() => callbackCount === 1, {
+			message:
+				"TaskFlow watcher debounce should collapse rapid WAL changes into one reload",
+		});
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
@@ -324,7 +327,9 @@ describe("TaskFlowService", () => {
 		});
 
 		watchCallback?.("change", "runs.sqlite");
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await waitFor(() => callbackCount === 1, {
+			message: "TaskFlow watcher should reload after runs.sqlite changes",
+		});
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});

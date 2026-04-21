@@ -14,6 +14,7 @@ import {
 import { AgentStatusBar } from "../../src/services/agent-status-bar.js";
 import { PerformanceTestHelper } from "../helpers/performance-test-helper.js";
 import type { setupVSCodeMock } from "../helpers/vscode-mock.js";
+import { waitFor } from "../helpers/wait-for.js";
 import {
 	type AgentNode,
 	type AgentRole,
@@ -1203,7 +1204,10 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		for (const node of getTaskNodes(provider.getChildren())) {
 			provider.getTreeItem(node);
 		}
-		await new Promise((resolve) => setTimeout(resolve, 10));
+		await waitFor(() => refreshEvents.length === 2, {
+			message:
+				"Expected tree refresh events after provider nodes were materialized",
+		});
 
 		expect(refreshEvents).toHaveLength(2);
 		expect(refreshEvents.every((event) => event?.type === "task")).toBe(true);

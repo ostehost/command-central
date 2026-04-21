@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type * as _fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { waitFor } from "../helpers/wait-for.js";
 
 // Ensure this file uses real fs even if other tests mock node:fs.
 // Use the cached reference saved by the preload (global-test-cleanup.ts)
@@ -61,10 +62,20 @@ describe("ProjectIconManager", () => {
 
 		expect(first).toBe(second);
 
-		// Auto-write is async best effort.
-		await new Promise((resolve) => setTimeout(resolve, 25));
-
 		const settingsPath = path.join(projectDir, ".vscode", "settings.json");
+		await waitFor(
+			() => {
+				if (!fs.existsSync(settingsPath)) {
+					return false;
+				}
+
+				const parsed = JSON.parse(
+					fs.readFileSync(settingsPath, "utf-8"),
+				) as Record<string, unknown>;
+				return parsed["commandCentral.project.icon"] === first;
+			},
+			{ message: "Expected async icon persistence to write settings.json" },
+		);
 		expect(fs.existsSync(settingsPath)).toBe(true);
 
 		const parsed = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { waitFor } from "../helpers/wait-for.js";
 
 let execFileSyncResult: string | Error = "[]";
 let execFileSyncCalls: Array<{ cmd: string; args: string[] }> = [];
@@ -204,7 +205,10 @@ describe("AcpSessionService", () => {
 		watchCallback?.("change", "runs.sqlite-wal");
 		watchCallback?.("change", "runs.sqlite-wal");
 
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await waitFor(() => callbackCount === 1, {
+			message:
+				"ACP watcher debounce should collapse rapid WAL changes into one reload",
+		});
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
@@ -218,7 +222,9 @@ describe("AcpSessionService", () => {
 		});
 
 		watchCallback?.("change", "runs.sqlite");
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await waitFor(() => callbackCount === 1, {
+			message: "ACP watcher should reload after runs.sqlite changes",
+		});
 		expect(callbackCount).toBe(1);
 		service.dispose();
 	});
@@ -232,7 +238,6 @@ describe("AcpSessionService", () => {
 		});
 
 		watchCallback?.("change", "some-other-file.db");
-		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(callbackCount).toBe(0);
 		service.dispose();
 	});
