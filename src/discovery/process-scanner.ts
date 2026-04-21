@@ -11,6 +11,7 @@
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
+import { canonicalizeProjectDir } from "../utils/project-scope.js";
 import {
 	defaultTimingRecorder,
 	type TimingRecorder,
@@ -221,7 +222,10 @@ export class ProcessScanner {
 					() => this.getProcessCwd(c.pid),
 				);
 				const explicitDir = this.extractExplicitProjectDir(c.command);
-				const projectDir = explicitDir ?? lsofCwd;
+				const projectDirRaw = explicitDir ?? lsofCwd;
+				const projectDir = projectDirRaw
+					? canonicalizeProjectDir(projectDirRaw)
+					: null;
 				if (!projectDir) {
 					filtered.push({
 						pid: c.pid,

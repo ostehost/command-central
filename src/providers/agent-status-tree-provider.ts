@@ -62,6 +62,7 @@ import {
 import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
 import type { ListeningPort } from "../utils/port-detector.js";
 import { detectListeningPortsAsync } from "../utils/port-detector.js";
+import { canonicalizeProjectDir } from "../utils/project-scope.js";
 import { relativeTime } from "../utils/relative-time.js";
 import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
 import {
@@ -725,7 +726,7 @@ function normalizeTask(
 			: VALID_TASK_STATUSES.has(statusRaw as AgentTaskStatus)
 				? (statusRaw as AgentTaskStatus)
 				: "stopped";
-	const projectDir = asString(raw["project_dir"]) ?? "";
+	const projectDir = canonicalizeProjectDir(asString(raw["project_dir"]) ?? "");
 	const projectName =
 		asString(raw["project_name"]) ??
 		(path.basename(projectDir) || "(unknown project)");

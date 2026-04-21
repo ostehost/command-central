@@ -166,4 +166,47 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 			provider.dispose();
 		}
 	});
+
+	test("canonicalizes symlinked project_dir values from tasks.json", () => {
+		const provider = makeProvider();
+		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
+		const realProjectDir = path.join(tmpDir, "projects", "alpha");
+		const aliasedProjectDir = path.join(tmpDir, "aliases", "alpha");
+		const tasksFile = path.join(tmpDir, "tasks.json");
+		fs.mkdirSync(realProjectDir, { recursive: true });
+		fs.mkdirSync(path.dirname(aliasedProjectDir), { recursive: true });
+		fs.symlinkSync(realProjectDir, aliasedProjectDir, "dir");
+		fs.writeFileSync(
+			tasksFile,
+			JSON.stringify({
+				version: 2,
+				tasks: {
+					canonicalized: {
+						id: "canonicalized",
+						status: "running",
+						project_dir: aliasedProjectDir,
+						project_name: "Alpha",
+						session_id: "agent-alpha",
+						bundle_path: "/Applications/Projects/Alpha.app",
+						prompt_file: "/tmp/task.md",
+						started_at: "2026-02-25T08:00:00Z",
+						attempts: 1,
+						max_attempts: 3,
+					},
+				},
+			}),
+		);
+
+		try {
+			(provider as unknown as { _filePath: string | null })._filePath =
+				tasksFile;
+			const registry = realReadRegistry.call(provider);
+			expect(registry.tasks["canonicalized"]?.project_dir).toBe(
+				fs.realpathSync(aliasedProjectDir),
+			);
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+			provider.dispose();
+		}
+	});
 });

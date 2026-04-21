@@ -6,8 +6,15 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+
+const realFs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof import("node:fs");
+mock.module("node:fs", () => realFs);
+
 import * as fs from "node:fs";
 import * as os from "node:os";
+import * as path from "node:path";
 import { ProcessScanner } from "../../src/discovery/process-scanner.js";
 
 const FIXED_NOW = Date.parse("2026-03-29T23:30:00Z");
@@ -726,6 +733,45 @@ describe("ProcessScanner", () => {
 			const agents = await scanner.scan();
 			expect(agents).toHaveLength(1);
 			expect(agents[0]?.projectDir).toBe("/Users/test/projects/my-app");
+		});
+
+		test("canonicalizes symlinked project directories before emitting agents", async () => {
+			const tmpDir = fs.mkdtempSync(
+				path.join(os.tmpdir(), "process-scanner-project-scope-"),
+			);
+			const realProjectDir = path.join(tmpDir, "real-project");
+			const aliasedProjectDir = path.join(tmpDir, "alias-project");
+			fs.mkdirSync(realProjectDir);
+			fs.symlinkSync(realProjectDir, aliasedProjectDir, "dir");
+
+			mockExecFile.mockImplementation(
+				(cmd: unknown, args: unknown, _opts: unknown) => {
+					if (cmd === "ps") {
+						return Promise.resolve({
+							stdout: [
+								"  PID  PPID STARTED                       COMMAND",
+								`77011 1 Sun Mar 29 23:03:22 2026 /usr/local/bin/claude --print hello`,
+							].join("\n"),
+							stderr: "",
+						});
+					}
+					if (cmd === "lsof" && Array.isArray(args) && args[1] === "77011") {
+						return Promise.resolve({
+							stdout: `p77011\nfcwd\nn${aliasedProjectDir}\n`,
+							stderr: "",
+						});
+					}
+					return Promise.resolve({ stdout: "", stderr: "" });
+				},
+			);
+
+			try {
+				const agents = await scanner.scan();
+				expect(agents).toHaveLength(1);
+				expect(agents[0]?.projectDir).toBe(fs.realpathSync(aliasedProjectDir));
+			} finally {
+				fs.rmSync(tmpDir, { recursive: true, force: true });
+			}
 		});
 
 		test("filters processes with internal tool dir CWD when no --cd present", async () => {
