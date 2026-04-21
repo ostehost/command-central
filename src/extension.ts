@@ -2034,11 +2034,6 @@ export async function activate(
 				},
 			),
 			vscode.commands.registerCommand(
-				"commandCentral.clearTerminalTasks",
-				async () =>
-					vscode.commands.executeCommand("commandCentral.clearCompletedAgents"),
-			),
-			vscode.commands.registerCommand(
 				"commandCentral.markStaleAgentFailed",
 				async (node?: { type: string; task?: AgentTask }) => {
 					const task = node?.task;

@@ -927,6 +927,12 @@
         "icon": "$(dashboard)"
       },
       {
+        "command": "commandCentral.openInfrastructureDashboard",
+        "title": "Open Infrastructure Dashboard",
+        "category": "Command Central",
+        "icon": "$(dashboard)"
+      },
+      {
         "command": "commandCentral.ghostty.createTerminal",
         "title": "Create Project Terminal",
         "category": "Command Central: Ghostty",
