@@ -8,11 +8,13 @@ export type ParsedReleaseVersion = {
 export function parseReleaseVersion(fileName: string): ParsedReleaseVersion | null {
 	const match = fileName.match(/(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?\.vsix$/);
 	if (!match) return null;
+	const [, major, minor, patch, prerelease] = match;
+	if (!major || !minor || !patch) return null;
 	return {
-		major: Number.parseInt(match[1], 10),
-		minor: Number.parseInt(match[2], 10),
-		patch: Number.parseInt(match[3], 10),
-		prerelease: match[4] ?? null,
+		major: Number.parseInt(major, 10),
+		minor: Number.parseInt(minor, 10),
+		patch: Number.parseInt(patch, 10),
+		prerelease: prerelease ?? null,
 	};
 }
 

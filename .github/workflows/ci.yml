@@ -24,17 +24,14 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: bun run build -- --no-install
+      - run: just ci
 
-      - name: Lint
-        run: bunx biome ci .
-
-      - name: Test (mock-isolated)
-        run: |
-          bun test test/utils/extension-discovery.test.ts
-          bun test test/integration/git-timestamps-integration.test.ts
-
-      - name: Test (bulk)
-        run: bun test test/commands test/git-sort test/mocks test/services test/tree-view test/ui test/types test/builders test/factories test/state test/events test/helpers test/providers test/discovery test/ghostty test/utils/formatters.test.ts test/utils/port-detector.test.ts test/utils/relative-time.test.ts test/utils/tasks-file-resolver.test.ts test/integration/agent-notifications.test.ts test/integration/multi-view-sort-isolation.test.ts test/integration/multi-workspace-command-handlers.test.ts test/integration/provider-disposal-bugs.test.ts test/integration/workspace-folder-changes.test.ts
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-ci
+          path: coverage-ci/test-run.log
+          if-no-files-found: error
 
       - name: Package
         run: bun run dist -- --no-install
