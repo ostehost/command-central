@@ -254,6 +254,9 @@ export interface StatusTimeGroupNode {
 	label: string;
 	nodes: SortableAgentNode[];
 	collapsibleState: vscode.TreeItemCollapsibleState;
+	parentProjectName?: string;
+	parentProjectDir?: string;
+	parentGroupKey?: string;
 }
 
 export type TreeElement =
@@ -3366,6 +3369,11 @@ export class AgentStatusTreeProvider
 	private buildStatusTimeGroups(
 		status: AgentStatusGroup,
 		nodes: SortableAgentNode[],
+		options?: {
+			parentProjectName?: string;
+			parentProjectDir?: string;
+			parentGroupKey?: string;
+		},
 	): StatusTimeGroupNode[] {
 		const periods: StatusTimeGroupPeriod[] = [
 			"today",
@@ -3385,7 +3393,7 @@ export class AgentStatusTreeProvider
 				const periodNodes = grouped.get(period) ?? [];
 				if (periodNodes.length === 0) return null;
 
-				return {
+				const groupNode: StatusTimeGroupNode = {
 					type: "statusTimeGroup" as const,
 					status,
 					period,
@@ -3396,6 +3404,16 @@ export class AgentStatusTreeProvider
 							? vscode.TreeItemCollapsibleState.Collapsed
 							: vscode.TreeItemCollapsibleState.Expanded,
 				};
+				if (options?.parentProjectName) {
+					groupNode.parentProjectName = options.parentProjectName;
+				}
+				if (options?.parentProjectDir) {
+					groupNode.parentProjectDir = options.parentProjectDir;
+				}
+				if (options?.parentGroupKey) {
+					groupNode.parentGroupKey = options.parentGroupKey;
+				}
+				return groupNode;
 			})
 			.filter((group): group is StatusTimeGroupNode => Boolean(group));
 	}
@@ -3409,7 +3427,11 @@ export class AgentStatusTreeProvider
 			});
 		}
 
-		return this.buildStatusTimeGroups(node.status, node.nodes);
+		return this.buildStatusTimeGroups(node.status, node.nodes, {
+			parentProjectName: node.parentProjectName,
+			parentProjectDir: node.parentProjectDir,
+			parentGroupKey: node.parentGroupKey,
+		});
 	}
 
 	private getProjectGroupChildren(node: ProjectGroupNode): AgentNode[] {
@@ -6100,7 +6122,7 @@ export class AgentStatusTreeProvider
 			`${STATUS_GROUP_LABELS[node.status]} · ${count} ${count === 1 ? "agent" : "agents"}`,
 			collapsibleState,
 		);
-		item.id = `status-group:${node.status}`;
+		item.id = `status-group:${node.status}:${node.parentProjectDir ?? node.parentProjectName ?? ""}:${node.parentGroupKey ?? ""}`;
 		item.contextValue = "statusGroup";
 		item.iconPath = STATUS_GROUP_ICONS[node.status];
 		item.tooltip = `${STATUS_GROUP_LABELS[node.status]} • ${count} ${count === 1 ? "agent" : "agents"}`;
@@ -6111,7 +6133,7 @@ export class AgentStatusTreeProvider
 		node: StatusTimeGroupNode,
 	): vscode.TreeItem {
 		const item = new vscode.TreeItem(node.label, node.collapsibleState);
-		item.id = `status-time-group:${node.status}:${node.period}`;
+		item.id = `status-time-group:${node.status}:${node.period}:${node.parentProjectDir ?? node.parentProjectName ?? ""}:${node.parentGroupKey ?? ""}`;
 		item.contextValue = "statusTimeGroup";
 		item.iconPath = new vscode.ThemeIcon("calendar");
 		item.tooltip = `${STATUS_GROUP_LABELS[node.status]} • ${node.label}`;

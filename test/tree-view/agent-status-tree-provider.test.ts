@@ -60,6 +60,8 @@ import {
 	type AgentNode,
 	AgentStatusTreeProvider,
 	type AgentTask,
+	type StatusGroupNode,
+	type StatusTimeGroupNode,
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
 import type { ReviewTracker } from "../../src/services/review-tracker.js";
@@ -389,5 +391,59 @@ describe("AgentStatusTreeProvider", () => {
 		const item = provider.getTreeItem(summary);
 		expect(item.contextValue).toBe("agentSummary");
 		expect(item.collapsibleState).toBe(0); // None
+	});
+
+	test("status groups in different projects with the same status get distinct TreeItem ids", () => {
+		const groupAlpha: StatusGroupNode = {
+			type: "statusGroup",
+			status: "running",
+			nodes: [],
+			parentProjectName: "Alpha",
+			parentProjectDir: "/Users/test/projects/alpha",
+		};
+		const groupBeta: StatusGroupNode = {
+			type: "statusGroup",
+			status: "running",
+			nodes: [],
+			parentProjectName: "Beta",
+			parentProjectDir: "/Users/test/projects/beta",
+		};
+
+		const itemAlpha = provider.getTreeItem(groupAlpha);
+		const itemBeta = provider.getTreeItem(groupBeta);
+
+		expect(itemAlpha.id).not.toBe(itemBeta.id);
+		expect(itemAlpha.id).toContain("/Users/test/projects/alpha");
+		expect(itemBeta.id).toContain("/Users/test/projects/beta");
+	});
+
+	test("status-time groups in different projects with the same status and period get distinct TreeItem ids", () => {
+		const timeGroupAlpha: StatusTimeGroupNode = {
+			type: "statusTimeGroup",
+			status: "done",
+			period: "today",
+			label: "Today (1)",
+			nodes: [],
+			collapsibleState: 1,
+			parentProjectName: "Alpha",
+			parentProjectDir: "/Users/test/projects/alpha",
+		};
+		const timeGroupBeta: StatusTimeGroupNode = {
+			type: "statusTimeGroup",
+			status: "done",
+			period: "today",
+			label: "Today (1)",
+			nodes: [],
+			collapsibleState: 1,
+			parentProjectName: "Beta",
+			parentProjectDir: "/Users/test/projects/beta",
+		};
+
+		const itemAlpha = provider.getTreeItem(timeGroupAlpha);
+		const itemBeta = provider.getTreeItem(timeGroupBeta);
+
+		expect(itemAlpha.id).not.toBe(itemBeta.id);
+		expect(itemAlpha.id).toContain("/Users/test/projects/alpha");
+		expect(itemBeta.id).toContain("/Users/test/projects/beta");
 	});
 });
