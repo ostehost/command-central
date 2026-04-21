@@ -1335,6 +1335,13 @@ export async function activate(
 				}) => {
 					// Support both launcher tasks and discovered agents
 					const task = node?.task;
+					if (task && task.status !== "running") {
+						await vscode.commands.executeCommand(
+							"commandCentral.resumeAgentSession",
+							node,
+						);
+						return;
+					}
 					const discovered = node?.agent;
 					const projectDir = task?.project_dir ?? discovered?.projectDir;
 					const sessionId = task?.session_id ?? discovered?.sessionId;
