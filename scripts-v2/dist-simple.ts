@@ -25,6 +25,7 @@
 import { spawn } from "bun";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { compareReleaseFileNames } from "./dist-simple-utils.ts";
 
 // Configuration
 const ROOT = process.cwd();
@@ -399,33 +400,7 @@ async function cleanupOldReleases(maxReleases: number) {
 		const files = await fs.readdir(RELEASES_DIR);
 		const vsixFiles = files
 			.filter(f => f.endsWith(".vsix"))
-			.sort((a, b) => {
-				// Extract version numbers for proper semantic sorting
-				const versionA = a.match(/(\d+)\.(\d+)\.(\d+)(?:-(\d+))?/);
-				const versionB = b.match(/(\d+)\.(\d+)\.(\d+)(?:-(\d+))?/);
-
-				if (!versionA || !versionB) return a.localeCompare(b);
-
-				// Compare major.minor.patch
-				const majorDiff = parseInt(versionB[1]) - parseInt(versionA[1]);
-				if (majorDiff !== 0) return majorDiff;
-
-				const minorDiff = parseInt(versionB[2]) - parseInt(versionA[2]);
-				if (minorDiff !== 0) return minorDiff;
-
-				const patchDiff = parseInt(versionB[3]) - parseInt(versionA[3]);
-				if (patchDiff !== 0) return patchDiff;
-
-				// Stable releases sort newer than prereleases with the same core version.
-				const hasPreA = versionA[4] !== undefined;
-				const hasPreB = versionB[4] !== undefined;
-				if (hasPreA !== hasPreB) return hasPreA ? 1 : -1;
-
-				// Compare prerelease numbers numerically (e.g. -13 vs -9)
-				const preA = hasPreA ? parseInt(versionA[4]) : 0;
-				const preB = hasPreB ? parseInt(versionB[4]) : 0;
-				return preB - preA;
-			}); // Now properly sorted newest first
+			.sort(compareReleaseFileNames); // Newest first
 
 		if (vsixFiles.length > maxReleases) {
 			const toDelete = vsixFiles.slice(maxReleases);
