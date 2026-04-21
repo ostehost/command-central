@@ -875,6 +875,8 @@ export class AgentStatusTreeProvider
 	private _registryLoadIssue: string | null = null;
 	/** First read loading indicator (shown only before initial reload finishes) */
 	private _initialReadInProgress = true;
+	private _lastLoggedTasksFilePath: string | null = null;
+	private _lastLoggedRegistryState: string | null = null;
 	/** Prevent stale async reload results from overwriting newer state */
 	private _reloadGeneration = 0;
 	private _agentStatusView: vscode.TreeView<AgentNode> | null = null;
@@ -1216,6 +1218,19 @@ export class AgentStatusTreeProvider
 
 		const filePath = this.getConfiguredPath();
 		this._filePath = filePath;
+		if (this._lastLoggedTasksFilePath !== filePath) {
+			if (filePath) {
+				console.info(
+					`[Command Central] Agent Status using tasks file: ${filePath}`,
+				);
+			} else {
+				console.info(
+					"[Command Central] Agent Status has no tasks file configured",
+				);
+			}
+			this._lastLoggedTasksFilePath = filePath;
+			this._lastLoggedRegistryState = null;
+		}
 		if (!filePath) return;
 
 		const debouncedReload = () => {
@@ -2622,6 +2637,16 @@ export class AgentStatusTreeProvider
 			const version = parsedRegistry["version"];
 			const normalizedTasks = normalizeRegistryTasks(parsedRegistry["tasks"]);
 			if ((version === 1 || version === 2) && normalizedTasks) {
+				const taskCount = Object.keys(normalizedTasks).length;
+				const registryState = `${this._filePath ?? "(none)"}::${taskCount}`;
+				if (this._lastLoggedRegistryState !== registryState) {
+					console.info(
+						`[Command Central] Agent Status loaded ${taskCount} launcher task${
+							taskCount === 1 ? "" : "s"
+						} from ${this._filePath}`,
+					);
+					this._lastLoggedRegistryState = registryState;
+				}
 				return { version: 2, tasks: normalizedTasks };
 			}
 

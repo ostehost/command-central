@@ -469,10 +469,6 @@ export class AgentRegistry implements vscode.Disposable {
 	}
 
 	private resolveLauncherTasksFile(configuredPath: string): string | null {
-		const envTasksFile = process.env["TASKS_FILE"];
-		if (envTasksFile && fs.existsSync(envTasksFile)) {
-			return envTasksFile;
-		}
 		return resolveTasksFilePath(
 			configuredPath,
 			vscode.workspace.workspaceFolders,

@@ -59,6 +59,29 @@ describe("resolveTasksFilePath", () => {
 		expect(result).toBe("/custom/path/tasks.json");
 	});
 
+	test("env override takes precedence when TASKS_FILE exists", () => {
+		const envPath = "/env/tasks.json";
+		mockExistsSync.mockImplementation((p: unknown) => p === envPath);
+
+		const result = resolveTasksFilePath("/custom/path/tasks.json", undefined, {
+			envTasksFile: envPath,
+		});
+
+		expect(result).toBe(envPath);
+	});
+
+	test("expands ~ in TASKS_FILE override", () => {
+		const home = process.env["HOME"] || process.env["USERPROFILE"] || "";
+		const envPath = path.join(home, "fixture", "tasks.json");
+		mockExistsSync.mockImplementation((p: unknown) => p === envPath);
+
+		const result = resolveTasksFilePath("", undefined, {
+			envTasksFile: "~/fixture/tasks.json",
+		});
+
+		expect(result).toBe(envPath);
+	});
+
 	test("expands ~ in configured path", () => {
 		const result = resolveTasksFilePath("~/my-launcher/tasks.json");
 		const home = process.env["HOME"] || process.env["USERPROFILE"] || "";

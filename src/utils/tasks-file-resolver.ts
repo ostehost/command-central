@@ -23,12 +23,22 @@ const AUTO_DETECT_CANDIDATES = [
  *
  * @param configValue - The value of `commandCentral.agentTasksFile` (may be empty).
  * @param workspaceFolders - Current VS Code workspace folders in precedence order.
+ * @param options - Optional env override input for hermetic tests and dev-host fixtures.
  * @returns The resolved absolute path, or `null` if no tasks file was found.
  */
 export function resolveTasksFilePath(
 	configValue: string,
 	workspaceFolders?: readonly vscode.WorkspaceFolder[],
+	options?: { envTasksFile?: string | undefined },
 ): string | null {
+	const envTasksFile = options?.envTasksFile ?? process.env["TASKS_FILE"];
+	if (envTasksFile && envTasksFile.trim() !== "") {
+		const expandedEnvTasksFile = expandHome(envTasksFile.trim());
+		if (fs.existsSync(expandedEnvTasksFile)) {
+			return expandedEnvTasksFile;
+		}
+	}
+
 	// If the user configured an explicit path, use it (with ~ expansion)
 	if (configValue && configValue.trim() !== "") {
 		return expandHome(configValue.trim());

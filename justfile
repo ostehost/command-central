@@ -61,6 +61,7 @@ default:
     @echo ""
     @echo "Debugging:"
     @echo "  just debug-filter  Debug extension filter with verbose logging"
+    @echo "  just fixture-edh   Launch a fixture-backed Extension Development Host"
     @echo ""
     @echo "Utilities:"
     @echo "  just clean           Remove build artifacts"
@@ -159,6 +160,23 @@ dev *path="": ghostty
         fi; \
         bun run scripts-v2/dev.ts {{path}}; \
     fi
+
+# Launch a clean Extension Development Host against a stable tasks fixture.
+# Uses an isolated VS Code user-data dir because the macOS `code` launcher does
+# not reliably propagate custom env vars into the Extension Development Host,
+# and direct app launch is more stable here than `code --user-data-dir`.
+# Usage:
+#   just fixture-edh
+#   just fixture-edh test/fixtures/agent-status/dogfood-live-tasks.json
+fixture-edh fixture="test/fixtures/agent-status/alpha-beta-12.json" workspace="test/fixtures/workspaces/cc-manual-workspace" user_data_dir="/tmp/cc-fixture-edh-user-data":
+    @mkdir -p "{{workspace}}"
+    @mkdir -p "{{user_data_dir}}/User"
+    @printf '{\n  "commandCentral.agentTasksFile": "%s",\n  "commandCentral.discovery.enabled": false,\n  "commandCentral.agentStatus.groupByProject": true,\n  "security.workspace.trust.enabled": false\n}\n' "$(pwd)/{{fixture}}" > "{{user_data_dir}}/User/settings.json"
+    @echo "🧪 Launching fixture-backed Extension Development Host..."
+    @echo "   • Fixture: {{fixture}}"
+    @echo "   • Workspace: {{workspace}}"
+    @echo "   • User data: {{user_data_dir}}"
+    @open -na "Visual Studio Code" --args --user-data-dir "{{user_data_dir}}" --extensionDevelopmentPath "$(pwd)" --disable-extensions --new-window "$(pwd)/{{workspace}}"
 
 # ──────────────────────────────────────────────────────────
 # CROSS-PROJECT WORKFLOW COMMANDS
