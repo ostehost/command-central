@@ -39,7 +39,7 @@ Current behavior:
 
 Current behavior:
 - the command is callable programmatically after activation
-- it behaves like an alias, not a distinct implementation
+- it behaves like a stub, not a distinct implementation
 - the command is not discoverable via `package.json` command contributions
 
 ### Position C — manifest advertises adjacent command surfaces, but not these two
@@ -55,6 +55,22 @@ Current behavior:
 - manifest-driven tooling and any contract test built only from
   `contributes.commands` would treat both commands as nonexistent
 - the command palette cannot advertise these commands via manifest metadata
+
+### Position D — `clearTerminalTasks` is a planned P1 feature, not a finished contract
+
+- `research/RESEARCH-failed-state-ux.md:2` states
+  `commandCentral.clearTerminalTasks` is not implemented.
+- `research/RESEARCH-failed-state-ux.md:180` names
+  `commandCentral.clearTerminalTasks` as the planned command.
+- `research/RESEARCH-failed-state-ux.md:246-247` plans both the real
+  registration work and a future title-bar contribution.
+- `research/AUDIT-SUMMARY-2026-03-25.md:45` lists
+  `clearTerminalTasks` as part of an unfinished P1 work item.
+
+Current behavior:
+- the research docs describe future intent, not a completed public command
+- the current runtime registration is an unfinished placeholder for that intent
+- contributing the stub today would turn planned work into contract prematurely
 
 ## Resolution options
 
@@ -92,23 +108,26 @@ Risk:
 - `openInfrastructureDashboard` is already wired into a visible status-bar
   path, so removing it may force a non-command refactor for a user-facing UI
 
-### Option 3 — hybrid
+### Option 3 — ratified hybrid
 
 Treat the two commands differently.
 
 Required follow-up:
 - add `commandCentral.openInfrastructureDashboard` to
   `package.json:contributes.commands`
-- remove or internalize `commandCentral.clearTerminalTasks`, keeping
-  `commandCentral.clearCompletedAgents` as the single public clear command
+- remove the current `commandCentral.clearTerminalTasks` stub registration
+- keep `research/RESEARCH-failed-state-ux.md` and
+  `research/AUDIT-SUMMARY-2026-03-25.md` intact as future intent documents
+- leave the real `clearTerminalTasks` feature for a later implementation PR
 
 Impact:
 - user-facing infrastructure navigation becomes explicit and contractable
-- the alias command does not become accidental public API
-- manifest contract test needs one ratified exception resolved before landing
+- the unfinished bulk-clear placeholder does not become accidental public API
+- the P1 feature remains planned without locking in stub behavior as contract
 
 Risk:
-- this is a product decision, not a purely mechanical reconciliation
+- future `clearTerminalTasks` work will need to reintroduce the command with
+  its own real semantics and manifest entry
 
 ## User-visible implications
 
@@ -121,26 +140,36 @@ two mismatched truths:
 
 For `openInfrastructureDashboard`, that mismatch matters more because a visible
 status bar feature depends on the command. For `clearTerminalTasks`, the
-mismatch looks more like an internal alias leaking into the command registry.
+mismatch is a planned future feature currently represented by a stub.
 
 ## Recommendation
 
-Recommend **Option 3 — hybrid**:
+Recommend **Option 3 — ratified hybrid**:
 
 - make `commandCentral.openInfrastructureDashboard` explicit public surface by
   contributing it in `package.json`
-- internalize or remove `commandCentral.clearTerminalTasks` so
-  `commandCentral.clearCompletedAgents` remains the only public clear command
+- remove the current `commandCentral.clearTerminalTasks` stub registration
+- preserve the research docs describing the planned future bulk-clear feature
 
 Why this recommendation:
 - it preserves the user-facing infrastructure dashboard entrypoint already
   implied by `InfrastructureHealthStatusBar`
-- it avoids blessing a redundant alias as permanent public API
-- it keeps the eventual manifest contract test strict without requiring awkward
-  exceptions for known internal-only commands
+- it avoids blessing unfinished stub behavior as permanent public API
+- it keeps the future P1 implementation free to define the real bulk-clear
+  behavior, confirmation flow, and title-bar exposure intentionally
+
+## Ratified
+
+- Date: 2026-04-21
+- Ratifier: @ostehost
+- Resolution:
+  - contribute `commandCentral.openInfrastructureDashboard`
+  - remove the current `commandCentral.clearTerminalTasks` stub registration
+  - preserve the research docs; do not archive or annotate them in this PR
 
 ## Stop condition
 
-Do not land `test/package-json/manifest-contract.test.ts` until this decision is
-ratified. The test would otherwise silently choose whether code or manifest is
-authoritative.
+Ratification is complete. The remaining work is mechanical alignment:
+- revise this decision doc in place
+- align code and manifest to the ratified resolution
+- land `test/package-json/manifest-contract.test.ts` after parity is restored
