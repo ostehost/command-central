@@ -360,6 +360,12 @@ test-integration:
      bun run _test:discovery-e2e && \
      bun run _test:tree-view-patterns
 
+# Run real VS Code integration tests with @vscode/test-electron
+test-electron:
+    @echo "🧪 Running real VS Code integration tests..."
+    @echo ""
+    @bun run test/integration/runTest.ts
+
 # Run tests with coverage report
 test-coverage:
     @echo "📊 Running tests with coverage..."
