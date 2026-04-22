@@ -1,20 +1,34 @@
-/**
- * Integration Test Suite Loader
- * Configures and runs all integration tests using Bun
- */
+import * as activation from "./activation.test.js";
+import * as commandExecutes from "./command-executes.test.js";
+import * as commandsRegistered from "./commands-registered.test.js";
+import * as deactivation from "./deactivation.test.js";
+import * as treeViewRenders from "./tree-view-renders.test.js";
 
-// Import all test files
-import "./activation.test.js";
-import "./commands.test.js";
-import "./configuration.test.js";
-import "./security.test.js";
+interface ScenarioModule {
+	scenarioName: string;
+	run(): Promise<void>;
+}
+
+const scenarios: ScenarioModule[] = [
+	activation,
+	commandsRegistered,
+	treeViewRenders,
+	commandExecutes,
+	deactivation,
+];
+
+function formatDuration(durationMs: number): string {
+	if (durationMs < 1000) return `${durationMs.toFixed(0)}ms`;
+	return `${(durationMs / 1000).toFixed(2)}s`;
+}
 
 export async function run(): Promise<void> {
-	console.log("Running VS Code integration tests with Bun...");
+	console.log("Running Command Central real-VS-Code scenarios...");
 
-	// Test files are already imported above and will run automatically
-	// when Bun's test runner executes this file
-
-	// Return a promise that resolves when tests complete
-	return Promise.resolve();
+	for (const scenario of scenarios) {
+		const start = performance.now();
+		await scenario.run();
+		const durationMs = performance.now() - start;
+		console.log(`✓ ${scenario.scenarioName} (${formatDuration(durationMs)})`);
+	}
 }

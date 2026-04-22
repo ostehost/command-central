@@ -102,6 +102,80 @@ let testCountStatusBar:
 	| undefined;
 let mainLogger: LoggerService;
 let gitSortLogger: LoggerService;
+let integrationTestContext: vscode.ExtensionContext | undefined;
+
+export interface CommandCentralIntegrationSnapshot {
+	subscriptionCount: number;
+	hasAgentStatusProvider: boolean;
+	hasProjectViewManager: boolean;
+	hasProjectIconService: boolean;
+	hasExtensionFilterViewManager: boolean;
+	hasGroupingStateManager: boolean;
+	hasGroupingViewManager: boolean;
+	hasTerminalManager: boolean;
+	hasBinaryManager: boolean;
+	hasTestCountStatusBar: boolean;
+	activeProjectSlots: string[];
+}
+
+export interface CommandCentralAgentStatusSnapshot {
+	rootChildrenCount: number;
+	taskCount: number;
+}
+
+export interface CommandCentralIntegrationDeactivationSnapshot {
+	before: CommandCentralIntegrationSnapshot;
+	after: CommandCentralIntegrationSnapshot;
+}
+
+export interface CommandCentralIntegrationTestApi {
+	kind: "command-central-test-api";
+	getSnapshot(): CommandCentralIntegrationSnapshot;
+	getAgentStatusSnapshot(): CommandCentralAgentStatusSnapshot;
+	deactivateForTest(): Promise<CommandCentralIntegrationDeactivationSnapshot>;
+}
+
+function isIntegrationTestMode(): boolean {
+	return process.env["COMMAND_CENTRAL_TEST_MODE"] === "1";
+}
+
+function getIntegrationSnapshot(): CommandCentralIntegrationSnapshot {
+	return {
+		subscriptionCount: integrationTestContext?.subscriptions.length ?? 0,
+		hasAgentStatusProvider: agentStatusProvider !== undefined,
+		hasProjectViewManager: projectViewManager !== undefined,
+		hasProjectIconService: projectIconService !== undefined,
+		hasExtensionFilterViewManager: extensionFilterViewManager !== undefined,
+		hasGroupingStateManager: groupingStateManager !== undefined,
+		hasGroupingViewManager: groupingViewManager !== undefined,
+		hasTerminalManager: terminalManager !== undefined,
+		hasBinaryManager: binaryManager !== undefined,
+		hasTestCountStatusBar: testCountStatusBar !== undefined,
+		activeProjectSlots: [
+			...(projectViewManager?.getAllWorkspaceDisplayNames().keys() ?? []),
+		],
+	};
+}
+
+function getAgentStatusSnapshot(): CommandCentralAgentStatusSnapshot {
+	const rootChildren = agentStatusProvider?.getChildren();
+	return {
+		rootChildrenCount: rootChildren?.length ?? 0,
+		taskCount: agentStatusProvider?.getTasks().length ?? 0,
+	};
+}
+
+function clearIntegrationTestContextSubscriptions(): void {
+	const subscriptions = integrationTestContext?.subscriptions;
+	if (!subscriptions) return;
+
+	for (const subscription of [...subscriptions]) {
+		subscription.dispose();
+	}
+
+	subscriptions.length = 0;
+	integrationTestContext = undefined;
+}
 
 /**
  * Whether a task should route through the session-store's cached bundle mapping.
@@ -153,7 +227,7 @@ export function shouldTrustBundleSurface(
 
 export async function activate(
 	context: vscode.ExtensionContext,
-): Promise<void> {
+): Promise<CommandCentralIntegrationTestApi | undefined> {
 	const start = performance.now();
 
 	try {
@@ -177,6 +251,9 @@ export async function activate(
 		// Get version from package.json
 		const packageJson = context.extension.packageJSON;
 		const version = packageJson?.version || "unknown";
+		if (isIntegrationTestMode()) {
+			integrationTestContext = context;
+		}
 
 		mainLogger.info(`Extension starting... (v${version})`);
 		mainLogger.info(`Command Central v${version}`);
@@ -3305,18 +3382,39 @@ export async function activate(
 		mainLogger.info(`✅ Extension activated in ${activationTime.toFixed(0)}ms`);
 		mainLogger.info(`📦 Command Central v${version} ready`);
 		mainLogger.info("📝 Git Sort + Project Views ready");
+
+		if (isIntegrationTestMode()) {
+			return {
+				kind: "command-central-test-api",
+				getSnapshot: () => getIntegrationSnapshot(),
+				getAgentStatusSnapshot: () => getAgentStatusSnapshot(),
+				deactivateForTest: async () => {
+					const before = getIntegrationSnapshot();
+					await deactivate();
+					clearIntegrationTestContextSubscriptions();
+					const after = getIntegrationSnapshot();
+					return { before, after };
+				},
+			};
+		}
 	} catch (error) {
 		mainLogger.error("Failed to activate", error as Error);
 		vscode.window.showErrorMessage(
 			`Failed to activate Command Central: ${error instanceof Error ? error.message : "Unknown error"}`,
 		);
+		if (isIntegrationTestMode()) {
+			throw error;
+		}
 	}
+
+	return undefined;
 }
 
 export async function deactivate(): Promise<void> {
 	// Clean up Git Sorter
 	if (gitSorter) {
 		gitSorter.disable();
+		gitSorter = undefined;
 	}
 
 	// Note: Provider disposal now handled by ProviderFactory via context.subscriptions
@@ -3325,21 +3423,25 @@ export async function deactivate(): Promise<void> {
 	// Clean up Project View Manager
 	if (projectViewManager) {
 		projectViewManager.dispose();
+		projectViewManager = undefined;
 	}
 
 	// Clean up Project Icon Service
 	if (projectIconService) {
 		projectIconService.dispose();
+		projectIconService = undefined;
 	}
 
 	// Clean up Extension Filter View Manager
 	if (extensionFilterViewManager) {
 		extensionFilterViewManager.dispose();
+		extensionFilterViewManager = undefined;
 	}
 
 	// Clean up Grouping View Manager
 	if (groupingViewManager) {
 		groupingViewManager.dispose();
+		groupingViewManager = undefined;
 	}
 
 	// Note: agentStatusProvider disposal handled by context.subscriptions
@@ -3349,7 +3451,15 @@ export async function deactivate(): Promise<void> {
 	// Clean up Grouping State Manager
 	if (groupingStateManager) {
 		groupingStateManager.dispose();
+		groupingStateManager = undefined;
 	}
+
+	agentStatusProvider = undefined;
+	terminalManager = undefined;
+	binaryManager = undefined;
+	testCountStatusBar = undefined;
+
+	mainLogger?.info("Extension deactivated");
 
 	// Clean up loggers
 	mainLogger?.dispose();
@@ -3361,6 +3471,4 @@ export async function deactivate(): Promise<void> {
 	} catch {
 		// Silent — telemetry must never block deactivation
 	}
-
-	mainLogger?.info("Extension deactivated");
 }

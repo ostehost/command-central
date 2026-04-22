@@ -1,181 +1,152 @@
 #!/usr/bin/env bun
 
-/**
- * VS Code Extension Integration Test Runner
- * Leverages existing validation infrastructure from scripts/
- * Following Testing Framework PRD requirements
- */
-
-import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
-import { validate } from "../../scripts-v2/lib/validator.js";
+import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 
-// Removed activation-monitor import - not needed for integration tests
-
-// Import VS Code test electron
-interface TestElectron {
-	downloadAndUnzipVSCode: (version?: string) => Promise<string>;
-	runTests: (options: {
-		vscodeExecutablePath: string;
-		extensionDevelopmentPath: string;
-		extensionTestsPath: string;
-		launchArgs?: string[];
-		extensionTestsEnv?: Record<string, string>;
-	}) => Promise<void>;
+function formatDuration(durationMs: number): string {
+	if (durationMs < 1000) return `${durationMs.toFixed(0)}ms`;
+	return `${(durationMs / 1000).toFixed(2)}s`;
 }
 
-let testElectron: TestElectron | undefined;
-try {
-	// Dynamic import with proper error handling
-	// @ts-expect-error - Package may not be installed, handled gracefully at runtime
-	const module = await import("@vscode/test-electron");
-	testElectron = module as TestElectron;
-} catch (error) {
-	console.error("❌ @vscode/test-electron not installed");
-	console.error("   Run: bun add -d @vscode/test-electron");
-	console.error(`   Error: ${error}`);
-	process.exit(1);
+async function buildIntegrationSuite(outdir: string): Promise<string> {
+	const result = await Bun.build({
+		entrypoints: [path.join(import.meta.dir, "suite", "index.ts")],
+		outdir,
+		target: "node",
+		format: "cjs",
+		external: ["vscode"],
+		naming: {
+			entry: "index.js",
+		},
+	});
+
+	if (result.success) {
+		return path.join(outdir, "index.js");
+	}
+
+	for (const log of result.logs) {
+		console.error(log.message);
+	}
+
+	throw new Error("Failed to build the real-VS-Code integration suite.");
 }
 
-if (!testElectron) {
-	console.error("❌ Failed to load @vscode/test-electron");
-	process.exit(1);
+async function createTestWorkspace(workspaceDir: string): Promise<void> {
+	await mkdir(workspaceDir, { recursive: true });
+	await writeFile(
+		path.join(workspaceDir, "README.md"),
+		"# Command Central Integration Test Workspace\n",
+	);
 }
 
-const { downloadAndUnzipVSCode, runTests } = testElectron;
+async function readExtensionId(
+	extensionDevelopmentPath: string,
+): Promise<string> {
+	const packageJson = JSON.parse(
+		await readFile(path.join(extensionDevelopmentPath, "package.json"), "utf8"),
+	) as { name: string; publisher: string };
+	return `${packageJson.publisher}.${packageJson.name}`;
+}
 
-export async function runIntegrationTests() {
-	console.log("🧪 VS Code Extension Integration Tests");
-	console.log(`=${"=".repeat(59)}`);
-
-	// Step 1: Run pre-flight validation using existing infrastructure
-	console.log("\n📋 Step 1: Pre-flight Validation");
-	console.log("-".repeat(60));
-
-	const validationResult = await validate({ level: "full" });
-	if (!validationResult.passed) {
-		console.error("❌ Pre-flight validation failed");
-		console.error("   Integration tests require a valid extension");
-		console.error("   Fix validation errors first with: just check");
-		process.exit(1);
-	}
-
-	console.log("✅ Pre-flight validation passed\n");
-
-	// Step 2: Build the extension
-	console.log("📋 Step 2: Building Extension");
-	console.log("-".repeat(60));
-
-	const buildResult = await Bun.$`bun run build`.quiet();
-	if (buildResult.exitCode !== 0) {
-		console.error("❌ Build failed");
-		console.error(buildResult.stderr.toString());
-		process.exit(1);
-	}
-
-	console.log("✅ Extension built successfully\n");
-
-	// Step 3: Set up test configuration
-	const extensionDevelopmentPath = path.resolve(__dirname, "../../");
-	const extensionTestsPath = path.resolve(__dirname, "./suite/index");
-	const testWorkspace = path.resolve(__dirname, "./fixtures/workspace");
-
-	// Ensure test workspace exists
-	if (!existsSync(testWorkspace)) {
-		await Bun.$`mkdir -p ${testWorkspace}`;
-		// Create a simple test file in the workspace
-		await Bun.write(
-			path.join(testWorkspace, "test.txt"),
-			"Test workspace for integration tests",
-		);
-	}
-
-	// Test matrix configuration
-	const testMatrix = [
-		{ version: "stable", platform: process.platform },
-		// Uncomment for full testing:
-		// { version: 'insiders', platform: process.platform }
+function buildLaunchArgs(params: {
+	workspaceDir: string;
+	userDataDir: string;
+	extensionsDir: string;
+}): string[] {
+	const launchArgs = [
+		params.workspaceDir,
+		"--disable-extensions",
+		"--disable-workspace-trust",
+		"--skip-welcome",
+		"--skip-release-notes",
+		"--user-data-dir",
+		params.userDataDir,
+		"--extensions-dir",
+		params.extensionsDir,
 	];
 
-	// Allow override from environment
-	const vscodeVersion = process.env["VSCODE_VERSION"];
-	if (vscodeVersion) {
-		testMatrix.length = 0;
-		testMatrix.push({ version: vscodeVersion, platform: process.platform });
+	if (process.platform === "linux") {
+		launchArgs.push("--disable-gpu", "--no-sandbox");
 	}
 
-	console.log("📋 Step 3: Running Integration Tests");
-	console.log("-".repeat(60));
-	console.log(`Extension Path: ${extensionDevelopmentPath}`);
-	console.log(`Test Path: ${extensionTestsPath}`);
-	console.log(`Workspace: ${testWorkspace}`);
-	console.log(`Test Matrix: ${testMatrix.map((t) => t.version).join(", ")}\n`);
+	return launchArgs;
+}
 
-	let allTestsPassed = true;
+export async function runIntegrationTests(): Promise<void> {
+	console.log("🧪 Command Central real-VS-Code integration tests");
+	console.log("=".repeat(60));
 
-	for (const config of testMatrix) {
-		console.log(`\n🔍 Testing against VS Code ${config.version}`);
-		console.log("=".repeat(40));
+	const extensionDevelopmentPath = path.resolve(import.meta.dir, "../..");
+	const requestedVersion = process.env["VSCODE_VERSION"];
+	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "cc-vsc-"));
+	const workspaceDir = path.join(tempRoot, "w");
+	const userDataDir = path.join(tempRoot, "u");
+	const extensionsDir = path.join(tempRoot, "e");
+	const suiteOutdir = path.join(tempRoot, "s");
 
-		try {
-			// Download VS Code if needed
-			console.log("📥 Downloading VS Code...");
-			const vscodeExecutablePath = await downloadAndUnzipVSCode(config.version);
-			console.log(
-				`✅ VS Code ${config.version} ready at: ${vscodeExecutablePath}`,
+	try {
+		console.log("\n📋 Step 1: Building extension");
+		console.log("-".repeat(60));
+		const buildResult = await Bun.$`bun run build`.quiet();
+		if (buildResult.exitCode !== 0) {
+			throw new Error(
+				buildResult.stderr.toString() || "Extension build failed.",
 			);
-
-			// Run the integration tests
-			console.log("🏃 Running tests...");
-			await runTests({
-				vscodeExecutablePath,
-				extensionDevelopmentPath,
-				extensionTestsPath,
-				launchArgs: [
-					testWorkspace,
-					"--disable-extensions", // Clean environment
-					"--disable-gpu", // CI compatibility
-					"--no-sandbox", // Docker compatibility
-					// Add for debugging:
-					// '--inspect-extensions=9229',
-				],
-				extensionTestsEnv: {
-					TEST_VERSION: config.version,
-					CI: process.env["CI"] || "false",
-					EXTENSION_ID: "ghostty-launcher", // From package.json
-				},
-			});
-
-			console.log(`✅ Tests passed for VS Code ${config.version}`);
-
-			// Post-test activation check removed - was checking wrong VS Code instance
-		} catch (err) {
-			console.error(`❌ Tests failed for VS Code ${config.version}:`, err);
-			allTestsPassed = false;
-
-			// Continue testing other versions unless CI
-			if (process.env["CI"] === "true") {
-				process.exit(1);
-			}
 		}
-	}
+		console.log("✅ Extension built successfully");
 
-	// Final summary
-	console.log(`\n${"=".repeat(60)}`);
-	if (allTestsPassed) {
-		console.log("✅ All integration tests passed!");
-		console.log("=".repeat(60));
-	} else {
-		console.error("❌ Some integration tests failed");
-		console.error("=".repeat(60));
-		process.exit(1);
+		console.log("\n📋 Step 2: Preparing VS Code test assets");
+		console.log("-".repeat(60));
+		await mkdir(suiteOutdir, { recursive: true });
+		await mkdir(userDataDir, { recursive: true });
+		await mkdir(extensionsDir, { recursive: true });
+		await createTestWorkspace(workspaceDir);
+		const extensionTestsPath = await buildIntegrationSuite(suiteOutdir);
+		const extensionId = await readExtensionId(extensionDevelopmentPath);
+		console.log(`✅ Suite bundled to ${extensionTestsPath}`);
+		console.log(`✅ Extension id: ${extensionId}`);
+
+		console.log("\n📋 Step 3: Downloading VS Code");
+		console.log("-".repeat(60));
+		const vscodeExecutablePath = requestedVersion
+			? await downloadAndUnzipVSCode(requestedVersion)
+			: await downloadAndUnzipVSCode();
+		console.log(`✅ VS Code ready at ${vscodeExecutablePath}`);
+
+		console.log("\n📋 Step 4: Running real-VS-Code scenarios");
+		console.log("-".repeat(60));
+		const start = performance.now();
+		await runTests({
+			vscodeExecutablePath,
+			extensionDevelopmentPath,
+			extensionTestsPath,
+			launchArgs: buildLaunchArgs({
+				workspaceDir,
+				userDataDir,
+				extensionsDir,
+			}),
+			extensionTestsEnv: {
+				CI: process.env["CI"] ?? "false",
+				COMMAND_CENTRAL_EXTENSION_ID: extensionId,
+				COMMAND_CENTRAL_TEST_MODE: "1",
+				TEST_VERSION: requestedVersion ?? "stable",
+			},
+		});
+		const durationMs = performance.now() - start;
+		console.log(
+			`✅ Real-VS-Code integration tests passed in ${formatDuration(durationMs)}`,
+		);
+	} finally {
+		await rm(tempRoot, { recursive: true, force: true });
 	}
 }
 
-// Run if called directly
 if (import.meta.main) {
-	runIntegrationTests().catch((err) => {
-		console.error("Fatal error:", err);
+	runIntegrationTests().catch((error) => {
+		console.error("❌ Real-VS-Code integration tests failed");
+		console.error(error);
 		process.exit(1);
 	});
 }
