@@ -22,18 +22,31 @@ const AUTO_DETECT_CANDIDATES = [
  * Resolve the tasks file path from configuration or auto-detection.
  *
  * @param configValue - The value of `commandCentral.agentTasksFile` (may be empty).
- * @param workspaceFolders - Current VS Code workspace folders (unused for auto-detect).
+ * @param workspaceFolders - Current VS Code workspace folders in precedence order.
  * @returns The resolved absolute path, or `null` if no tasks file was found.
  */
 export function resolveTasksFilePath(
 	configValue: string,
 	workspaceFolders?: readonly vscode.WorkspaceFolder[],
 ): string | null {
-	void workspaceFolders;
-
 	// If the user configured an explicit path, use it (with ~ expansion)
 	if (configValue && configValue.trim() !== "") {
 		return expandHome(configValue.trim());
+	}
+
+	// Workspace-local files win over global auto-detect locations.
+	for (const workspaceFolder of workspaceFolders ?? []) {
+		const workspaceFolderPath = workspaceFolder.uri.fsPath;
+		if (!workspaceFolderPath) continue;
+
+		const candidate = path.join(
+			workspaceFolderPath,
+			".ghostty-launcher",
+			"tasks.json",
+		);
+		if (fs.existsSync(candidate)) {
+			return candidate;
+		}
 	}
 
 	// Auto-detect: check each global candidate in priority order.

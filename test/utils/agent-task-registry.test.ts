@@ -25,6 +25,32 @@ describe("agent task registry utils", () => {
 		expect(parsed.tasks["one"]).toBeDefined();
 	});
 
+	test("parseTaskRegistry preserves supported versions and task payloads", () => {
+		const parsed = parseTaskRegistry(
+			JSON.stringify({
+				version: 1,
+				tasks: {
+					alpha: {
+						id: "alpha",
+						status: "completed",
+						meta: { retries: 2, labels: ["dogfood"] },
+					},
+				},
+			}),
+		);
+
+		expect(parsed).toEqual({
+			version: 1,
+			tasks: {
+				alpha: {
+					id: "alpha",
+					status: "completed",
+					meta: { retries: 2, labels: ["dogfood"] },
+				},
+			},
+		});
+	});
+
 	test("removeTaskFromRegistryMap falls back to nested id matching", () => {
 		const tasks: Record<string, unknown> = {
 			"launcher-key": { id: "task-1", status: "failed" },
@@ -53,6 +79,23 @@ describe("agent task registry utils", () => {
 		expect(Object.keys(tasks)).toEqual(["contract", "running"]);
 	});
 
+	test("countClearableAgentEntries includes every clearable status and skips active ones", () => {
+		const tasks: Record<string, unknown> = {
+			completed: { status: "completed" },
+			dirty: { status: "completed_dirty" },
+			stale: { status: "completed_stale" },
+			failed: { status: "failed" },
+			stopped: { status: "stopped" },
+			killed: { status: "killed" },
+			running: { status: "running" },
+			queued: { status: "queued" },
+			contractFailure: { status: "contract_failure" },
+			malformed: "not-an-object",
+		};
+
+		expect(countClearableAgentEntries(tasks)).toBe(6);
+	});
+
 	test("serializeTaskRegistry emits trailing newline", () => {
 		const serialized = serializeTaskRegistry({
 			version: 2,
@@ -68,6 +111,31 @@ describe("agent task registry utils", () => {
 				one: { id: "one", status: "completed" },
 			},
 		});
+	});
+
+	test("serializeTaskRegistry(parseTaskRegistry(raw)) round-trips valid v2 registries", () => {
+		const raw = JSON.stringify({
+			version: 2,
+			tasks: {
+				"launcher-key": {
+					id: "task-1",
+					status: "completed_dirty",
+					session: {
+						id: "session-1",
+						cwd: "/tmp/project",
+					},
+				},
+				"nested-key": {
+					id: "task-2",
+					status: "failed",
+					error_message: "boom",
+				},
+			},
+		});
+
+		expect(JSON.parse(serializeTaskRegistry(parseTaskRegistry(raw)))).toEqual(
+			JSON.parse(raw),
+		);
 	});
 
 	test("markTaskFailedInRegistryMap updates stale task status using nested id matching", () => {
@@ -120,5 +188,27 @@ describe("agent task registry utils", () => {
 			error_message: STALE_AGENT_STATUS_DESCRIPTION,
 		});
 		expect(tasks["running"]).toEqual({ id: "running", status: "running" });
+	});
+
+	test("markTasksFailedInRegistryMap ignores missing ids while matching nested task ids", () => {
+		const tasks: Record<string, unknown> = {
+			"launcher-key": { id: "task-1", status: "completed_stale" },
+			other: { id: "task-2", status: "running" },
+		};
+
+		expect(
+			markTasksFailedInRegistryMap(
+				tasks,
+				["task-1", "missing"],
+				STALE_AGENT_STATUS_DESCRIPTION,
+				"2026-04-02T18:10:00.000Z",
+			),
+		).toBe(1);
+		expect(tasks["launcher-key"]).toMatchObject({
+			id: "task-1",
+			status: "failed",
+			error_message: STALE_AGENT_STATUS_DESCRIPTION,
+		});
+		expect(tasks["other"]).toEqual({ id: "task-2", status: "running" });
 	});
 });
