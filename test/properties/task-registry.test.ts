@@ -8,6 +8,10 @@ import {
 const taskKeyArb = fc.string({ minLength: 1, maxLength: 12 });
 const tasksArb = fc.dictionary(taskKeyArb, fc.jsonValue(), { maxKeys: 5 });
 
+function canonicalizeJson<T>(value: T): T {
+	return JSON.parse(JSON.stringify(value)) as T;
+}
+
 describe("agent task registry property tests", () => {
 	// This property checks that valid v1/v2 registries survive parse + serialize without losing
 	// version or task payload data, aside from normal JSON pretty-printing and trailing newline.
@@ -19,7 +23,10 @@ describe("agent task registry property tests", () => {
 					serializeTaskRegistry(parseTaskRegistry(raw)),
 				);
 
-				expect(roundTripped).toEqual({ version, tasks });
+				expect(roundTripped).toEqual({
+					version,
+					tasks: canonicalizeJson(tasks),
+				});
 			}),
 			{ numRuns: 100 },
 		);
@@ -38,7 +45,10 @@ describe("agent task registry property tests", () => {
 						serializeTaskRegistry(parseTaskRegistry(raw)),
 					);
 
-					expect(normalized).toEqual({ version: 2, tasks });
+					expect(normalized).toEqual({
+						version: 2,
+						tasks: canonicalizeJson(tasks),
+					});
 				},
 			),
 			{ numRuns: 100 },
