@@ -355,7 +355,10 @@ describe("AgentStatusTreeProvider", () => {
 		const children = provider.getChildren();
 		const taskNode = getTaskNodes(children)[0];
 		expect(taskNode).toBeDefined();
-		const item = provider.getTreeItem(taskNode!);
+		if (!taskNode) {
+			throw new Error("Expected running task node");
+		}
+		const item = provider.getTreeItem(taskNode);
 		expect(item.command?.command).toBe("commandCentral.focusAgentTerminal");
 		expect(item.command?.title).toBe("Focus Terminal");
 	});
@@ -368,7 +371,10 @@ describe("AgentStatusTreeProvider", () => {
 		const children = provider.getChildren();
 		const taskNode = getTaskNodes(children)[0];
 		expect(taskNode).toBeDefined();
-		const item = provider.getTreeItem(taskNode!);
+		if (!taskNode) {
+			throw new Error("Expected completed task node");
+		}
+		const item = provider.getTreeItem(taskNode);
 		expect(item.command?.command).toBe("commandCentral.resumeAgentSession");
 		expect(item.command?.title).toBe("Resume Session");
 	});
