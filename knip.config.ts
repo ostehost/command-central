@@ -17,6 +17,8 @@ const config: KnipConfig = {
 
     // All test files
     "test/**/*.test.ts",
+    "test/integration/runTest.ts",
+    "test/integration/suite/**/*.ts",
 
     // Active scripts (v2) - new architecture
     "scripts-v2/**/*.ts",

@@ -3,6 +3,8 @@
   "entry": [
     "src/extension.ts",
     "scripts-v2/**/*.ts",
+    "test/integration/runTest.ts",
+    "test/integration/suite/**/*.ts",
     "test/**/*.test.ts",
     "test/setup/**/*.ts",
     "test/helpers/**/*.ts"

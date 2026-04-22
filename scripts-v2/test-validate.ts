@@ -85,6 +85,18 @@ function loadTestPartitions(): Map<string, Set<string>> {
 
 function isTestInPartition(testPath: string, patterns: Set<string>): boolean {
 	for (const pattern of patterns) {
+		if (pattern.includes("*")) {
+			const escapedPattern = pattern
+				.split("*")
+				.map((segment) =>
+					segment.replace(/[|\\{}()[\]^$+?.]/g, "\\$&"),
+				)
+				.join("[^/]*");
+			const regex = new RegExp(`^${escapedPattern}$`);
+			if (regex.test(testPath)) return true;
+			continue;
+		}
+
 		// Check exact file match
 		if (pattern === testPath) return true;
 
