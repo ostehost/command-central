@@ -58,6 +58,8 @@ test.BACKUP-*/
 .temp/
 .tmp/
 .ghostty-launcher/
+.vscode-test/
+coverage-ci/
 
 # Bundled terminal app (synced at build time, ~50MB)
 # Only .terminal-version is committed for tracking
