@@ -301,14 +301,16 @@ test-quality:
         exit 1; \
     fi
 
-    @# Check for skipped tests
-    @if grep -r "test\.skip\|describe\.skip" test --include="*.test.ts" --exclude-dir="_deleted" --exclude-dir=".legacy" >/dev/null 2>&1; then \
+    @# Check for skipped tests (except the explicit property-test demonstration marker)
+    @SKIPPED=`grep -r "test\.skip\|describe\.skip" test --include="*.test.ts" --exclude-dir="_deleted" --exclude-dir=".legacy" --with-filename --line-number 2>/dev/null | grep -v "INTENTIONAL_PROPERTY_DEMO" || true`; \
+    if [ -n "$SKIPPED" ]; then \
         echo "⚠️  Found skipped tests"; \
         echo ""; \
         echo "Skipped tests:"; \
-        grep -r "test\.skip\|describe\.skip" test --include="*.test.ts" --exclude-dir="_deleted" --exclude-dir=".legacy" --with-filename --line-number | sed 's/^/  - /'; \
+        echo "$SKIPPED" | sed 's/^/  - /'; \
         echo ""; \
         echo "💡 Implement or remove skipped tests"; \
+        echo "💡 INTENTIONAL_PROPERTY_DEMO is the only allowed skipped-test marker"; \
         exit 1; \
     fi
 

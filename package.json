@@ -181,7 +181,7 @@
         },
         "commandCentral.statusBar.priority": {
           "type": "number",
-          "default": 10000,
+          "default": 1e4,
           "description": "Priority for status bar positioning (higher = further left)",
           "scope": "window"
         },
@@ -1837,9 +1837,9 @@
   },
   "scripts": {
     "dev": "bun run scripts-v2/dev.ts",
-    "test": "bun test test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/ test/package-json/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
-    "test:coverage": "bun test --coverage test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/ test/package-json/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
-    "test:coverage:ci": "bun test --reporter=dots --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage-ci test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/ test/package-json/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
+    "test": "bun test test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/ test/package-json/ test/properties/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
+    "test:coverage": "bun test --coverage test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/ test/package-json/ test/properties/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
+    "test:coverage:ci": "bun test --reporter=dots --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage-ci test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/ test/package-json/ test/properties/ test/providers/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
     "dist": "bun run scripts-v2/dist-simple.ts",
     "_test:git-sort": "bun test test/git-sort/",
     "_test:core": "bun test test/utils test/services",
@@ -1854,6 +1854,7 @@
     "@types/node": "20.19.20",
     "@types/vscode": "^1.100.0",
     "@vscode/vsce": "^3.6.2",
+    "fast-check": "^4.7.0",
     "knip": "^5.66.3",
     "playwright": "^1.58.2",
     "typescript": "^5.9.3"
