@@ -166,11 +166,22 @@ If product intent is "every contributed command must be globally invocable from
 Command Palette immediately after activation," then choose Option 1 instead.
 But that would be a product-surface expansion, not a test-only fix.
 
+## Ratified
+
+- Date: 2026-04-21
+- Ratifier: @ostehost (delegate reviewer)
+- Resolution:
+  - keep `ProjectViewManager`'s per-view slot command registration contextual
+  - require all non-generated contributed commands after activation
+  - require generated slot commands only for active slots discovered in the
+    real host
+
 ## Stop condition
 
-Do not relax the PR 6 scenario until the owner ratifies one of the options
-above. Once ratified:
+Ratification is complete. The remaining work is mechanical alignment:
 
-- if Option 1: change product code, then keep the strict scenario
-- if Option 2: narrow the scenario/test to active-slot registration
-- if Option 3: design a fresh follow-up handoff for the slot-command redesign
+- if Option 1 had won: change product code, then keep the strict scenario
+- for the ratified Option 2: narrow the PR 6 `commands registered` scenario to
+  active-slot registration for generated slot commands
+- if Option 3 is ever chosen later: design a fresh follow-up handoff for the
+  slot-command redesign
