@@ -88,13 +88,14 @@ Open any folder with a Git repository. The Command Central icon appears in the A
 
 Command Central auto-discovers supported Claude Code, Codex CLI, and Gemini CLI sessions automatically. When you also use Ghostty Launcher or another tool that writes a task registry, Command Central picks those up from standard locations too:
 
+If you set **Settings → Command Central: Agent Tasks File**, that explicit path
+wins over auto-discovery. Otherwise, auto-discovery uses this order:
+
 | Location | Priority |
 |----------|----------|
 | `${workspaceFolder}/.ghostty-launcher/tasks.json` | 1st (workspace-local) |
 | `~/.config/ghostty-launcher/tasks.json` | 2nd (XDG standard) |
 | `~/.ghostty-launcher/tasks.json` | 3rd (legacy) |
-
-Or set a custom path: **Settings → Command Central: Agent Tasks File**
 
 ---
 
