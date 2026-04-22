@@ -6,6 +6,14 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
+function buildIsolatedGitEnv(): NodeJS.ProcessEnv {
+	const env: NodeJS.ProcessEnv = {};
+	for (const [key, value] of Object.entries(process.env)) {
+		if (key.startsWith("GIT_")) continue;
+		env[key] = value;
+	}
+	return env;
+}
 const MAX_FILES = 500; // Increased to handle larger repositories
 const TIMEOUT_MS = 200;
 
@@ -70,6 +78,7 @@ export async function getDeletedFileTimestamp(
 			["git", "log", "-1", "--format=%at", "--", relativePath],
 			{
 				cwd: workspaceRoot,
+				env: buildIsolatedGitEnv(),
 				stdout: "pipe",
 				stderr: "pipe",
 			},
