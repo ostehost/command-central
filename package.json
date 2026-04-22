@@ -2,7 +2,7 @@
   "name": "command-central",
   "displayName": "Command Central",
   "description": "The VS Code agent control tower. Monitor all your AI coding agents from one sidebar.",
-  "version": "0.6.0-rc.10",
+  "version": "0.6.0-rc.11",
   "publisher": "oste",
   "icon": "resources/icons/icon.png",
   "type": "module",
@@ -181,7 +181,7 @@
         },
         "commandCentral.statusBar.priority": {
           "type": "number",
-          "default": 1e4,
+          "default": 10000,
           "description": "Priority for status bar positioning (higher = further left)",
           "scope": "window"
         },
