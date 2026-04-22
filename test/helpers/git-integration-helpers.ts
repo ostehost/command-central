@@ -23,19 +23,27 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
+function buildIsolatedGitEnv(): NodeJS.ProcessEnv {
+	const env: NodeJS.ProcessEnv = {};
+	for (const [key, value] of Object.entries(process.env)) {
+		if (key.startsWith("GIT_")) continue;
+		env[key] = value;
+	}
+
+	env["GIT_AUTHOR_NAME"] = "Test User";
+	env["GIT_AUTHOR_EMAIL"] = "test@example.com";
+	env["GIT_COMMITTER_NAME"] = "Test User";
+	env["GIT_COMMITTER_EMAIL"] = "test@example.com";
+	return env;
+}
+
 /** Run a git command in the given directory. Throws on non-zero exit. */
 export function git(cwd: string, ...args: string[]): string {
 	const result = spawnSync("git", args, {
 		cwd,
 		encoding: "utf-8",
 		timeout: 10_000,
-		env: {
-			...process.env,
-			GIT_AUTHOR_NAME: "Test User",
-			GIT_AUTHOR_EMAIL: "test@example.com",
-			GIT_COMMITTER_NAME: "Test User",
-			GIT_COMMITTER_EMAIL: "test@example.com",
-		},
+		env: buildIsolatedGitEnv(),
 	});
 	if (result.status !== 0) {
 		throw new Error(
@@ -44,7 +52,6 @@ export function git(cwd: string, ...args: string[]): string {
 	}
 	return (result.stdout ?? "").trim();
 }
-
 export interface GitRepo {
 	/** Absolute path to repository root */
 	path: string;
