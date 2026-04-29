@@ -67,17 +67,6 @@ function byNewestCreatedAt(
 	);
 }
 
-function byNewestModifiedAt(
-	a: ClaudeSessionCandidate,
-	b: ClaudeSessionCandidate,
-): number {
-	return (
-		b.modifiedAtMs - a.modifiedAtMs ||
-		b.createdAtMs - a.createdAtMs ||
-		b.sessionId.localeCompare(a.sessionId)
-	);
-}
-
 async function listClaudeSessionCandidates(
 	projectDir: string,
 	claudeBaseDir?: string,
@@ -184,32 +173,6 @@ async function resolveClaudeSessionCandidateForTask(
 	}
 
 	return selectClaudeSessionCandidateForTask(candidates, task);
-}
-
-/**
- * Resolve the most recent Claude Code session ID for a project directory.
- * Returns the UUID (filename without .jsonl) of the most recently modified session file,
- * or null if no sessions are found.
- */
-export async function resolveClaudeSessionId(
-	projectDir: string,
-	claudeBaseDir?: string,
-): Promise<string | null> {
-	const newest = (
-		await listClaudeSessionCandidates(projectDir, claudeBaseDir)
-	).sort(byNewestModifiedAt)[0];
-	return newest?.sessionId ?? null;
-}
-
-export async function resolveClaudeSessionIdForTask(
-	task: ClaudeTaskResolutionInput,
-	claudeBaseDir?: string,
-): Promise<string | null> {
-	const candidate = await resolveClaudeSessionCandidateForTask(
-		task,
-		claudeBaseDir,
-	);
-	return candidate?.sessionId ?? null;
 }
 
 export async function resolveClaudeTranscriptPathForTask(

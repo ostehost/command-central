@@ -1,11 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-	resolveClaudeSessionIdForTask,
-	resolveClaudeTranscriptPathForTask,
-} from "../discovery/session-resolver.js";
+import { resolveClaudeTranscriptPathForTask } from "../discovery/session-resolver.js";
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
-import { shellQuote } from "../utils/shell-command.js";
 
 export type ResumeBackend = "claude" | "codex" | "gemini" | "acp" | "unknown";
 
@@ -48,7 +44,7 @@ export function supportsInteractiveResume(task: ResumeTask): boolean {
 
 export async function buildResumeCommand(
 	task: ResumeTask,
-	claudeBaseDir?: string,
+	_claudeBaseDir?: string,
 ): Promise<string | null> {
 	const backend = resolveResumeBackend(task);
 	switch (backend) {
@@ -59,15 +55,11 @@ export async function buildResumeCommand(
 		case "gemini":
 			return "gemini -p --resume latest";
 		case "claude":
-		case "unknown": {
-			const sessionId = await resolveClaudeSessionIdForTask(
-				task,
-				claudeBaseDir,
-			);
-			return sessionId
-				? `claude --resume ${shellQuote(sessionId)}`
-				: "claude --continue";
-		}
+		case "unknown":
+			// Claude's exact session-id resume is flaky even when the project
+			// transcript exists on disk; directory-scoped --continue is the more
+			// reliable interactive resume path here.
+			return "claude --continue";
 	}
 }
 

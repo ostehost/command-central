@@ -82,7 +82,7 @@ describe("resume-session helpers", () => {
 		}
 	});
 
-	test("claude prefers task-specific session ids when available", async () => {
+	test("claude uses --continue even when a task-specific transcript exists", async () => {
 		const tmpDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "resume-session-test-"),
 		);
@@ -97,9 +97,7 @@ describe("resume-session helpers", () => {
 			claude_session_id: "claude-task-123",
 		});
 		try {
-			expect(await buildResumeCommand(task, tmpDir)).toBe(
-				"claude --resume 'claude-task-123'",
-			);
+			expect(await buildResumeCommand(task, tmpDir)).toBe("claude --continue");
 		} finally {
 			fs.rmSync(tmpDir, { recursive: true, force: true });
 		}

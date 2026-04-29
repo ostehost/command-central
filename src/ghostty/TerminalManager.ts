@@ -675,6 +675,52 @@ export class TerminalManager {
 		}
 	}
 
+	async runInBundleTerminal(
+		bundlePath: string,
+		command: string,
+	): Promise<void> {
+		this.logger.info(
+			`Routing command through launcher bundle: ${bundlePath}`,
+			"TerminalManager",
+		);
+
+		if (!bundlePath.endsWith(".app") || !fs.existsSync(bundlePath)) {
+			throw new Error(`Launcher bundle not found: ${bundlePath}`);
+		}
+
+		await this.execCommand("open", ["-a", bundlePath]);
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		const escapedBundlePath = bundlePath
+			.replaceAll("\\", "\\\\")
+			.replaceAll('"', '\\"');
+		const escapedCommand = command
+			.replaceAll("\\", "\\\\")
+			.replaceAll('"', '\\"');
+		const scriptPath = path.join(
+			os.tmpdir(),
+			`cc-ghostty-send-${Date.now()}-${Math.random().toString(36).slice(2)}.applescript`,
+		);
+		const script = `tell application "${escapedBundlePath}"
+	activate
+	if (count of windows) is 0 then error "No windows available in launcher bundle"
+	try
+		set targetTerminal to first terminal of selected tab of front window
+	on error
+		set targetTerminal to first terminal of first tab of front window
+	end try
+	input text "${escapedCommand}" to targetTerminal
+	input text (ASCII character 13) to targetTerminal
+end tell
+`;
+
+		try {
+			await fs.promises.writeFile(scriptPath, script, "utf-8");
+			await this.execCommand("osascript", [scriptPath]);
+		} finally {
+			await fs.promises.unlink(scriptPath).catch(() => undefined);
+		}
+	}
 	/**
 	 * Executes an arbitrary command (not the launcher) via child_process.
 	 * Used for oste-steer.sh and similar utilities.

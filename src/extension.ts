@@ -37,7 +37,6 @@ import {
 	revealInFinder,
 	selectForCompare,
 } from "./commands/tree-view-utils.js";
-import { resolveClaudeSessionId } from "./discovery/session-resolver.js";
 import { parseWorktreeListPorcelain } from "./discovery/worktree-list.js";
 import { BinaryManager } from "./ghostty/BinaryManager.js";
 import { refreshGhosttyBundleAfterProjectIconChange } from "./ghostty/project-icon-bundle-refresh.js";
@@ -86,7 +85,7 @@ import {
 	STALE_AGENT_STATUS_DESCRIPTION,
 	serializeTaskRegistry,
 } from "./utils/agent-task-registry.js";
-import { buildOsteSpawnCommand, shellQuote } from "./utils/shell-command.js";
+import { buildOsteSpawnCommand } from "./utils/shell-command.js";
 
 let gitSorter: GitSorter | undefined;
 let projectViewManager: ProjectViewManager | undefined;
@@ -1350,6 +1349,15 @@ export async function activate(
 				}
 			}
 
+			if (bundlePath && terminalManager) {
+				try {
+					await terminalManager.runInBundleTerminal(bundlePath, command);
+					return;
+				} catch {
+					// Fall through to project-terminal fallback.
+				}
+			}
+
 			await runCommandInProjectTerminalWithFallback(
 				task.project_dir,
 				command,
@@ -2359,12 +2367,8 @@ export async function activate(
 						return;
 					}
 
-					// Discovered agents keep the simpler Claude fallback behavior.
 					if (!task) {
-						const claudeSessionId = await resolveClaudeSessionId(projectDir);
-						const command = claudeSessionId
-							? `claude --resume ${shellQuote(claudeSessionId)}`
-							: "claude --continue";
+						const command = "claude --continue";
 						try {
 							await runCommandInProjectTerminalWithFallback(
 								projectDir,
@@ -2378,7 +2382,6 @@ export async function activate(
 						}
 						return;
 					}
-
 					if (task.status === "running") {
 						await focusExistingTaskTerminal(task);
 						return;

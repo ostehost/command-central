@@ -1351,3 +1351,52 @@ describe("Multi-root workspace command support (Fix 1 - integration)", () => {
 		expect(info2.tmuxSession).toBe("test-session");
 	});
 });
+
+describe("TerminalManager.runInBundleTerminal", () => {
+	beforeEach(() => {
+		mock.restore();
+		mock.module("vscode", () => ({
+			workspace: { getConfiguration: mockGetConfiguration },
+			window: { createTerminal: mockCreateTerminal },
+		}));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
+		}));
+		mockConfigGet.mockImplementation(() => undefined);
+	});
+
+	test("opens the bundle and injects the command via osascript", async () => {
+		const bundlePath = "/Applications/Projects/test-project.app";
+		fsExistsSyncMock.mockImplementation((p: string) => p === bundlePath);
+		execFileMock.mockImplementation(
+			(_f: string, _args: string[], _o: object, cb: ExecFileCallback) => {
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await expect(
+			mgr.runInBundleTerminal(bundlePath, "claude --continue"),
+		).resolves.toBeUndefined();
+
+		expect(
+			execFileMock.mock.calls.some(
+				([file, args]) =>
+					file === "open" && Array.isArray(args) && args.includes(bundlePath),
+			),
+		).toBe(true);
+		expect(
+			execFileMock.mock.calls.some(
+				([file, args]) =>
+					file === "osascript" && Array.isArray(args) && args.length === 1,
+			),
+		).toBe(true);
+	});
+});
