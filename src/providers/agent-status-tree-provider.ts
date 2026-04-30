@@ -22,6 +22,7 @@ import type {
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
 import type { AcpSessionService } from "../services/acp-session-service.js";
+import { CodexRunObserverService } from "../services/codex-run-observer-service.js";
 import type {
 	OpenClawAgentModel,
 	OpenClawConfigService,
@@ -30,6 +31,11 @@ import type { OpenClawTaskService } from "../services/openclaw-task-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
 import { ReviewTracker } from "../services/review-tracker.js";
 import type { TaskFlowService } from "../services/taskflow-service.js";
+import type {
+	CodexRunSourceRef,
+	CodexRunStatus,
+	CodexRunView,
+} from "../types/codex-run-types.js";
 import {
 	type OpenClawTask,
 	openclawStatusToIcon,
@@ -166,6 +172,8 @@ export type AgentNode =
 	| TaskFlowGroupNode
 	| TaskFlowChildNode
 	| TaskFlowsContainerNode
+	| CodexRunsContainerNode
+	| CodexRunNode
 	| StatusTimeGroupNode
 	| OlderRunsNode
 	| StateNode;
@@ -186,6 +194,16 @@ export interface TaskFlowChildNode {
 export interface TaskFlowsContainerNode {
 	type: "taskflows";
 	flows: TaskFlow[];
+}
+
+export interface CodexRunsContainerNode {
+	type: "codexRuns";
+	runs: CodexRunView[];
+}
+
+export interface CodexRunNode {
+	type: "codexRun";
+	run: CodexRunView;
 }
 
 export interface TaskFlowSingleNode {
@@ -912,9 +930,15 @@ export class AgentStatusTreeProvider
 	private _acpSessionService: AcpSessionService | null = null;
 	private _taskFlowService: TaskFlowService | null = null;
 	private _reviewTracker: ReviewTracker = new ReviewTracker();
+	private codexRunObserverService: CodexRunObserverService;
 
-	constructor(projectIconManager?: ProjectIconManager) {
+	constructor(
+		projectIconManager?: ProjectIconManager,
+		codexRunObserverService?: CodexRunObserverService,
+	) {
 		this.projectIconManager = projectIconManager ?? new ProjectIconManager();
+		this.codexRunObserverService =
+			codexRunObserverService ?? new CodexRunObserverService();
 		// Watch config changes for the tasks file path
 		this.disposables.push(
 			vscode.workspace.onDidChangeConfiguration((e) => {
@@ -2013,8 +2037,7 @@ export class AgentStatusTreeProvider
 		return false;
 	}
 
-	private getNonLauncherOpenClawTasks(): OpenClawTask[] {
-		// Merge tasks from both sources. ACP source wins on taskId conflict.
+	private getAllOpenClawTaskSources(): OpenClawTask[] {
 		const taskMap = new Map<string, OpenClawTask>();
 		for (const task of this._openclawTaskService?.getTasks() ?? []) {
 			taskMap.set(task.taskId, task);
@@ -2022,9 +2045,25 @@ export class AgentStatusTreeProvider
 		for (const task of this._acpSessionService?.getTasks() ?? []) {
 			taskMap.set(task.taskId, task);
 		}
-		return Array.from(taskMap.values()).filter(
+		return Array.from(taskMap.values());
+	}
+
+	private getNonLauncherOpenClawTasks(): OpenClawTask[] {
+		return this.getAllOpenClawTaskSources().filter(
 			(task) => !this.shouldDedupOpenClawTask(task),
 		);
+	}
+
+	private getCodexRuns(
+		agentTasks = this.getDisplayLauncherTasks(),
+		openClawTasks = this.getAllOpenClawTaskSources(),
+		taskFlows = this.getVisibleTaskFlows(),
+	): CodexRunView[] {
+		return this.codexRunObserverService.project({
+			agentTasks,
+			openClawTasks,
+			taskFlows,
+		});
 	}
 
 	private getVisibleOpenClawTasks(
@@ -2698,6 +2737,12 @@ export class AgentStatusTreeProvider
 		if (element.type === "taskflows") {
 			return this.createTaskFlowsItem(element);
 		}
+		if (element.type === "codexRuns") {
+			return this.createCodexRunsItem(element);
+		}
+		if (element.type === "codexRun") {
+			return this.createCodexRunItem(element.run);
+		}
 		if (element.type === "projectGroup") {
 			return this.createProjectGroupItem(element);
 		}
@@ -2761,6 +2806,11 @@ export class AgentStatusTreeProvider
 				);
 			}
 			const taskFlows = this.getVisibleTaskFlows();
+			const codexRuns = this.getCodexRuns(
+				allTasks,
+				this.getAllOpenClawTaskSources(),
+				taskFlows,
+			);
 			const hasAnyAgents =
 				allTasks.length > 0 ||
 				discovered.length > 0 ||
@@ -2874,6 +2924,14 @@ export class AgentStatusTreeProvider
 
 			return [
 				...summaryNodes,
+				...(codexRuns.length > 0
+					? [
+							{
+								type: "codexRuns" as const,
+								runs: codexRuns,
+							},
+						]
+					: []),
 				...(!showOpenClawInline && openclawTasks.length > 0
 					? [
 							{
@@ -2937,6 +2995,16 @@ export class AgentStatusTreeProvider
 				...this.getTaskFlowDetailChildren(element.flow),
 				...this.getTaskFlowChildNodes(element.flow),
 			];
+		}
+
+		if (element.type === "codexRuns") {
+			return element.runs.map(
+				(run): CodexRunNode => ({ type: "codexRun", run }),
+			);
+		}
+
+		if (element.type === "codexRun") {
+			return this.getCodexRunDetailChildren(element.run);
 		}
 
 		if (element.type === "backgroundTasks") {
@@ -4378,6 +4446,182 @@ export class AgentStatusTreeProvider
 		}
 
 		return details;
+	}
+
+	private getCodexRunDetailChildren(run: CodexRunView): DetailNode[] {
+		const taskId = `codex-run-${run.runId}`;
+		const details: DetailNode[] = [];
+		const pushDetail = (
+			label: string,
+			value: string | undefined,
+			icon: string,
+			command?: vscode.Command,
+		): void => {
+			if (!value) return;
+			details.push({
+				type: "detail",
+				label,
+				value,
+				taskId,
+				icon,
+				command,
+			});
+		};
+
+		pushDetail("Model", run.model, "symbol-constant");
+		pushDetail("Phase", run.phase, "debug-step-over");
+		pushDetail("Current/last tool", run.currentTool, "tools");
+		pushDetail("Workspace", run.workspacePath, "folder");
+		pushDetail("Thread", run.threadId, "comment-discussion");
+		pushDetail("Turn", run.turnId, "debug-restart");
+		pushDetail("Run ID", run.runId, "symbol-key");
+		pushDetail("Source", this.formatCodexRunSource(run), "references");
+		pushDetail("Last event", this.formatCodexRunLastEvent(run), "pulse");
+
+		for (const [index, artifactPath] of (run.artifactPaths ?? []).entries()) {
+			pushDetail(
+				index === 0 ? "Artifact" : `Artifact ${index + 1}`,
+				artifactPath,
+				"file",
+				{
+					command: "vscode.open",
+					title: "Open Artifact",
+					arguments: [vscode.Uri.file(artifactPath)],
+				},
+			);
+		}
+
+		return details;
+	}
+
+	private formatCodexRunLastEvent(run: CodexRunView): string | undefined {
+		const timestamp = run.lastEventAt
+			? new Date(run.lastEventAt).toISOString()
+			: undefined;
+		return (
+			[run.lastEvent, timestamp]
+				.filter((part): part is string => Boolean(part))
+				.join(" · ") || undefined
+		);
+	}
+
+	private getCodexRunActivityTimeMs(run: CodexRunView): number {
+		return run.lastEventAt ?? run.endedAt ?? run.startedAt ?? 0;
+	}
+
+	private isActiveCodexRunStatus(status: CodexRunStatus): boolean {
+		return (
+			status === "queued" ||
+			status === "running" ||
+			status === "waiting" ||
+			status === "blocked"
+		);
+	}
+
+	private formatCodexRunStatus(status: CodexRunStatus): string {
+		switch (status) {
+			case "queued":
+				return "Queued";
+			case "running":
+				return "Running";
+			case "waiting":
+				return "Waiting";
+			case "blocked":
+				return "Blocked";
+			case "succeeded":
+				return "Succeeded";
+			case "failed":
+				return "Failed";
+			case "timed_out":
+				return "Timed Out";
+			case "cancelled":
+				return "Cancelled";
+			case "lost":
+				return "Lost";
+			case "stopped":
+				return "Stopped";
+			case "unknown":
+				return "Unknown";
+		}
+	}
+
+	private getCodexRunStatusIcon(status: CodexRunStatus): vscode.ThemeIcon {
+		switch (status) {
+			case "queued":
+				return new vscode.ThemeIcon(
+					"loading~spin",
+					new vscode.ThemeColor("charts.yellow"),
+				);
+			case "running":
+				return new vscode.ThemeIcon(
+					"pulse",
+					new vscode.ThemeColor("charts.blue"),
+				);
+			case "waiting":
+				return new vscode.ThemeIcon(
+					"watch",
+					new vscode.ThemeColor("charts.yellow"),
+				);
+			case "blocked":
+				return new vscode.ThemeIcon(
+					"shield",
+					new vscode.ThemeColor("charts.yellow"),
+				);
+			case "succeeded":
+				return new vscode.ThemeIcon(
+					"check",
+					new vscode.ThemeColor("charts.green"),
+				);
+			case "failed":
+			case "timed_out":
+				return new vscode.ThemeIcon(
+					"error",
+					new vscode.ThemeColor("charts.red"),
+				);
+			case "cancelled":
+			case "stopped":
+				return new vscode.ThemeIcon(
+					"circle-slash",
+					new vscode.ThemeColor("descriptionForeground"),
+				);
+			case "lost":
+				return new vscode.ThemeIcon(
+					"warning",
+					new vscode.ThemeColor("charts.yellow"),
+				);
+			case "unknown":
+				return new vscode.ThemeIcon(
+					"question",
+					new vscode.ThemeColor("descriptionForeground"),
+				);
+		}
+	}
+
+	private formatCodexRunSource(run: CodexRunView): string {
+		const refs = [
+			run.source,
+			...run.mergedFrom.filter(
+				(ref) => !this.codexRunRefsEqual(ref, run.source),
+			),
+		];
+		return refs.map((ref) => this.formatCodexRunSourceRef(ref)).join(" + ");
+	}
+
+	private formatCodexRunSourceRef(ref: CodexRunSourceRef): string {
+		const id = ref.id ? `:${ref.id}` : "";
+		const pathPart = ref.path ? ` (${ref.path})` : "";
+		return `${ref.kind}${id}${pathPart}`;
+	}
+
+	private codexRunRefsEqual(
+		left: CodexRunSourceRef,
+		right: CodexRunSourceRef,
+	): boolean {
+		return (
+			left.kind === right.kind &&
+			left.id === right.id &&
+			left.path === right.path
+		);
 	}
 
 	private getTaskDiffStartCommit(t: AgentTask): string | undefined {
@@ -5852,6 +6096,61 @@ export class AgentStatusTreeProvider
 					: `${count} flows`;
 		item.contextValue = "taskflows";
 		item.iconPath = new vscode.ThemeIcon("layers");
+		return item;
+	}
+
+	private createCodexRunsItem(node: CodexRunsContainerNode): vscode.TreeItem {
+		const count = node.runs.length;
+		const activeCount = node.runs.filter((run) =>
+			this.isActiveCodexRunStatus(run.status),
+		).length;
+		const item = new vscode.TreeItem(
+			count === 1 ? "Codex Runs · 1" : `Codex Runs · ${count}`,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description =
+			activeCount > 0
+				? `${activeCount} active`
+				: count === 1
+					? "1 run"
+					: `${count} runs`;
+		item.contextValue = "codexRuns";
+		item.iconPath = new vscode.ThemeIcon("run-all");
+		return item;
+	}
+
+	private createCodexRunItem(run: CodexRunView): vscode.TreeItem {
+		const activity = this.getCodexRunActivityTimeMs(run);
+		const descriptionParts = [
+			this.formatCodexRunStatus(run.status),
+			run.runtime,
+			activity ? relativeTime(activity) : undefined,
+			run.model ? getModelAlias(run.model) : undefined,
+		].filter((part): part is string => Boolean(part));
+		const item = new vscode.TreeItem(
+			run.title,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description = descriptionParts.join(" · ");
+		item.tooltip = new vscode.MarkdownString(
+			[
+				`**${run.title}**`,
+				`Run ID: \`${run.runId}\``,
+				`Status: ${this.formatCodexRunStatus(run.status)}`,
+				run.sourceStatus ? `Source Status: \`${run.sourceStatus}\`` : null,
+				`Source: ${this.formatCodexRunSource(run)}`,
+				run.model ? `Model: \`${run.model}\`` : null,
+				run.workspacePath ? `Workspace: \`${run.workspacePath}\`` : null,
+				run.sessionKey ? `Session: \`${run.sessionKey}\`` : null,
+			]
+				.filter(Boolean)
+				.join("\n\n"),
+		);
+		item.iconPath = this.getCodexRunStatusIcon(run.status);
+		item.contextValue = `codexRun.${run.status}`;
+		item.resourceUri = vscode.Uri.parse(
+			`codex-run:${encodeURIComponent(run.runId)}`,
+		);
 		return item;
 	}
 

@@ -47,6 +47,7 @@ describe("OpenClaw task nodes", () => {
 				| "lost"
 				| "blocked";
 			label: string;
+			task: string;
 			childSessionKey: string;
 			progressSummary: string;
 			lastEventAt: number;
@@ -156,6 +157,92 @@ describe("OpenClaw task nodes", () => {
 		const provider = await createProvider([createTask()]);
 		const root = provider.getChildren();
 		expect(root.some((node) => node.type === "openclawTask")).toBe(true);
+	});
+
+	test("Codex Runs container appears and expands to projected details", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "bg-1",
+				task: "bg-1",
+				childSessionKey: "session:agent-my-app",
+			}),
+		]);
+		(
+			provider as unknown as {
+				registry: {
+					version: number;
+					tasks: Record<string, unknown>;
+				};
+			}
+		).registry = {
+			version: 2,
+			tasks: {
+				launcher: {
+					id: "launcher-1",
+					status: "running",
+					project_dir: "/tmp/my-app",
+					project_name: "My App",
+					session_id: "agent-my-app",
+					stream_file: "/tmp/my-app/stream.jsonl",
+					bundle_path: "",
+					handoff_file: "/tmp/my-app/handoff.md",
+					prompt_file: "/tmp/my-app/prompt.md",
+					started_at: new Date().toISOString(),
+					updated_at: new Date().toISOString(),
+					attempts: 1,
+					max_attempts: 1,
+					model: "gpt-5.5",
+					prompt_summary: "Projected Codex run",
+				},
+			},
+		};
+
+		const root = provider.getChildren();
+		const runsNode = root.find((node) => node.type === "codexRuns");
+		if (!runsNode || runsNode.type !== "codexRuns") {
+			throw new Error("No Codex Runs node found");
+		}
+
+		const item = provider.getTreeItem(runsNode);
+		expect(item.label).toBe("Codex Runs · 1");
+
+		const runs = provider.getChildren(runsNode);
+		const run = runs.find((node) => node.type === "codexRun");
+		if (!run || run.type !== "codexRun") {
+			throw new Error("No Codex run child found");
+		}
+		expect(run.run.source).toEqual({ kind: "openclaw-task", id: "bg-1" });
+		expect(run.run.mergedFrom).toContainEqual({
+			kind: "launcher",
+			id: "launcher-1",
+			path: "/tmp/my-app",
+		});
+
+		const details = provider.getChildren(run);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Run ID" &&
+					node.value === "bg-1",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Workspace" &&
+					node.value === "/tmp/my-app",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Artifact" &&
+					node.value === "/tmp/my-app/stream.jsonl",
+			),
+		).toBe(true);
 	});
 
 	test("dedups OpenClaw tasks that match launcher session ids", async () => {
