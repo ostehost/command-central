@@ -1,24 +1,24 @@
-# Handoff: Codex Runs Post-RC12 Feedback Iteration
+# Handoff: Codex Runs Post-RC13 Alignment Correction
 
 Date: 2026-04-30
 Repo: `/Users/ostemini/projects/command-central`
 Audience: main OpenClaw agent
-Status: ready for review, commit, hub/node propagation, and feedback
+Status: ready for final review, commit, hub/node propagation, and next-phase planning
 
 ## Context
 
-The Command Central Codex/Symphony visibility MVP was integrated and cut as
-`oste.command-central@0.6.0-rc.12`.
+The Command Central Codex/Symphony visibility MVP was integrated and cut through
+`oste.command-central@0.6.0-rc.13`.
 
-Main-agent feedback after the rc12 cut:
+Main-agent feedback after review:
 
-- Implementation matches the handoff/spec.
+- Remove the remaining title-based launcher join.
+- Add a regression test proving an owner row whose display title equals an unrelated launcher id does
+  not inherit that launcher metadata.
 - Keep the next slice on VS Code-native tree ergonomics and provenance.
 - Do not move Command Central into JSONL/process acquisition without a separate acquisition spec.
-- Useful follow-up: wording and placement around `Codex Runs`, lifecycle authority labels, and
-  coexistence with legacy Background/OpenClaw rows.
 
-This pass implements that narrow feedback only.
+This pass implements that narrow correction only.
 
 ## Scope Boundary
 
@@ -42,12 +42,28 @@ launcher/source owner.
 ## Changed Files
 
 - `src/providers/agent-status-tree-provider.ts`
+- `src/services/codex-run-observer-service.ts`
+- `test/services/codex-run-observer-service.test.ts`
 - `test/tree-view/openclaw-task-nodes.test.ts`
+- `research/SPEC-codex-symphony-visibility-layer-2026-04-29.md`
+- `research/HANDOFF-codex-run-observer-mvp-2026-04-29.md`
 - `research/HANDOFF-codex-runs-release-integration-2026-04-30.md`
 
-No release artifact was cut in this follow-up pass.
+No new release artifact was cut in this correction pass.
 
 ## What Changed
+
+Projection join hardening:
+
+- Launcher metadata now joins owner rows only by explicit identity:
+  - owner `taskId` matching launcher `AgentTask.id`
+  - owner `runId` matching launcher `AgentTask.id`
+  - normalized session identity
+- Display title equality is not a launcher join key.
+- The remaining title-equality allowance in launcher title enrichment was removed too, so the code no
+  longer has a hidden display-title fallback.
+- The MVP spec and handoff now describe launcher joins as `taskId`, `runId`, or session identity
+  only.
 
 VS Code-native Agent Status tree:
 
@@ -83,7 +99,7 @@ git diff --check
 
 Result:
 
-- `23 pass`
+- `24 pass`
 - `0 fail`
 - typecheck passed
 - diff check passed
@@ -96,7 +112,7 @@ just ready
 
 Result:
 
-- `1460 pass`
+- `1461 pass`
 - `1 skip`
 - `0 fail`
 
@@ -123,6 +139,7 @@ Check:
 - The root description accounts for active/attention/stopped/cancelled/unknown/done buckets without
   creating lifecycle state.
 - The root tooltip clearly says the group is read-only projected visibility.
+- The observer no longer joins or enriches through broad display-title matching.
 - Tests cover both the single active run case and the dogfood fixture status buckets.
 - No service/projector logic was widened.
 
@@ -146,7 +163,7 @@ git diff --stat <hub-sha>
 ```
 
 Install a new preview VSIX only if the maintainer wants this follow-up in the next rc. Since rc12 is
-already cut, the likely release path is a subsequent preview such as rc13 through the existing
+and rc13 are already cut, the likely release path is a subsequent preview through the existing
 release tooling, not manual artifact editing.
 
 ## Feedback Requested

@@ -292,6 +292,41 @@ describe("CodexRunObserverService", () => {
 		expect(runs).toHaveLength(2);
 	});
 
+	test("does not join launcher metadata to an owner row by display title", () => {
+		const service = new CodexRunObserverService();
+
+		const runs = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "launcher-unrelated",
+					agent_backend: "codex",
+					session_id: "agent-unrelated",
+					project_dir: "/tmp/unrelated-project",
+					prompt_summary: "Unrelated launcher prompt",
+				}),
+			],
+			openClawTasks: [
+				openClawTask({
+					taskId: "real-owner",
+					label: "launcher-unrelated",
+					childSessionKey: "session:real-owner-session",
+				}),
+			],
+			taskFlows: [],
+		});
+
+		const ownerRun = runs.find((run) => run.taskId === "real-owner");
+		const launcherRun = runs.find((run) => run.source.kind === "launcher");
+		expect(runs).toHaveLength(2);
+		expect(ownerRun?.title).toBe("launcher-unrelated");
+		expect(ownerRun?.workspacePath).toBeUndefined();
+		expect(ownerRun?.model).toBeUndefined();
+		expect(ownerRun?.mergedFrom).toEqual([
+			{ kind: "openclaw-task", id: "real-owner" },
+		]);
+		expect(launcherRun?.runId).toBe("launcher-unrelated");
+	});
+
 	test("does not join TaskFlow children to OpenClaw tasks by human label", () => {
 		const service = new CodexRunObserverService();
 

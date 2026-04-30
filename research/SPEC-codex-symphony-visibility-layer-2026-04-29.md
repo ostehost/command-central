@@ -203,8 +203,6 @@ Launcher join:
 - Join launcher `AgentTask` metadata only by explicit run identity:
   - OpenClaw/TaskFlow `taskId` matching launcher `AgentTask.id`.
   - Existing `runId` matching launcher `AgentTask.id`.
-  - Existing run title matching launcher `AgentTask.id` when the title is already an explicit
-    launcher id.
   - Session identity, including `childSessionKey` / launcher `session_id` matches with the
     `session:` prefix normalized away.
 - These identity joins may target existing OpenClaw/TaskFlow owner rows, but they must not target an

@@ -340,11 +340,7 @@ export class CodexRunObserverService {
 				return false;
 			}
 
-			if (
-				run.taskId === task.id ||
-				run.runId === task.id ||
-				run.title === task.id
-			) {
+			if (run.taskId === task.id || run.runId === task.id) {
 				return true;
 			}
 
@@ -424,7 +420,6 @@ export class CodexRunObserverService {
 		return (
 			run.title === run.runId ||
 			run.title === run.taskId ||
-			run.title === task.id ||
 			run.title.startsWith("openclaw:")
 		);
 	}

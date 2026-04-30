@@ -216,8 +216,6 @@ Launcher join:
 - Join launcher metadata only by explicit run identity:
   - OpenClaw/TaskFlow `taskId` matching launcher `AgentTask.id`.
   - Existing `runId` matching launcher `AgentTask.id`.
-  - Existing run title matching launcher `AgentTask.id` when the title is already an explicit
-    launcher id.
   - Session identity, including `childSessionKey` / launcher `session_id` matches with the
     `session:` prefix normalized away.
 - These identity joins may target existing OpenClaw/TaskFlow owner rows, but they must not target an
@@ -279,8 +277,8 @@ Start with projection tests:
 
 - OpenClaw task becomes a `CodexRunView` with `sourceStatus` and normalized `status`.
 - TaskFlow child fields attach to an existing run but do not override lifecycle status.
-- Launcher task metadata joins only through explicit run identity: `taskId`, `runId`, launcher id,
-  or session identity.
+- Launcher task metadata joins only through explicit run identity: `taskId`, `runId`, or session
+  identity.
 - Launcher joins do not use project/workspace path alone and do not use broad label/title matching.
 - Launcher-only rows require explicit Codex runtime metadata.
 - TaskFlow joins do not use broad human labels or display titles.
