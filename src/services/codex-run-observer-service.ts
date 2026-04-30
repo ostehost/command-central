@@ -40,9 +40,15 @@ const CODEX_PHASES = new Set<CodexRunPhase>([
 	"PreparingWorkspace",
 	"BuildingPrompt",
 	"LaunchingAgent",
+	"LaunchingAgentProcess",
 	"InitializingSession",
 	"StreamingTurn",
 	"Finishing",
+	"Succeeded",
+	"Failed",
+	"TimedOut",
+	"Stalled",
+	"CanceledByReconciliation",
 ]);
 
 export class CodexRunObserverService {
@@ -70,9 +76,7 @@ export class CodexRunObserverService {
 			}
 		}
 
-		return this.dedupeRuns(runs).sort((left, right) =>
-			this.compareRuns(left, right),
-		);
+		return runs.sort((left, right) => this.compareRuns(left, right));
 	}
 
 	private projectOpenClawTask(task: OpenClawTask): CodexRunView {
@@ -197,7 +201,6 @@ export class CodexRunObserverService {
 			),
 			sessionKey: task.session_id,
 			workspacePath: task.project_dir,
-			branch: this.firstNonEmpty(task.start_sha, task.start_commit),
 			model,
 			lastEvent: task.error_message ?? undefined,
 			lastEventAt: updatedAt ?? completedAt ?? startedAt,
@@ -266,10 +269,6 @@ export class CodexRunObserverService {
 			this.addFieldSource(run, "workspacePath", ref);
 		}
 
-		if (!run.branch) {
-			run.branch = this.firstNonEmpty(task.start_sha, task.start_commit);
-		}
-
 		const startedAt = this.parseTimestamp(task.started_at);
 		const completedAt = this.parseTimestamp(task.completed_at);
 		const updatedAt = this.parseTimestamp(task.updated_at);
@@ -328,9 +327,7 @@ export class CodexRunObserverService {
 			(run) =>
 				run.taskId === task.taskId ||
 				(task.runId != null && run.runId === task.runId) ||
-				this.sessionsMatch(run.sessionKey, task.childSessionKey) ||
-				(task.label != null &&
-					(run.runId === task.label || run.title === task.label)),
+				this.sessionsMatch(run.sessionKey, task.childSessionKey),
 		);
 	}
 
@@ -343,27 +340,8 @@ export class CodexRunObserverService {
 				run.taskId === task.id ||
 				run.runId === task.id ||
 				run.title === task.id ||
-				this.sessionsMatch(run.sessionKey, task.session_id) ||
-				(task.project_dir.length > 0 && run.workspacePath === task.project_dir),
+				this.sessionsMatch(run.sessionKey, task.session_id),
 		);
-	}
-
-	private dedupeRuns(runs: CodexRunView[]): CodexRunView[] {
-		const byRunId = new Map<string, CodexRunView>();
-		for (const run of runs) {
-			const existing = byRunId.get(run.runId);
-			if (!existing) {
-				byRunId.set(run.runId, run);
-				continue;
-			}
-			for (const ref of run.mergedFrom) this.addMergedFrom(existing, ref);
-			for (const [field, refs] of Object.entries(run.fieldSources)) {
-				for (const ref of refs ?? []) {
-					this.addFieldSource(existing, field as CodexRunViewField, ref);
-				}
-			}
-		}
-		return [...byRunId.values()];
 	}
 
 	private compareRuns(left: CodexRunView, right: CodexRunView): number {
@@ -393,6 +371,24 @@ export class CodexRunObserverService {
 			case "lost":
 			case "stopped":
 				return status;
+			case "PreparingWorkspace":
+			case "BuildingPrompt":
+			case "LaunchingAgent":
+			case "LaunchingAgentProcess":
+			case "InitializingSession":
+			case "StreamingTurn":
+			case "Finishing":
+				return "running";
+			case "Succeeded":
+				return "succeeded";
+			case "Failed":
+				return "failed";
+			case "TimedOut":
+				return "timed_out";
+			case "CanceledByReconciliation":
+				return "cancelled";
+			case "Stalled":
+				return "blocked";
 			case "completed":
 			case "completed_dirty":
 			case "completed_stale":
@@ -426,8 +422,8 @@ export class CodexRunObserverService {
 	}
 
 	private isCodexLauncherTask(task: AgentTask): boolean {
-		return [task.agent_backend, task.cli_name, task.id, task.session_id].some(
-			(value) => value?.toLowerCase().includes("codex"),
+		return [task.agent_backend, task.cli_name].some((value) =>
+			value?.toLowerCase().includes("codex"),
 		);
 	}
 

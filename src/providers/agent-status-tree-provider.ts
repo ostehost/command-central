@@ -2066,6 +2066,14 @@ export class AgentStatusTreeProvider
 		});
 	}
 
+	private isCodexRunInProject(run: CodexRunView, filterDir: string): boolean {
+		if (!run.workspacePath) return false;
+		return (
+			run.workspacePath === filterDir ||
+			path.basename(run.workspacePath) === path.basename(filterDir)
+		);
+	}
+
 	private getVisibleOpenClawTasks(
 		tasks = this.getNonLauncherOpenClawTasks(),
 	): OpenClawTask[] {
@@ -2806,11 +2814,16 @@ export class AgentStatusTreeProvider
 				);
 			}
 			const taskFlows = this.getVisibleTaskFlows();
-			const codexRuns = this.getCodexRuns(
+			let codexRuns = this.getCodexRuns(
 				allTasks,
 				this.getAllOpenClawTaskSources(),
 				taskFlows,
 			);
+			if (this._projectFilter) {
+				codexRuns = codexRuns.filter((run) =>
+					this.isCodexRunInProject(run, this._projectFilter ?? ""),
+				);
+			}
 			const hasAnyAgents =
 				allTasks.length > 0 ||
 				discovered.length > 0 ||

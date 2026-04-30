@@ -29,9 +29,15 @@ export type CodexRunPhase =
 	| "PreparingWorkspace"
 	| "BuildingPrompt"
 	| "LaunchingAgent"
+	| "LaunchingAgentProcess"
 	| "InitializingSession"
 	| "StreamingTurn"
-	| "Finishing";
+	| "Finishing"
+	| "Succeeded"
+	| "Failed"
+	| "TimedOut"
+	| "Stalled"
+	| "CanceledByReconciliation";
 
 export interface CodexRunView {
 	runId: string;

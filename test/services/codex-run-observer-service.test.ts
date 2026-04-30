@@ -178,6 +178,9 @@ describe("CodexRunObserverService", () => {
 		expect(runs.find((run) => run.source.kind === "taskflow")?.status).toBe(
 			"waiting",
 		);
+		expect(runs.find((run) => run.source.kind === "launcher")?.branch).toBe(
+			undefined,
+		);
 	});
 
 	test("uses non-Codex launcher rows only as join metadata", () => {
@@ -185,7 +188,11 @@ describe("CodexRunObserverService", () => {
 
 		const launcherOnlyRuns = service.project({
 			agentTasks: [
-				launcherTask({ id: "claude-only", agent_backend: "claude" }),
+				launcherTask({
+					id: "codex-review-claude-task",
+					agent_backend: "claude",
+					session_id: "codex-ish-session-name",
+				}),
 			],
 			openClawTasks: [],
 			taskFlows: [],
@@ -207,6 +214,79 @@ describe("CodexRunObserverService", () => {
 		});
 		expect(joinedRun?.source).toEqual({ kind: "openclaw-task", id: "oc-1" });
 		expect(joinedRun?.workspacePath).toBe("/tmp/project-a");
+	});
+
+	test("does not collapse launcher-only Codex runs by shared project path", () => {
+		const service = new CodexRunObserverService();
+
+		const runs = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "codex-a",
+					session_id: "session-a",
+					agent_backend: "codex",
+					project_dir: "/tmp/shared-project",
+				}),
+				launcherTask({
+					id: "codex-b",
+					session_id: "session-b",
+					agent_backend: "codex",
+					project_dir: "/tmp/shared-project",
+				}),
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		expect(runs.map((run) => run.runId).sort()).toEqual(["codex-a", "codex-b"]);
+		expect(runs).toHaveLength(2);
+	});
+
+	test("does not join TaskFlow children to OpenClaw tasks by human label", () => {
+		const service = new CodexRunObserverService();
+
+		const runs = service.project({
+			agentTasks: [],
+			openClawTasks: [
+				openClawTask({
+					taskId: "real-task",
+					label: "Shared label",
+				}),
+			],
+			taskFlows: [
+				taskFlow({
+					tasks: [
+						openClawTask({
+							taskId: "flow-child",
+							label: "Shared label",
+						}),
+					],
+				}),
+			],
+		});
+
+		const realTask = runs.find((run) => run.taskId === "real-task");
+		const flowChild = runs.find((run) => run.taskId === "flow-child");
+		expect(runs).toHaveLength(2);
+		expect(realTask?.flowId).toBeUndefined();
+		expect(flowChild?.flowId).toBe("flow-1");
+	});
+
+	test("preserves official Symphony phase language separately from display status", () => {
+		const service = new CodexRunObserverService();
+		const [run] = service.project({
+			agentTasks: [],
+			openClawTasks: [
+				openClawTask({
+					status: "LaunchingAgentProcess" as unknown as OpenClawTask["status"],
+				}),
+			],
+			taskFlows: [],
+		});
+
+		expect(run?.sourceStatus).toBe("LaunchingAgentProcess");
+		expect(run?.status).toBe("running");
+		expect(run?.phase).toBe("LaunchingAgentProcess");
 	});
 
 	test("orders projection deterministically by active state, activity, and run id", () => {

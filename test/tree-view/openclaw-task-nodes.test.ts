@@ -245,6 +245,74 @@ describe("OpenClaw task nodes", () => {
 		).toBe(true);
 	});
 
+	test("Codex Runs respect the Agent Status project filter", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "bg-1",
+				task: "bg-1",
+				childSessionKey: "session:agent-my-app",
+			}),
+			createTask({
+				taskId: "bg-2",
+				task: "bg-2",
+				childSessionKey: "session:agent-other-app",
+			}),
+		]);
+		(
+			provider as unknown as {
+				registry: {
+					version: number;
+					tasks: Record<string, unknown>;
+				};
+			}
+		).registry = {
+			version: 2,
+			tasks: {
+				launcher: {
+					id: "launcher-1",
+					status: "running",
+					project_dir: "/tmp/my-app",
+					project_name: "My App",
+					session_id: "agent-my-app",
+					bundle_path: "",
+					prompt_file: "/tmp/my-app/prompt.md",
+					started_at: new Date().toISOString(),
+					attempts: 1,
+					max_attempts: 1,
+					model: "gpt-5.5",
+					prompt_summary: "My App run",
+				},
+				other: {
+					id: "launcher-2",
+					status: "running",
+					project_dir: "/tmp/other-app",
+					project_name: "Other App",
+					session_id: "agent-other-app",
+					bundle_path: "",
+					prompt_file: "/tmp/other-app/prompt.md",
+					started_at: new Date().toISOString(),
+					attempts: 1,
+					max_attempts: 1,
+					model: "gpt-5.5",
+					prompt_summary: "Other App run",
+				},
+			},
+		};
+
+		provider.filterToProject("/tmp/my-app");
+
+		const root = provider.getChildren();
+		const runsNode = root.find((node) => node.type === "codexRuns");
+		if (!runsNode || runsNode.type !== "codexRuns") {
+			throw new Error("No Codex Runs node found");
+		}
+
+		expect(runsNode.runs.map((run) => run.workspacePath)).toEqual([
+			"/tmp/my-app",
+		]);
+		expect(runsNode.runs.map((run) => run.taskId)).toEqual(["bg-1"]);
+	});
+
 	test("dedups OpenClaw tasks that match launcher session ids", async () => {
 		const provider = await createProvider([
 			createTask({ childSessionKey: "session:agent-my-app" }),
