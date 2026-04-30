@@ -217,6 +217,13 @@ describe("OpenClaw task nodes", () => {
 
 		const item = provider.getTreeItem(runsNode);
 		expect(item.label).toBe("Codex Runs · 1");
+		expect(item.description).toBe("1 active");
+		expect((item.tooltip as { value: string }).value).toContain(
+			"read-only projected run",
+		);
+		expect((item.tooltip as { value: string }).value).toContain(
+			"Lifecycle authority stays with the source owner",
+		);
 
 		const runs = provider.getChildren(runsNode);
 		const run = runs.find((node) => node.type === "codexRun");
@@ -251,7 +258,7 @@ describe("OpenClaw task nodes", () => {
 			details.some(
 				(node) =>
 					node.type === "detail" &&
-					node.label === "Lifecycle owner" &&
+					node.label === "Lifecycle authority" &&
 					node.value === "openclaw-task:bg-1",
 			),
 		).toBe(true);
@@ -386,6 +393,14 @@ describe("OpenClaw task nodes", () => {
 		expect(runsNode.runs).toHaveLength(expectedCodexLauncherCount);
 		expect(new Set(launcherSourceIds).size).toBe(launcherSourceIds.length);
 		expect(runsNode.runs.some((run) => run.mergedFrom.length > 1)).toBe(false);
+
+		const item = provider.getTreeItem(runsNode);
+		expect(String(item.description)).toContain("attention");
+		expect(String(item.description)).toContain("stopped");
+		expect(String(item.description)).toContain("done");
+		expect((item.tooltip as { value: string }).value).toContain("Failed:");
+		expect((item.tooltip as { value: string }).value).toContain("Stopped:");
+		expect((item.tooltip as { value: string }).value).toContain("Succeeded:");
 	});
 
 	test("dedups OpenClaw tasks that match launcher session ids", async () => {

@@ -4484,7 +4484,7 @@ export class AgentStatusTreeProvider
 		pushDetail("Status", this.formatCodexRunStatus(run.status), "pulse");
 		pushDetail("Source status", run.sourceStatus, "symbol-event");
 		pushDetail(
-			"Lifecycle owner",
+			"Lifecycle authority",
 			this.formatCodexRunSourceRef(run.source),
 			"shield",
 		);
@@ -4535,6 +4535,70 @@ export class AgentStatusTreeProvider
 			status === "running" ||
 			status === "waiting" ||
 			status === "blocked"
+		);
+	}
+
+	private isAttentionCodexRunStatus(status: CodexRunStatus): boolean {
+		return status === "failed" || status === "timed_out" || status === "lost";
+	}
+
+	private formatCodexRunsDescription(runs: CodexRunView[]): string {
+		const count = runs.length;
+		const activeCount = runs.filter((run) =>
+			this.isActiveCodexRunStatus(run.status),
+		).length;
+		const attentionCount = runs.filter((run) =>
+			this.isAttentionCodexRunStatus(run.status),
+		).length;
+		const stoppedCount = runs.filter((run) => run.status === "stopped").length;
+		const cancelledCount = runs.filter(
+			(run) => run.status === "cancelled",
+		).length;
+		const unknownCount = runs.filter((run) => run.status === "unknown").length;
+		const doneCount = runs.filter((run) => run.status === "succeeded").length;
+
+		const parts = [
+			activeCount > 0 ? `${activeCount} active` : null,
+			attentionCount > 0 ? `${attentionCount} attention` : null,
+			stoppedCount > 0 ? `${stoppedCount} stopped` : null,
+			cancelledCount > 0 ? `${cancelledCount} cancelled` : null,
+			unknownCount > 0 ? `${unknownCount} unknown` : null,
+			doneCount > 0 ? `${doneCount} done` : null,
+		].filter((part): part is string => part !== null);
+
+		if (parts.length > 0) {
+			return parts.join(" · ");
+		}
+
+		return count === 1 ? "1 run" : `${count} runs`;
+	}
+
+	private createCodexRunsTooltip(runs: CodexRunView[]): vscode.MarkdownString {
+		const statusCounts = new Map<CodexRunStatus, number>();
+		for (const run of runs) {
+			statusCounts.set(run.status, (statusCounts.get(run.status) ?? 0) + 1);
+		}
+
+		const statusLine = Array.from(statusCounts.entries())
+			.sort(([left], [right]) =>
+				this.formatCodexRunStatus(left).localeCompare(
+					this.formatCodexRunStatus(right),
+				),
+			)
+			.map(
+				([status, count]) => `${this.formatCodexRunStatus(status)}: ${count}`,
+			)
+			.join(" · ");
+
+		return new vscode.MarkdownString(
+			[
+				"**Codex Runs**",
+				`${runs.length} read-only projected ${runs.length === 1 ? "run" : "runs"}`,
+				statusLine,
+				"Lifecycle authority stays with the source owner (OpenClaw, TaskFlow, or launcher).",
+			]
+				.filter((part) => part.length > 0)
+				.join("\n\n"),
 		);
 	}
 
@@ -6121,19 +6185,12 @@ export class AgentStatusTreeProvider
 
 	private createCodexRunsItem(node: CodexRunsContainerNode): vscode.TreeItem {
 		const count = node.runs.length;
-		const activeCount = node.runs.filter((run) =>
-			this.isActiveCodexRunStatus(run.status),
-		).length;
 		const item = new vscode.TreeItem(
 			count === 1 ? "Codex Runs · 1" : `Codex Runs · ${count}`,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
-		item.description =
-			activeCount > 0
-				? `${activeCount} active`
-				: count === 1
-					? "1 run"
-					: `${count} runs`;
+		item.description = this.formatCodexRunsDescription(node.runs);
+		item.tooltip = this.createCodexRunsTooltip(node.runs);
 		item.contextValue = "codexRuns";
 		item.iconPath = new vscode.ThemeIcon("run-all");
 		return item;
@@ -6158,6 +6215,7 @@ export class AgentStatusTreeProvider
 				`Run ID: \`${run.runId}\``,
 				`Status: ${this.formatCodexRunStatus(run.status)}`,
 				run.sourceStatus ? `Source Status: \`${run.sourceStatus}\`` : null,
+				`Lifecycle Authority: ${this.formatCodexRunSourceRef(run.source)}`,
 				`Source: ${this.formatCodexRunSource(run)}`,
 				run.model ? `Model: \`${run.model}\`` : null,
 				run.workspacePath ? `Workspace: \`${run.workspacePath}\`` : null,
