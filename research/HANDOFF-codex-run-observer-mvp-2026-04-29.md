@@ -2,7 +2,7 @@
 
 Date: 2026-04-29
 Repo: `/Users/ostemini/projects/command-central`
-Status: ready for implementation
+Status: implemented; docs aligned after review
 
 Primary spec:
 
@@ -171,6 +171,25 @@ Normalized `status` should be display-safe:
 Do not use `preparing` as a normalized status. Stage language such as `PreparingWorkspace` belongs
 in `phase`.
 
+`phase` should preserve the local MVP and official Symphony run-attempt vocabulary:
+
+- `PreparingWorkspace`
+- `BuildingPrompt`
+- `LaunchingAgent`
+- `LaunchingAgentProcess`
+- `InitializingSession`
+- `StreamingTurn`
+- `Finishing`
+- `Succeeded`
+- `Failed`
+- `TimedOut`
+- `Stalled`
+- `CanceledByReconciliation`
+
+`LaunchingAgent` is retained for local MVP wording. `LaunchingAgentProcess`, terminal phase names,
+`Stalled`, and `CanceledByReconciliation` come from the official Symphony run-attempt lifecycle.
+Phase values are observability labels, not lifecycle authority.
+
 ## Projection Rules
 
 OpenClaw task projection:
@@ -185,6 +204,8 @@ OpenClaw task projection:
 TaskFlow join:
 
 - TaskFlow child data can enrich an existing run.
+- Join TaskFlow child data only by `taskId`, `childSessionKey`, or `runId`.
+- Do not join TaskFlow children by broad human labels or display titles.
 - TaskFlow must not override a joined child task's lifecycle status.
 - A standalone flow may produce a flow-level run view only when there is no child task record to
   represent that work item.
@@ -192,10 +213,27 @@ TaskFlow join:
 
 Launcher join:
 
-- Join launcher metadata when matching by `taskId`, `label`, `childSessionKey`, session id, or
-  stable path-like fields already available in memory.
+- Join launcher metadata only by explicit run identity:
+  - OpenClaw/TaskFlow `taskId` matching launcher `AgentTask.id`.
+  - Existing `runId` matching launcher `AgentTask.id`.
+  - Existing run title matching launcher `AgentTask.id` when the title is already an explicit
+    launcher id.
+  - Session identity, including `childSessionKey` / launcher `session_id` matches with the
+    `session:` prefix normalized away.
+- These identity joins may target existing OpenClaw/TaskFlow owner rows, but they must not target an
+  existing launcher-only row.
+- Session identity may join launcher metadata onto an existing owner row, but it must not collapse
+  two launcher-only rows into one run. Launcher session ids such as `agent-ghostty-launcher` are not
+  unique run identities by themselves.
+- Do not join by project/workspace path alone.
+- Do not join by broad human labels or display titles.
+- Workspace/project path can enrich a run after a stronger identity match, but it is not itself a
+  join key.
 - Launcher can enrich title, workspace, model, prompt/handoff/artifact fields.
 - Launcher does not become lifecycle authority when an OpenClaw task row exists.
+- Launcher-only rows should become standalone Codex runs only when explicit launcher metadata marks
+  the row as Codex, such as `agent_backend` or `cli_name`. Task ids, session ids, project names, and
+  prompt text that merely contain the word `codex` are not sufficient.
 
 Artifacts:
 
@@ -241,12 +279,17 @@ Start with projection tests:
 
 - OpenClaw task becomes a `CodexRunView` with `sourceStatus` and normalized `status`.
 - TaskFlow child fields attach to an existing run but do not override lifecycle status.
-- Launcher task metadata joins through `taskId`, `label`, `childSessionKey`, session id, or stable
-  path-like fields.
+- Launcher task metadata joins only through explicit run identity: `taskId`, `runId`, launcher id,
+  or session identity.
+- Launcher joins do not use project/workspace path alone and do not use broad label/title matching.
+- Launcher-only rows require explicit Codex runtime metadata.
+- TaskFlow joins do not use broad human labels or display titles.
 - `fieldSources` identify where title, status, last activity, model, task id, flow id, and session
   id came from.
 - `source` and `mergedFrom` contain `{ kind, id?, path? }` source refs, not bare strings.
 - Artifact links come only from already-fetched source fields.
+- Phase projection preserves official Symphony phase names separately from normalized display
+  status.
 - Projection is deterministic: the same inputs produce the same ordered run list.
 - Observer boundary stays pure: no shelling out, file watching, filesystem crawling, OpenClaw
   command calls, Codex launches, or lifecycle mutations.
@@ -254,6 +297,7 @@ Start with projection tests:
 Then add a small tree test:
 
 - `Codex Runs` container appears and expands to detail rows.
+- `Codex Runs` respects Agent Status project filtering.
 
 Do not start with JSONL parser fixtures. Those are next-slice work after the projection model is
 stable.

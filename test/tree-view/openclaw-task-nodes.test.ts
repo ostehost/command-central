@@ -1,4 +1,10 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type {
+	AgentTask,
+	TaskRegistry,
+} from "../../src/providers/agent-status-tree-provider.js";
 import type { OpenClawTaskService } from "../../src/services/openclaw-task-service.js";
 import type { TaskFlowService } from "../../src/services/taskflow-service.js";
 import { countAgentStatuses } from "../../src/utils/agent-counts.js";
@@ -94,6 +100,12 @@ describe("OpenClaw task nodes", () => {
 			tasks: [createTask({ taskId: "bg-1", runtime: "subagent" })],
 			...overrides,
 		};
+	}
+
+	function isCodexLauncherTask(task: AgentTask): boolean {
+		return [task.agent_backend, task.cli_name].some((value) =>
+			value?.toLowerCase().includes("codex"),
+		);
 	}
 
 	async function createProvider(
@@ -223,6 +235,30 @@ describe("OpenClaw task nodes", () => {
 			details.some(
 				(node) =>
 					node.type === "detail" &&
+					node.label === "Status" &&
+					node.value === "Running",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Source status" &&
+					node.value === "running",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Lifecycle owner" &&
+					node.value === "openclaw-task:bg-1",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
 					node.label === "Run ID" &&
 					node.value === "bg-1",
 			),
@@ -311,6 +347,45 @@ describe("OpenClaw task nodes", () => {
 			"/tmp/my-app",
 		]);
 		expect(runsNode.runs.map((run) => run.taskId)).toEqual(["bg-1"]);
+	});
+
+	test("Codex Runs keep dogfood launcher-only rows distinct", async () => {
+		const provider = await createProvider([]);
+		const fixturePath = path.join(
+			process.cwd(),
+			"test",
+			"fixtures",
+			"agent-status",
+			"dogfood-live-tasks.json",
+		);
+		const registry = JSON.parse(
+			fs.readFileSync(fixturePath, "utf8"),
+		) as TaskRegistry;
+		(
+			provider as unknown as {
+				registry: TaskRegistry;
+			}
+		).registry = registry;
+
+		const expectedCodexLauncherCount = Object.values(registry.tasks).filter(
+			isCodexLauncherTask,
+		).length;
+		expect(expectedCodexLauncherCount).toBeGreaterThan(90);
+
+		const root = provider.getChildren();
+		const runsNode = root.find((node) => node.type === "codexRuns");
+		if (!runsNode || runsNode.type !== "codexRuns") {
+			throw new Error("No Codex Runs node found");
+		}
+
+		const launcherSourceIds = runsNode.runs
+			.map((run) => run.source)
+			.filter((source) => source.kind === "launcher")
+			.map((source) => source.id);
+
+		expect(runsNode.runs).toHaveLength(expectedCodexLauncherCount);
+		expect(new Set(launcherSourceIds).size).toBe(launcherSourceIds.length);
+		expect(runsNode.runs.some((run) => run.mergedFrom.length > 1)).toBe(false);
 	});
 
 	test("dedups OpenClaw tasks that match launcher session ids", async () => {

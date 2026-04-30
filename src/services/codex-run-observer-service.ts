@@ -335,13 +335,21 @@ export class CodexRunObserverService {
 		task: AgentTask,
 		runs: CodexRunView[],
 	): CodexRunView | undefined {
-		return runs.find(
-			(run) =>
+		return runs.find((run) => {
+			if (run.source.kind === "launcher") {
+				return false;
+			}
+
+			if (
 				run.taskId === task.id ||
 				run.runId === task.id ||
-				run.title === task.id ||
-				this.sessionsMatch(run.sessionKey, task.session_id),
-		);
+				run.title === task.id
+			) {
+				return true;
+			}
+
+			return this.sessionsMatch(run.sessionKey, task.session_id);
+		});
 	}
 
 	private compareRuns(left: CodexRunView, right: CodexRunView): number {

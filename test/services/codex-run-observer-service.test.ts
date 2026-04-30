@@ -242,6 +242,56 @@ describe("CodexRunObserverService", () => {
 		expect(runs).toHaveLength(2);
 	});
 
+	test("does not collapse launcher-only Codex runs by shared session identity", () => {
+		const service = new CodexRunObserverService();
+
+		const runs = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "codex-a",
+					session_id: "agent-shared",
+					agent_backend: "codex",
+					project_dir: "/tmp/project-a",
+				}),
+				launcherTask({
+					id: "codex-b",
+					session_id: "agent-shared",
+					agent_backend: "codex",
+					project_dir: "/tmp/project-b",
+				}),
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		expect(runs.map((run) => run.runId).sort()).toEqual(["codex-a", "codex-b"]);
+		expect(runs).toHaveLength(2);
+	});
+
+	test("does not collapse launcher-only Codex runs by title matching another launcher id", () => {
+		const service = new CodexRunObserverService();
+
+		const runs = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "codex-a",
+					agent_backend: "codex",
+					prompt_summary: "codex-b",
+				}),
+				launcherTask({
+					id: "codex-b",
+					agent_backend: "codex",
+					prompt_summary: "Independent Codex task",
+				}),
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		expect(runs.map((run) => run.runId).sort()).toEqual(["codex-a", "codex-b"]);
+		expect(runs).toHaveLength(2);
+	});
+
 	test("does not join TaskFlow children to OpenClaw tasks by human label", () => {
 		const service = new CodexRunObserverService();
 

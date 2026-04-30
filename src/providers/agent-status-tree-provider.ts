@@ -4481,6 +4481,13 @@ export class AgentStatusTreeProvider
 			});
 		};
 
+		pushDetail("Status", this.formatCodexRunStatus(run.status), "pulse");
+		pushDetail("Source status", run.sourceStatus, "symbol-event");
+		pushDetail(
+			"Lifecycle owner",
+			this.formatCodexRunSourceRef(run.source),
+			"shield",
+		);
 		pushDetail("Model", run.model, "symbol-constant");
 		pushDetail("Phase", run.phase, "debug-step-over");
 		pushDetail("Current/last tool", run.currentTool, "tools");
