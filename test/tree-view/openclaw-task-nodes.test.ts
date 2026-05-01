@@ -217,7 +217,7 @@ describe("OpenClaw task nodes", () => {
 
 		const item = provider.getTreeItem(runsNode);
 		expect(item.label).toBe("Codex Runs · 1");
-		expect(item.description).toBe("1 active");
+		expect(item.description).toBe("1 working");
 		expect((item.tooltip as { value: string }).value).toContain(
 			"read-only projected run",
 		);
@@ -259,7 +259,32 @@ describe("OpenClaw task nodes", () => {
 				(node) =>
 					node.type === "detail" &&
 					node.label === "Lifecycle authority" &&
-					node.value === "openclaw-task:bg-1",
+					node.value === "OpenClaw task bg-1",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Ownership" &&
+					node.value === "Source-owned row with Launcher metadata",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Sources" &&
+					node.value ===
+						"OpenClaw task bg-1 + Launcher launcher-1 (/tmp/my-app)",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Fields from Launcher launcher-1 (/tmp/my-app)" &&
+					node.value.includes("model"),
 			),
 		).toBe(true);
 		expect(
@@ -286,6 +311,54 @@ describe("OpenClaw task nodes", () => {
 					node.value === "/tmp/my-app/stream.jsonl",
 			),
 		).toBe(true);
+	});
+
+	test("legacy OpenClaw and launcher rows disclose Codex Runs coexistence", async () => {
+		const openClawTask = createTask({
+			taskId: "bg-1",
+			childSessionKey: "session:agent-my-app",
+		});
+		const provider = await createProvider([openClawTask]);
+		const launcherTask: AgentTask = {
+			id: "launcher-1",
+			status: "running",
+			project_dir: "/tmp/my-app",
+			project_name: "My App",
+			session_id: "agent-my-app",
+			agent_backend: "codex",
+			bundle_path: "",
+			prompt_file: "/tmp/my-app/prompt.md",
+			started_at: new Date().toISOString(),
+			attempts: 1,
+			max_attempts: 1,
+		};
+		(
+			provider as unknown as {
+				registry: {
+					version: number;
+					tasks: Record<string, AgentTask>;
+				};
+			}
+		).registry = {
+			version: 2,
+			tasks: { launcher: launcherTask },
+		};
+
+		const openClawItem = provider.getTreeItem({
+			type: "openclawTask",
+			task: openClawTask,
+		});
+		expect((openClawItem.tooltip as { value: string }).value).toContain(
+			"Also shown in Codex Runs as OpenClaw task bg-1.",
+		);
+
+		const launcherItem = provider.getTreeItem({
+			type: "task",
+			task: launcherTask,
+		});
+		expect((launcherItem.tooltip as { value: string }).value).toContain(
+			"explicit OpenClaw session join",
+		);
 	});
 
 	test("Codex Runs respect the Agent Status project filter", async () => {
@@ -395,12 +468,22 @@ describe("OpenClaw task nodes", () => {
 		expect(runsNode.runs.some((run) => run.mergedFrom.length > 1)).toBe(false);
 
 		const item = provider.getTreeItem(runsNode);
-		expect(String(item.description)).toContain("attention");
+		expect(String(item.description)).toContain("needs attention");
 		expect(String(item.description)).toContain("stopped");
-		expect(String(item.description)).toContain("done");
-		expect((item.tooltip as { value: string }).value).toContain("Failed:");
-		expect((item.tooltip as { value: string }).value).toContain("Stopped:");
-		expect((item.tooltip as { value: string }).value).toContain("Succeeded:");
+		expect(String(item.description)).toContain("completed");
+		const tooltip = (item.tooltip as { value: string }).value;
+		expect(tooltip).toContain("Failed:");
+		expect(tooltip).toContain("Stopped:");
+		expect(tooltip).toContain("Succeeded:");
+		expect(tooltip.indexOf("Running:")).toBeLessThan(
+			tooltip.indexOf("Failed:"),
+		);
+		expect(tooltip.indexOf("Failed:")).toBeLessThan(
+			tooltip.indexOf("Stopped:"),
+		);
+		expect(tooltip.indexOf("Stopped:")).toBeLessThan(
+			tooltip.indexOf("Succeeded:"),
+		);
 	});
 
 	test("dedups OpenClaw tasks that match launcher session ids", async () => {
