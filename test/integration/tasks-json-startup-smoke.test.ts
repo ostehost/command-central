@@ -87,6 +87,10 @@ describe("tasks.json startup smoke", () => {
 		expect(treeProvider.getTasks()).toEqual([]);
 		expect(treeProvider.getChildren()).toEqual([
 			{
+				type: "codexRuns",
+				runs: [],
+			},
+			{
 				type: "state",
 				label: "Waiting for agents...",
 				description: "Start Claude Code, Codex, or Gemini in any terminal",
@@ -103,6 +107,10 @@ describe("tasks.json startup smoke", () => {
 
 		expect(treeProvider.getTasks()).toEqual([]);
 		expect(treeProvider.getChildren()).toEqual([
+			{
+				type: "codexRuns",
+				runs: [],
+			},
 			{
 				type: "state",
 				label: "Waiting for agents...",
@@ -124,6 +132,10 @@ describe("tasks.json startup smoke", () => {
 			const treeProvider = await createProvider(tasksFile);
 			expect(treeProvider.getTasks()).toEqual([]);
 			expect(treeProvider.getChildren()).toEqual([
+				{
+					type: "codexRuns",
+					runs: [],
+				},
 				{
 					type: "state",
 					label: "Waiting for agents...",

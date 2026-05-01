@@ -538,6 +538,86 @@ describe("OpenClaw task nodes", () => {
 
 		const root = provider.getChildren();
 		expect(root.some((node) => node.type === "backgroundTasks")).toBe(false);
+		expect(root.some((node) => node.type === "openclawTask")).toBe(false);
+	});
+
+	test("does not dedup OpenClaw tasks by launcher id matching a human label", async () => {
+		const provider = await createProvider([
+			createTask({ taskId: "bg-label", label: "launcher-1" }),
+		]);
+		(
+			provider as unknown as {
+				registry: {
+					version: number;
+					tasks: Record<string, unknown>;
+				};
+			}
+		).registry = {
+			version: 2,
+			tasks: {
+				launcher: {
+					id: "launcher-1",
+					status: "running",
+					project_dir: "/tmp/my-app",
+					project_name: "My App",
+					session_id: "agent-my-app",
+					bundle_path: "",
+					prompt_file: "",
+					started_at: new Date().toISOString(),
+					attempts: 1,
+					max_attempts: 1,
+				},
+			},
+		};
+
+		const root = provider.getChildren();
+		expect(
+			root.some(
+				(node) =>
+					node.type === "openclawTask" && node.task.taskId === "bg-label",
+			),
+		).toBe(true);
+	});
+
+	test("does not dedup OpenClaw tasks by substring session matches", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "bg-session",
+				childSessionKey: "session:agent-my-app-extra",
+			}),
+		]);
+		(
+			provider as unknown as {
+				registry: {
+					version: number;
+					tasks: Record<string, unknown>;
+				};
+			}
+		).registry = {
+			version: 2,
+			tasks: {
+				launcher: {
+					id: "launcher-1",
+					status: "running",
+					project_dir: "/tmp/my-app",
+					project_name: "My App",
+					session_id: "agent-my-app",
+					bundle_path: "",
+					prompt_file: "",
+					started_at: new Date().toISOString(),
+					attempts: 1,
+					max_attempts: 1,
+				},
+			},
+		};
+
+		const root = provider.getChildren();
+		expect(
+			root.some(
+				(node) =>
+					node.type === "openclawTask" && node.task.taskId === "bg-session",
+			),
+		).toBe(true);
 	});
 
 	test("blocked status renders as Needs Approval with shield icon", async () => {
@@ -645,6 +725,190 @@ describe("OpenClaw task nodes", () => {
 			children.some(
 				(node) =>
 					node.type === "taskFlowChild" && node.taskId === "bg-unmatched",
+			),
+		).toBe(true);
+	});
+
+	test("task flow children do not reuse launcher rows by human label", async () => {
+		const provider = await createProvider(
+			[],
+			[
+				createFlow({
+					tasks: [
+						createTask({
+							taskId: "flow-child",
+							label: "launcher-1",
+							runtime: "subagent",
+						}),
+					],
+				}),
+			],
+		);
+		(
+			provider as unknown as {
+				registry: {
+					version: number;
+					tasks: Record<string, unknown>;
+				};
+			}
+		).registry = {
+			version: 2,
+			tasks: {
+				launcher: {
+					id: "launcher-1",
+					status: "running",
+					project_dir: "/tmp/my-app",
+					project_name: "My App",
+					session_id: "agent-my-app",
+					bundle_path: "",
+					prompt_file: "",
+					started_at: new Date().toISOString(),
+					attempts: 1,
+					max_attempts: 1,
+				},
+			},
+		};
+
+		const root = provider.getChildren();
+		const flowsNode = root.find((node) => node.type === "taskflows");
+		if (!flowsNode || flowsNode.type !== "taskflows") {
+			throw new Error("No taskflows node found");
+		}
+		const groups = provider.getChildren(flowsNode);
+		const group = groups.find((node) => node.type === "taskFlowGroup");
+		if (!group || group.type !== "taskFlowGroup") {
+			throw new Error("No taskFlowGroup node found");
+		}
+		const children = provider.getChildren(group);
+		expect(
+			children.some(
+				(node) => node.type === "task" && node.task.id === "launcher-1",
+			),
+		).toBe(false);
+		expect(
+			children.some(
+				(node) => node.type === "taskFlowChild" && node.taskId === "flow-child",
+			),
+		).toBe(true);
+	});
+
+	test("task flow children do not reuse launcher rows by substring session matches", async () => {
+		const provider = await createProvider(
+			[],
+			[
+				createFlow({
+					tasks: [
+						createTask({
+							taskId: "flow-child",
+							childSessionKey: "session:agent-my-app-extra",
+							runtime: "subagent",
+						}),
+					],
+				}),
+			],
+		);
+		(
+			provider as unknown as {
+				registry: {
+					version: number;
+					tasks: Record<string, unknown>;
+				};
+			}
+		).registry = {
+			version: 2,
+			tasks: {
+				launcher: {
+					id: "launcher-1",
+					status: "running",
+					project_dir: "/tmp/my-app",
+					project_name: "My App",
+					session_id: "agent-my-app",
+					bundle_path: "",
+					prompt_file: "",
+					started_at: new Date().toISOString(),
+					attempts: 1,
+					max_attempts: 1,
+				},
+			},
+		};
+
+		const root = provider.getChildren();
+		const flowsNode = root.find((node) => node.type === "taskflows");
+		if (!flowsNode || flowsNode.type !== "taskflows") {
+			throw new Error("No taskflows node found");
+		}
+		const groups = provider.getChildren(flowsNode);
+		const group = groups.find((node) => node.type === "taskFlowGroup");
+		if (!group || group.type !== "taskFlowGroup") {
+			throw new Error("No taskFlowGroup node found");
+		}
+		const children = provider.getChildren(group);
+		expect(
+			children.some(
+				(node) => node.type === "task" && node.task.id === "launcher-1",
+			),
+		).toBe(false);
+		expect(
+			children.some(
+				(node) => node.type === "taskFlowChild" && node.taskId === "flow-child",
+			),
+		).toBe(true);
+	});
+
+	test("task flow children reuse launcher rows by exact normalized session identity", async () => {
+		const provider = await createProvider(
+			[],
+			[
+				createFlow({
+					tasks: [
+						createTask({
+							taskId: "flow-child",
+							childSessionKey: "session:agent-my-app",
+							runtime: "subagent",
+						}),
+					],
+				}),
+			],
+		);
+		(
+			provider as unknown as {
+				registry: {
+					version: number;
+					tasks: Record<string, unknown>;
+				};
+			}
+		).registry = {
+			version: 2,
+			tasks: {
+				launcher: {
+					id: "launcher-1",
+					status: "running",
+					project_dir: "/tmp/my-app",
+					project_name: "My App",
+					session_id: "agent-my-app",
+					bundle_path: "",
+					prompt_file: "",
+					started_at: new Date().toISOString(),
+					attempts: 1,
+					max_attempts: 1,
+				},
+			},
+		};
+
+		const root = provider.getChildren();
+		const flowsNode = root.find((node) => node.type === "taskflows");
+		if (!flowsNode || flowsNode.type !== "taskflows") {
+			throw new Error("No taskflows node found");
+		}
+		const groups = provider.getChildren(flowsNode);
+		const group = groups.find((node) => node.type === "taskFlowGroup");
+		if (!group || group.type !== "taskFlowGroup") {
+			throw new Error("No taskFlowGroup node found");
+		}
+		const children = provider.getChildren(group);
+		expect(
+			children.some(
+				(node) => node.type === "task" && node.task.id === "launcher-1",
 			),
 		).toBe(true);
 	});
