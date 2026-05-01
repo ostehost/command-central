@@ -35,6 +35,7 @@ import type {
 	CodexRunSourceRef,
 	CodexRunStatus,
 	CodexRunView,
+	CodexRunViewField,
 } from "../types/codex-run-types.js";
 import {
 	type OpenClawTask,
@@ -81,6 +82,20 @@ import {
 	inspectTmuxPaneAgent,
 	type TmuxPaneAgentEvidence,
 } from "../utils/tmux-pane-health.js";
+
+const CODEX_RUN_STATUS_ORDER: CodexRunStatus[] = [
+	"running",
+	"queued",
+	"waiting",
+	"blocked",
+	"failed",
+	"timed_out",
+	"lost",
+	"cancelled",
+	"stopped",
+	"unknown",
+	"succeeded",
+];
 
 export type { AgentEvent } from "../events/agent-events.js";
 
@@ -4485,9 +4500,10 @@ export class AgentStatusTreeProvider
 		pushDetail("Source status", run.sourceStatus, "symbol-event");
 		pushDetail(
 			"Lifecycle authority",
-			this.formatCodexRunSourceRef(run.source),
+			this.formatCodexRunAuthority(run),
 			"shield",
 		);
+		pushDetail("Ownership", this.formatCodexRunOwnership(run), "account");
 		pushDetail("Model", run.model, "symbol-constant");
 		pushDetail("Phase", run.phase, "debug-step-over");
 		pushDetail("Current/last tool", run.currentTool, "tools");
@@ -4495,7 +4511,10 @@ export class AgentStatusTreeProvider
 		pushDetail("Thread", run.threadId, "comment-discussion");
 		pushDetail("Turn", run.turnId, "debug-restart");
 		pushDetail("Run ID", run.runId, "symbol-key");
-		pushDetail("Source", this.formatCodexRunSource(run), "references");
+		pushDetail("Sources", this.formatCodexRunSource(run), "references");
+		for (const provenance of this.formatCodexRunFieldSourceDetails(run)) {
+			pushDetail(provenance.label, provenance.value, "symbol-field");
+		}
 		pushDetail("Last event", this.formatCodexRunLastEvent(run), "pulse");
 
 		for (const [index, artifactPath] of (run.artifactPaths ?? []).entries()) {
@@ -4525,6 +4544,52 @@ export class AgentStatusTreeProvider
 		);
 	}
 
+	private formatCodexRunAuthority(run: CodexRunView): string {
+		return this.formatCodexRunSourceRef(run.source);
+	}
+
+	private formatCodexRunOwnership(run: CodexRunView): string {
+		if (run.source.kind === "launcher") return "Launcher-only row";
+		const metadataSources = run.mergedFrom.filter(
+			(ref) => !this.codexRunRefsEqual(ref, run.source),
+		);
+		if (metadataSources.length === 0) return "Source-owned row";
+		return `Source-owned row with ${metadataSources
+			.map((ref) => this.formatCodexRunSourceKind(ref.kind))
+			.join(" + ")} metadata`;
+	}
+
+	private formatCodexRunFieldSourceDetails(run: CodexRunView): Array<{
+		label: string;
+		value: string;
+	}> {
+		const entries = Object.entries(run.fieldSources) as Array<
+			[CodexRunViewField, CodexRunSourceRef[] | undefined]
+		>;
+		const fieldsBySource = new Map<string, string[]>();
+
+		for (const [field, sources] of entries) {
+			if (!sources || sources.length === 0) continue;
+			for (const source of sources) {
+				const key = this.formatCodexRunSourceRef(source);
+				const fields = fieldsBySource.get(key) ?? [];
+				fields.push(this.formatCodexRunFieldName(field));
+				fieldsBySource.set(key, fields);
+			}
+		}
+
+		return [...fieldsBySource.entries()]
+			.sort(([left], [right]) => left.localeCompare(right))
+			.map(([source, fields]) => ({
+				label: `Fields from ${source}`,
+				value: [...new Set(fields)].sort().join(", "),
+			}));
+	}
+
+	private formatCodexRunFieldName(field: CodexRunViewField): string {
+		return field.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+	}
+
 	private getCodexRunActivityTimeMs(run: CodexRunView): number {
 		return run.lastEventAt ?? run.endedAt ?? run.startedAt ?? 0;
 	}
@@ -4544,7 +4609,7 @@ export class AgentStatusTreeProvider
 
 	private formatCodexRunsDescription(runs: CodexRunView[]): string {
 		const count = runs.length;
-		const activeCount = runs.filter((run) =>
+		const workingCount = runs.filter((run) =>
 			this.isActiveCodexRunStatus(run.status),
 		).length;
 		const attentionCount = runs.filter((run) =>
@@ -4555,15 +4620,17 @@ export class AgentStatusTreeProvider
 			(run) => run.status === "cancelled",
 		).length;
 		const unknownCount = runs.filter((run) => run.status === "unknown").length;
-		const doneCount = runs.filter((run) => run.status === "succeeded").length;
+		const completedCount = runs.filter(
+			(run) => run.status === "succeeded",
+		).length;
 
 		const parts = [
-			activeCount > 0 ? `${activeCount} active` : null,
-			attentionCount > 0 ? `${attentionCount} attention` : null,
+			workingCount > 0 ? `${workingCount} working` : null,
+			attentionCount > 0 ? `${attentionCount} needs attention` : null,
 			stoppedCount > 0 ? `${stoppedCount} stopped` : null,
 			cancelledCount > 0 ? `${cancelledCount} cancelled` : null,
 			unknownCount > 0 ? `${unknownCount} unknown` : null,
-			doneCount > 0 ? `${doneCount} done` : null,
+			completedCount > 0 ? `${completedCount} completed` : null,
 		].filter((part): part is string => part !== null);
 
 		if (parts.length > 0) {
@@ -4579,22 +4646,25 @@ export class AgentStatusTreeProvider
 			statusCounts.set(run.status, (statusCounts.get(run.status) ?? 0) + 1);
 		}
 
-		const statusLine = Array.from(statusCounts.entries())
-			.sort(([left], [right]) =>
-				this.formatCodexRunStatus(left).localeCompare(
-					this.formatCodexRunStatus(right),
-				),
-			)
+		const statusLine = CODEX_RUN_STATUS_ORDER.filter((status) =>
+			statusCounts.has(status),
+		)
 			.map(
-				([status, count]) => `${this.formatCodexRunStatus(status)}: ${count}`,
+				(status) =>
+					`${this.formatCodexRunStatus(status)}: ${statusCounts.get(status)}`,
 			)
 			.join(" · ");
+		const ownedCount = runs.filter(
+			(run) => run.source.kind !== "launcher",
+		).length;
+		const launcherOnlyCount = runs.length - ownedCount;
 
 		return new vscode.MarkdownString(
 			[
 				"**Codex Runs**",
 				`${runs.length} read-only projected ${runs.length === 1 ? "run" : "runs"}`,
 				statusLine,
+				`${ownedCount} source-owned · ${launcherOnlyCount} launcher-only`,
 				"Lifecycle authority stays with the source owner (OpenClaw, TaskFlow, or launcher).",
 			]
 				.filter((part) => part.length > 0)
@@ -4692,9 +4762,72 @@ export class AgentStatusTreeProvider
 	}
 
 	private formatCodexRunSourceRef(ref: CodexRunSourceRef): string {
-		const id = ref.id ? `:${ref.id}` : "";
+		const id = ref.id ? ` ${ref.id}` : "";
 		const pathPart = ref.path ? ` (${ref.path})` : "";
-		return `${ref.kind}${id}${pathPart}`;
+		return `${this.formatCodexRunSourceKind(ref.kind)}${id}${pathPart}`;
+	}
+
+	private formatCodexRunSourceKind(kind: CodexRunSourceRef["kind"]): string {
+		switch (kind) {
+			case "openclaw-task":
+				return "OpenClaw task";
+			case "taskflow":
+				return "TaskFlow";
+			case "launcher":
+				return "Launcher";
+			case "codex-harness":
+				return "Codex harness";
+			case "trajectory":
+				return "Trajectory";
+			case "process":
+				return "Process";
+		}
+	}
+
+	private formatCodexRunLegacyOpenClawNote(task: OpenClawTask): string {
+		return `Also shown in Codex Runs as OpenClaw task ${task.taskId}.`;
+	}
+
+	private formatCodexRunLegacyLauncherNote(task: AgentTask): string | null {
+		const codexLauncher = detectAgentType(task) === "codex";
+		const matchedOwner = this.getAllOpenClawTaskSources().some((owner) =>
+			this.openClawTaskMatchesLauncherTask(owner, task),
+		);
+		if (!codexLauncher && !matchedOwner) return null;
+		if (matchedOwner) {
+			return "Also represented in Codex Runs through an explicit OpenClaw session join.";
+		}
+		return "Also shown in Codex Runs as a launcher-only Codex row.";
+	}
+
+	private openClawTaskMatchesLauncherTask(
+		owner: OpenClawTask,
+		task: AgentTask,
+	): boolean {
+		return (
+			owner.taskId === task.id ||
+			owner.runId === task.id ||
+			this.codexRunSessionsMatch(owner.childSessionKey, task.session_id)
+		);
+	}
+
+	private codexRunSessionsMatch(
+		left: string | undefined,
+		right: string | null | undefined,
+	): boolean {
+		if (!left || !right) return false;
+		const leftCandidates = this.codexRunSessionCandidates(left);
+		const rightCandidates = this.codexRunSessionCandidates(right);
+		return leftCandidates.some((candidate) =>
+			rightCandidates.includes(candidate),
+		);
+	}
+
+	private codexRunSessionCandidates(value: string): string[] {
+		const trimmed = value.trim();
+		if (!trimmed) return [];
+		const withoutPrefix = trimmed.replace(/^session:/, "");
+		return [...new Set([trimmed, withoutPrefix])];
 	}
 
 	private codexRunRefsEqual(
@@ -6200,6 +6333,7 @@ export class AgentStatusTreeProvider
 		const activity = this.getCodexRunActivityTimeMs(run);
 		const descriptionParts = [
 			this.formatCodexRunStatus(run.status),
+			this.formatCodexRunOwnership(run),
 			run.runtime,
 			activity ? relativeTime(activity) : undefined,
 			run.model ? getModelAlias(run.model) : undefined,
@@ -6215,8 +6349,9 @@ export class AgentStatusTreeProvider
 				`Run ID: \`${run.runId}\``,
 				`Status: ${this.formatCodexRunStatus(run.status)}`,
 				run.sourceStatus ? `Source Status: \`${run.sourceStatus}\`` : null,
-				`Lifecycle Authority: ${this.formatCodexRunSourceRef(run.source)}`,
-				`Source: ${this.formatCodexRunSource(run)}`,
+				`Lifecycle Authority: ${this.formatCodexRunAuthority(run)}`,
+				`Ownership: ${this.formatCodexRunOwnership(run)}`,
+				`Sources: ${this.formatCodexRunSource(run)}`,
 				run.model ? `Model: \`${run.model}\`` : null,
 				run.workspacePath ? `Workspace: \`${run.workspacePath}\`` : null,
 				run.sessionKey ? `Session: \`${run.sessionKey}\`` : null,
@@ -6783,10 +6918,12 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = description;
+		const codexRunNote = this.formatCodexRunLegacyLauncherNote(task);
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${task.id}**`,
 				`Status: ${getStatusDisplayLabel(task.status)}`,
+				codexRunNote,
 				fallback
 					? `Model: ${fallback.actualFull} (fallback from ${fallback.requestedFull})`
 					: modelDisplay
@@ -6849,6 +6986,7 @@ export class AgentStatusTreeProvider
 			[
 				`**${title}**`,
 				`Task ID: \`${task.taskId}\``,
+				this.formatCodexRunLegacyOpenClawNote(task),
 				`Runtime: ${task.runtime}`,
 				`Status: ${openclawStatusToLabel(task.status)}`,
 				`Owner: ${task.ownerKey}`,
