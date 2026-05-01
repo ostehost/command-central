@@ -2839,6 +2839,10 @@ export class AgentStatusTreeProvider
 					this.isCodexRunInProject(run, this._projectFilter ?? ""),
 				);
 			}
+			const codexRunsNode: CodexRunsContainerNode = {
+				type: "codexRuns",
+				runs: codexRuns,
+			};
 			const hasAnyAgents =
 				allTasks.length > 0 ||
 				discovered.length > 0 ||
@@ -2847,6 +2851,7 @@ export class AgentStatusTreeProvider
 			if (!hasAnyAgents) {
 				if (this._initialReadInProgress && this._filePath) {
 					return [
+						codexRunsNode,
 						{
 							type: "state",
 							label: "Scanning for agents...",
@@ -2857,6 +2862,7 @@ export class AgentStatusTreeProvider
 				}
 				if (this._registryLoadIssue) {
 					return [
+						codexRunsNode,
 						{
 							type: "state",
 							label: "Could not read tasks.json",
@@ -2866,6 +2872,7 @@ export class AgentStatusTreeProvider
 					];
 				}
 				return [
+					codexRunsNode,
 					{
 						type: "state",
 						label: "Waiting for agents...",
@@ -2952,14 +2959,7 @@ export class AgentStatusTreeProvider
 
 			return [
 				...summaryNodes,
-				...(codexRuns.length > 0
-					? [
-							{
-								type: "codexRuns" as const,
-								runs: codexRuns,
-							},
-						]
-					: []),
+				codexRunsNode,
 				...(!showOpenClawInline && openclawTasks.length > 0
 					? [
 							{
@@ -3026,6 +3026,17 @@ export class AgentStatusTreeProvider
 		}
 
 		if (element.type === "codexRuns") {
+			if (element.runs.length === 0) {
+				return [
+					{
+						type: "state",
+						label: "No projected Codex runs",
+						description:
+							"OpenClaw, TaskFlow, or launcher rows will appear here",
+						icon: "circle-slash",
+					},
+				];
+			}
 			return element.runs.map(
 				(run): CodexRunNode => ({ type: "codexRun", run }),
 			);
@@ -4637,6 +4648,10 @@ export class AgentStatusTreeProvider
 			return parts.join(" · ");
 		}
 
+		if (count === 0) {
+			return "no projected runs";
+		}
+
 		return count === 1 ? "1 run" : `${count} runs`;
 	}
 
@@ -4661,10 +4676,12 @@ export class AgentStatusTreeProvider
 
 		return new vscode.MarkdownString(
 			[
-				"**Codex Runs**",
+				"**Symphony / Codex Runs**",
 				`${runs.length} read-only projected ${runs.length === 1 ? "run" : "runs"}`,
 				statusLine,
-				`${ownedCount} source-owned · ${launcherOnlyCount} launcher-only`,
+				runs.length > 0
+					? `${ownedCount} source-owned · ${launcherOnlyCount} launcher-only`
+					: "No source rows are currently projected into this view.",
 				"Lifecycle authority stays with the source owner (OpenClaw, TaskFlow, or launcher).",
 			]
 				.filter((part) => part.length > 0)
@@ -6319,7 +6336,9 @@ export class AgentStatusTreeProvider
 	private createCodexRunsItem(node: CodexRunsContainerNode): vscode.TreeItem {
 		const count = node.runs.length;
 		const item = new vscode.TreeItem(
-			count === 1 ? "Codex Runs · 1" : `Codex Runs · ${count}`,
+			count === 1
+				? "Symphony / Codex Runs · 1"
+				: `Symphony / Codex Runs · ${count}`,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = this.formatCodexRunsDescription(node.runs);
