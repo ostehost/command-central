@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type {
+	AgentNode,
 	AgentTask,
 	TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
@@ -108,6 +109,29 @@ describe("OpenClaw task nodes", () => {
 		);
 	}
 
+	function createLauncherTask(overrides: Partial<AgentTask> = {}): AgentTask {
+		return {
+			id: "launcher-1",
+			status: "running",
+			project_dir: "/tmp/my-app",
+			project_name: "My App",
+			session_id: "agent-my-app",
+			bundle_path: "",
+			prompt_file: "",
+			started_at: new Date().toISOString(),
+			attempts: 1,
+			max_attempts: 1,
+			...overrides,
+		};
+	}
+
+	function setLauncherTasks(provider: unknown, tasks: AgentTask[]): void {
+		(provider as { registry: TaskRegistry }).registry = {
+			version: 2,
+			tasks: Object.fromEntries(tasks.map((task) => [task.id, task])),
+		};
+	}
+
 	async function createProvider(
 		openclawTasks: ReturnType<typeof createTask>[],
 		flows: ReturnType<typeof createFlow>[] = [],
@@ -163,6 +187,22 @@ describe("OpenClaw task nodes", () => {
 			}
 		).registry = { version: 2, tasks: {} };
 		return provider;
+	}
+
+	function getSingleTaskFlowChildren(provider: {
+		getChildren: (element?: AgentNode) => AgentNode[];
+	}): AgentNode[] {
+		const root = provider.getChildren();
+		const flowsNode = root.find((node) => node.type === "taskflows");
+		if (!flowsNode || flowsNode.type !== "taskflows") {
+			throw new Error("No taskflows node found");
+		}
+		const groups = provider.getChildren(flowsNode);
+		const group = groups.find((node) => node.type === "taskFlowGroup");
+		if (!group || group.type !== "taskFlowGroup") {
+			throw new Error("No taskFlowGroup node found");
+		}
+		return provider.getChildren(group);
 	}
 
 	test("OpenClaw tasks appear inline in flat mode", async () => {
@@ -538,6 +578,169 @@ describe("OpenClaw task nodes", () => {
 
 		const root = provider.getChildren();
 		expect(root.some((node) => node.type === "backgroundTasks")).toBe(false);
+	});
+
+	test("does not dedupe OpenClaw tasks by label-only launcher id matches", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "bg-label",
+				label: "launcher-1",
+				childSessionKey: "session:owner-task",
+			}),
+		]);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-1",
+				session_id: "unrelated-session",
+			}),
+		]);
+
+		const root = provider.getChildren();
+		expect(
+			root.some(
+				(node) =>
+					node.type === "openclawTask" && node.task.taskId === "bg-label",
+			),
+		).toBe(true);
+	});
+
+	test("does not dedupe OpenClaw tasks by substring session matches", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "bg-session",
+				childSessionKey: "session:abc-extra",
+			}),
+		]);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-abc",
+				session_id: "abc",
+			}),
+		]);
+
+		const root = provider.getChildren();
+		expect(
+			root.some(
+				(node) =>
+					node.type === "openclawTask" && node.task.taskId === "bg-session",
+			),
+		).toBe(true);
+	});
+
+	test("task flow children do not reuse launchers by label-only id matches", async () => {
+		const provider = await createProvider(
+			[],
+			[
+				createFlow({
+					tasks: [
+						createTask({
+							taskId: "bg-flow-label",
+							runtime: "subagent",
+							label: "launcher-1",
+							childSessionKey: "session:flow-only",
+						}),
+					],
+				}),
+			],
+		);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-1",
+				session_id: "unrelated-session",
+			}),
+		]);
+
+		const children = getSingleTaskFlowChildren(provider);
+		expect(
+			children.some(
+				(node) =>
+					node.type === "taskFlowChild" && node.taskId === "bg-flow-label",
+			),
+		).toBe(true);
+		expect(
+			children.some(
+				(node) => node.type === "task" && node.task.id === "launcher-1",
+			),
+		).toBe(false);
+	});
+
+	test("task flow children do not reuse launchers by substring session matches", async () => {
+		const provider = await createProvider(
+			[],
+			[
+				createFlow({
+					tasks: [
+						createTask({
+							taskId: "bg-flow-session",
+							runtime: "subagent",
+							childSessionKey: "session:abc-extra",
+						}),
+					],
+				}),
+			],
+		);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-abc",
+				session_id: "abc",
+			}),
+		]);
+
+		const children = getSingleTaskFlowChildren(provider);
+		expect(
+			children.some(
+				(node) =>
+					node.type === "taskFlowChild" && node.taskId === "bg-flow-session",
+			),
+		).toBe(true);
+		expect(
+			children.some(
+				(node) => node.type === "task" && node.task.id === "launcher-abc",
+			),
+		).toBe(false);
+	});
+
+	test("exact normalized sessions still dedupe OpenClaw tasks and reuse TaskFlow launchers", async () => {
+		const provider = await createProvider(
+			[
+				createTask({
+					taskId: "bg-exact",
+					childSessionKey: "session:abc",
+				}),
+			],
+			[
+				createFlow({
+					tasks: [
+						createTask({
+							taskId: "bg-flow-exact",
+							runtime: "subagent",
+							childSessionKey: "session:abc",
+						}),
+					],
+				}),
+			],
+		);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-exact",
+				session_id: "abc",
+			}),
+		]);
+
+		const root = provider.getChildren();
+		expect(
+			root.some(
+				(node) =>
+					node.type === "openclawTask" && node.task.taskId === "bg-exact",
+			),
+		).toBe(false);
+
+		const children = getSingleTaskFlowChildren(provider);
+		expect(
+			children.some(
+				(node) => node.type === "task" && node.task.id === "launcher-exact",
+			),
+		).toBe(true);
 	});
 
 	test("blocked status renders as Needs Approval with shield icon", async () => {

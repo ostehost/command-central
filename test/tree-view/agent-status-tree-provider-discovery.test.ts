@@ -800,7 +800,7 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		provider.reload();
 
 		const children = provider.getChildren();
-		expect(children).toHaveLength(3); // 1 summary + 2 tasks
+		expect(children).toHaveLength(4); // 1 summary + Codex Runs + 2 tasks
 		const taskNodes = getTaskNodes(children);
 		expect(taskNodes).toHaveLength(2);
 		expect((taskNodes[0] as { type: "task"; task: AgentTask }).task.id).toBe(
@@ -2281,7 +2281,7 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		});
 		provider.reload();
 		const children = provider.getChildren();
-		expect(children).toHaveLength(2); // 1 summary + 1 task
+		expect(children).toHaveLength(3); // 1 summary + Codex Runs + 1 task
 	});
 
 	// readRegistry tests extracted to agent-status-tree-provider-read-registry.test.ts

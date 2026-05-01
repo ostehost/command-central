@@ -2033,23 +2033,9 @@ export class AgentStatusTreeProvider
 
 	private shouldDedupOpenClawTask(task: OpenClawTask): boolean {
 		const launcherTasks = this.getLauncherTasks();
-		if (
-			task.childSessionKey &&
-			launcherTasks.some(
-				(launcherTask) =>
-					launcherTask.session_id &&
-					task.childSessionKey?.includes(launcherTask.session_id),
-			)
-		) {
-			return true;
-		}
-		if (
-			task.label &&
-			launcherTasks.some((launcherTask) => launcherTask.id === task.label)
-		) {
-			return true;
-		}
-		return false;
+		return launcherTasks.some((launcherTask) =>
+			this.openClawTaskMatchesLauncherTask(task, launcherTask),
+		);
 	}
 
 	private getAllOpenClawTaskSources(): OpenClawTask[] {
@@ -6556,13 +6542,8 @@ export class AgentStatusTreeProvider
 
 	private findLauncherTaskForFlowTask(task: TaskFlowTask): AgentTask | null {
 		return (
-			this.getLauncherTasks().find(
-				(launcherTask) =>
-					(task.childSessionKey != null &&
-						launcherTask.session_id != null &&
-						task.childSessionKey.includes(launcherTask.session_id)) ||
-					launcherTask.id === task.taskId ||
-					(task.label != null && launcherTask.id === task.label),
+			this.getLauncherTasks().find((launcherTask) =>
+				this.openClawTaskMatchesLauncherTask(task, launcherTask),
 			) ?? null
 		);
 	}
