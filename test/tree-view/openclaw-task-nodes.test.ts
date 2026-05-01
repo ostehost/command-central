@@ -1,4 +1,11 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type {
+	AgentNode,
+	AgentTask,
+	TaskRegistry,
+} from "../../src/providers/agent-status-tree-provider.js";
 import type { OpenClawTaskService } from "../../src/services/openclaw-task-service.js";
 import type { TaskFlowService } from "../../src/services/taskflow-service.js";
 import { countAgentStatuses } from "../../src/utils/agent-counts.js";
@@ -47,6 +54,7 @@ describe("OpenClaw task nodes", () => {
 				| "lost"
 				| "blocked";
 			label: string;
+			task: string;
 			childSessionKey: string;
 			progressSummary: string;
 			lastEventAt: number;
@@ -92,6 +100,35 @@ describe("OpenClaw task nodes", () => {
 			failedCount: 0,
 			tasks: [createTask({ taskId: "bg-1", runtime: "subagent" })],
 			...overrides,
+		};
+	}
+
+	function isCodexLauncherTask(task: AgentTask): boolean {
+		return [task.agent_backend, task.cli_name].some((value) =>
+			value?.toLowerCase().includes("codex"),
+		);
+	}
+
+	function createLauncherTask(overrides: Partial<AgentTask> = {}): AgentTask {
+		return {
+			id: "launcher-1",
+			status: "running",
+			project_dir: "/tmp/my-app",
+			project_name: "My App",
+			session_id: "agent-my-app",
+			bundle_path: "",
+			prompt_file: "",
+			started_at: new Date().toISOString(),
+			attempts: 1,
+			max_attempts: 1,
+			...overrides,
+		};
+	}
+
+	function setLauncherTasks(provider: unknown, tasks: AgentTask[]): void {
+		(provider as { registry: TaskRegistry }).registry = {
+			version: 2,
+			tasks: Object.fromEntries(tasks.map((task) => [task.id, task])),
 		};
 	}
 
@@ -152,10 +189,362 @@ describe("OpenClaw task nodes", () => {
 		return provider;
 	}
 
+	function getSingleTaskFlowChildren(provider: {
+		getChildren: (element?: AgentNode) => AgentNode[];
+	}): AgentNode[] {
+		const root = provider.getChildren();
+		const flowsNode = root.find((node) => node.type === "taskflows");
+		if (!flowsNode || flowsNode.type !== "taskflows") {
+			throw new Error("No taskflows node found");
+		}
+		const groups = provider.getChildren(flowsNode);
+		const group = groups.find((node) => node.type === "taskFlowGroup");
+		if (!group || group.type !== "taskFlowGroup") {
+			throw new Error("No taskFlowGroup node found");
+		}
+		return provider.getChildren(group);
+	}
+
 	test("OpenClaw tasks appear inline in flat mode", async () => {
 		const provider = await createProvider([createTask()]);
 		const root = provider.getChildren();
 		expect(root.some((node) => node.type === "openclawTask")).toBe(true);
+	});
+
+	test("Symphony Codex Runs container remains visible when empty", async () => {
+		const provider = await createProvider([]);
+		const root = provider.getChildren();
+		const runsNode = root.find((node) => node.type === "codexRuns");
+		if (!runsNode || runsNode.type !== "codexRuns") {
+			throw new Error("No Symphony / Codex Runs node found");
+		}
+
+		const item = provider.getTreeItem(runsNode);
+		expect(item.label).toBe("Symphony / Codex Runs · 0");
+		expect(item.description).toBe("no projected runs");
+
+		const children = provider.getChildren(runsNode);
+		expect(children).toContainEqual({
+			type: "state",
+			label: "No projected Codex runs",
+			description: "OpenClaw, TaskFlow, or launcher rows will appear here",
+			icon: "circle-slash",
+		});
+	});
+
+	test("Codex Runs container appears and expands to projected details", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "bg-1",
+				task: "bg-1",
+				childSessionKey: "session:agent-my-app",
+			}),
+		]);
+		(
+			provider as unknown as {
+				registry: {
+					version: number;
+					tasks: Record<string, unknown>;
+				};
+			}
+		).registry = {
+			version: 2,
+			tasks: {
+				launcher: {
+					id: "launcher-1",
+					status: "running",
+					project_dir: "/tmp/my-app",
+					project_name: "My App",
+					session_id: "agent-my-app",
+					stream_file: "/tmp/my-app/stream.jsonl",
+					bundle_path: "",
+					handoff_file: "/tmp/my-app/handoff.md",
+					prompt_file: "/tmp/my-app/prompt.md",
+					started_at: new Date().toISOString(),
+					updated_at: new Date().toISOString(),
+					attempts: 1,
+					max_attempts: 1,
+					model: "gpt-5.5",
+					prompt_summary: "Projected Codex run",
+				},
+			},
+		};
+
+		const root = provider.getChildren();
+		const runsNode = root.find((node) => node.type === "codexRuns");
+		if (!runsNode || runsNode.type !== "codexRuns") {
+			throw new Error("No Codex Runs node found");
+		}
+
+		const item = provider.getTreeItem(runsNode);
+		expect(item.label).toBe("Symphony / Codex Runs · 1");
+		expect(item.description).toBe("1 working");
+		expect((item.tooltip as { value: string }).value).toContain(
+			"read-only projected run",
+		);
+		expect((item.tooltip as { value: string }).value).toContain(
+			"Lifecycle authority stays with the source owner",
+		);
+
+		const runs = provider.getChildren(runsNode);
+		const run = runs.find((node) => node.type === "codexRun");
+		if (!run || run.type !== "codexRun") {
+			throw new Error("No Codex run child found");
+		}
+		expect(run.run.source).toEqual({ kind: "openclaw-task", id: "bg-1" });
+		expect(run.run.mergedFrom).toContainEqual({
+			kind: "launcher",
+			id: "launcher-1",
+			path: "/tmp/my-app",
+		});
+
+		const details = provider.getChildren(run);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Status" &&
+					node.value === "Running",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Source status" &&
+					node.value === "running",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Lifecycle authority" &&
+					node.value === "OpenClaw task bg-1",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Ownership" &&
+					node.value === "Source-owned row with Launcher metadata",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Sources" &&
+					node.value ===
+						"OpenClaw task bg-1 + Launcher launcher-1 (/tmp/my-app)",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Fields from Launcher launcher-1 (/tmp/my-app)" &&
+					node.value.includes("model"),
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Run ID" &&
+					node.value === "bg-1",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Workspace" &&
+					node.value === "/tmp/my-app",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Artifact" &&
+					node.value === "/tmp/my-app/stream.jsonl",
+			),
+		).toBe(true);
+	});
+
+	test("legacy OpenClaw and launcher rows disclose Codex Runs coexistence", async () => {
+		const openClawTask = createTask({
+			taskId: "bg-1",
+			childSessionKey: "session:agent-my-app",
+		});
+		const provider = await createProvider([openClawTask]);
+		const launcherTask: AgentTask = {
+			id: "launcher-1",
+			status: "running",
+			project_dir: "/tmp/my-app",
+			project_name: "My App",
+			session_id: "agent-my-app",
+			agent_backend: "codex",
+			bundle_path: "",
+			prompt_file: "/tmp/my-app/prompt.md",
+			started_at: new Date().toISOString(),
+			attempts: 1,
+			max_attempts: 1,
+		};
+		(
+			provider as unknown as {
+				registry: {
+					version: number;
+					tasks: Record<string, AgentTask>;
+				};
+			}
+		).registry = {
+			version: 2,
+			tasks: { launcher: launcherTask },
+		};
+
+		const openClawItem = provider.getTreeItem({
+			type: "openclawTask",
+			task: openClawTask,
+		});
+		expect((openClawItem.tooltip as { value: string }).value).toContain(
+			"Also shown in Codex Runs as OpenClaw task bg-1.",
+		);
+
+		const launcherItem = provider.getTreeItem({
+			type: "task",
+			task: launcherTask,
+		});
+		expect((launcherItem.tooltip as { value: string }).value).toContain(
+			"explicit OpenClaw session join",
+		);
+	});
+
+	test("Codex Runs respect the Agent Status project filter", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "bg-1",
+				task: "bg-1",
+				childSessionKey: "session:agent-my-app",
+			}),
+			createTask({
+				taskId: "bg-2",
+				task: "bg-2",
+				childSessionKey: "session:agent-other-app",
+			}),
+		]);
+		(
+			provider as unknown as {
+				registry: {
+					version: number;
+					tasks: Record<string, unknown>;
+				};
+			}
+		).registry = {
+			version: 2,
+			tasks: {
+				launcher: {
+					id: "launcher-1",
+					status: "running",
+					project_dir: "/tmp/my-app",
+					project_name: "My App",
+					session_id: "agent-my-app",
+					bundle_path: "",
+					prompt_file: "/tmp/my-app/prompt.md",
+					started_at: new Date().toISOString(),
+					attempts: 1,
+					max_attempts: 1,
+					model: "gpt-5.5",
+					prompt_summary: "My App run",
+				},
+				other: {
+					id: "launcher-2",
+					status: "running",
+					project_dir: "/tmp/other-app",
+					project_name: "Other App",
+					session_id: "agent-other-app",
+					bundle_path: "",
+					prompt_file: "/tmp/other-app/prompt.md",
+					started_at: new Date().toISOString(),
+					attempts: 1,
+					max_attempts: 1,
+					model: "gpt-5.5",
+					prompt_summary: "Other App run",
+				},
+			},
+		};
+
+		provider.filterToProject("/tmp/my-app");
+
+		const root = provider.getChildren();
+		const runsNode = root.find((node) => node.type === "codexRuns");
+		if (!runsNode || runsNode.type !== "codexRuns") {
+			throw new Error("No Codex Runs node found");
+		}
+
+		expect(runsNode.runs.map((run) => run.workspacePath)).toEqual([
+			"/tmp/my-app",
+		]);
+		expect(runsNode.runs.map((run) => run.taskId)).toEqual(["bg-1"]);
+	});
+
+	test("Codex Runs keep dogfood launcher-only rows distinct", async () => {
+		const provider = await createProvider([]);
+		const fixturePath = path.join(
+			process.cwd(),
+			"test",
+			"fixtures",
+			"agent-status",
+			"dogfood-live-tasks.json",
+		);
+		const registry = JSON.parse(
+			fs.readFileSync(fixturePath, "utf8"),
+		) as TaskRegistry;
+		(
+			provider as unknown as {
+				registry: TaskRegistry;
+			}
+		).registry = registry;
+
+		const expectedCodexLauncherCount = Object.values(registry.tasks).filter(
+			isCodexLauncherTask,
+		).length;
+		expect(expectedCodexLauncherCount).toBeGreaterThan(90);
+
+		const root = provider.getChildren();
+		const runsNode = root.find((node) => node.type === "codexRuns");
+		if (!runsNode || runsNode.type !== "codexRuns") {
+			throw new Error("No Codex Runs node found");
+		}
+
+		const launcherSourceIds = runsNode.runs
+			.map((run) => run.source)
+			.filter((source) => source.kind === "launcher")
+			.map((source) => source.id);
+
+		expect(runsNode.runs).toHaveLength(expectedCodexLauncherCount);
+		expect(new Set(launcherSourceIds).size).toBe(launcherSourceIds.length);
+		expect(runsNode.runs.some((run) => run.mergedFrom.length > 1)).toBe(false);
+
+		const item = provider.getTreeItem(runsNode);
+		expect(String(item.description)).toContain("needs attention");
+		expect(String(item.description)).toContain("stopped");
+		expect(String(item.description)).toContain("completed");
+		const tooltip = (item.tooltip as { value: string }).value;
+		expect(tooltip).toContain("Failed:");
+		expect(tooltip).toContain("Stopped:");
+		expect(tooltip).toContain("Succeeded:");
+		expect(tooltip.indexOf("Running:")).toBeLessThan(
+			tooltip.indexOf("Failed:"),
+		);
+		expect(tooltip.indexOf("Failed:")).toBeLessThan(
+			tooltip.indexOf("Stopped:"),
+		);
+		expect(tooltip.indexOf("Stopped:")).toBeLessThan(
+			tooltip.indexOf("Succeeded:"),
+		);
 	});
 
 	test("dedups OpenClaw tasks that match launcher session ids", async () => {
@@ -189,6 +578,169 @@ describe("OpenClaw task nodes", () => {
 
 		const root = provider.getChildren();
 		expect(root.some((node) => node.type === "backgroundTasks")).toBe(false);
+	});
+
+	test("does not dedupe OpenClaw tasks by label-only launcher id matches", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "bg-label",
+				label: "launcher-1",
+				childSessionKey: "session:owner-task",
+			}),
+		]);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-1",
+				session_id: "unrelated-session",
+			}),
+		]);
+
+		const root = provider.getChildren();
+		expect(
+			root.some(
+				(node) =>
+					node.type === "openclawTask" && node.task.taskId === "bg-label",
+			),
+		).toBe(true);
+	});
+
+	test("does not dedupe OpenClaw tasks by substring session matches", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "bg-session",
+				childSessionKey: "session:abc-extra",
+			}),
+		]);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-abc",
+				session_id: "abc",
+			}),
+		]);
+
+		const root = provider.getChildren();
+		expect(
+			root.some(
+				(node) =>
+					node.type === "openclawTask" && node.task.taskId === "bg-session",
+			),
+		).toBe(true);
+	});
+
+	test("task flow children do not reuse launchers by label-only id matches", async () => {
+		const provider = await createProvider(
+			[],
+			[
+				createFlow({
+					tasks: [
+						createTask({
+							taskId: "bg-flow-label",
+							runtime: "subagent",
+							label: "launcher-1",
+							childSessionKey: "session:flow-only",
+						}),
+					],
+				}),
+			],
+		);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-1",
+				session_id: "unrelated-session",
+			}),
+		]);
+
+		const children = getSingleTaskFlowChildren(provider);
+		expect(
+			children.some(
+				(node) =>
+					node.type === "taskFlowChild" && node.taskId === "bg-flow-label",
+			),
+		).toBe(true);
+		expect(
+			children.some(
+				(node) => node.type === "task" && node.task.id === "launcher-1",
+			),
+		).toBe(false);
+	});
+
+	test("task flow children do not reuse launchers by substring session matches", async () => {
+		const provider = await createProvider(
+			[],
+			[
+				createFlow({
+					tasks: [
+						createTask({
+							taskId: "bg-flow-session",
+							runtime: "subagent",
+							childSessionKey: "session:abc-extra",
+						}),
+					],
+				}),
+			],
+		);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-abc",
+				session_id: "abc",
+			}),
+		]);
+
+		const children = getSingleTaskFlowChildren(provider);
+		expect(
+			children.some(
+				(node) =>
+					node.type === "taskFlowChild" && node.taskId === "bg-flow-session",
+			),
+		).toBe(true);
+		expect(
+			children.some(
+				(node) => node.type === "task" && node.task.id === "launcher-abc",
+			),
+		).toBe(false);
+	});
+
+	test("exact normalized sessions still dedupe OpenClaw tasks and reuse TaskFlow launchers", async () => {
+		const provider = await createProvider(
+			[
+				createTask({
+					taskId: "bg-exact",
+					childSessionKey: "session:abc",
+				}),
+			],
+			[
+				createFlow({
+					tasks: [
+						createTask({
+							taskId: "bg-flow-exact",
+							runtime: "subagent",
+							childSessionKey: "session:abc",
+						}),
+					],
+				}),
+			],
+		);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-exact",
+				session_id: "abc",
+			}),
+		]);
+
+		const root = provider.getChildren();
+		expect(
+			root.some(
+				(node) =>
+					node.type === "openclawTask" && node.task.taskId === "bg-exact",
+			),
+		).toBe(false);
+
+		const children = getSingleTaskFlowChildren(provider);
+		expect(
+			children.some(
+				(node) => node.type === "task" && node.task.id === "launcher-exact",
+			),
+		).toBe(true);
 	});
 
 	test("blocked status renders as Needs Approval with shield icon", async () => {

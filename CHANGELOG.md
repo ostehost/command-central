@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-02: 1160+ tests across 83 files.
 
+## [0.6.0-rc.14] - 2026-04-30
+
+### Fixed
+- **Codex Runs identity joins** — Launcher metadata now joins OpenClaw/TaskFlow-owned Codex runs only by explicit `taskId`, `runId`, or session identity. Display titles no longer act as join keys, preventing unrelated launcher rows from lending workspace/model/artifact metadata to authoritative owner rows.
+- **Codex Runs release alignment** — The preview artifact now includes the final identity-join hardening instead of leaving it source-only after the rc13 cut.
+
+## [0.6.0-rc.13] - 2026-04-30
+
+### Changed
+- **Codex Runs lifecycle wording** — Agent Status now labels Codex run provenance as `Lifecycle authority`, and run hover text makes the source-owner boundary explicit.
+- **Codex Runs status summary** — The root `Codex Runs` row now separates active, attention, stopped, cancelled, unknown, and done buckets so stopped runs are visible instead of hidden behind the total count.
+
+### Fixed
+- **Codex Runs root tooltip** — The group tooltip now clearly states that these runs are a read-only projection and that lifecycle authority remains with OpenClaw, TaskFlow, or the launcher/source owner.
+
+## [0.6.0-rc.12] - 2026-04-30
+
+### Added
+- **Codex Runs visibility** — Agent Status now shows a root-level `Codex Runs` group that projects OpenClaw, TaskFlow, and launcher records into one read-only operator view with visible status, source status, lifecycle owner, run id, workspace, source, event, and artifact details.
+
+### Fixed
+- **Launcher-only Codex run projection** — Launcher-only Codex rows now stay distinct even when they share broad session identities or prompt/title text, while launcher metadata can still enrich existing OpenClaw/TaskFlow-owned rows.
+- **Codex Runs project filtering** — Project filters now keep out-of-project Codex run rows hidden, matching the rest of Agent Status.
+
 ## [0.5.1-58] - 2026-04-02
 
 ### Fixed

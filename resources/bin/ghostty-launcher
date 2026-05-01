@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Ghostty Launcher v0.1.0 — Per-project dock terminals
+# Ghostty Launcher v1.1.0 — Per-project dock terminals
 #
 # Usage: launcher [OPTIONS] <project-dir>
 #
 set -euo pipefail
 
-readonly VERSION="0.1.0"
+readonly VERSION="1.1.0"
 # Ghostty binary lookup chain: explicit env var → stock Ghostty
 if [[ -n "${GHOSTTY_BINARY_PATH:-}" ]] && [[ -d "$GHOSTTY_BINARY_PATH" ]]; then
 	readonly GHOSTTY_APP="$GHOSTTY_BINARY_PATH"

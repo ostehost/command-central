@@ -62,6 +62,7 @@ import {
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
 import { AgentOutputChannels } from "./services/agent-output-channels.js";
 import { AgentStatusBar } from "./services/agent-status-bar.js";
+import { CodexRunObserverService } from "./services/codex-run-observer-service.js";
 import { GroupingStateManager } from "./services/grouping-state-manager.js";
 import { InfrastructureHealthStatusBar } from "./services/infrastructure-health-status-bar.js";
 import { LoggerService, LogLevel } from "./services/logger-service.js";
@@ -885,8 +886,10 @@ export async function activate(
 		// ============================================================================
 		const sessionStore = new SessionStore();
 		const projectIconManagerForAgents = new ProjectIconManager();
+		const codexRunObserverService = new CodexRunObserverService();
 		agentStatusProvider = new AgentStatusTreeProvider(
 			projectIconManagerForAgents,
+			codexRunObserverService,
 		);
 		const agentStatusView = vscode.window.createTreeView(
 			"commandCentral.agentStatus",

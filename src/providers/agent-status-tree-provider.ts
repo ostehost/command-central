@@ -22,6 +22,7 @@ import type {
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
 import type { AcpSessionService } from "../services/acp-session-service.js";
+import { CodexRunObserverService } from "../services/codex-run-observer-service.js";
 import type {
 	OpenClawAgentModel,
 	OpenClawConfigService,
@@ -30,6 +31,12 @@ import type { OpenClawTaskService } from "../services/openclaw-task-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
 import { ReviewTracker } from "../services/review-tracker.js";
 import type { TaskFlowService } from "../services/taskflow-service.js";
+import type {
+	CodexRunSourceRef,
+	CodexRunStatus,
+	CodexRunView,
+	CodexRunViewField,
+} from "../types/codex-run-types.js";
 import {
 	type OpenClawTask,
 	openclawStatusToIcon,
@@ -75,6 +82,20 @@ import {
 	inspectTmuxPaneAgent,
 	type TmuxPaneAgentEvidence,
 } from "../utils/tmux-pane-health.js";
+
+const CODEX_RUN_STATUS_ORDER: CodexRunStatus[] = [
+	"running",
+	"queued",
+	"waiting",
+	"blocked",
+	"failed",
+	"timed_out",
+	"lost",
+	"cancelled",
+	"stopped",
+	"unknown",
+	"succeeded",
+];
 
 export type { AgentEvent } from "../events/agent-events.js";
 
@@ -166,6 +187,8 @@ export type AgentNode =
 	| TaskFlowGroupNode
 	| TaskFlowChildNode
 	| TaskFlowsContainerNode
+	| CodexRunsContainerNode
+	| CodexRunNode
 	| StatusTimeGroupNode
 	| OlderRunsNode
 	| StateNode;
@@ -186,6 +209,16 @@ export interface TaskFlowChildNode {
 export interface TaskFlowsContainerNode {
 	type: "taskflows";
 	flows: TaskFlow[];
+}
+
+export interface CodexRunsContainerNode {
+	type: "codexRuns";
+	runs: CodexRunView[];
+}
+
+export interface CodexRunNode {
+	type: "codexRun";
+	run: CodexRunView;
 }
 
 export interface TaskFlowSingleNode {
@@ -912,9 +945,15 @@ export class AgentStatusTreeProvider
 	private _acpSessionService: AcpSessionService | null = null;
 	private _taskFlowService: TaskFlowService | null = null;
 	private _reviewTracker: ReviewTracker = new ReviewTracker();
+	private codexRunObserverService: CodexRunObserverService;
 
-	constructor(projectIconManager?: ProjectIconManager) {
+	constructor(
+		projectIconManager?: ProjectIconManager,
+		codexRunObserverService?: CodexRunObserverService,
+	) {
 		this.projectIconManager = projectIconManager ?? new ProjectIconManager();
+		this.codexRunObserverService =
+			codexRunObserverService ?? new CodexRunObserverService();
 		// Watch config changes for the tasks file path
 		this.disposables.push(
 			vscode.workspace.onDidChangeConfiguration((e) => {
@@ -1994,27 +2033,12 @@ export class AgentStatusTreeProvider
 
 	private shouldDedupOpenClawTask(task: OpenClawTask): boolean {
 		const launcherTasks = this.getLauncherTasks();
-		if (
-			task.childSessionKey &&
-			launcherTasks.some(
-				(launcherTask) =>
-					launcherTask.session_id &&
-					task.childSessionKey?.includes(launcherTask.session_id),
-			)
-		) {
-			return true;
-		}
-		if (
-			task.label &&
-			launcherTasks.some((launcherTask) => launcherTask.id === task.label)
-		) {
-			return true;
-		}
-		return false;
+		return launcherTasks.some((launcherTask) =>
+			this.openClawTaskMatchesLauncherTask(task, launcherTask),
+		);
 	}
 
-	private getNonLauncherOpenClawTasks(): OpenClawTask[] {
-		// Merge tasks from both sources. ACP source wins on taskId conflict.
+	private getAllOpenClawTaskSources(): OpenClawTask[] {
 		const taskMap = new Map<string, OpenClawTask>();
 		for (const task of this._openclawTaskService?.getTasks() ?? []) {
 			taskMap.set(task.taskId, task);
@@ -2022,8 +2046,32 @@ export class AgentStatusTreeProvider
 		for (const task of this._acpSessionService?.getTasks() ?? []) {
 			taskMap.set(task.taskId, task);
 		}
-		return Array.from(taskMap.values()).filter(
+		return Array.from(taskMap.values());
+	}
+
+	private getNonLauncherOpenClawTasks(): OpenClawTask[] {
+		return this.getAllOpenClawTaskSources().filter(
 			(task) => !this.shouldDedupOpenClawTask(task),
+		);
+	}
+
+	private getCodexRuns(
+		agentTasks = this.getDisplayLauncherTasks(),
+		openClawTasks = this.getAllOpenClawTaskSources(),
+		taskFlows = this.getVisibleTaskFlows(),
+	): CodexRunView[] {
+		return this.codexRunObserverService.project({
+			agentTasks,
+			openClawTasks,
+			taskFlows,
+		});
+	}
+
+	private isCodexRunInProject(run: CodexRunView, filterDir: string): boolean {
+		if (!run.workspacePath) return false;
+		return (
+			run.workspacePath === filterDir ||
+			path.basename(run.workspacePath) === path.basename(filterDir)
 		);
 	}
 
@@ -2698,6 +2746,12 @@ export class AgentStatusTreeProvider
 		if (element.type === "taskflows") {
 			return this.createTaskFlowsItem(element);
 		}
+		if (element.type === "codexRuns") {
+			return this.createCodexRunsItem(element);
+		}
+		if (element.type === "codexRun") {
+			return this.createCodexRunItem(element.run);
+		}
 		if (element.type === "projectGroup") {
 			return this.createProjectGroupItem(element);
 		}
@@ -2761,6 +2815,20 @@ export class AgentStatusTreeProvider
 				);
 			}
 			const taskFlows = this.getVisibleTaskFlows();
+			let codexRuns = this.getCodexRuns(
+				allTasks,
+				this.getAllOpenClawTaskSources(),
+				taskFlows,
+			);
+			if (this._projectFilter) {
+				codexRuns = codexRuns.filter((run) =>
+					this.isCodexRunInProject(run, this._projectFilter ?? ""),
+				);
+			}
+			const codexRunsNode: CodexRunsContainerNode = {
+				type: "codexRuns",
+				runs: codexRuns,
+			};
 			const hasAnyAgents =
 				allTasks.length > 0 ||
 				discovered.length > 0 ||
@@ -2769,6 +2837,7 @@ export class AgentStatusTreeProvider
 			if (!hasAnyAgents) {
 				if (this._initialReadInProgress && this._filePath) {
 					return [
+						codexRunsNode,
 						{
 							type: "state",
 							label: "Scanning for agents...",
@@ -2779,6 +2848,7 @@ export class AgentStatusTreeProvider
 				}
 				if (this._registryLoadIssue) {
 					return [
+						codexRunsNode,
 						{
 							type: "state",
 							label: "Could not read tasks.json",
@@ -2788,6 +2858,7 @@ export class AgentStatusTreeProvider
 					];
 				}
 				return [
+					codexRunsNode,
 					{
 						type: "state",
 						label: "Waiting for agents...",
@@ -2874,6 +2945,7 @@ export class AgentStatusTreeProvider
 
 			return [
 				...summaryNodes,
+				codexRunsNode,
 				...(!showOpenClawInline && openclawTasks.length > 0
 					? [
 							{
@@ -2937,6 +3009,27 @@ export class AgentStatusTreeProvider
 				...this.getTaskFlowDetailChildren(element.flow),
 				...this.getTaskFlowChildNodes(element.flow),
 			];
+		}
+
+		if (element.type === "codexRuns") {
+			if (element.runs.length === 0) {
+				return [
+					{
+						type: "state",
+						label: "No projected Codex runs",
+						description:
+							"OpenClaw, TaskFlow, or launcher rows will appear here",
+						icon: "circle-slash",
+					},
+				];
+			}
+			return element.runs.map(
+				(run): CodexRunNode => ({ type: "codexRun", run }),
+			);
+		}
+
+		if (element.type === "codexRun") {
+			return this.getCodexRunDetailChildren(element.run);
 		}
 
 		if (element.type === "backgroundTasks") {
@@ -4378,6 +4471,377 @@ export class AgentStatusTreeProvider
 		}
 
 		return details;
+	}
+
+	private getCodexRunDetailChildren(run: CodexRunView): DetailNode[] {
+		const taskId = `codex-run-${run.runId}`;
+		const details: DetailNode[] = [];
+		const pushDetail = (
+			label: string,
+			value: string | undefined,
+			icon: string,
+			command?: vscode.Command,
+		): void => {
+			if (!value) return;
+			details.push({
+				type: "detail",
+				label,
+				value,
+				taskId,
+				icon,
+				command,
+			});
+		};
+
+		pushDetail("Status", this.formatCodexRunStatus(run.status), "pulse");
+		pushDetail("Source status", run.sourceStatus, "symbol-event");
+		pushDetail(
+			"Lifecycle authority",
+			this.formatCodexRunAuthority(run),
+			"shield",
+		);
+		pushDetail("Ownership", this.formatCodexRunOwnership(run), "account");
+		pushDetail("Model", run.model, "symbol-constant");
+		pushDetail("Phase", run.phase, "debug-step-over");
+		pushDetail("Current/last tool", run.currentTool, "tools");
+		pushDetail("Workspace", run.workspacePath, "folder");
+		pushDetail("Thread", run.threadId, "comment-discussion");
+		pushDetail("Turn", run.turnId, "debug-restart");
+		pushDetail("Run ID", run.runId, "symbol-key");
+		pushDetail("Sources", this.formatCodexRunSource(run), "references");
+		for (const provenance of this.formatCodexRunFieldSourceDetails(run)) {
+			pushDetail(provenance.label, provenance.value, "symbol-field");
+		}
+		pushDetail("Last event", this.formatCodexRunLastEvent(run), "pulse");
+
+		for (const [index, artifactPath] of (run.artifactPaths ?? []).entries()) {
+			pushDetail(
+				index === 0 ? "Artifact" : `Artifact ${index + 1}`,
+				artifactPath,
+				"file",
+				{
+					command: "vscode.open",
+					title: "Open Artifact",
+					arguments: [vscode.Uri.file(artifactPath)],
+				},
+			);
+		}
+
+		return details;
+	}
+
+	private formatCodexRunLastEvent(run: CodexRunView): string | undefined {
+		const timestamp = run.lastEventAt
+			? new Date(run.lastEventAt).toISOString()
+			: undefined;
+		return (
+			[run.lastEvent, timestamp]
+				.filter((part): part is string => Boolean(part))
+				.join(" · ") || undefined
+		);
+	}
+
+	private formatCodexRunAuthority(run: CodexRunView): string {
+		return this.formatCodexRunSourceRef(run.source);
+	}
+
+	private formatCodexRunOwnership(run: CodexRunView): string {
+		if (run.source.kind === "launcher") return "Launcher-only row";
+		const metadataSources = run.mergedFrom.filter(
+			(ref) => !this.codexRunRefsEqual(ref, run.source),
+		);
+		if (metadataSources.length === 0) return "Source-owned row";
+		return `Source-owned row with ${metadataSources
+			.map((ref) => this.formatCodexRunSourceKind(ref.kind))
+			.join(" + ")} metadata`;
+	}
+
+	private formatCodexRunFieldSourceDetails(run: CodexRunView): Array<{
+		label: string;
+		value: string;
+	}> {
+		const entries = Object.entries(run.fieldSources) as Array<
+			[CodexRunViewField, CodexRunSourceRef[] | undefined]
+		>;
+		const fieldsBySource = new Map<string, string[]>();
+
+		for (const [field, sources] of entries) {
+			if (!sources || sources.length === 0) continue;
+			for (const source of sources) {
+				const key = this.formatCodexRunSourceRef(source);
+				const fields = fieldsBySource.get(key) ?? [];
+				fields.push(this.formatCodexRunFieldName(field));
+				fieldsBySource.set(key, fields);
+			}
+		}
+
+		return [...fieldsBySource.entries()]
+			.sort(([left], [right]) => left.localeCompare(right))
+			.map(([source, fields]) => ({
+				label: `Fields from ${source}`,
+				value: [...new Set(fields)].sort().join(", "),
+			}));
+	}
+
+	private formatCodexRunFieldName(field: CodexRunViewField): string {
+		return field.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+	}
+
+	private getCodexRunActivityTimeMs(run: CodexRunView): number {
+		return run.lastEventAt ?? run.endedAt ?? run.startedAt ?? 0;
+	}
+
+	private isActiveCodexRunStatus(status: CodexRunStatus): boolean {
+		return (
+			status === "queued" ||
+			status === "running" ||
+			status === "waiting" ||
+			status === "blocked"
+		);
+	}
+
+	private isAttentionCodexRunStatus(status: CodexRunStatus): boolean {
+		return status === "failed" || status === "timed_out" || status === "lost";
+	}
+
+	private formatCodexRunsDescription(runs: CodexRunView[]): string {
+		const count = runs.length;
+		const workingCount = runs.filter((run) =>
+			this.isActiveCodexRunStatus(run.status),
+		).length;
+		const attentionCount = runs.filter((run) =>
+			this.isAttentionCodexRunStatus(run.status),
+		).length;
+		const stoppedCount = runs.filter((run) => run.status === "stopped").length;
+		const cancelledCount = runs.filter(
+			(run) => run.status === "cancelled",
+		).length;
+		const unknownCount = runs.filter((run) => run.status === "unknown").length;
+		const completedCount = runs.filter(
+			(run) => run.status === "succeeded",
+		).length;
+
+		const parts = [
+			workingCount > 0 ? `${workingCount} working` : null,
+			attentionCount > 0 ? `${attentionCount} needs attention` : null,
+			stoppedCount > 0 ? `${stoppedCount} stopped` : null,
+			cancelledCount > 0 ? `${cancelledCount} cancelled` : null,
+			unknownCount > 0 ? `${unknownCount} unknown` : null,
+			completedCount > 0 ? `${completedCount} completed` : null,
+		].filter((part): part is string => part !== null);
+
+		if (parts.length > 0) {
+			return parts.join(" · ");
+		}
+
+		if (count === 0) {
+			return "no projected runs";
+		}
+
+		return count === 1 ? "1 run" : `${count} runs`;
+	}
+
+	private createCodexRunsTooltip(runs: CodexRunView[]): vscode.MarkdownString {
+		const statusCounts = new Map<CodexRunStatus, number>();
+		for (const run of runs) {
+			statusCounts.set(run.status, (statusCounts.get(run.status) ?? 0) + 1);
+		}
+
+		const statusLine = CODEX_RUN_STATUS_ORDER.filter((status) =>
+			statusCounts.has(status),
+		)
+			.map(
+				(status) =>
+					`${this.formatCodexRunStatus(status)}: ${statusCounts.get(status)}`,
+			)
+			.join(" · ");
+		const ownedCount = runs.filter(
+			(run) => run.source.kind !== "launcher",
+		).length;
+		const launcherOnlyCount = runs.length - ownedCount;
+
+		return new vscode.MarkdownString(
+			[
+				"**Symphony / Codex Runs**",
+				`${runs.length} read-only projected ${runs.length === 1 ? "run" : "runs"}`,
+				statusLine,
+				runs.length > 0
+					? `${ownedCount} source-owned · ${launcherOnlyCount} launcher-only`
+					: "No source rows are currently projected into this view.",
+				"Lifecycle authority stays with the source owner (OpenClaw, TaskFlow, or launcher).",
+			]
+				.filter((part) => part.length > 0)
+				.join("\n\n"),
+		);
+	}
+
+	private formatCodexRunStatus(status: CodexRunStatus): string {
+		switch (status) {
+			case "queued":
+				return "Queued";
+			case "running":
+				return "Running";
+			case "waiting":
+				return "Waiting";
+			case "blocked":
+				return "Blocked";
+			case "succeeded":
+				return "Succeeded";
+			case "failed":
+				return "Failed";
+			case "timed_out":
+				return "Timed Out";
+			case "cancelled":
+				return "Cancelled";
+			case "lost":
+				return "Lost";
+			case "stopped":
+				return "Stopped";
+			case "unknown":
+				return "Unknown";
+		}
+	}
+
+	private getCodexRunStatusIcon(status: CodexRunStatus): vscode.ThemeIcon {
+		switch (status) {
+			case "queued":
+				return new vscode.ThemeIcon(
+					"loading~spin",
+					new vscode.ThemeColor("charts.yellow"),
+				);
+			case "running":
+				return new vscode.ThemeIcon(
+					"pulse",
+					new vscode.ThemeColor("charts.blue"),
+				);
+			case "waiting":
+				return new vscode.ThemeIcon(
+					"watch",
+					new vscode.ThemeColor("charts.yellow"),
+				);
+			case "blocked":
+				return new vscode.ThemeIcon(
+					"shield",
+					new vscode.ThemeColor("charts.yellow"),
+				);
+			case "succeeded":
+				return new vscode.ThemeIcon(
+					"check",
+					new vscode.ThemeColor("charts.green"),
+				);
+			case "failed":
+			case "timed_out":
+				return new vscode.ThemeIcon(
+					"error",
+					new vscode.ThemeColor("charts.red"),
+				);
+			case "cancelled":
+			case "stopped":
+				return new vscode.ThemeIcon(
+					"circle-slash",
+					new vscode.ThemeColor("descriptionForeground"),
+				);
+			case "lost":
+				return new vscode.ThemeIcon(
+					"warning",
+					new vscode.ThemeColor("charts.yellow"),
+				);
+			case "unknown":
+				return new vscode.ThemeIcon(
+					"question",
+					new vscode.ThemeColor("descriptionForeground"),
+				);
+		}
+	}
+
+	private formatCodexRunSource(run: CodexRunView): string {
+		const refs = [
+			run.source,
+			...run.mergedFrom.filter(
+				(ref) => !this.codexRunRefsEqual(ref, run.source),
+			),
+		];
+		return refs.map((ref) => this.formatCodexRunSourceRef(ref)).join(" + ");
+	}
+
+	private formatCodexRunSourceRef(ref: CodexRunSourceRef): string {
+		const id = ref.id ? ` ${ref.id}` : "";
+		const pathPart = ref.path ? ` (${ref.path})` : "";
+		return `${this.formatCodexRunSourceKind(ref.kind)}${id}${pathPart}`;
+	}
+
+	private formatCodexRunSourceKind(kind: CodexRunSourceRef["kind"]): string {
+		switch (kind) {
+			case "openclaw-task":
+				return "OpenClaw task";
+			case "taskflow":
+				return "TaskFlow";
+			case "launcher":
+				return "Launcher";
+			case "codex-harness":
+				return "Codex harness";
+			case "trajectory":
+				return "Trajectory";
+			case "process":
+				return "Process";
+		}
+	}
+
+	private formatCodexRunLegacyOpenClawNote(task: OpenClawTask): string {
+		return `Also shown in Codex Runs as OpenClaw task ${task.taskId}.`;
+	}
+
+	private formatCodexRunLegacyLauncherNote(task: AgentTask): string | null {
+		const codexLauncher = detectAgentType(task) === "codex";
+		const matchedOwner = this.getAllOpenClawTaskSources().some((owner) =>
+			this.openClawTaskMatchesLauncherTask(owner, task),
+		);
+		if (!codexLauncher && !matchedOwner) return null;
+		if (matchedOwner) {
+			return "Also represented in Codex Runs through an explicit OpenClaw session join.";
+		}
+		return "Also shown in Codex Runs as a launcher-only Codex row.";
+	}
+
+	private openClawTaskMatchesLauncherTask(
+		owner: OpenClawTask,
+		task: AgentTask,
+	): boolean {
+		return (
+			owner.taskId === task.id ||
+			owner.runId === task.id ||
+			this.codexRunSessionsMatch(owner.childSessionKey, task.session_id)
+		);
+	}
+
+	private codexRunSessionsMatch(
+		left: string | undefined,
+		right: string | null | undefined,
+	): boolean {
+		if (!left || !right) return false;
+		const leftCandidates = this.codexRunSessionCandidates(left);
+		const rightCandidates = this.codexRunSessionCandidates(right);
+		return leftCandidates.some((candidate) =>
+			rightCandidates.includes(candidate),
+		);
+	}
+
+	private codexRunSessionCandidates(value: string): string[] {
+		const trimmed = value.trim();
+		if (!trimmed) return [];
+		const withoutPrefix = trimmed.replace(/^session:/, "");
+		return [...new Set([trimmed, withoutPrefix])];
+	}
+
+	private codexRunRefsEqual(
+		left: CodexRunSourceRef,
+		right: CodexRunSourceRef,
+	): boolean {
+		return (
+			left.kind === right.kind &&
+			left.id === right.id &&
+			left.path === right.path
+		);
 	}
 
 	private getTaskDiffStartCommit(t: AgentTask): string | undefined {
@@ -5855,6 +6319,59 @@ export class AgentStatusTreeProvider
 		return item;
 	}
 
+	private createCodexRunsItem(node: CodexRunsContainerNode): vscode.TreeItem {
+		const count = node.runs.length;
+		const item = new vscode.TreeItem(
+			count === 1
+				? "Symphony / Codex Runs · 1"
+				: `Symphony / Codex Runs · ${count}`,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description = this.formatCodexRunsDescription(node.runs);
+		item.tooltip = this.createCodexRunsTooltip(node.runs);
+		item.contextValue = "codexRuns";
+		item.iconPath = new vscode.ThemeIcon("run-all");
+		return item;
+	}
+
+	private createCodexRunItem(run: CodexRunView): vscode.TreeItem {
+		const activity = this.getCodexRunActivityTimeMs(run);
+		const descriptionParts = [
+			this.formatCodexRunStatus(run.status),
+			this.formatCodexRunOwnership(run),
+			run.runtime,
+			activity ? relativeTime(activity) : undefined,
+			run.model ? getModelAlias(run.model) : undefined,
+		].filter((part): part is string => Boolean(part));
+		const item = new vscode.TreeItem(
+			run.title,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description = descriptionParts.join(" · ");
+		item.tooltip = new vscode.MarkdownString(
+			[
+				`**${run.title}**`,
+				`Run ID: \`${run.runId}\``,
+				`Status: ${this.formatCodexRunStatus(run.status)}`,
+				run.sourceStatus ? `Source Status: \`${run.sourceStatus}\`` : null,
+				`Lifecycle Authority: ${this.formatCodexRunAuthority(run)}`,
+				`Ownership: ${this.formatCodexRunOwnership(run)}`,
+				`Sources: ${this.formatCodexRunSource(run)}`,
+				run.model ? `Model: \`${run.model}\`` : null,
+				run.workspacePath ? `Workspace: \`${run.workspacePath}\`` : null,
+				run.sessionKey ? `Session: \`${run.sessionKey}\`` : null,
+			]
+				.filter(Boolean)
+				.join("\n\n"),
+		);
+		item.iconPath = this.getCodexRunStatusIcon(run.status);
+		item.contextValue = `codexRun.${run.status}`;
+		item.resourceUri = vscode.Uri.parse(
+			`codex-run:${encodeURIComponent(run.runId)}`,
+		);
+		return item;
+	}
+
 	private createTaskFlowItem(flow: TaskFlow): vscode.TreeItem {
 		const title = flow.label?.trim() || flow.flowId;
 		const progressPart =
@@ -6025,13 +6542,8 @@ export class AgentStatusTreeProvider
 
 	private findLauncherTaskForFlowTask(task: TaskFlowTask): AgentTask | null {
 		return (
-			this.getLauncherTasks().find(
-				(launcherTask) =>
-					(task.childSessionKey != null &&
-						launcherTask.session_id != null &&
-						task.childSessionKey.includes(launcherTask.session_id)) ||
-					launcherTask.id === task.taskId ||
-					(task.label != null && launcherTask.id === task.label),
+			this.getLauncherTasks().find((launcherTask) =>
+				this.openClawTaskMatchesLauncherTask(task, launcherTask),
 			) ?? null
 		);
 	}
@@ -6406,10 +6918,12 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = description;
+		const codexRunNote = this.formatCodexRunLegacyLauncherNote(task);
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${task.id}**`,
 				`Status: ${getStatusDisplayLabel(task.status)}`,
+				codexRunNote,
 				fallback
 					? `Model: ${fallback.actualFull} (fallback from ${fallback.requestedFull})`
 					: modelDisplay
@@ -6472,6 +6986,7 @@ export class AgentStatusTreeProvider
 			[
 				`**${title}**`,
 				`Task ID: \`${task.taskId}\``,
+				this.formatCodexRunLegacyOpenClawNote(task),
 				`Runtime: ${task.runtime}`,
 				`Status: ${openclawStatusToLabel(task.status)}`,
 				`Owner: ${task.ownerKey}`,
