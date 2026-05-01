@@ -171,6 +171,27 @@ describe("OpenClaw task nodes", () => {
 		expect(root.some((node) => node.type === "openclawTask")).toBe(true);
 	});
 
+	test("Symphony Codex Runs container remains visible when empty", async () => {
+		const provider = await createProvider([]);
+		const root = provider.getChildren();
+		const runsNode = root.find((node) => node.type === "codexRuns");
+		if (!runsNode || runsNode.type !== "codexRuns") {
+			throw new Error("No Symphony / Codex Runs node found");
+		}
+
+		const item = provider.getTreeItem(runsNode);
+		expect(item.label).toBe("Symphony / Codex Runs · 0");
+		expect(item.description).toBe("no projected runs");
+
+		const children = provider.getChildren(runsNode);
+		expect(children).toContainEqual({
+			type: "state",
+			label: "No projected Codex runs",
+			description: "OpenClaw, TaskFlow, or launcher rows will appear here",
+			icon: "circle-slash",
+		});
+	});
+
 	test("Codex Runs container appears and expands to projected details", async () => {
 		const provider = await createProvider([
 			createTask({
@@ -216,7 +237,7 @@ describe("OpenClaw task nodes", () => {
 		}
 
 		const item = provider.getTreeItem(runsNode);
-		expect(item.label).toBe("Codex Runs · 1");
+		expect(item.label).toBe("Symphony / Codex Runs · 1");
 		expect(item.description).toBe("1 working");
 		expect((item.tooltip as { value: string }).value).toContain(
 			"read-only projected run",
