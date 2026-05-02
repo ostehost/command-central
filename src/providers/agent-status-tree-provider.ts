@@ -2032,7 +2032,8 @@ export class AgentStatusTreeProvider
 	}
 
 	private shouldDedupOpenClawTask(task: OpenClawTask): boolean {
-		return this.getLauncherTasks().some((launcherTask) =>
+		const launcherTasks = this.getLauncherTasks();
+		return launcherTasks.some((launcherTask) =>
 			this.openClawTaskMatchesLauncherTask(task, launcherTask),
 		);
 	}

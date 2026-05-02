@@ -289,7 +289,10 @@ describe("AgentStatusTreeProvider", () => {
 	test("shows explicit empty state when no tasks", () => {
 		const children = provider.getChildren();
 		expect(children).toHaveLength(2);
-		expect(children[0]).toEqual({ type: "codexRuns", runs: [] });
+		expect(children[0]).toEqual({
+			type: "codexRuns",
+			runs: [],
+		});
 		expect(children[1]).toEqual({
 			type: "state",
 			label: "Waiting for agents...",
@@ -304,8 +307,8 @@ describe("AgentStatusTreeProvider", () => {
 		provider.reload();
 
 		const children = provider.getChildren();
-		expect(children).toHaveLength(3); // Codex Runs + 1 summary + 1 task
-		expect(children.some((node) => node.type === "summary")).toBe(true);
+		expect(children).toHaveLength(3); // 1 summary + Codex Runs + 1 task
+		expect(children[0]?.type).toBe("summary");
 		const taskNodes = getTaskNodes(children);
 		expect(taskNodes).toHaveLength(1);
 		expect(taskNodes[0]?.type).toBe("task");

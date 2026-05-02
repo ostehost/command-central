@@ -147,6 +147,37 @@ describe("CodexRunObserverService", () => {
 		]);
 	});
 
+	test("joins launcher metadata when the session prefix is on the launcher side", () => {
+		const service = new CodexRunObserverService();
+		const [run] = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "launcher-prefixed",
+					session_id: "session:agent-project-a",
+				}),
+			],
+			openClawTasks: [
+				openClawTask({
+					taskId: "oc-prefix-reverse",
+					childSessionKey: "agent-project-a",
+				}),
+			],
+			taskFlows: [],
+		});
+
+		expect(run?.source).toEqual({
+			kind: "openclaw-task",
+			id: "oc-prefix-reverse",
+		});
+		expect(run?.mergedFrom).toContainEqual({
+			kind: "launcher",
+			id: "launcher-prefixed",
+			path: "/tmp/project-a",
+		});
+		expect(run?.workspacePath).toBe("/tmp/project-a");
+		expect(run?.model).toBe("gpt-5.5");
+	});
+
 	test("creates launcher-only and flow-only run views when no owner row joins", () => {
 		const service = new CodexRunObserverService();
 		const runs = service.project({
@@ -325,6 +356,41 @@ describe("CodexRunObserverService", () => {
 			{ kind: "openclaw-task", id: "real-owner" },
 		]);
 		expect(launcherRun?.runId).toBe("launcher-unrelated");
+	});
+
+	test("does not join launcher metadata to an owner row by substring session identity", () => {
+		const service = new CodexRunObserverService();
+
+		const runs = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "launcher-abc",
+					agent_backend: "codex",
+					session_id: "abc",
+					project_dir: "/tmp/substring-project",
+					model: "gpt-5.5",
+					stream_file: "/tmp/substring-project/stream.jsonl",
+				}),
+			],
+			openClawTasks: [
+				openClawTask({
+					taskId: "owner-abc-extra",
+					childSessionKey: "session:abc-extra",
+				}),
+			],
+			taskFlows: [],
+		});
+
+		const ownerRun = runs.find((run) => run.taskId === "owner-abc-extra");
+		const launcherRun = runs.find((run) => run.source.kind === "launcher");
+		expect(runs).toHaveLength(2);
+		expect(ownerRun?.mergedFrom).toEqual([
+			{ kind: "openclaw-task", id: "owner-abc-extra" },
+		]);
+		expect(ownerRun?.workspacePath).toBeUndefined();
+		expect(ownerRun?.model).toBeUndefined();
+		expect(ownerRun?.artifactPaths).toBeUndefined();
+		expect(launcherRun?.runId).toBe("launcher-abc");
 	});
 
 	test("does not join TaskFlow children to OpenClaw tasks by human label", () => {

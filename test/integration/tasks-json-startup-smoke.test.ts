@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AgentNode } from "../../src/providers/agent-status-tree-provider.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 type ProviderModule =
@@ -29,6 +30,21 @@ function createTask(id: string) {
 		attempts: 1,
 		max_attempts: 3,
 	};
+}
+
+function expectedEmptyAgentStatusChildren(): AgentNode[] {
+	return [
+		{
+			type: "codexRuns",
+			runs: [],
+		},
+		{
+			type: "state",
+			label: "Waiting for agents...",
+			description: "Start Claude Code, Codex, or Gemini in any terminal",
+			icon: "search",
+		},
+	];
 }
 
 describe("tasks.json startup smoke", () => {
@@ -85,18 +101,9 @@ describe("tasks.json startup smoke", () => {
 		const treeProvider = await createProvider(tasksFile);
 
 		expect(treeProvider.getTasks()).toEqual([]);
-		expect(treeProvider.getChildren()).toEqual([
-			{
-				type: "codexRuns",
-				runs: [],
-			},
-			{
-				type: "state",
-				label: "Waiting for agents...",
-				description: "Start Claude Code, Codex, or Gemini in any terminal",
-				icon: "search",
-			},
-		]);
+		expect(treeProvider.getChildren()).toEqual(
+			expectedEmptyAgentStatusChildren(),
+		);
 	});
 
 	test("starts with empty tasks.json without crashing", async () => {
@@ -106,18 +113,9 @@ describe("tasks.json startup smoke", () => {
 		const treeProvider = await createProvider(tasksFile);
 
 		expect(treeProvider.getTasks()).toEqual([]);
-		expect(treeProvider.getChildren()).toEqual([
-			{
-				type: "codexRuns",
-				runs: [],
-			},
-			{
-				type: "state",
-				label: "Waiting for agents...",
-				description: "Start Claude Code, Codex, or Gemini in any terminal",
-				icon: "search",
-			},
-		]);
+		expect(treeProvider.getChildren()).toEqual(
+			expectedEmptyAgentStatusChildren(),
+		);
 	});
 
 	test("starts with malformed JSON, logs a warning, and shows no agents", async () => {
@@ -131,18 +129,9 @@ describe("tasks.json startup smoke", () => {
 		try {
 			const treeProvider = await createProvider(tasksFile);
 			expect(treeProvider.getTasks()).toEqual([]);
-			expect(treeProvider.getChildren()).toEqual([
-				{
-					type: "codexRuns",
-					runs: [],
-				},
-				{
-					type: "state",
-					label: "Waiting for agents...",
-					description: "Start Claude Code, Codex, or Gemini in any terminal",
-					icon: "search",
-				},
-			]);
+			expect(treeProvider.getChildren()).toEqual(
+				expectedEmptyAgentStatusChildren(),
+			);
 			expect(warnMock).toHaveBeenCalledTimes(1);
 			expect(
 				String((warnMock.mock.calls as unknown[][])[0]?.[0] ?? ""),
