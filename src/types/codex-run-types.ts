@@ -53,6 +53,15 @@ export interface CodexRunView {
 	sessionKey?: string;
 	threadId?: string;
 	turnId?: string;
+	execMode?: string;
+	execNodeId?: string;
+	execNodeName?: string;
+	nodeConnected?: boolean;
+	sourceAuthority?: string;
+	ownerKind?: string;
+	callbackPresent?: boolean;
+	reviewState?: string;
+	fixupState?: string;
 	workspacePath?: string;
 	host?: string;
 	branch?: string;
@@ -63,7 +72,13 @@ export interface CodexRunView {
 	startedAt?: number;
 	endedAt?: number;
 	artifactPaths?: string[];
+	provenance?: string[];
 	fieldSources: Partial<Record<CodexRunViewField, CodexRunSourceRef[]>>;
 }
 
 export type CodexRunViewField = keyof Omit<CodexRunView, "fieldSources">;
+
+export type WorkflowRunView = CodexRunView;
+export type WorkflowRunSourceRef = CodexRunSourceRef;
+export type WorkflowRunStatus = CodexRunStatus;
+export type WorkflowRunPhase = CodexRunPhase;

@@ -133,7 +133,12 @@ export type AgentStatusScope = "all";
 export type AgentStatusSortMode = "status-recency";
 
 export interface AgentTask {
+	task_id?: string | null;
 	id: string;
+	flow_id?: string | null;
+	project_id?: string | null;
+	source_authority?: string | null;
+	owner_kind?: string | null;
 	status: AgentTaskStatus;
 	project_dir: string;
 	project_name: string;
@@ -163,6 +168,17 @@ export interface AgentTask {
 	role?: AgentRole | null;
 	terminal_backend?: "tmux" | "persist" | "applescript";
 	ghostty_bundle_id?: string | null;
+	exec_mode?: string | null;
+	exec_node?: string | null;
+	exec_host?: string | null;
+	exec_visible?: boolean | null;
+	exec_cwd?: string | null;
+	callback_url?: string | null;
+	pending_review_path?: string | null;
+	pending_fixup_path?: string | null;
+	artifact_paths?: string[] | null;
+	review_state?: string | null;
+	fixup_state?: string | null;
 	project_icon?: string | null;
 	exit_code?: number | null;
 	error_message?: string | null;

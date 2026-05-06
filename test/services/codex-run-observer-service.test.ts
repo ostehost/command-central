@@ -147,6 +147,108 @@ describe("CodexRunObserverService", () => {
 		]);
 	});
 
+	test("projects launcher workflow contract fields without exposing callback URLs", () => {
+		const service = new CodexRunObserverService();
+		const [run] = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "launcher-visible",
+					task_id: "task-123",
+					flow_id: "flow-123",
+					project_id: "project-a",
+					source_authority: "launcher",
+					owner_kind: "launcher",
+					callback_url: "https://hub.example.test/hooks/secret-token",
+					exec_mode: "spoke",
+					exec_node: "Mike MacBook Pro",
+					exec_host: "Mike MacBook Pro",
+					exec_cwd: "/Users/ostehost/projects/project-a",
+					artifact_paths: ["/tmp/artifact.md"],
+					pending_review_path: "/tmp/oste-pending-review/task-123.json",
+					review_state: "pending",
+					fixup_state: "none",
+					agent_backend: "codex",
+				}),
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		expect(run).toMatchObject({
+			taskId: "task-123",
+			flowId: "flow-123",
+			execMode: "spoke",
+			execNodeId: "Mike MacBook Pro",
+			execNodeName: "Mike MacBook Pro",
+			host: "Mike MacBook Pro",
+			workspacePath: "/Users/ostehost/projects/project-a",
+			sourceAuthority: "launcher",
+			ownerKind: "launcher",
+			callbackPresent: true,
+			reviewState: "pending",
+			fixupState: "none",
+		});
+		expect(JSON.stringify(run)).not.toContain("secret-token");
+		expect(run?.artifactPaths).toContain("/tmp/artifact.md");
+		expect(run?.artifactPaths).toContain(
+			"/tmp/oste-pending-review/task-123.json",
+		);
+		expect(run?.fieldSources.execMode).toEqual([
+			{ kind: "launcher", id: "launcher-visible", path: "/tmp/project-a" },
+		]);
+		expect(run?.fieldSources.callbackPresent).toEqual([
+			{ kind: "launcher", id: "launcher-visible", path: "/tmp/project-a" },
+		]);
+	});
+
+	test("keeps OpenClaw as source authority while launcher adds node execution detail", () => {
+		const service = new CodexRunObserverService();
+		const [run] = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "oc-node-task",
+					session_id: "agent-node-task",
+					exec_mode: "spoke",
+					exec_node: "node-1",
+					exec_host: "Mike MacBook Pro",
+					callback_url: "https://hub.example.test/hooks/callback",
+					agent_backend: "claude",
+				}),
+			],
+			openClawTasks: [
+				openClawTask({
+					taskId: "oc-node-task",
+					childSessionKey: "session:agent-node-task",
+					execMode: "spoke",
+					execNodeId: "node-1",
+					execNodeName: "Mike MacBook Pro",
+					nodeConnected: true,
+					sourceAuthority: "openclaw",
+					ownerKind: "openclaw",
+				}),
+			],
+			taskFlows: [],
+		});
+
+		expect(run).toMatchObject({
+			source: { kind: "openclaw-task", id: "oc-node-task" },
+			sourceAuthority: "openclaw",
+			ownerKind: "openclaw",
+			execMode: "spoke",
+			execNodeId: "node-1",
+			execNodeName: "Mike MacBook Pro",
+			nodeConnected: true,
+			host: "Mike MacBook Pro",
+			callbackPresent: true,
+		});
+		expect(run?.fieldSources.sourceAuthority).toEqual([
+			{ kind: "openclaw-task", id: "oc-node-task" },
+		]);
+		expect(run?.fieldSources.callbackPresent).toEqual([
+			{ kind: "launcher", id: "oc-node-task", path: "/tmp/project-a" },
+		]);
+	});
+
 	test("joins launcher metadata when the session prefix is on the launcher side", () => {
 		const service = new CodexRunObserverService();
 		const [run] = service.project({

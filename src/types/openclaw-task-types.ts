@@ -10,6 +10,21 @@ export interface OpenClawTask {
 	parentTaskId?: string;
 	agentId?: string;
 	runId?: string;
+	flowId?: string;
+	sessionKey?: string;
+	execMode?: string;
+	execNodeId?: string;
+	execNodeName?: string;
+	nodeConnected?: boolean;
+	sourceAuthority?: string;
+	ownerKind?: string;
+	callbackPresent?: boolean;
+	reviewState?: string;
+	fixupState?: string;
+	workspacePath?: string;
+	host?: string;
+	model?: string;
+	artifactPaths?: string[];
 	label?: string;
 	task: string;
 	status:

@@ -17,9 +17,11 @@ export interface CodexRunObserverInputs {
 
 type ArtifactCarrier = {
 	artifactPaths?: unknown;
+	artifact_paths?: unknown;
 	stream_file?: unknown;
 	prompt_file?: unknown;
 	handoff_file?: unknown;
+	pending_review_path?: unknown;
 };
 
 const ACTIVE_STATUS_ORDER: Record<CodexRunStatus, number> = {
@@ -105,12 +107,26 @@ export class CodexRunObserverService {
 			phase: this.phaseFromSourceStatus(sourceStatus),
 			runtime: task.runtime,
 			taskId: task.taskId,
-			sessionKey: task.childSessionKey,
+			flowId: task.flowId,
+			sessionKey: this.firstNonEmpty(task.sessionKey, task.childSessionKey),
+			execMode: task.execMode,
+			execNodeId: task.execNodeId,
+			execNodeName: task.execNodeName,
+			nodeConnected: task.nodeConnected,
+			sourceAuthority: task.sourceAuthority ?? "openclaw",
+			ownerKind: task.ownerKind,
+			callbackPresent: task.callbackPresent,
+			reviewState: task.reviewState,
+			fixupState: task.fixupState,
+			workspacePath: task.workspacePath,
+			host: task.host,
+			model: task.model,
 			lastEvent,
 			lastEventAt: task.lastEventAt,
 			startedAt: task.startedAt,
 			endedAt: task.endedAt,
 			artifactPaths: artifacts.length > 0 ? artifacts : undefined,
+			provenance: [this.formatSourceRef(ref)],
 			fieldSources: {},
 		};
 
@@ -119,7 +135,21 @@ export class CodexRunObserverService {
 		this.addFieldSource(run, "sourceStatus", ref);
 		this.addFieldSource(run, "status", ref);
 		this.addFieldSource(run, "taskId", ref);
+		this.addFieldSource(run, "sourceAuthority", ref);
+		if (run.flowId) this.addFieldSource(run, "flowId", ref);
 		if (run.sessionKey) this.addFieldSource(run, "sessionKey", ref);
+		if (run.execMode) this.addFieldSource(run, "execMode", ref);
+		if (run.execNodeId) this.addFieldSource(run, "execNodeId", ref);
+		if (run.execNodeName) this.addFieldSource(run, "execNodeName", ref);
+		if (run.nodeConnected != null) this.addFieldSource(run, "nodeConnected", ref);
+		if (run.ownerKind) this.addFieldSource(run, "ownerKind", ref);
+		if (run.callbackPresent != null)
+			this.addFieldSource(run, "callbackPresent", ref);
+		if (run.reviewState) this.addFieldSource(run, "reviewState", ref);
+		if (run.fixupState) this.addFieldSource(run, "fixupState", ref);
+		if (run.workspacePath) this.addFieldSource(run, "workspacePath", ref);
+		if (run.host) this.addFieldSource(run, "host", ref);
+		if (run.model) this.addFieldSource(run, "model", ref);
 		if (run.lastEventAt != null) this.addFieldSource(run, "lastEventAt", ref);
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
 		if (run.endedAt != null) this.addFieldSource(run, "endedAt", ref);
@@ -139,10 +169,12 @@ export class CodexRunObserverService {
 			status: this.normalizeStatus(sourceStatus),
 			runtime: "taskflow",
 			flowId: flow.flowId,
+			sourceAuthority: "taskflow",
 			lastEvent: flow.error,
 			lastEventAt: flow.endedAt ?? flow.startedAt ?? flow.createdAt,
 			startedAt: flow.startedAt,
 			endedAt: flow.endedAt,
+			provenance: [this.formatSourceRef(ref)],
 			fieldSources: {},
 		};
 
@@ -151,6 +183,7 @@ export class CodexRunObserverService {
 		this.addFieldSource(run, "sourceStatus", ref);
 		this.addFieldSource(run, "status", ref);
 		this.addFieldSource(run, "flowId", ref);
+		this.addFieldSource(run, "sourceAuthority", ref);
 		this.addFieldSource(run, "lastEventAt", ref);
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
 		if (run.endedAt != null) this.addFieldSource(run, "endedAt", ref);
@@ -199,14 +232,26 @@ export class CodexRunObserverService {
 				task.cli_name,
 				task.terminal_backend,
 			),
+			taskId: this.firstNonEmpty(task.task_id, task.id),
+			flowId: task.flow_id ?? undefined,
 			sessionKey: task.session_id,
-			workspacePath: task.project_dir,
+			execMode: task.exec_mode ?? undefined,
+			execNodeId: task.exec_node ?? undefined,
+			execNodeName: task.exec_node ?? undefined,
+			sourceAuthority: task.source_authority ?? "launcher",
+			ownerKind: task.owner_kind ?? "launcher",
+			callbackPresent: Boolean(task.callback_url),
+			reviewState: task.review_state ?? undefined,
+			fixupState: task.fixup_state ?? undefined,
+			workspacePath: this.firstNonEmpty(task.exec_cwd, task.project_dir),
+			host: task.exec_host ?? undefined,
 			model,
 			lastEvent: task.error_message ?? undefined,
 			lastEventAt: updatedAt ?? completedAt ?? startedAt,
 			startedAt,
 			endedAt: completedAt,
 			artifactPaths: artifacts.length > 0 ? artifacts : undefined,
+			provenance: [this.formatSourceRef(ref)],
 			fieldSources: {},
 		};
 
@@ -214,8 +259,19 @@ export class CodexRunObserverService {
 		this.addFieldSource(run, "title", ref);
 		this.addFieldSource(run, "sourceStatus", ref);
 		this.addFieldSource(run, "status", ref);
+		if (run.taskId) this.addFieldSource(run, "taskId", ref);
+		if (run.flowId) this.addFieldSource(run, "flowId", ref);
+		this.addFieldSource(run, "sourceAuthority", ref);
+		this.addFieldSource(run, "ownerKind", ref);
+		this.addFieldSource(run, "callbackPresent", ref);
 		if (run.sessionKey) this.addFieldSource(run, "sessionKey", ref);
+		if (run.execMode) this.addFieldSource(run, "execMode", ref);
+		if (run.execNodeId) this.addFieldSource(run, "execNodeId", ref);
+		if (run.execNodeName) this.addFieldSource(run, "execNodeName", ref);
 		if (run.workspacePath) this.addFieldSource(run, "workspacePath", ref);
+		if (run.host) this.addFieldSource(run, "host", ref);
+		if (run.reviewState) this.addFieldSource(run, "reviewState", ref);
+		if (run.fixupState) this.addFieldSource(run, "fixupState", ref);
 		if (run.model) this.addFieldSource(run, "model", ref);
 		if (run.lastEventAt != null) this.addFieldSource(run, "lastEventAt", ref);
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
@@ -264,9 +320,54 @@ export class CodexRunObserverService {
 			this.addFieldSource(run, "sessionKey", ref);
 		}
 
+		if (!run.flowId && task.flow_id) {
+			run.flowId = task.flow_id;
+			this.addFieldSource(run, "flowId", ref);
+		}
+
+		if (!run.execMode && task.exec_mode) {
+			run.execMode = task.exec_mode;
+			this.addFieldSource(run, "execMode", ref);
+		}
+
+		if (!run.execNodeId && task.exec_node) {
+			run.execNodeId = task.exec_node;
+			this.addFieldSource(run, "execNodeId", ref);
+		}
+
+		if (!run.execNodeName && task.exec_node) {
+			run.execNodeName = task.exec_node;
+			this.addFieldSource(run, "execNodeName", ref);
+		}
+
+		if (!run.ownerKind && task.owner_kind) {
+			run.ownerKind = task.owner_kind;
+			this.addFieldSource(run, "ownerKind", ref);
+		}
+
+		if (run.callbackPresent == null && task.callback_url != null) {
+			run.callbackPresent = Boolean(task.callback_url);
+			this.addFieldSource(run, "callbackPresent", ref);
+		}
+
+		if (!run.reviewState && task.review_state) {
+			run.reviewState = task.review_state;
+			this.addFieldSource(run, "reviewState", ref);
+		}
+
+		if (!run.fixupState && task.fixup_state) {
+			run.fixupState = task.fixup_state;
+			this.addFieldSource(run, "fixupState", ref);
+		}
+
 		if (!run.workspacePath && task.project_dir) {
 			run.workspacePath = task.project_dir;
 			this.addFieldSource(run, "workspacePath", ref);
+		}
+
+		if (!run.host && task.exec_host) {
+			run.host = task.exec_host;
+			this.addFieldSource(run, "host", ref);
 		}
 
 		const startedAt = this.parseTimestamp(task.started_at);
@@ -451,6 +552,10 @@ export class CodexRunObserverService {
 	private addMergedFrom(run: CodexRunView, ref: CodexRunSourceRef): void {
 		if (!run.mergedFrom.some((candidate) => this.refsEqual(candidate, ref))) {
 			run.mergedFrom.push(ref);
+			run.provenance = this.uniqueStrings([
+				...(run.provenance ?? []),
+				this.formatSourceRef(ref),
+			]);
 		}
 	}
 
@@ -474,6 +579,10 @@ export class CodexRunObserverService {
 			left.id === right.id &&
 			left.path === right.path
 		);
+	}
+
+	private formatSourceRef(ref: CodexRunSourceRef): string {
+		return [ref.kind, ref.id, ref.path].filter(Boolean).join(":");
 	}
 
 	private sessionsMatch(
@@ -502,10 +611,16 @@ export class CodexRunObserverService {
 				if (typeof value === "string" && value.trim()) paths.push(value);
 			}
 		}
+		if (Array.isArray(source.artifact_paths)) {
+			for (const value of source.artifact_paths) {
+				if (typeof value === "string" && value.trim()) paths.push(value);
+			}
+		}
 		for (const value of [
 			source.stream_file,
 			source.prompt_file,
 			source.handoff_file,
+			source.pending_review_path,
 		]) {
 			if (typeof value === "string" && value.trim()) paths.push(value);
 		}
