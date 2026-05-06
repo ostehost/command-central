@@ -2,6 +2,7 @@
 
 import { spawn } from "bun";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 
 type CheckStatus = "passed" | "failed" | "skipped";
@@ -41,6 +42,10 @@ type GateConfig = {
 	outputDir: string;
 	skipCcValidation: boolean;
 	skipLauncherValidation: boolean;
+	requireNodeReadiness: boolean;
+	nodeReadinessGate: string;
+	openClawBinary: string;
+	expectedOpenClawVersion?: string;
 };
 
 class GateError extends Error {
@@ -101,6 +106,19 @@ function parseArgs(): GateConfig {
 			path.join(process.cwd(), "research", "prerelease-gate"),
 		skipCcValidation: args.includes("--skip-cc-validation"),
 		skipLauncherValidation: args.includes("--skip-launcher-validation"),
+		requireNodeReadiness: args.includes("--require-node-readiness"),
+		nodeReadinessGate:
+			getArgValue("--node-readiness-gate") ||
+			path.join(
+				home,
+				"projects",
+				"config",
+				"openclaw",
+				"scripts",
+				"openclaw-node-readiness-gate.mjs",
+			),
+		openClawBinary: getArgValue("--openclaw-bin") || "openclaw",
+		expectedOpenClawVersion: getArgValue("--expected-openclaw-version"),
 	};
 }
 
@@ -112,20 +130,39 @@ async function runCommand(
 	command: string[],
 	cwd: string,
 ): Promise<{ exitCode: number; output: string }> {
-	const proc = spawn(command, {
-		cwd,
-		stdout: "pipe",
-		stderr: "pipe",
-	});
+	let proc: ReturnType<typeof spawn>;
+	try {
+		proc = spawn(command, {
+			cwd,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+	} catch (error) {
+		return {
+			exitCode: -1,
+			output: (error as Error).message,
+		};
+	}
 
-	const stdout = await new Response(proc.stdout).text();
-	const stderr = await new Response(proc.stderr).text();
-	await proc.exited;
+	try {
+		const stdout = await new Response(
+			proc.stdout as ReadableStream<Uint8Array>,
+		).text();
+		const stderr = await new Response(
+			proc.stderr as ReadableStream<Uint8Array>,
+		).text();
+		await proc.exited;
 
-	return {
-		exitCode: proc.exitCode ?? -1,
-		output: [stdout.trim(), stderr.trim()].filter(Boolean).join("\n"),
-	};
+		return {
+			exitCode: proc.exitCode ?? -1,
+			output: [stdout.trim(), stderr.trim()].filter(Boolean).join("\n"),
+		};
+	} catch (error) {
+		return {
+			exitCode: proc.exitCode ?? -1,
+			output: (error as Error).message,
+		};
+	}
 }
 
 async function getGitSha(repo: string): Promise<string> {
@@ -354,6 +391,139 @@ function buildRecord(
 	};
 }
 
+function extractOpenClawVersion(output: string): string {
+	const [version = ""] = output.match(/\d{4}\.\d+\.\d+/) ?? [];
+	return version;
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+	try {
+		await fs.access(filePath);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function runNodeReadinessCheck(config: GateConfig): Promise<CheckRecord> {
+	const startedAtMs = Date.now();
+	const commandLabel = [
+		`${config.openClawBinary} nodes status --json`,
+		"|",
+		config.nodeReadinessGate,
+		"--strict --json",
+	].join(" ");
+
+	if (!(await fileExists(config.nodeReadinessGate))) {
+		const finishedAtMs = Date.now();
+		return buildRecord(
+			"openclaw node readiness",
+			"failed",
+			startedAtMs,
+			finishedAtMs,
+			commandLabel,
+			config.commandCentralRepo,
+			undefined,
+			`Node readiness gate not found: ${config.nodeReadinessGate}`,
+		);
+	}
+
+	let expectedVersion = config.expectedOpenClawVersion;
+	if (!expectedVersion) {
+		const versionResult = await runCommand(
+			[config.openClawBinary, "--version"],
+			config.commandCentralRepo,
+		);
+		if (versionResult.exitCode !== 0) {
+			const finishedAtMs = Date.now();
+			return buildRecord(
+				"openclaw node readiness",
+				"failed",
+				startedAtMs,
+				finishedAtMs,
+				commandLabel,
+				config.commandCentralRepo,
+				versionResult.output,
+				`Failed to resolve expected OpenClaw version: openclaw --version exited with ${versionResult.exitCode}`,
+			);
+		}
+		expectedVersion = extractOpenClawVersion(versionResult.output);
+		if (!expectedVersion) {
+			const finishedAtMs = Date.now();
+			return buildRecord(
+				"openclaw node readiness",
+				"failed",
+				startedAtMs,
+				finishedAtMs,
+				commandLabel,
+				config.commandCentralRepo,
+				versionResult.output,
+				"Failed to parse expected OpenClaw version from openclaw --version",
+			);
+		}
+	}
+
+	const statusResult = await runCommand(
+		[config.openClawBinary, "nodes", "status", "--json"],
+		config.commandCentralRepo,
+	);
+	if (statusResult.exitCode !== 0) {
+		const finishedAtMs = Date.now();
+		return buildRecord(
+			"openclaw node readiness",
+			"failed",
+			startedAtMs,
+			finishedAtMs,
+			commandLabel,
+			config.commandCentralRepo,
+			statusResult.output,
+			`openclaw nodes status --json exited with ${statusResult.exitCode}`,
+		);
+	}
+
+	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "cc-node-readiness-"));
+	const statusPath = path.join(tmpDir, "nodes-status.json");
+	try {
+		await fs.writeFile(statusPath, statusResult.output, "utf8");
+		const gateResult = await runCommand(
+			[
+				config.nodeReadinessGate,
+				"--input",
+				statusPath,
+				"--expected-version",
+				expectedVersion,
+				"--strict",
+				"--json",
+			],
+			config.commandCentralRepo,
+		);
+		const finishedAtMs = Date.now();
+		if (gateResult.exitCode === 0) {
+			return buildRecord(
+				"openclaw node readiness",
+				"passed",
+				startedAtMs,
+				finishedAtMs,
+				`${commandLabel} --expected-version ${expectedVersion}`,
+				config.commandCentralRepo,
+				gateResult.output,
+			);
+		}
+		return buildRecord(
+			"openclaw node readiness",
+			"failed",
+			startedAtMs,
+			finishedAtMs,
+			`${commandLabel} --expected-version ${expectedVersion}`,
+			config.commandCentralRepo,
+			gateResult.output,
+			`Node readiness gate exited with ${gateResult.exitCode}`,
+		);
+	} finally {
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	}
+}
+
 async function runGate(config: GateConfig): Promise<GateReport> {
 	const checks: CheckRecord[] = [];
 	const ccSha = await getGitSha(config.commandCentralRepo);
@@ -396,6 +566,19 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 		);
 		throw new GateError(`${name} failed:\n${result.output}`, [...checks]);
 	};
+
+	if (config.requireNodeReadiness) {
+		const nodeReadinessCheck = await runNodeReadinessCheck(config);
+		checks.push(nodeReadinessCheck);
+		if (nodeReadinessCheck.status === "failed") {
+			throw new GateError(
+				`openclaw node readiness failed:\n${
+					nodeReadinessCheck.error ?? nodeReadinessCheck.output ?? ""
+				}`,
+				[...checks],
+			);
+		}
+	}
 
 	if (config.skipCcValidation) {
 		const ts = Date.now();
@@ -532,6 +715,9 @@ export {
 	extractSessionFlagsFromTerminalManager,
 	extractSteerInvocationArgBlocks,
 	extractSteerInvocationContract,
+	parseArgs,
+	runGate,
+	runNodeReadinessCheck,
 	validateLauncherContract,
 	validateSteerContract,
 };
