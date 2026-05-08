@@ -141,7 +141,8 @@ export class CodexRunObserverService {
 		if (run.execMode) this.addFieldSource(run, "execMode", ref);
 		if (run.execNodeId) this.addFieldSource(run, "execNodeId", ref);
 		if (run.execNodeName) this.addFieldSource(run, "execNodeName", ref);
-		if (run.nodeConnected != null) this.addFieldSource(run, "nodeConnected", ref);
+		if (run.nodeConnected != null)
+			this.addFieldSource(run, "nodeConnected", ref);
 		if (run.ownerKind) this.addFieldSource(run, "ownerKind", ref);
 		if (run.callbackPresent != null)
 			this.addFieldSource(run, "callbackPresent", ref);
