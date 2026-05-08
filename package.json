@@ -197,6 +197,15 @@
           "markdownDescription": "Path to the agent task registry JSON file. Leave empty to auto-detect from: `${workspaceFolder}/.ghostty-launcher/tasks.json`, `~/.config/ghostty-launcher/tasks.json`, or `~/.ghostty-launcher/tasks.json`.",
           "scope": "machine"
         },
+        "commandCentral.agentTasksFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Additional read-only agent task registry JSON files to merge into Agent Status. Use this for mirrored node launcher registries that should appear in the Command Central UI without making hub-local terminal assumptions.",
+          "scope": "machine"
+        },
         "commandCentral.agentStatus.autoRefreshMs": {
           "type": "number",
           "default": 5000,

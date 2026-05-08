@@ -71,7 +71,7 @@ import type { ListeningPort } from "../utils/port-detector.js";
 import { detectListeningPortsAsync } from "../utils/port-detector.js";
 import { canonicalizeProjectDir } from "../utils/project-scope.js";
 import { relativeTime } from "../utils/relative-time.js";
-import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
+import { resolveTasksFilePaths } from "../utils/tasks-file-resolver.js";
 import {
 	groupByTimePeriod,
 	TIME_PERIOD_LABELS,
@@ -972,9 +972,10 @@ export class AgentStatusTreeProvider
 	readonly onAgentEvent = this._onAgentEvent.event;
 
 	private registry: TaskRegistry = { version: 2, tasks: {} };
-	private fileWatcher: vscode.FileSystemWatcher | null = null;
-	private _nativeWatcher: fs.FSWatcher | null = null;
+	private fileWatchers: vscode.FileSystemWatcher[] = [];
+	private _nativeWatchers: fs.FSWatcher[] = [];
 	private _filePath: string | null = null;
+	private _filePaths: string[] = [];
 	private disposables: vscode.Disposable[] = [];
 	private debounceTimer: NodeJS.Timeout | null = null;
 	private autoRefreshTimer: NodeJS.Timeout | null = null;
@@ -1050,6 +1051,10 @@ export class AgentStatusTreeProvider
 		this.disposables.push(
 			vscode.workspace.onDidChangeConfiguration((e) => {
 				if (e.affectsConfiguration("commandCentral.agentTasksFile")) {
+					this.setupFileWatch();
+					void this.reload();
+				}
+				if (e.affectsConfiguration("commandCentral.agentTasksFiles")) {
 					this.setupFileWatch();
 					void this.reload();
 				}
@@ -1132,6 +1137,10 @@ export class AgentStatusTreeProvider
 	/** Public accessor for the configured file path */
 	get filePath(): string | null {
 		return this._filePath;
+	}
+
+	get filePaths(): string[] {
+		return [...this._filePaths];
 	}
 
 	setTreeView(treeView: vscode.TreeView<AgentNode>): void {
@@ -1326,21 +1335,32 @@ export class AgentStatusTreeProvider
 		return this.findTaskElement(taskId);
 	}
 
-	private getConfiguredPath(): string | null {
+	private getConfiguredPaths(): string[] {
 		const config = vscode.workspace.getConfiguration("commandCentral");
 		const configValue = config.get<string>("agentTasksFile") ?? "";
-		return resolveTasksFilePath(configValue, vscode.workspace.workspaceFolders);
+		const additionalConfigValue =
+			config.get<unknown>("agentTasksFiles", []) ?? [];
+		const additionalConfigValues = Array.isArray(additionalConfigValue)
+			? additionalConfigValue.filter(
+					(value): value is string => typeof value === "string",
+				)
+			: [];
+		return resolveTasksFilePaths(
+			configValue,
+			additionalConfigValues,
+			vscode.workspace.workspaceFolders,
+		);
 	}
 
 	private setupFileWatch(): void {
-		if (this.fileWatcher) {
-			this.fileWatcher.dispose();
-			this.fileWatcher = null;
+		for (const watcher of this.fileWatchers) {
+			watcher.dispose();
 		}
-		if (this._nativeWatcher) {
-			this._nativeWatcher.close();
-			this._nativeWatcher = null;
+		this.fileWatchers = [];
+		for (const watcher of this._nativeWatchers) {
+			watcher.close();
 		}
+		this._nativeWatchers = [];
 
 		// Clear existing debounce timer before setting up new watcher
 		if (this.debounceTimer) {
@@ -1348,22 +1368,26 @@ export class AgentStatusTreeProvider
 			this.debounceTimer = null;
 		}
 
-		const filePath = this.getConfiguredPath();
-		this._filePath = filePath;
-		if (this._lastLoggedTasksFilePath !== filePath) {
-			if (filePath) {
+		const filePaths = this.getConfiguredPaths();
+		this._filePaths = filePaths;
+		this._filePath = filePaths[0] ?? null;
+		const filePathLogKey = filePaths.join(", ");
+		if (this._lastLoggedTasksFilePath !== filePathLogKey) {
+			if (filePaths.length > 0) {
 				console.info(
-					`[Command Central] Agent Status using tasks file: ${filePath}`,
+					`[Command Central] Agent Status using tasks file${
+						filePaths.length === 1 ? "" : "s"
+					}: ${filePathLogKey}`,
 				);
 			} else {
 				console.info(
 					"[Command Central] Agent Status has no tasks file configured",
 				);
 			}
-			this._lastLoggedTasksFilePath = filePath;
+			this._lastLoggedTasksFilePath = filePathLogKey;
 			this._lastLoggedRegistryState = null;
 		}
-		if (!filePath) return;
+		if (filePaths.length === 0) return;
 
 		const debouncedReload = () => {
 			if (this.debounceTimer) clearTimeout(this.debounceTimer);
@@ -1372,35 +1396,39 @@ export class AgentStatusTreeProvider
 			}, 150);
 		};
 
-		// VS Code's createFileSystemWatcher can be unreliable for paths outside
-		// the workspace (e.g., ~/.config/). Use both VS Code watcher AND native
-		// fs.watch for defense-in-depth — whichever fires first wins via debounce.
-		const pattern = new vscode.RelativePattern(
-			vscode.Uri.file(path.dirname(filePath)),
-			path.basename(filePath),
-		);
-		this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+		for (const filePath of filePaths) {
+			// VS Code's createFileSystemWatcher can be unreliable for paths outside
+			// the workspace (e.g., ~/.config/). Use both VS Code watcher AND native
+			// fs.watch for defense-in-depth — whichever fires first wins via debounce.
+			const pattern = new vscode.RelativePattern(
+				vscode.Uri.file(path.dirname(filePath)),
+				path.basename(filePath),
+			);
+			const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+			this.fileWatchers.push(watcher);
 
-		this.disposables.push(
-			this.fileWatcher.onDidChange(debouncedReload),
-			this.fileWatcher.onDidCreate(debouncedReload),
-			this.fileWatcher.onDidDelete(debouncedReload),
-		);
+			this.disposables.push(
+				watcher.onDidChange(debouncedReload),
+				watcher.onDidCreate(debouncedReload),
+				watcher.onDidDelete(debouncedReload),
+			);
 
-		// Native fs.watch fallback — watches the directory for changes to the target file
-		try {
-			const dir = path.dirname(filePath);
-			const basename = path.basename(filePath);
-			this._nativeWatcher = fs.watch(dir, (_eventType, filename) => {
-				if (filename === basename) {
-					debouncedReload();
-				}
-			});
-			this._nativeWatcher.on("error", () => {
-				// Silently ignore — VS Code watcher is the primary
-			});
-		} catch {
-			// Directory doesn't exist yet or not watchable — that's fine
+			// Native fs.watch fallback — watches the directory for changes to the target file
+			try {
+				const dir = path.dirname(filePath);
+				const basename = path.basename(filePath);
+				const nativeWatcher = fs.watch(dir, (_eventType, filename) => {
+					if (filename === basename) {
+						debouncedReload();
+					}
+				});
+				nativeWatcher.on("error", () => {
+					// Silently ignore — VS Code watcher is the primary
+				});
+				this._nativeWatchers.push(nativeWatcher);
+			} catch {
+				// Directory doesn't exist yet or not watchable — that's fine
+			}
 		}
 	}
 
@@ -2749,12 +2777,78 @@ export class AgentStatusTreeProvider
 	/** Exposed for testing — override to inject mock data */
 	readRegistry(): TaskRegistry {
 		this._registryLoadIssue = null;
-		if (!this._filePath) return createEmptyTaskRegistry();
+		const filePaths =
+			this._filePaths.length > 0
+				? this._filePaths
+				: this._filePath
+					? [this._filePath]
+					: [];
+		if (filePaths.length === 0) return createEmptyTaskRegistry();
 
+		const merged: TaskRegistry = { version: 2, tasks: {} };
+		for (const filePath of filePaths) {
+			const registry = this.readRegistryFile(filePath);
+			for (const [key, task] of Object.entries(registry.tasks)) {
+				const taskKey = this.getMergedTaskRegistryKey(
+					key,
+					task,
+					filePath,
+					merged.tasks,
+				);
+				merged.tasks[taskKey] =
+					taskKey === task.id ? task : { ...task, id: taskKey };
+			}
+		}
+
+		const taskCount = Object.keys(merged.tasks).length;
+		const registryState = `${filePaths.join("::")}::${taskCount}`;
+		if (this._lastLoggedRegistryState !== registryState) {
+			console.info(
+				`[Command Central] Agent Status loaded ${taskCount} launcher task${
+					taskCount === 1 ? "" : "s"
+				} from ${filePaths.length} task registr${
+					filePaths.length === 1 ? "y" : "ies"
+				}`,
+			);
+			this._lastLoggedRegistryState = registryState;
+		}
+
+		return merged;
+	}
+
+	private getMergedTaskRegistryKey(
+		key: string,
+		task: AgentTask,
+		filePath: string,
+		existingTasks: Record<string, AgentTask>,
+	): string {
+		const preferred = task.id || key;
+		if (!existingTasks[preferred]) return preferred;
+
+		const hostLabel = getTaskExecutionHostLabel(task)
+			?.replace(/[^A-Za-z0-9._-]+/g, "-")
+			.replace(/^-+|-+$/g, "");
+		const sourceLabel =
+			hostLabel ||
+			path
+				.basename(path.dirname(filePath))
+				.replace(/[^A-Za-z0-9._-]+/g, "-")
+				.replace(/^-+|-+$/g, "") ||
+			"registry";
+		let candidate = `${preferred}@${sourceLabel}`;
+		let index = 2;
+		while (existingTasks[candidate]) {
+			candidate = `${preferred}@${sourceLabel}-${index}`;
+			index += 1;
+		}
+		return candidate;
+	}
+
+	private readRegistryFile(filePath: string): TaskRegistry {
 		let content = "";
 
 		try {
-			content = fs.readFileSync(this._filePath, "utf-8");
+			content = fs.readFileSync(filePath, "utf-8");
 		} catch (err) {
 			if (
 				err instanceof Error &&
@@ -2764,14 +2858,14 @@ export class AgentStatusTreeProvider
 			}
 
 			warnTaskRegistryFallback(
-				this._filePath,
+				filePath,
 				err instanceof Error ? err.message : "Failed to read tasks.json",
 			);
 			return createEmptyTaskRegistry();
 		}
 
 		if (content.trim().length === 0) {
-			warnTaskRegistryFallback(this._filePath, "tasks.json is empty");
+			warnTaskRegistryFallback(filePath, "tasks.json is empty");
 			return createEmptyTaskRegistry();
 		}
 
@@ -2779,7 +2873,7 @@ export class AgentStatusTreeProvider
 			const parsed = JSON.parse(content) as unknown;
 			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
 				warnTaskRegistryFallback(
-					this._filePath,
+					filePath,
 					"tasks.json root is not a JSON object",
 				);
 				return createEmptyTaskRegistry();
@@ -2789,21 +2883,11 @@ export class AgentStatusTreeProvider
 			const version = parsedRegistry["version"];
 			const normalizedTasks = normalizeRegistryTasks(parsedRegistry["tasks"]);
 			if ((version === 1 || version === 2) && normalizedTasks) {
-				const taskCount = Object.keys(normalizedTasks).length;
-				const registryState = `${this._filePath ?? "(none)"}::${taskCount}`;
-				if (this._lastLoggedRegistryState !== registryState) {
-					console.info(
-						`[Command Central] Agent Status loaded ${taskCount} launcher task${
-							taskCount === 1 ? "" : "s"
-						} from ${this._filePath}`,
-					);
-					this._lastLoggedRegistryState = registryState;
-				}
 				return { version: 2, tasks: normalizedTasks };
 			}
 
 			warnTaskRegistryFallback(
-				this._filePath,
+				filePath,
 				version !== 1 && version !== 2
 					? `unsupported tasks.json version: ${String(version)}`
 					: "tasks.json is missing a valid tasks collection",
@@ -2811,7 +2895,7 @@ export class AgentStatusTreeProvider
 			return createEmptyTaskRegistry();
 		} catch (err) {
 			warnTaskRegistryFallback(
-				this._filePath,
+				filePath,
 				err instanceof Error ? err.message : "Failed to parse tasks.json",
 			);
 			return createEmptyTaskRegistry();
@@ -7264,11 +7348,14 @@ export class AgentStatusTreeProvider
 				this._agentStatusView.badge = undefined;
 			}
 		}
-		if (this.fileWatcher) this.fileWatcher.dispose();
-		if (this._nativeWatcher) {
-			this._nativeWatcher.close();
-			this._nativeWatcher = null;
+		for (const watcher of this.fileWatchers) {
+			watcher.dispose();
 		}
+		this.fileWatchers = [];
+		for (const watcher of this._nativeWatchers) {
+			watcher.close();
+		}
+		this._nativeWatchers = [];
 		if (this.debounceTimer) clearTimeout(this.debounceTimer);
 		if (this.treeRefreshTimer) {
 			clearTimeout(this.treeRefreshTimer);

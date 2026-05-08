@@ -70,6 +70,32 @@ export function resolveTasksFilePath(
 	return null;
 }
 
+/**
+ * Resolve the primary tasks file plus any additional read-only registry files.
+ *
+ * Additional paths are explicit only. They do not participate in auto-detection,
+ * which keeps the primary registry behavior stable while allowing node/mirrored
+ * launcher registries to be projected into the Command Central UI.
+ */
+export function resolveTasksFilePaths(
+	configValue: string,
+	additionalConfigValues: readonly string[] = [],
+	workspaceFolders?: readonly vscode.WorkspaceFolder[],
+	options?: { envTasksFile?: string | undefined },
+): string[] {
+	const paths: string[] = [];
+	const primary = resolveTasksFilePath(configValue, workspaceFolders, options);
+	if (primary) paths.push(primary);
+
+	for (const value of additionalConfigValues) {
+		const trimmed = value.trim();
+		if (!trimmed) continue;
+		paths.push(expandHome(trimmed));
+	}
+
+	return Array.from(new Set(paths));
+}
+
 /** Expand leading `~` to the user's home directory. */
 function expandHome(p: string): string {
 	if (p.startsWith("~")) {

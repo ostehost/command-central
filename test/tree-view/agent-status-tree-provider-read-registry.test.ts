@@ -36,6 +36,15 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 		return provider;
 	}
 
+	function setProviderTaskFiles(
+		provider: AgentStatusTreeProvider,
+		paths: string[],
+	): void {
+		(provider as unknown as { _filePath: string | null })._filePath =
+			paths[0] ?? null;
+		(provider as unknown as { _filePaths: string[] })._filePaths = paths;
+	}
+
 	test("preserves completed_dirty and maps unknown statuses to stopped", () => {
 		const provider = makeProvider();
 		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
@@ -74,8 +83,7 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 		);
 
 		try {
-			(provider as unknown as { _filePath: string | null })._filePath =
-				tasksFile;
+			setProviderTaskFiles(provider, [tasksFile]);
 			const registry = realReadRegistry.call(provider);
 			expect(registry.tasks["dirty"]?.status).toBe("completed_dirty");
 			expect(registry.tasks["weird"]?.status).toBe("stopped");
@@ -112,8 +120,7 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 		);
 
 		try {
-			(provider as unknown as { _filePath: string | null })._filePath =
-				tasksFile;
+			setProviderTaskFiles(provider, [tasksFile]);
 			const registry = realReadRegistry.call(provider);
 			expect(registry.tasks["explicitModel"]?.model).toBe(
 				"anthropic/claude-opus-4-6",
@@ -152,8 +159,7 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 		);
 
 		try {
-			(provider as unknown as { _filePath: string | null })._filePath =
-				tasksFile;
+			setProviderTaskFiles(provider, [tasksFile]);
 			const registry = realReadRegistry.call(provider);
 			expect(registry.tasks["fallbackTask"]?.model).toBe(
 				"anthropic/claude-opus-4-6",
@@ -208,8 +214,7 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 		);
 
 		try {
-			(provider as unknown as { _filePath: string | null })._filePath =
-				tasksFile;
+			setProviderTaskFiles(provider, [tasksFile]);
 			const registry = realReadRegistry.call(provider);
 			const task = registry.tasks["nodeVisible"];
 			expect(task?.exec_mode).toBe("spoke");
@@ -221,6 +226,72 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 				"/tmp/oste-pending-review/nodeVisible.json",
 			);
 			expect(task?.review_state).toBe("pending");
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+			provider.dispose();
+		}
+	});
+
+	test("merges additional mirrored node task registries", () => {
+		const provider = makeProvider();
+		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
+		const hubTasksFile = path.join(tmpDir, "hub-tasks.json");
+		const nodeTasksFile = path.join(tmpDir, "node-tasks.json");
+		fs.writeFileSync(
+			hubTasksFile,
+			JSON.stringify({
+				version: 2,
+				tasks: {
+					hubTask: {
+						id: "hubTask",
+						status: "running",
+						project_dir: "/Users/ostemini/projects/command-central",
+						project_name: "command-central",
+						session_id: "agent-hub",
+						bundle_path: "",
+						prompt_file: "/tmp/hub.md",
+						started_at: "2026-05-08T20:13:50Z",
+						attempts: 1,
+						max_attempts: 3,
+					},
+				},
+			}),
+		);
+		fs.writeFileSync(
+			nodeTasksFile,
+			JSON.stringify({
+				version: 2,
+				tasks: {
+					nodeTask: {
+						id: "nodeTask",
+						status: "running",
+						project_dir: "/Users/ostehost/projects/command-central",
+						project_name: "command-central",
+						session_id: "agent-node",
+						terminal_backend: "tmux",
+						bundle_path: "/Applications/Projects/command-central.app",
+						ghostty_bundle_id: "dev.partnerai.ghostty.command-central",
+						prompt_file: "/tmp/node.md",
+						started_at: "2026-05-08T20:13:50Z",
+						attempts: 1,
+						max_attempts: 3,
+						exec_node: "Mike MacBook Pro",
+						exec_host: "Mike's MacBook Pro",
+						exec_visible: true,
+						exec_cwd: "/Users/ostehost/projects/command-central",
+					},
+				},
+			}),
+		);
+
+		try {
+			setProviderTaskFiles(provider, [hubTasksFile, nodeTasksFile]);
+			const registry = realReadRegistry.call(provider);
+			expect(Object.keys(registry.tasks).sort()).toEqual([
+				"hubTask",
+				"nodeTask",
+			]);
+			expect(registry.tasks["nodeTask"]?.exec_node).toBe("Mike MacBook Pro");
 		} finally {
 			fs.rmSync(tmpDir, { recursive: true, force: true });
 			provider.dispose();
@@ -258,8 +329,7 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 		);
 
 		try {
-			(provider as unknown as { _filePath: string | null })._filePath =
-				tasksFile;
+			setProviderTaskFiles(provider, [tasksFile]);
 			const registry = realReadRegistry.call(provider);
 			expect(registry.tasks["canonicalized"]?.project_dir).toBe(
 				fs.realpathSync(aliasedProjectDir),

@@ -14,9 +14,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type * as vscode from "vscode";
 
-// Mock vscode
-mock.module("vscode", () => ({}));
-
 // Mock fs.existsSync — control which paths "exist"
 const mockExistsSync = mock((..._args: unknown[]) => false);
 mock.module("node:fs", () => ({
@@ -26,7 +23,10 @@ mock.module("node:fs", () => ({
 	default: { ...realFs, existsSync: mockExistsSync },
 }));
 
-import { resolveTasksFilePath } from "../../src/utils/tasks-file-resolver.js";
+import {
+	resolveTasksFilePath,
+	resolveTasksFilePaths,
+} from "../../src/utils/tasks-file-resolver.js";
 
 function mockWorkspaceFolder(fsPath: string) {
 	return {
@@ -214,5 +214,44 @@ describe("resolveTasksFilePath", () => {
 	test("returns null with empty workspace folders and no home files", () => {
 		const result = resolveTasksFilePath("", []);
 		expect(result).toBeNull();
+	});
+});
+
+describe("resolveTasksFilePaths", () => {
+	beforeEach(() => {
+		mockExistsSync.mockReset();
+		mockExistsSync.mockReturnValue(false);
+	});
+
+	test("returns primary path plus explicit additional registry paths", () => {
+		const result = resolveTasksFilePaths("/primary/tasks.json", [
+			"/mirror/node/tasks.json",
+			"/mirror/other/tasks.json",
+		]);
+
+		expect(result).toEqual([
+			"/primary/tasks.json",
+			"/mirror/node/tasks.json",
+			"/mirror/other/tasks.json",
+		]);
+	});
+
+	test("deduplicates primary and additional paths", () => {
+		const result = resolveTasksFilePaths("/primary/tasks.json", [
+			"/primary/tasks.json",
+			"  ",
+			"/primary/tasks.json",
+		]);
+
+		expect(result).toEqual(["/primary/tasks.json"]);
+	});
+
+	test("keeps auto-detected primary behavior and appends node mirrors", () => {
+		const xdgPath = xdgTasksPath();
+		mockExistsSync.mockImplementation((p: unknown) => p === xdgPath);
+
+		const result = resolveTasksFilePaths("", ["/mirror/node/tasks.json"]);
+
+		expect(result).toEqual([xdgPath, "/mirror/node/tasks.json"]);
 	});
 });
