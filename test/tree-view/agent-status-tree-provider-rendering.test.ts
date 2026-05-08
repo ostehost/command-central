@@ -674,6 +674,27 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 			);
 		});
 
+		test("node-hosted visible task: description and tooltip name the node surface", () => {
+			const task = createMockTask({
+				status: "running",
+				terminal_backend: "tmux",
+				ghostty_bundle_id: "dev.partnerai.ghostty.command-central",
+				bundle_path: "/Applications/Projects/command-central.app",
+				project_dir: "/Users/ostehost/projects/command-central",
+				exec_mode: "spoke",
+				exec_node: "Mike MacBook Pro",
+				exec_host: "Mike's MacBook Pro",
+				exec_visible: true,
+				exec_cwd: "/Users/ostehost/projects/command-central",
+			});
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("node · visible");
+			expect(tooltipText(item)).toContain("Mike's MacBook Pro");
+			expect(tooltipText(item)).toContain("focus must execute on that node");
+			expect(tooltipText(item)).toContain("visible=yes");
+		});
+
 		test("persist backend: description tagged and tooltip explains headless", () => {
 			const task = createMockTask({
 				status: "running",

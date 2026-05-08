@@ -10,7 +10,11 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as path from "node:path";
-import type { AgentTask } from "../../src/providers/agent-status-tree-provider.js";
+import {
+	type AgentTask,
+	getTaskExecutionHostLabel,
+	isRemoteNodeTaskForCurrentHost,
+} from "../../src/providers/agent-status-tree-provider.js";
 import {
 	clearCompletedAgentEntries,
 	countClearableAgentEntries,
@@ -159,6 +163,24 @@ describe("focusAgentTerminal command", () => {
 			task.terminal_backend === "tmux" && task.session_id && isValid;
 
 		expect(strategy3Fires).toBeFalsy();
+	});
+
+	test("node-hosted task is detected before hub-local focus strategies", () => {
+		const task = createTask({
+			terminal_backend: "tmux",
+			ghostty_bundle_id: "dev.partnerai.ghostty.command-central",
+			bundle_path: "/Applications/Projects/command-central.app",
+			project_dir: "/Users/ostehost/projects/command-central",
+			exec_mode: "spoke",
+			exec_node: "Mike MacBook Pro",
+			exec_host: "Mike's MacBook Pro",
+			exec_visible: true,
+			exec_cwd: "/Users/ostehost/projects/command-central",
+		});
+
+		expect(isRemoteNodeTaskForCurrentHost(task)).toBe(true);
+		expect(getTaskExecutionHostLabel(task)).toBe("Mike's MacBook Pro");
+		expect(vscodeMock.window.createTerminal).not.toHaveBeenCalled();
 	});
 
 	test("Strategy 3 falls through to no-terminal message on Ghostty failure", () => {

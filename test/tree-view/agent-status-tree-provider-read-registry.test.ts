@@ -167,6 +167,66 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 		}
 	});
 
+	test("preserves node execution metadata from tasks.json", () => {
+		const provider = makeProvider();
+		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
+		const tasksFile = path.join(tmpDir, "tasks.json");
+		fs.writeFileSync(
+			tasksFile,
+			JSON.stringify({
+				version: 2,
+				tasks: {
+					nodeVisible: {
+						id: "nodeVisible",
+						status: "running",
+						project_dir: "/Users/ostehost/projects/command-central",
+						project_name: "command-central",
+						session_id: "agent-command-central",
+						terminal_backend: "tmux",
+						tmux_socket:
+							"/Users/ostehost/.local/state/ghostty-launcher/tmux/command-central.sock",
+						tmux_conf:
+							"/Users/ostehost/.local/state/ghostty-launcher/tmux/command-central.conf",
+						tmux_window_id: "@5",
+						tmux_pane_id: "%5",
+						bundle_path: "/Applications/Projects/command-central.app",
+						ghostty_bundle_id: "dev.partnerai.ghostty.command-central",
+						prompt_file: "/tmp/task.md",
+						started_at: "2026-05-08T20:13:50Z",
+						attempts: 1,
+						max_attempts: 3,
+						exec_mode: "spoke",
+						exec_node: "Mike MacBook Pro",
+						exec_host: "Mike's MacBook Pro",
+						exec_visible: true,
+						exec_cwd: "/Users/ostehost/projects/command-central",
+						pending_review_path: "/tmp/oste-pending-review/nodeVisible.json",
+						review_state: "pending",
+					},
+				},
+			}),
+		);
+
+		try {
+			(provider as unknown as { _filePath: string | null })._filePath =
+				tasksFile;
+			const registry = realReadRegistry.call(provider);
+			const task = registry.tasks["nodeVisible"];
+			expect(task?.exec_mode).toBe("spoke");
+			expect(task?.exec_node).toBe("Mike MacBook Pro");
+			expect(task?.exec_host).toBe("Mike's MacBook Pro");
+			expect(task?.exec_visible).toBe(true);
+			expect(task?.exec_cwd).toBe("/Users/ostehost/projects/command-central");
+			expect(task?.pending_review_path).toBe(
+				"/tmp/oste-pending-review/nodeVisible.json",
+			);
+			expect(task?.review_state).toBe("pending");
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+			provider.dispose();
+		}
+	});
+
 	test("canonicalizes symlinked project_dir values from tasks.json", () => {
 		const provider = makeProvider();
 		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");

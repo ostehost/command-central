@@ -548,6 +548,8 @@ function getStatusDisplayLabel(status: AgentTaskStatus): string {
  */
 export type TaskSurfaceKind =
 	| "launcher-bundle"
+	| "node-launcher-bundle"
+	| "node-tmux-fresh-attach"
 	| "tmux-fresh-attach"
 	| "persist"
 	| "applescript"
@@ -564,14 +566,72 @@ export interface TaskSurfaceSummary {
 	shortTag: string | null;
 }
 
+function firstNonEmptyTaskString(
+	...values: Array<string | null | undefined>
+): string | null {
+	for (const value of values) {
+		const trimmed = value?.trim();
+		if (trimmed) return trimmed;
+	}
+	return null;
+}
+
+export function getTaskExecutionHostLabel(task: AgentTask): string | null {
+	return firstNonEmptyTaskString(task.exec_host, task.exec_node);
+}
+
+function hasNodeExecutionMetadata(task: AgentTask): boolean {
+	return Boolean(
+		firstNonEmptyTaskString(task.exec_node, task.exec_host, task.exec_mode) ||
+			firstNonEmptyTaskString(task.exec_cwd)?.startsWith("/Users/ostehost/"),
+	);
+}
+
+function isPathUnderLocalHome(value?: string | null): boolean {
+	const trimmed = value?.trim();
+	if (!trimmed) return false;
+	const localHome = os.homedir();
+	if (!localHome) return false;
+	const resolvedValue = path.resolve(trimmed);
+	const resolvedHome = path.resolve(localHome);
+	return (
+		resolvedValue === resolvedHome ||
+		resolvedValue.startsWith(`${resolvedHome}${path.sep}`)
+	);
+}
+
+export function isRemoteNodeTaskForCurrentHost(task: AgentTask): boolean {
+	if (!hasNodeExecutionMetadata(task)) return false;
+	return !(
+		isPathUnderLocalHome(task.exec_cwd) ||
+		isPathUnderLocalHome(task.project_dir)
+	);
+}
+
 export function classifyTaskSurface(task: AgentTask): TaskSurfaceSummary {
 	const hasLauncherBundle =
 		Boolean(task.ghostty_bundle_id) ||
 		(Boolean(task.bundle_path) &&
 			task.bundle_path !== "(tmux-mode)" &&
 			task.bundle_path !== "(test-mode)");
+	const hostLabel = getTaskExecutionHostLabel(task);
+	const remoteNode = isRemoteNodeTaskForCurrentHost(task);
 
 	if (task.terminal_backend === "tmux") {
+		if (remoteNode) {
+			if (hasLauncherBundle) {
+				return {
+					kind: "node-launcher-bundle",
+					tooltipLine: `Surface: launcher Ghostty bundle on ${hostLabel ?? "node"} · tmux session (focus must execute on that node)`,
+					shortTag: "node · visible",
+				};
+			}
+			return {
+				kind: "node-tmux-fresh-attach",
+				tooltipLine: `Surface: tmux session on ${hostLabel ?? "node"} — no hub-local terminal should be opened`,
+				shortTag: "node · tmux",
+			};
+		}
 		if (hasLauncherBundle) {
 			return {
 				kind: "launcher-bundle",
@@ -829,6 +889,22 @@ function normalizeTask(
 				? raw["terminal_backend"]
 				: undefined,
 		ghostty_bundle_id: asString(raw["ghostty_bundle_id"]) ?? null,
+		exec_mode: asString(raw["exec_mode"]) ?? null,
+		exec_node: asString(raw["exec_node"]) ?? null,
+		exec_host: asString(raw["exec_host"]) ?? null,
+		exec_visible:
+			typeof raw["exec_visible"] === "boolean" ? raw["exec_visible"] : null,
+		exec_cwd: asString(raw["exec_cwd"]) ?? null,
+		callback_url: asString(raw["callback_url"]) ?? null,
+		pending_review_path: asString(raw["pending_review_path"]) ?? null,
+		pending_fixup_path: asString(raw["pending_fixup_path"]) ?? null,
+		artifact_paths: Array.isArray(raw["artifact_paths"])
+			? raw["artifact_paths"].filter(
+					(value): value is string => typeof value === "string",
+				)
+			: null,
+		review_state: asString(raw["review_state"]) ?? null,
+		fixup_state: asString(raw["fixup_state"]) ?? null,
 		project_icon: asString(raw["project_icon"]) ?? null,
 		exit_code: asNullableNumber(raw["exit_code"]) ?? null,
 		error_message: asString(raw["error_message"]) ?? null,
@@ -1860,6 +1936,17 @@ export class AgentStatusTreeProvider
 			if (task.tmux_socket) {
 				breadcrumbs.push(`socket=${path.basename(task.tmux_socket)}`);
 			}
+		}
+
+		const executionHost = getTaskExecutionHostLabel(task);
+		if (executionHost) {
+			breadcrumbs.push(`host=${executionHost}`);
+		}
+		if (task.exec_visible != null) {
+			breadcrumbs.push(`visible=${task.exec_visible ? "yes" : "no"}`);
+		}
+		if (task.exec_cwd) {
+			breadcrumbs.push(`cwd=${task.exec_cwd}`);
 		}
 
 		const bundlePath = task.bundle_path.trim();
@@ -6373,6 +6460,9 @@ export class AgentStatusTreeProvider
 				`Lifecycle Authority: ${this.formatCodexRunAuthority(run)}`,
 				`Ownership: ${this.formatCodexRunOwnership(run)}`,
 				`Sources: ${this.formatCodexRunSource(run)}`,
+				run.execMode ? `Execution Mode: \`${run.execMode}\`` : null,
+				run.execNodeName ? `Execution Node: \`${run.execNodeName}\`` : null,
+				run.host ? `Host: \`${run.host}\`` : null,
 				run.model ? `Model: \`${run.model}\`` : null,
 				run.workspacePath ? `Workspace: \`${run.workspacePath}\`` : null,
 				run.sessionKey ? `Session: \`${run.sessionKey}\`` : null,

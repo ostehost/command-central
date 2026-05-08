@@ -52,6 +52,8 @@ import { AgentDecorationProvider } from "./providers/agent-decoration-provider.j
 import {
 	AgentStatusTreeProvider,
 	type AgentTask,
+	getTaskExecutionHostLabel,
+	isRemoteNodeTaskForCurrentHost,
 	isValidSessionId,
 	type ProjectGroupNode,
 } from "./providers/agent-status-tree-provider.js";
@@ -1305,6 +1307,110 @@ export async function activate(
 			}
 		};
 
+		const shellQuote = (value: string): string => {
+			if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+			return `'${value.replace(/'/g, "'\\''")}'`;
+		};
+
+		const formatShellCommand = (argv: string[]): string =>
+			argv.map(shellQuote).join(" ");
+
+		const buildRemoteNodeFocusCommand = (task: AgentTask): string => {
+			const commands: string[] = [];
+			const bundleTarget = task.ghostty_bundle_id?.trim();
+			const bundlePath = task.bundle_path?.trim();
+			if (bundleTarget) {
+				commands.push(formatShellCommand(["open", "-b", bundleTarget]));
+			} else if (
+				bundlePath &&
+				bundlePath !== "(tmux-mode)" &&
+				bundlePath !== "(test-mode)"
+			) {
+				commands.push(formatShellCommand(["open", "-a", bundlePath]));
+			}
+
+			const target = resolveTaskWindowTarget(task);
+			if (target) {
+				commands.push(
+					formatShellCommand([
+						"tmux",
+						...buildTaskTmuxArgs(task, ["select-window", "-t", target]),
+					]),
+				);
+			}
+
+			if (commands.length > 0) return commands.join(" && ");
+			return formatShellCommand(buildTaskTmuxAttachCommand(task));
+		};
+
+		const buildRemoteNodeAttachCommand = (task: AgentTask): string =>
+			formatShellCommand(buildTaskTmuxAttachCommand(task));
+
+		const showRemoteNodeTaskSurfaceOptions = async (
+			task: AgentTask,
+		): Promise<void> => {
+			const hostLabel = getTaskExecutionHostLabel(task) ?? "the node";
+			type RemoteNodePickItem = vscode.QuickPickItem & {
+				action: "copy-focus" | "copy-attach" | "show-metadata";
+			};
+			const picked = await vscode.window.showQuickPick<RemoteNodePickItem>(
+				[
+					{
+						label: "$(copy) Copy Node Focus Command",
+						description: "Run on the node to surface this Ghostty/tmux lane",
+						action: "copy-focus",
+					},
+					{
+						label: "$(terminal) Copy Node tmux Attach Command",
+						description:
+							"Run on the node if the launcher bundle is unavailable",
+						action: "copy-attach",
+					},
+					{
+						label: "$(info) Show Node Session Metadata",
+						description: "Display host, cwd, session, and tmux target",
+						action: "show-metadata",
+					},
+				],
+				{
+					placeHolder: `Task "${task.id}" runs on ${hostLabel}; Command Central will not open a hub-local terminal for it`,
+				},
+			);
+			if (!picked) return;
+
+			if (picked.action === "copy-focus") {
+				const command = buildRemoteNodeFocusCommand(task);
+				await vscode.env.clipboard.writeText(command);
+				vscode.window.showInformationMessage(
+					`Copied node focus command for "${task.id}". Run it on ${hostLabel}.`,
+				);
+				return;
+			}
+
+			if (picked.action === "copy-attach") {
+				const command = buildRemoteNodeAttachCommand(task);
+				await vscode.env.clipboard.writeText(command);
+				vscode.window.showInformationMessage(
+					`Copied node tmux attach command for "${task.id}". Run it on ${hostLabel}.`,
+				);
+				return;
+			}
+
+			vscode.window.showInformationMessage(
+				[
+					`Task ${task.id}`,
+					`host=${hostLabel}`,
+					task.exec_node ? `node=${task.exec_node}` : null,
+					task.exec_cwd ? `cwd=${task.exec_cwd}` : null,
+					task.session_id ? `session=${task.session_id}` : null,
+					task.tmux_window_id ? `window=${task.tmux_window_id}` : null,
+					task.tmux_pane_id ? `pane=${task.tmux_pane_id}` : null,
+				]
+					.filter(Boolean)
+					.join(" · "),
+			);
+		};
+
 		const focusExistingTaskTerminal = async (
 			task: AgentTask,
 		): Promise<void> => {
@@ -1423,6 +1529,10 @@ export async function activate(
 				}) => {
 					// Support both launcher tasks and discovered agents
 					const task = node?.task;
+					if (task && isRemoteNodeTaskForCurrentHost(task)) {
+						await showRemoteNodeTaskSurfaceOptions(task);
+						return;
+					}
 					if (task && task.status !== "running") {
 						await vscode.commands.executeCommand(
 							"commandCentral.resumeAgentSession",
