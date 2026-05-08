@@ -695,6 +695,26 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 			expect(tooltipText(item)).toContain("visible=yes");
 		});
 
+		test("node-hosted mirrored task stays node-routed when exec_mode is hub", () => {
+			const task = createMockTask({
+				status: "running",
+				terminal_backend: "tmux",
+				ghostty_bundle_id: "dev.partnerai.ghostty.ghostty-launcher",
+				bundle_path: "/Applications/Projects/ghostty-launcher.app",
+				project_dir: "/Users/ostehost/projects/ghostty-launcher",
+				exec_mode: "hub",
+				exec_node: null,
+				exec_host: "Mike's MacBook Pro",
+				exec_visible: true,
+				exec_cwd: "/Users/ostehost/projects/ghostty-launcher",
+			});
+			provider.getDiffSummary = () => null;
+			const item = provider.getTreeItem({ type: "task", task });
+			expect(item.description).toContain("node · visible");
+			expect(tooltipText(item)).toContain("Mike's MacBook Pro");
+			expect(tooltipText(item)).toContain("focus must execute on that node");
+		});
+
 		test("persist backend: description tagged and tooltip explains headless", () => {
 			const task = createMockTask({
 				status: "running",

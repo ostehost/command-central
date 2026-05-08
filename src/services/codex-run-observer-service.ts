@@ -238,7 +238,7 @@ export class CodexRunObserverService {
 			sessionKey: task.session_id,
 			execMode: task.exec_mode ?? undefined,
 			execNodeId: task.exec_node ?? undefined,
-			execNodeName: task.exec_node ?? undefined,
+			execNodeName: this.firstNonEmpty(task.exec_node, task.exec_host),
 			sourceAuthority: task.source_authority ?? "launcher",
 			ownerKind: task.owner_kind ?? "launcher",
 			callbackPresent: Boolean(task.callback_url),
@@ -336,8 +336,9 @@ export class CodexRunObserverService {
 			this.addFieldSource(run, "execNodeId", ref);
 		}
 
-		if (!run.execNodeName && task.exec_node) {
-			run.execNodeName = task.exec_node;
+		const taskNodeName = this.firstNonEmpty(task.exec_node, task.exec_host);
+		if (!run.execNodeName && taskNodeName) {
+			run.execNodeName = taskNodeName;
 			this.addFieldSource(run, "execNodeName", ref);
 		}
 

@@ -185,6 +185,21 @@ describe("AgentDashboardPanel", () => {
 			panel.dispose();
 		});
 
+		test("uses visible_project_name before basename for task project labels", () => {
+			const panel = new AgentDashboardPanel();
+			const html = panel.getHtml({
+				node: createMockTask({
+					id: "node-task",
+					project_dir: "/Users/ostehost/projects/ghostty-launcher",
+					project_name: "ghostty-launcher",
+					visible_project_name: "Ghostty Launcher",
+				}),
+			});
+
+			expect(html).toContain("Project: Ghostty Launcher");
+			panel.dispose();
+		});
+
 		test("renders Running section only when running tasks exist", () => {
 			const panel = new AgentDashboardPanel();
 			const tasksWithRunning: Record<string, AgentTask> = {
@@ -294,6 +309,7 @@ describe("AgentDashboardPanel", () => {
 				t1: createMockTask({
 					id: "t1",
 					project_dir: "/Users/test/projects/awesome-project",
+					project_name: "",
 				}),
 			};
 			const html = panel.getHtml(tasks);

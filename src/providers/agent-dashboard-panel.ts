@@ -67,6 +67,14 @@ function escapeHtml(text: string): string {
 		.replace(/'/g, "&#039;");
 }
 
+function getTaskDisplayProjectName(task: AgentTask): string {
+	const visibleName = task.visible_project_name?.trim();
+	if (visibleName) return visibleName;
+	const projectName = task.project_name?.trim();
+	if (projectName) return projectName;
+	return task.project_dir ? path.basename(task.project_dir) : "";
+}
+
 // ── Panel ────────────────────────────────────────────────────────────
 
 export class AgentDashboardPanel implements vscode.Disposable {
@@ -207,7 +215,7 @@ ${stopped.length > 0 ? `<h2>Stopped</h2><div class="grid">${stopped.map((t) => t
 		const statusLabel = STATUS_LABELS[task.status] ?? task.status;
 		const roleIcon =
 			task.role && ROLE_ICONS[task.role] ? `${ROLE_ICONS[task.role]} ` : "";
-		const projectName = task.project_dir ? path.basename(task.project_dir) : "";
+		const projectName = getTaskDisplayProjectName(task);
 		const elapsedDescription = task.started_at
 			? formatTaskElapsedDescription(task)
 			: "";

@@ -142,6 +142,7 @@ export interface AgentTask {
 	status: AgentTaskStatus;
 	project_dir: string;
 	project_name: string;
+	visible_project_name?: string | null;
 	session_id: string;
 	stream_file?: string | null;
 	agent_backend?: string | null;
@@ -581,8 +582,12 @@ export function getTaskExecutionHostLabel(task: AgentTask): string | null {
 }
 
 function hasNodeExecutionMetadata(task: AgentTask): boolean {
+	const execMode = task.exec_mode?.trim().toLowerCase();
 	return Boolean(
-		firstNonEmptyTaskString(task.exec_node, task.exec_host, task.exec_mode) ||
+		firstNonEmptyTaskString(task.exec_node, task.exec_host) ||
+			execMode === "spoke" ||
+			execMode === "node" ||
+			execMode === "remote" ||
 			firstNonEmptyTaskString(task.exec_cwd)?.startsWith("/Users/ostehost/"),
 	);
 }
@@ -605,6 +610,14 @@ export function isRemoteNodeTaskForCurrentHost(task: AgentTask): boolean {
 	return !(
 		isPathUnderLocalHome(task.exec_cwd) ||
 		isPathUnderLocalHome(task.project_dir)
+	);
+}
+
+function getTaskDisplayProjectName(task: AgentTask): string {
+	return (
+		firstNonEmptyTaskString(task.visible_project_name, task.project_name) ??
+		path.basename(task.project_dir) ??
+		"(unknown project)"
 	);
 }
 
@@ -839,6 +852,7 @@ function normalizeTask(
 	const projectName =
 		asString(raw["project_name"]) ??
 		(path.basename(projectDir) || "(unknown project)");
+	const visibleProjectName = asString(raw["visible_project_name"]) ?? null;
 	const bundlePath = asString(raw["bundle_path"]) ?? "(unknown)";
 	const promptFile = asString(raw["prompt_file"]) ?? "";
 
@@ -847,6 +861,7 @@ function normalizeTask(
 		status,
 		project_dir: projectDir,
 		project_name: projectName,
+		visible_project_name: visibleProjectName,
 		session_id: sessionId,
 		stream_file: asString(raw["stream_file"]) ?? null,
 		agent_backend: asString(raw["agent_backend"]) ?? null,
@@ -4009,8 +4024,7 @@ export class AgentStatusTreeProvider
 
 		for (const task of tasks) {
 			const projectDir = task.project_dir || task.project_name || "";
-			const projectName =
-				task.project_name || path.basename(projectDir) || "(unknown project)";
+			const projectName = getTaskDisplayProjectName(task);
 			const groupKey = projectDir ? `dir:${projectDir}` : `name:${projectName}`;
 			const existing = grouped.get(groupKey);
 			if (existing) {
@@ -4555,8 +4569,7 @@ export class AgentStatusTreeProvider
 			type: "fileChange",
 			taskId: t.id,
 			projectDir: t.project_dir,
-			projectName:
-				t.project_name || path.basename(t.project_dir) || t.project_dir,
+			projectName: getTaskDisplayProjectName(t) || t.project_dir,
 			filePath: diff.filePath,
 			additions: diff.additions,
 			deletions: diff.deletions,
@@ -7036,7 +7049,7 @@ export class AgentStatusTreeProvider
 		const diffSummaryInline = this.getCachedDiffSummaryForTask(task);
 		const descriptionParts: string[] = [];
 		if (!this.isProjectGroupingEnabled()) {
-			descriptionParts.push(task.project_name);
+			descriptionParts.push(getTaskDisplayProjectName(task));
 		}
 		if (task.status === "completed_stale") {
 			descriptionParts.push("stale");

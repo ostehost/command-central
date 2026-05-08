@@ -201,6 +201,35 @@ describe("CodexRunObserverService", () => {
 		]);
 	});
 
+	test("projects node host as execution node name when exec_node is absent", () => {
+		const service = new CodexRunObserverService();
+		const [run] = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "node-visible",
+					task_id: "node-visible",
+					exec_mode: "hub",
+					exec_node: null,
+					exec_host: "Mike's MacBook Pro",
+					exec_cwd: "/Users/ostehost/projects/ghostty-launcher",
+					project_dir: "/Users/ostehost/projects/ghostty-launcher",
+					agent_backend: "codex",
+				}),
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		expect(run).toMatchObject({
+			taskId: "node-visible",
+			execMode: "hub",
+			execNodeName: "Mike's MacBook Pro",
+			host: "Mike's MacBook Pro",
+			workspacePath: "/Users/ostehost/projects/ghostty-launcher",
+		});
+		expect(run?.execNodeId).toBeUndefined();
+	});
+
 	test("keeps OpenClaw as source authority while launcher adds node execution detail", () => {
 		const service = new CodexRunObserverService();
 		const [run] = service.project({

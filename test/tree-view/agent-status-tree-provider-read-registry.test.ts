@@ -267,6 +267,7 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 						status: "running",
 						project_dir: "/Users/ostehost/projects/command-central",
 						project_name: "command-central",
+						visible_project_name: "Command Central Node",
 						session_id: "agent-node",
 						terminal_backend: "tmux",
 						bundle_path: "/Applications/Projects/command-central.app",
@@ -292,6 +293,9 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 				"nodeTask",
 			]);
 			expect(registry.tasks["nodeTask"]?.exec_node).toBe("Mike MacBook Pro");
+			expect(registry.tasks["nodeTask"]?.visible_project_name).toBe(
+				"Command Central Node",
+			);
 		} finally {
 			fs.rmSync(tmpDir, { recursive: true, force: true });
 			provider.dispose();

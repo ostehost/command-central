@@ -183,6 +183,37 @@ describe("focusAgentTerminal command", () => {
 		expect(vscodeMock.window.createTerminal).not.toHaveBeenCalled();
 	});
 
+	test("mirrored node task is detected even when launcher persisted exec_mode=hub", () => {
+		const task = createTask({
+			terminal_backend: "tmux",
+			ghostty_bundle_id: "dev.partnerai.ghostty.ghostty-launcher",
+			bundle_path: "/Applications/Projects/ghostty-launcher.app",
+			project_dir: "/Users/ostehost/projects/ghostty-launcher",
+			exec_mode: "hub",
+			exec_node: null,
+			exec_host: "Mike's MacBook Pro",
+			exec_visible: true,
+			exec_cwd: "/Users/ostehost/projects/ghostty-launcher",
+		});
+
+		expect(isRemoteNodeTaskForCurrentHost(task)).toBe(true);
+		expect(getTaskExecutionHostLabel(task)).toBe("Mike's MacBook Pro");
+		expect(vscodeMock.window.createTerminal).not.toHaveBeenCalled();
+	});
+
+	test("hub-local task with exec_mode=hub is not treated as a remote node task", () => {
+		const task = createTask({
+			terminal_backend: "tmux",
+			project_dir: path.join(process.env["HOME"] ?? "/Users/test", "project"),
+			exec_mode: "hub",
+			exec_node: null,
+			exec_host: null,
+			exec_cwd: path.join(process.env["HOME"] ?? "/Users/test", "project"),
+		});
+
+		expect(isRemoteNodeTaskForCurrentHost(task)).toBe(false);
+	});
+
 	test("Strategy 3 falls through to no-terminal message on Ghostty failure", () => {
 		void createTask({
 			terminal_backend: "tmux",
