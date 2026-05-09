@@ -11,6 +11,10 @@ export async function run(): Promise<void> {
 
 	const snapshot = testApi.getSnapshot();
 	const agentStatus = testApi.getAgentStatusSnapshot();
+	const tree = testApi.getAgentStatusTreeSnapshot({
+		maxDepth: 2,
+		requiredLabels: ["Symphony / Workstreams", "Symphony / Run Attempts"],
+	});
 
 	assert.equal(
 		snapshot.hasAgentStatusProvider,
@@ -20,5 +24,13 @@ export async function run(): Promise<void> {
 	assert.ok(
 		agentStatus.rootChildrenCount >= 0,
 		"Agent status root children count should be readable without throwing.",
+	);
+	assert.ok(
+		tree.selected.requiredLabels["Symphony / Workstreams"]?.length,
+		"Agent Status tree inspection should expose the static Symphony / Workstreams root.",
+	);
+	assert.ok(
+		tree.selected.requiredLabels["Symphony / Run Attempts"]?.length,
+		"Agent Status tree inspection should expose the Symphony / Run Attempts root.",
 	);
 }

@@ -1311,12 +1311,21 @@ describe("OpenClaw task nodes", () => {
 			.filter(
 				({ node }) =>
 					node.type === "detail" &&
+					node.label !== "Run attempt ID" &&
 					!node.label.startsWith("Artifact") &&
 					!node.label.startsWith("Evidence:"),
 			)
 			.map(({ item }) => item.command)
 			.filter(Boolean);
 		expect(nonArtifactDetailCommands).toEqual([]);
+		expect(
+			detailItems.find(
+				({ node }) => node.type === "detail" && node.label === "Run attempt ID",
+			)?.item.command,
+		).toMatchObject({
+			command: "commandCentral.copyToClipboard",
+			title: "Copy Run Attempt ID",
+		});
 		expect(
 			detailItems
 				.filter(

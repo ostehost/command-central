@@ -288,12 +288,16 @@ describe("AgentStatusTreeProvider", () => {
 
 	test("shows explicit empty state when no tasks", () => {
 		const children = provider.getChildren();
-		expect(children).toHaveLength(2);
+		expect(children).toHaveLength(3);
 		expect(children[0]).toEqual({
+			type: "taskflows",
+			flows: [],
+		});
+		expect(children[1]).toEqual({
 			type: "codexRuns",
 			runs: [],
 		});
-		expect(children[1]).toEqual({
+		expect(children[2]).toEqual({
 			type: "state",
 			label: "Waiting for agents...",
 			description: "Start Claude Code, Codex, or Gemini in any terminal",
@@ -307,7 +311,7 @@ describe("AgentStatusTreeProvider", () => {
 		provider.reload();
 
 		const children = provider.getChildren();
-		expect(children).toHaveLength(3); // 1 summary + Codex Runs + 1 task
+		expect(children).toHaveLength(4); // 1 summary + Workstreams + Codex Runs + 1 task
 		expect(children[0]?.type).toBe("summary");
 		const taskNodes = getTaskNodes(children);
 		expect(taskNodes).toHaveLength(1);

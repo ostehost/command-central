@@ -386,6 +386,14 @@ test-electron:
     @bun run scripts-v2/node-execution-guard.ts
     @bun run test/integration/runTest.ts
 
+# Run installed VSIX Symphony Agent Status proof on the MacBook node.
+test-installed-vsix-agent-status *args:
+    @echo "🧪 Running installed VSIX Agent Status proof..."
+    @echo "   • Guard: must execute on Mike MacBook Pro node"
+    @echo "   • Use --live with COMMAND_CENTRAL_REQUIRED_TASK_ID for action probes"
+    @echo ""
+    @bun run test/integration/runInstalledVsixAgentStatusProof.ts {{args}}
+
 # Run tests with coverage report
 test-coverage:
     @echo "📊 Running tests with coverage..."

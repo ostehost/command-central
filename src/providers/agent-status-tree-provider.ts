@@ -3095,6 +3095,10 @@ export class AgentStatusTreeProvider
 				type: "codexRuns",
 				runs: codexRuns,
 			};
+			const taskFlowsNode: TaskFlowsContainerNode = {
+				type: "taskflows",
+				flows: taskFlows,
+			};
 			const hasAnyAgents =
 				allTasks.length > 0 ||
 				discovered.length > 0 ||
@@ -3103,6 +3107,7 @@ export class AgentStatusTreeProvider
 			if (!hasAnyAgents) {
 				if (this._initialReadInProgress && this._filePath) {
 					return [
+						taskFlowsNode,
 						codexRunsNode,
 						{
 							type: "state",
@@ -3114,6 +3119,7 @@ export class AgentStatusTreeProvider
 				}
 				if (this._registryLoadIssue) {
 					return [
+						taskFlowsNode,
 						codexRunsNode,
 						{
 							type: "state",
@@ -3124,6 +3130,7 @@ export class AgentStatusTreeProvider
 					];
 				}
 				return [
+					taskFlowsNode,
 					codexRunsNode,
 					{
 						type: "state",
@@ -3211,20 +3218,13 @@ export class AgentStatusTreeProvider
 
 			return [
 				...summaryNodes,
+				taskFlowsNode,
 				codexRunsNode,
 				...(!showOpenClawInline && openclawTasks.length > 0
 					? [
 							{
 								type: "backgroundTasks" as const,
 								tasks: openclawTasks,
-							},
-						]
-					: []),
-				...(taskFlows.length > 0
-					? [
-							{
-								type: "taskflows" as const,
-								flows: taskFlows,
 							},
 						]
 					: []),
@@ -3265,6 +3265,16 @@ export class AgentStatusTreeProvider
 		}
 
 		if (element.type === "taskflows") {
+			if (element.flows.length === 0) {
+				return [
+					{
+						type: "state",
+						label: "No projected workstreams",
+						description: "TaskFlow conductor rows will appear here",
+						icon: "circle-slash",
+					},
+				];
+			}
 			return element.flows.map(
 				(flow): TaskFlowGroupNode => ({ type: "taskFlowGroup", flow }),
 			);
@@ -4823,7 +4833,11 @@ export class AgentStatusTreeProvider
 		pushDetail("Workspace", run.workspacePath, "folder");
 		pushDetail("Thread", run.threadId, "comment-discussion");
 		pushDetail("Turn", run.turnId, "debug-restart");
-		pushDetail("Run attempt ID", run.runId, "symbol-key");
+		pushDetail("Run attempt ID", run.runId, "symbol-key", {
+			command: "commandCentral.copyToClipboard",
+			title: "Copy Run Attempt ID",
+			arguments: [run.runId],
+		});
 		pushDetail("Sources", this.formatCodexRunSource(run), "references");
 		for (const provenance of this.formatCodexRunFieldSourceDetails(run)) {
 			pushDetail(provenance.label, provenance.value, "symbol-field");
@@ -6758,7 +6772,24 @@ export class AgentStatusTreeProvider
 		item.resourceUri = vscode.Uri.parse(
 			`codex-run:${encodeURIComponent(run.runId)}`,
 		);
+		const focusTask = this.resolveCodexRunFocusTask(run);
+		if (focusTask) {
+			item.command = {
+				command: "commandCentral.focusAgentTerminal",
+				title: "Focus Terminal",
+				arguments: [{ type: "task" as const, task: focusTask }],
+			};
+		}
 		return item;
+	}
+
+	private resolveCodexRunFocusTask(run: CodexRunView): AgentTask | undefined {
+		const taskId =
+			run.taskId ??
+			(run.source.kind === "launcher" ? run.source.id : undefined);
+		if (!taskId) return undefined;
+		const task = this.getDisplayTaskById(taskId);
+		return task?.status === "running" ? task : undefined;
 	}
 
 	private createTaskFlowItem(flow: TaskFlow): vscode.TreeItem {

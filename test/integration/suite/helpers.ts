@@ -20,6 +20,46 @@ export interface CommandCentralAgentStatusSnapshot {
 	taskCount: number;
 }
 
+export interface CommandCentralSerializedCommand {
+	command: string;
+	title: string;
+	arguments?: unknown[];
+}
+
+export interface CommandCentralAgentStatusTreeNode {
+	label: string;
+	description?: string;
+	contextValue?: string;
+	nodeKind: string;
+	collapsibleState?: number;
+	command?: CommandCentralSerializedCommand;
+	ownerFields?: Record<string, unknown>;
+	children?: CommandCentralAgentStatusTreeNode[];
+	truncatedChildCount?: number;
+}
+
+export interface CommandCentralAgentStatusTreeSelectedNode {
+	path: string[];
+	node: CommandCentralAgentStatusTreeNode;
+}
+
+export interface CommandCentralAgentStatusTreeSnapshot {
+	rootChildrenCount: number;
+	taskCount: number;
+	roots: CommandCentralAgentStatusTreeNode[];
+	selected: {
+		requiredLabels: Record<string, CommandCentralAgentStatusTreeSelectedNode[]>;
+		requiredTaskId?: CommandCentralAgentStatusTreeSelectedNode;
+	};
+}
+
+export interface CommandCentralAgentStatusTreeSnapshotOptions {
+	maxDepth?: number;
+	maxChildrenPerNode?: number;
+	requiredLabels?: string[];
+	requiredTaskId?: string;
+}
+
 export interface CommandCentralIntegrationDeactivationSnapshot {
 	before: CommandCentralIntegrationSnapshot;
 	after: CommandCentralIntegrationSnapshot;
@@ -29,6 +69,9 @@ export interface CommandCentralIntegrationTestApi {
 	kind: "command-central-test-api";
 	getSnapshot(): CommandCentralIntegrationSnapshot;
 	getAgentStatusSnapshot(): CommandCentralAgentStatusSnapshot;
+	getAgentStatusTreeSnapshot(
+		options?: CommandCentralAgentStatusTreeSnapshotOptions,
+	): CommandCentralAgentStatusTreeSnapshot;
 	deactivateForTest(): Promise<CommandCentralIntegrationDeactivationSnapshot>;
 }
 
