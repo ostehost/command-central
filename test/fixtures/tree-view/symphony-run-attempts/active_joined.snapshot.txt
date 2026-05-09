@@ -5,6 +5,7 @@
     - Lifecycle owner: OpenClaw task bg-joined {agentTaskDetail}
     - Projection boundary: Source-owned row with Launcher metadata {agentTaskDetail}
     - Mode: normal {agentTaskDetail}
+    - Automation source: Launcher/manual {agentTaskDetail}
     - Role: reviewer {agentTaskDetail}
     - Model: gpt-5.5 {agentTaskDetail}
     - Workspace: /tmp/symphony-app {agentTaskDetail}

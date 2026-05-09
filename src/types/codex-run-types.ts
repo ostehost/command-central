@@ -64,6 +64,14 @@ export interface CodexRunView {
 	sessionKey?: string;
 	threadId?: string;
 	turnId?: string;
+	trackerKind?: string;
+	issueId?: string;
+	issueIdentifier?: string;
+	issueState?: string;
+	issueUrl?: string;
+	workflowRunId?: string;
+	workflowPath?: string;
+	workflowName?: string;
 	execMode?: string;
 	execNodeId?: string;
 	execNodeName?: string;

@@ -38,7 +38,7 @@ Partial or missing:
 - TaskFlow grouping now has first-pass Workstreams language, but the surface still needs a composed top-level Symphony shape if we decide to merge Workstreams and Run Attempts under one parent.
 - Snapshot-style metrics from the spec are not fully surfaced: retry queue, aggregate token totals, rate-limit payload, and runtime seconds need a VS Code-native detail/status presentation once source records expose them.
 - Evidence rows exist for known artifact paths, but there is no grouped `Evidence` section yet.
-- Dynamic `WORKFLOW.md` and Linear tracker concepts are not represented in CC because CC is not the scheduler. If OpenClaw/TaskFlow later exposes them, CC should project them read-only.
+- Dynamic `WORKFLOW.md` and Linear tracker concepts are represented only when source owners expose them. CC now projects owner-provided tracker, issue, workflow-run, and workflow-contract fields read-only; it still does not poll Linear.
 
 Intentionally rejected for Command Central:
 
@@ -50,6 +50,17 @@ Intentionally rejected for Command Central:
 - Restart recovery for scheduler state.
 
 Those belong to Symphony/OpenClaw/TaskFlow/Launcher, not the VS Code extension.
+
+## Linear Integration Decision
+
+The upstream Symphony Draft v1 spec requires `tracker.kind: linear` for dispatch in the full long-running automation service. Command Central should not implement that adapter directly for the MVP release candidate.
+
+Decision:
+
+- A Linear adapter is necessary for a conforming Symphony scheduler/runner.
+- It is not necessary inside the VS Code extension because CC is the optional Status Surface, not the Issue Tracker Client or Orchestrator.
+- CC should render Linear when the lifecycle owner supplies normalized issue metadata (`trackerKind`, `issueIdentifier`, `issueState`, `issueUrl`) and should show when tracker metadata is not provided.
+- Any future mutation-capable ticket action must route through the source owner. CC must not write Linear state or infer scheduler eligibility itself.
 
 ## Elixir Test Implementation Lessons
 

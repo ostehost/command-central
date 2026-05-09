@@ -167,6 +167,13 @@ describe("CodexRunObserverService", () => {
 					pending_review_path: "/tmp/oste-pending-review/task-123.json",
 					pending_fixup_path: "/tmp/oste-pending-fixup/task-123.json",
 					start_sha: "abc1234",
+					tracker_kind: "linear",
+					issue_id: "issue-123",
+					issue_identifier: "CC-123",
+					issue_state: "In Progress",
+					issue_url: "https://linear.app/example/issue/CC-123",
+					workflow_run_id: "workflow-run-123",
+					workflow_file: "/Users/ostehost/projects/project-a/WORKFLOW.md",
 					review_state: "pending",
 					fixup_state: "none",
 					agent_backend: "codex",
@@ -187,6 +194,13 @@ describe("CodexRunObserverService", () => {
 			sourceAuthority: "launcher",
 			ownerKind: "launcher",
 			callbackPresent: true,
+			trackerKind: "linear",
+			issueId: "issue-123",
+			issueIdentifier: "CC-123",
+			issueState: "In Progress",
+			issueUrl: "https://linear.app/example/issue/CC-123",
+			workflowRunId: "workflow-run-123",
+			workflowPath: "/Users/ostehost/projects/project-a/WORKFLOW.md",
 			reviewState: "pending",
 			fixupState: "none",
 		});
@@ -215,6 +229,15 @@ describe("CodexRunObserverService", () => {
 			]),
 		);
 		expect(run?.fieldSources.execMode).toEqual([
+			{ kind: "launcher", id: "launcher-visible", path: "/tmp/project-a" },
+		]);
+		expect(run?.fieldSources.trackerKind).toEqual([
+			{ kind: "launcher", id: "launcher-visible", path: "/tmp/project-a" },
+		]);
+		expect(run?.fieldSources.issueIdentifier).toEqual([
+			{ kind: "launcher", id: "launcher-visible", path: "/tmp/project-a" },
+		]);
+		expect(run?.fieldSources.workflowPath).toEqual([
 			{ kind: "launcher", id: "launcher-visible", path: "/tmp/project-a" },
 		]);
 		expect(run?.fieldSources.evidence).toEqual([

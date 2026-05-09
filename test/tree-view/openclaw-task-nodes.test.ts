@@ -670,6 +670,10 @@ describe("OpenClaw task nodes", () => {
 					owner_kind: "launcher",
 					agent_backend: "claude",
 					prompt_summary: "Fix Symphony continuation",
+					tracker_kind: "linear",
+					issue_identifier: "CC-456",
+					issue_state: "Human Review",
+					workflow_file: "/Users/ostehost/projects/command-central/WORKFLOW.md",
 				}),
 				team: "full",
 			} as AgentTask,
@@ -696,6 +700,30 @@ describe("OpenClaw task nodes", () => {
 					node.label === "Next step" &&
 					node.value ===
 						"Review evidence, then route launcher fixup or relaunch (team:full)",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Automation source" &&
+					node.value === "Tracker-driven (linear)",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Issue" &&
+					node.value === "CC-456 · Human Review",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Workflow contract" &&
+					node.value === "/Users/ostehost/projects/command-central/WORKFLOW.md",
 			),
 		).toBe(true);
 	});

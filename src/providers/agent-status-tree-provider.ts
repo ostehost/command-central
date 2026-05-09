@@ -142,6 +142,15 @@ export interface AgentTask {
 	owner_actions?: unknown[] | null;
 	workflow_run?: unknown;
 	provenance?: unknown;
+	tracker_kind?: string | null;
+	issue_id?: string | null;
+	issue_identifier?: string | null;
+	issue_state?: string | null;
+	issue_url?: string | null;
+	workflow_run_id?: string | null;
+	workflow_path?: string | null;
+	workflow_file?: string | null;
+	workflow_name?: string | null;
 	team?: string | null;
 	team_template?: string | null;
 	agent_mode?: string | null;
@@ -4733,6 +4742,30 @@ export class AgentStatusTreeProvider
 		);
 		pushDetail("Mode", run.orchestrationMode, "symbol-operator");
 		pushDetail("Next step", run.nextAction, "debug-step-into");
+		pushDetail(
+			"Automation source",
+			this.formatCodexRunAutomationSource(run),
+			"git-pull-request",
+		);
+		pushDetail(
+			"Tracker source",
+			this.formatCodexRunTrackerSource(run),
+			"issues",
+		);
+		pushDetail("Issue", this.formatCodexRunIssue(run), "issue-opened");
+		pushDetail(
+			"Issue URL",
+			run.issueUrl,
+			"link-external",
+			run.issueUrl
+				? {
+						command: "vscode.open",
+						title: "Open Issue",
+						arguments: [vscode.Uri.parse(run.issueUrl)],
+					}
+				: undefined,
+		);
+		pushDetail("Workflow contract", this.formatCodexRunWorkflow(run), "book");
 		pushDetail("Role", run.role, "person");
 		pushDetail("Model", run.model, "symbol-constant");
 		pushDetail("Phase", run.phase, "debug-step-over");
@@ -4821,6 +4854,34 @@ export class AgentStatusTreeProvider
 		return `Source-owned row with ${metadataSources
 			.map((ref) => this.formatCodexRunSourceKind(ref.kind))
 			.join(" + ")} metadata`;
+	}
+
+	private formatCodexRunAutomationSource(run: CodexRunView): string {
+		if (run.trackerKind || run.issueIdentifier || run.issueId) {
+			return run.trackerKind
+				? `Tracker-driven (${run.trackerKind})`
+				: "Tracker-driven";
+		}
+		if (run.flowId) return "Workstream-driven";
+		return "Launcher/manual";
+	}
+
+	private formatCodexRunTrackerSource(run: CodexRunView): string {
+		return run.trackerKind ?? "Not provided by lifecycle owner";
+	}
+
+	private formatCodexRunIssue(run: CodexRunView): string | undefined {
+		const id = run.issueIdentifier ?? run.issueId;
+		if (!id) return undefined;
+		return [id, run.issueState].filter(Boolean).join(" · ");
+	}
+
+	private formatCodexRunWorkflow(run: CodexRunView): string | undefined {
+		return (
+			[run.workflowName, run.workflowPath, run.workflowRunId]
+				.filter((part): part is string => Boolean(part))
+				.join(" · ") || undefined
+		);
 	}
 
 	private formatCodexRunFieldSourceDetails(run: CodexRunView): Array<{

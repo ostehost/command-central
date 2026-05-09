@@ -43,6 +43,18 @@ type ModeCarrier = {
 	provenance?: unknown;
 };
 
+type SymphonyContractFields = Pick<
+	CodexRunView,
+	| "trackerKind"
+	| "issueId"
+	| "issueIdentifier"
+	| "issueState"
+	| "issueUrl"
+	| "workflowRunId"
+	| "workflowPath"
+	| "workflowName"
+>;
+
 const ACTIVE_STATUS_ORDER: Record<CodexRunStatus, number> = {
 	running: 0,
 	queued: 1,
@@ -126,6 +138,9 @@ export class CodexRunObserverService {
 			task.error,
 		);
 		const artifacts = this.collectArtifactPaths(task as ArtifactCarrier);
+		const contract = this.extractSymphonyContract(
+			task as unknown as Record<string, unknown>,
+		);
 		const run: CodexRunView = {
 			runId,
 			title,
@@ -137,6 +152,7 @@ export class CodexRunObserverService {
 			runtime: task.runtime,
 			taskId: task.taskId,
 			flowId: task.flowId,
+			...contract,
 			sessionKey: this.firstNonEmpty(task.sessionKey, task.childSessionKey),
 			execMode: task.execMode,
 			execNodeId: task.execNodeId,
@@ -166,6 +182,7 @@ export class CodexRunObserverService {
 		this.addFieldSource(run, "taskId", ref);
 		this.addFieldSource(run, "sourceAuthority", ref);
 		if (run.flowId) this.addFieldSource(run, "flowId", ref);
+		this.addSymphonyContractSources(run, contract, ref);
 		if (run.sessionKey) this.addFieldSource(run, "sessionKey", ref);
 		if (run.execMode) this.addFieldSource(run, "execMode", ref);
 		if (run.execNodeId) this.addFieldSource(run, "execNodeId", ref);
@@ -247,6 +264,9 @@ export class CodexRunObserverService {
 		const artifacts = this.collectArtifactPaths(task);
 		const evidence = this.collectEvidence(task, ref);
 		const orchestrationMode = this.resolveOrchestrationMode(task);
+		const contract = this.extractSymphonyContract(
+			task as unknown as Record<string, unknown>,
+		);
 		const run: CodexRunView = {
 			runId: this.firstNonEmpty(
 				task.id,
@@ -269,6 +289,7 @@ export class CodexRunObserverService {
 			),
 			taskId: this.firstNonEmpty(task.task_id, task.id),
 			flowId: task.flow_id ?? undefined,
+			...contract,
 			sessionKey: task.session_id,
 			execMode: task.exec_mode ?? undefined,
 			execNodeId: task.exec_node ?? undefined,
@@ -307,6 +328,7 @@ export class CodexRunObserverService {
 		this.addFieldSource(run, "status", ref);
 		if (run.taskId) this.addFieldSource(run, "taskId", ref);
 		if (run.flowId) this.addFieldSource(run, "flowId", ref);
+		this.addSymphonyContractSources(run, contract, ref);
 		this.addFieldSource(run, "sourceAuthority", ref);
 		this.addFieldSource(run, "ownerKind", ref);
 		if (run.role) this.addFieldSource(run, "role", ref);
@@ -375,6 +397,11 @@ export class CodexRunObserverService {
 			run.flowId = task.flow_id;
 			this.addFieldSource(run, "flowId", ref);
 		}
+
+		const contract = this.extractSymphonyContract(
+			task as unknown as Record<string, unknown>,
+		);
+		this.mergeSymphonyContract(run, contract, ref);
 
 		if (!run.execMode && task.exec_mode) {
 			run.execMode = task.exec_mode;
@@ -738,6 +765,121 @@ export class CodexRunObserverService {
 		if (!trimmed) return [];
 		const withoutPrefix = trimmed.replace(/^session:/, "");
 		return this.uniqueStrings([trimmed, withoutPrefix]);
+	}
+
+	private extractSymphonyContract(
+		source: Record<string, unknown>,
+	): SymphonyContractFields {
+		const workflowRun = this.objectValue(
+			source["workflow_run"] ?? source["workflowRun"],
+		);
+		const provenance = this.objectValue(source["provenance"]);
+		const issue = this.objectValue(
+			source["issue"] ?? workflowRun?.["issue"] ?? provenance?.["issue"],
+		);
+		const tracker = this.objectValue(
+			source["tracker"] ?? workflowRun?.["tracker"] ?? provenance?.["tracker"],
+		);
+		const workflow = this.objectValue(
+			source["workflow"] ??
+				workflowRun?.["workflow"] ??
+				provenance?.["workflow"],
+		);
+
+		return {
+			trackerKind: this.firstNonEmpty(
+				this.stringValue(source["tracker_kind"]),
+				this.stringValue(source["trackerKind"]),
+				this.stringValue(tracker?.["kind"]),
+				this.stringValue(provenance?.["tracker_kind"]),
+				this.stringValue(provenance?.["trackerKind"]),
+			),
+			issueId: this.firstNonEmpty(
+				this.stringValue(source["issue_id"]),
+				this.stringValue(source["issueId"]),
+				this.stringValue(issue?.["id"]),
+				this.stringValue(workflowRun?.["issue_id"]),
+			),
+			issueIdentifier: this.firstNonEmpty(
+				this.stringValue(source["issue_identifier"]),
+				this.stringValue(source["issueIdentifier"]),
+				this.stringValue(issue?.["identifier"]),
+				this.stringValue(issue?.["key"]),
+				this.stringValue(workflowRun?.["issue_identifier"]),
+			),
+			issueState: this.firstNonEmpty(
+				this.stringValue(source["issue_state"]),
+				this.stringValue(source["issueState"]),
+				this.stringValue(issue?.["state"]),
+				this.stringValue(workflowRun?.["issue_state"]),
+			),
+			issueUrl: this.firstNonEmpty(
+				this.stringValue(source["issue_url"]),
+				this.stringValue(source["issueUrl"]),
+				this.stringValue(issue?.["url"]),
+				this.stringValue(workflowRun?.["issue_url"]),
+			),
+			workflowRunId: this.firstNonEmpty(
+				this.stringValue(source["workflow_run_id"]),
+				this.stringValue(source["workflowRunId"]),
+				this.stringValue(workflowRun?.["id"]),
+			),
+			workflowPath: this.firstNonEmpty(
+				this.stringValue(source["workflow_path"]),
+				this.stringValue(source["workflow_file"]),
+				this.stringValue(source["workflowPath"]),
+				this.stringValue(workflow?.["path"]),
+				this.stringValue(workflow?.["file"]),
+				this.stringValue(workflowRun?.["workflow_path"]),
+			),
+			workflowName: this.firstNonEmpty(
+				this.stringValue(source["workflow_name"]),
+				this.stringValue(source["workflowName"]),
+				this.stringValue(workflow?.["name"]),
+				this.stringValue(workflowRun?.["workflow_name"]),
+			),
+		};
+	}
+
+	private mergeSymphonyContract(
+		run: CodexRunView,
+		contract: SymphonyContractFields,
+		ref: CodexRunSourceRef,
+	): void {
+		for (const field of [
+			"trackerKind",
+			"issueId",
+			"issueIdentifier",
+			"issueState",
+			"issueUrl",
+			"workflowRunId",
+			"workflowPath",
+			"workflowName",
+		] as const) {
+			if (run[field] || !contract[field]) continue;
+			run[field] = contract[field];
+			this.addFieldSource(run, field, ref);
+		}
+	}
+
+	private addSymphonyContractSources(
+		run: CodexRunView,
+		contract: SymphonyContractFields,
+		ref: CodexRunSourceRef,
+	): void {
+		for (const field of [
+			"trackerKind",
+			"issueId",
+			"issueIdentifier",
+			"issueState",
+			"issueUrl",
+			"workflowRunId",
+			"workflowPath",
+			"workflowName",
+		] as const) {
+			if (!contract[field]) continue;
+			this.addFieldSource(run, field, ref);
+		}
 	}
 
 	private collectArtifactPaths(source: ArtifactCarrier): string[] {

@@ -11,6 +11,14 @@ export interface OpenClawTask {
 	agentId?: string;
 	runId?: string;
 	flowId?: string;
+	trackerKind?: string;
+	issueId?: string;
+	issueIdentifier?: string;
+	issueState?: string;
+	issueUrl?: string;
+	workflowRunId?: string;
+	workflowPath?: string;
+	workflowName?: string;
 	sessionKey?: string;
 	execMode?: string;
 	execNodeId?: string;
