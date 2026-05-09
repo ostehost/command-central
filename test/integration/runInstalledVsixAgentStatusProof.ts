@@ -1,8 +1,15 @@
 #!/usr/bin/env bun
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	mkdtemp,
+	readFile,
+	rename,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
@@ -163,40 +170,19 @@ function buildLaunchArgs(params: {
 	return launchArgs;
 }
 
-function installVsix(params: {
-	vscodeExecutablePath: string;
-	vsixPath: string;
-	userDataDir: string;
-	extensionsDir: string;
-}): void {
-	const result = spawnSync(
-		params.vscodeExecutablePath,
-		[
-			"--user-data-dir",
-			params.userDataDir,
-			"--extensions-dir",
-			params.extensionsDir,
-			"--install-extension",
-			params.vsixPath,
-			"--force",
-		],
-		{ encoding: "utf8" },
-	);
-	if (result.status === 0) return;
-	throw new Error(
-		["Failed to install Command Central VSIX.", result.stdout, result.stderr]
-			.filter(Boolean)
-			.join("\n"),
-	);
-}
-
 async function sha256File(filePath: string): Promise<string> {
 	const hash = createHash("sha256");
 	hash.update(await readFile(filePath));
 	return hash.digest("hex");
 }
 
-function readVsixManifestVersion(vsixPath: string): string {
+interface VsixManifestPackage {
+	name: string;
+	publisher: string;
+	version: string;
+}
+
+function readVsixManifestPackage(vsixPath: string): VsixManifestPackage {
 	const raw = execFileSync(
 		"unzip",
 		["-p", vsixPath, "extension/package.json"],
@@ -204,11 +190,46 @@ function readVsixManifestVersion(vsixPath: string): string {
 			encoding: "utf8",
 		},
 	);
-	const manifest = JSON.parse(raw) as { version?: string };
-	if (!manifest.version) {
-		throw new Error(`VSIX package.json has no version: ${vsixPath}`);
+	const manifest = JSON.parse(raw) as Partial<VsixManifestPackage>;
+	if (!manifest.publisher || !manifest.name || !manifest.version) {
+		throw new Error(
+			`VSIX package.json must include publisher, name, and version: ${vsixPath}`,
+		);
 	}
-	return manifest.version;
+	return {
+		name: manifest.name,
+		publisher: manifest.publisher,
+		version: manifest.version,
+	};
+}
+
+async function installVsix(params: {
+	vsixPath: string;
+	extensionsDir: string;
+}): Promise<void> {
+	const manifest = readVsixManifestPackage(params.vsixPath);
+	const installDir = path.join(
+		params.extensionsDir,
+		`${manifest.publisher}.${manifest.name}-${manifest.version}`,
+	);
+	const unpackDir = await mkdtemp(
+		path.join(params.extensionsDir, ".unpack-command-central-"),
+	);
+	try {
+		execFileSync(
+			"unzip",
+			["-q", params.vsixPath, "extension/*", "-d", unpackDir],
+			{ encoding: "utf8" },
+		);
+		await rm(installDir, { recursive: true, force: true });
+		await rename(path.join(unpackDir, "extension"), installDir);
+	} finally {
+		await rm(unpackDir, { recursive: true, force: true });
+	}
+}
+
+function readVsixManifestVersion(vsixPath: string): string {
+	return readVsixManifestPackage(vsixPath).version;
 }
 
 function gitCommit(repoRoot: string): string {
@@ -299,12 +320,7 @@ export async function runInstalledVsixAgentStatusProof(): Promise<void> {
 		const vscodeExecutablePath = requestedVersion
 			? await downloadAndUnzipVSCode(requestedVersion)
 			: await downloadAndUnzipVSCode();
-		installVsix({
-			vscodeExecutablePath,
-			vsixPath,
-			userDataDir,
-			extensionsDir,
-		});
+		await installVsix({ vsixPath, extensionsDir });
 
 		const start = performance.now();
 		await runTests({
