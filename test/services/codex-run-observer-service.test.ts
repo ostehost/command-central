@@ -165,6 +165,8 @@ describe("CodexRunObserverService", () => {
 					exec_cwd: "/Users/ostehost/projects/project-a",
 					artifact_paths: ["/tmp/artifact.md"],
 					pending_review_path: "/tmp/oste-pending-review/task-123.json",
+					pending_fixup_path: "/tmp/oste-pending-fixup/task-123.json",
+					start_sha: "abc1234",
 					review_state: "pending",
 					fixup_state: "none",
 					agent_backend: "codex",
@@ -193,7 +195,29 @@ describe("CodexRunObserverService", () => {
 		expect(run?.artifactPaths).toContain(
 			"/tmp/oste-pending-review/task-123.json",
 		);
+		expect(run?.evidence).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					label: "Pending review",
+					value: "/tmp/oste-pending-review/task-123.json",
+					kind: "file",
+				}),
+				expect.objectContaining({
+					label: "Pending fixup",
+					value: "/tmp/oste-pending-fixup/task-123.json",
+					kind: "file",
+				}),
+				expect.objectContaining({
+					label: "Start commit",
+					value: "abc1234",
+					kind: "commit",
+				}),
+			]),
+		);
 		expect(run?.fieldSources.execMode).toEqual([
+			{ kind: "launcher", id: "launcher-visible", path: "/tmp/project-a" },
+		]);
+		expect(run?.fieldSources.evidence).toEqual([
 			{ kind: "launcher", id: "launcher-visible", path: "/tmp/project-a" },
 		]);
 		expect(run?.fieldSources.callbackPresent).toEqual([

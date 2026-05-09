@@ -1,5 +1,6 @@
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
 import type {
+	CodexRunEvidence,
 	CodexRunPhase,
 	CodexRunRole,
 	CodexRunSourceRef,
@@ -23,6 +24,11 @@ type ArtifactCarrier = {
 	prompt_file?: unknown;
 	handoff_file?: unknown;
 	pending_review_path?: unknown;
+	pending_fixup_path?: unknown;
+	start_sha?: unknown;
+	start_commit?: unknown;
+	end_commit?: unknown;
+	branch?: unknown;
 };
 
 const ACTIVE_STATUS_ORDER: Record<CodexRunStatus, number> = {
@@ -224,6 +230,7 @@ export class CodexRunObserverService {
 		const updatedAt = this.parseTimestamp(task.updated_at);
 		const model = this.firstNonEmpty(task.actual_model, task.model);
 		const artifacts = this.collectArtifactPaths(task);
+		const evidence = this.collectEvidence(task, ref);
 		const run: CodexRunView = {
 			runId: this.firstNonEmpty(
 				task.id,
@@ -264,6 +271,7 @@ export class CodexRunObserverService {
 			startedAt,
 			endedAt: completedAt,
 			artifactPaths: artifacts.length > 0 ? artifacts : undefined,
+			evidence: evidence.length > 0 ? evidence : undefined,
 			provenance: [this.formatSourceRef(ref)],
 			fieldSources: {},
 		};
@@ -291,6 +299,7 @@ export class CodexRunObserverService {
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
 		if (run.endedAt != null) this.addFieldSource(run, "endedAt", ref);
 		if (artifacts.length > 0) this.addFieldSource(run, "artifactPaths", ref);
+		if (evidence.length > 0) this.addFieldSource(run, "evidence", ref);
 		return run;
 	}
 
@@ -418,6 +427,15 @@ export class CodexRunObserverService {
 				...artifacts,
 			]);
 			this.addFieldSource(run, "artifactPaths", ref);
+		}
+
+		const evidence = this.collectEvidence(task, ref);
+		if (evidence.length > 0) {
+			run.evidence = this.uniqueEvidence([
+				...(run.evidence ?? []),
+				...evidence,
+			]);
+			this.addFieldSource(run, "evidence", ref);
 		}
 	}
 
@@ -690,10 +708,52 @@ export class CodexRunObserverService {
 			source.prompt_file,
 			source.handoff_file,
 			source.pending_review_path,
+			source.pending_fixup_path,
 		]) {
 			if (typeof value === "string" && value.trim()) paths.push(value);
 		}
 		return this.uniqueStrings(paths);
+	}
+
+	private collectEvidence(
+		source: ArtifactCarrier,
+		ref: CodexRunSourceRef,
+	): CodexRunEvidence[] {
+		const evidence: CodexRunEvidence[] = [];
+		const push = (
+			label: string,
+			value: unknown,
+			kind: CodexRunEvidence["kind"],
+		): void => {
+			if (typeof value !== "string") return;
+			const trimmed = value.trim();
+			if (!trimmed) return;
+			evidence.push({ label, value: trimmed, kind, source: ref });
+		};
+
+		push("Prompt", source.prompt_file, "file");
+		push("Stream", source.stream_file, "file");
+		push("Handoff", source.handoff_file, "file");
+		push("Pending review", source.pending_review_path, "file");
+		push("Pending fixup", source.pending_fixup_path, "file");
+
+		if (Array.isArray(source.artifact_paths)) {
+			for (const [index, value] of source.artifact_paths.entries()) {
+				push(index === 0 ? "Artifact" : `Artifact ${index + 1}`, value, "file");
+			}
+		}
+
+		if (Array.isArray(source.artifactPaths)) {
+			for (const [index, value] of source.artifactPaths.entries()) {
+				push(index === 0 ? "Artifact" : `Artifact ${index + 1}`, value, "file");
+			}
+		}
+
+		push("Start commit", source.start_commit ?? source.start_sha, "commit");
+		push("End commit", source.end_commit, "commit");
+		push("Branch", source.branch, "metadata");
+
+		return this.uniqueEvidence(evidence);
 	}
 
 	private parseTimestamp(value: string | null | undefined): number | undefined {
@@ -712,5 +772,17 @@ export class CodexRunObserverService {
 
 	private uniqueStrings(values: string[]): string[] {
 		return [...new Set(values.filter((value) => value.trim().length > 0))];
+	}
+
+	private uniqueEvidence(values: CodexRunEvidence[]): CodexRunEvidence[] {
+		const seen = new Set<string>();
+		const unique: CodexRunEvidence[] = [];
+		for (const value of values) {
+			const key = `${value.label}\0${value.value}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			unique.push(value);
+		}
+		return unique;
 	}
 }

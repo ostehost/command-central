@@ -480,7 +480,7 @@ describe("OpenClaw task nodes", () => {
 			details.some(
 				(node) =>
 					node.type === "detail" &&
-					node.label === "Artifact" &&
+					node.label === "Evidence: Stream" &&
 					node.value === "/tmp/my-app/stream.jsonl",
 			),
 		).toBe(true);
@@ -1241,7 +1241,9 @@ describe("OpenClaw task nodes", () => {
 		const nonArtifactDetailCommands = detailItems
 			.filter(
 				({ node }) =>
-					node.type === "detail" && !node.label.startsWith("Artifact"),
+					node.type === "detail" &&
+					!node.label.startsWith("Artifact") &&
+					!node.label.startsWith("Evidence:"),
 			)
 			.map(({ item }) => item.command)
 			.filter(Boolean);
@@ -1250,7 +1252,9 @@ describe("OpenClaw task nodes", () => {
 			detailItems
 				.filter(
 					({ node }) =>
-						node.type === "detail" && node.label.startsWith("Artifact"),
+						node.type === "detail" &&
+						(node.label.startsWith("Artifact") ||
+							node.label.startsWith("Evidence:")),
 				)
 				.map(({ item }) => item.command?.command),
 		).toEqual(["vscode.open"]);

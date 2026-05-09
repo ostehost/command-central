@@ -41,6 +41,15 @@ export type CodexRunPhase =
 
 export type CodexRunRole = "developer" | "planner" | "reviewer" | "test";
 
+export type CodexRunEvidenceKind = "file" | "commit" | "metadata";
+
+export interface CodexRunEvidence {
+	label: string;
+	value: string;
+	kind: CodexRunEvidenceKind;
+	source?: CodexRunSourceRef;
+}
+
 export interface CodexRunView {
 	runId: string;
 	title: string;
@@ -75,6 +84,7 @@ export interface CodexRunView {
 	startedAt?: number;
 	endedAt?: number;
 	artifactPaths?: string[];
+	evidence?: CodexRunEvidence[];
 	provenance?: string[];
 	fieldSources: Partial<Record<CodexRunViewField, CodexRunSourceRef[]>>;
 }

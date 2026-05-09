@@ -9,9 +9,9 @@
     - Workspace: /tmp/symphony-app {agentTaskDetail}
     - Run attempt ID: run-bg-joined {agentTaskDetail}
     - Sources: OpenClaw task bg-joined + Launcher launcher-joined (/tmp/symphony-app) {agentTaskDetail}
-    - Provenance from Launcher launcher-joined (/tmp/symphony-app): artifact paths, last event at, model, role, started at, workspace path {agentTaskDetail}
+    - Provenance from Launcher launcher-joined (/tmp/symphony-app): artifact paths, evidence, last event at, model, role, started at, workspace path {agentTaskDetail}
     - Provenance from OpenClaw task bg-joined: last event at, run id, session key, source authority, source status, status, task id, title {agentTaskDetail}
     - Last event: <timestamp> {agentTaskDetail}
-    - Artifact: /tmp/symphony-app/stream.jsonl {agentTaskDetail}
-    - Artifact 2: /tmp/symphony-app/prompt.md {agentTaskDetail}
-    - Artifact 3: /tmp/symphony-app/handoff.md {agentTaskDetail}
+    - Evidence: Prompt: /tmp/symphony-app/prompt.md {agentTaskDetail}
+    - Evidence: Stream: /tmp/symphony-app/stream.jsonl {agentTaskDetail}
+    - Evidence: Handoff: /tmp/symphony-app/handoff.md {agentTaskDetail}

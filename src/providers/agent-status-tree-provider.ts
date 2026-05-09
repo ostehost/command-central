@@ -4741,20 +4741,54 @@ export class AgentStatusTreeProvider
 		}
 		pushDetail("Last event", this.formatCodexRunLastEvent(run), "pulse");
 
-		for (const [index, artifactPath] of (run.artifactPaths ?? []).entries()) {
-			pushDetail(
-				index === 0 ? "Artifact" : `Artifact ${index + 1}`,
-				artifactPath,
-				"file",
-				{
-					command: "vscode.open",
-					title: "Open Artifact",
-					arguments: [vscode.Uri.file(artifactPath)],
-				},
-			);
+		if (run.evidence?.length) {
+			for (const evidence of run.evidence) {
+				pushDetail(
+					`Evidence: ${evidence.label}`,
+					evidence.value,
+					this.getCodexRunEvidenceIcon(evidence.kind),
+					evidence.kind === "file"
+						? {
+								command: "vscode.open",
+								title: "Open Evidence",
+								arguments: [vscode.Uri.file(evidence.value)],
+							}
+						: {
+								command: "commandCentral.copyToClipboard",
+								title: "Copy Evidence",
+								arguments: [evidence.value],
+							},
+				);
+			}
+		} else {
+			for (const [index, artifactPath] of (run.artifactPaths ?? []).entries()) {
+				pushDetail(
+					index === 0 ? "Artifact" : `Artifact ${index + 1}`,
+					artifactPath,
+					"file",
+					{
+						command: "vscode.open",
+						title: "Open Artifact",
+						arguments: [vscode.Uri.file(artifactPath)],
+					},
+				);
+			}
 		}
 
 		return details;
+	}
+
+	private getCodexRunEvidenceIcon(
+		kind: NonNullable<CodexRunView["evidence"]>[number]["kind"],
+	): string {
+		switch (kind) {
+			case "commit":
+				return "git-commit";
+			case "metadata":
+				return "symbol-field";
+			case "file":
+				return "file";
+		}
 	}
 
 	private formatCodexRunLastEvent(run: CodexRunView): string | undefined {
