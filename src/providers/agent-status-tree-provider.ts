@@ -4708,6 +4708,7 @@ export class AgentStatusTreeProvider
 			"shield",
 		);
 		pushDetail("Ownership", this.formatCodexRunOwnership(run), "account");
+		pushDetail("Role", run.role, "person");
 		pushDetail("Model", run.model, "symbol-constant");
 		pushDetail("Phase", run.phase, "debug-step-over");
 		pushDetail("Current/last tool", run.currentTool, "tools");
@@ -6547,6 +6548,7 @@ export class AgentStatusTreeProvider
 		const descriptionParts = [
 			this.formatCodexRunStatus(run.status),
 			this.formatCodexRunOwnership(run),
+			run.role,
 			run.runtime,
 			activity ? relativeTime(activity) : undefined,
 			run.model ? getModelAlias(run.model) : undefined,
@@ -6564,6 +6566,7 @@ export class AgentStatusTreeProvider
 				run.sourceStatus ? `Source Status: \`${run.sourceStatus}\`` : null,
 				`Lifecycle Authority: ${this.formatCodexRunAuthority(run)}`,
 				`Ownership: ${this.formatCodexRunOwnership(run)}`,
+				run.role ? `Role: \`${run.role}\`` : null,
 				`Sources: ${this.formatCodexRunSource(run)}`,
 				run.execMode ? `Execution Mode: \`${run.execMode}\`` : null,
 				run.execNodeName ? `Execution Node: \`${run.execNodeName}\`` : null,

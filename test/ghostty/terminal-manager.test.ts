@@ -831,6 +831,62 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 		expect(events).toEqual(["create-bundle", "open-bundle", "steer"]);
 	});
 
+	test("throws when a command cannot be started after opening a new bundle", async () => {
+		const events: string[] = [];
+		const originalSetTimeout = globalThis.setTimeout;
+		globalThis.setTimeout = ((fn: () => void) => {
+			fn();
+			return 0 as unknown as NodeJS.Timeout;
+		}) as typeof globalThis.setTimeout;
+
+		execFileMock.mockImplementation(
+			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--version")) {
+					cb(null, { stdout: "launcher version 1.0.0", stderr: "" });
+					return;
+				}
+				if (a.includes("--parse-name")) {
+					cb(null, { stdout: "my-project\n", stderr: "" });
+					return;
+				}
+				if (a.includes("--parse-icon")) {
+					cb(null, { stdout: "📦\n", stderr: "" });
+					return;
+				}
+				if (a.includes("--session-id")) {
+					cb(null, { stdout: "\n", stderr: "" });
+					return;
+				}
+				if (a.includes("--create-bundle")) {
+					events.push("create-bundle");
+					cb(null, { stdout: "Bundle created", stderr: "" });
+					return;
+				}
+				if (
+					f === "launcher" &&
+					a.length === 1 &&
+					a[0] === "/Users/test/my-project"
+				) {
+					events.push("open-bundle");
+					cb(null, { stdout: "Bundle opened", stderr: "" });
+					return;
+				}
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		try {
+			const mgr = new TerminalManager(createMockLogger() as never);
+			await expect(
+				mgr.runInProjectTerminal("/Users/test/my-project", "claude --continue"),
+			).rejects.toThrow("no launcher session accepted the command");
+		} finally {
+			globalThis.setTimeout = originalSetTimeout;
+		}
+
+		expect(events).toEqual(["create-bundle", "open-bundle"]);
+	});
+
 	test("uses launcher --session-id contract for session lookup before steering", async () => {
 		const calls: Array<{ file: string; args: string[] }> = [];
 		const steerPath = path.join(

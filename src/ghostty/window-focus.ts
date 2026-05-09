@@ -43,6 +43,13 @@ const DEFAULT_LAUNCHER_FOCUS_SCRIPT = path.join(
 	"scripts",
 	LAUNCHER_FOCUS_SCRIPT_NAME,
 );
+const SIBLING_LAUNCHER_FOCUS_SCRIPT = path.join(
+	process.cwd(),
+	"..",
+	"ghostty-launcher",
+	"scripts",
+	LAUNCHER_FOCUS_SCRIPT_NAME,
+);
 
 function isBundlePath(target: string): boolean {
 	return target.includes("/") || target.endsWith(".app");
@@ -103,6 +110,7 @@ function configuredFocusScriptCandidates(): string[] {
 export function lookupLauncherFocusScript(): string | null {
 	const candidates = [
 		DEFAULT_LAUNCHER_FOCUS_SCRIPT,
+		SIBLING_LAUNCHER_FOCUS_SCRIPT,
 		...configuredFocusScriptCandidates(),
 	];
 

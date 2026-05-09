@@ -104,6 +104,19 @@ describe("lookupLauncherFocusScript", () => {
 
 		expect(lookupLauncherFocusScript()).toBe(expected);
 	});
+
+	test("falls back to a sibling launcher checkout when home is sandboxed", () => {
+		const expected = path.join(
+			process.cwd(),
+			"..",
+			"ghostty-launcher",
+			"scripts",
+			"oste-focus.applescript",
+		);
+		existingPaths.add(expected);
+
+		expect(lookupLauncherFocusScript()).toBe(expected);
+	});
 });
 
 describe("focusGhosttyWindowBySession", () => {

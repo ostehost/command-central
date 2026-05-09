@@ -202,13 +202,23 @@ describe("smoke: focus — launcher script lookup", () => {
 		lookupLauncherFocusScript = mod.lookupLauncherFocusScript;
 	});
 	test("lookupLauncherFocusScript resolves the launcher repo helper script", () => {
-		const expected = path.join(
+		const homeCandidate = path.join(
 			os.homedir(),
 			"projects",
 			"ghostty-launcher",
 			"scripts",
 			"oste-focus.applescript",
 		);
+		const siblingCandidate = path.join(
+			process.cwd(),
+			"..",
+			"ghostty-launcher",
+			"scripts",
+			"oste-focus.applescript",
+		);
+		const expected = fs.existsSync(homeCandidate)
+			? homeCandidate
+			: siblingCandidate;
 		expect(fs.existsSync(expected)).toBe(true);
 		expect(lookupLauncherFocusScript()).toBe(expected);
 	});

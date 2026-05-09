@@ -39,6 +39,8 @@ export type CodexRunPhase =
 	| "Stalled"
 	| "CanceledByReconciliation";
 
+export type CodexRunRole = "developer" | "planner" | "reviewer" | "test";
+
 export interface CodexRunView {
 	runId: string;
 	title: string;
@@ -59,6 +61,7 @@ export interface CodexRunView {
 	nodeConnected?: boolean;
 	sourceAuthority?: string;
 	ownerKind?: string;
+	role?: CodexRunRole;
 	callbackPresent?: boolean;
 	reviewState?: string;
 	fixupState?: string;

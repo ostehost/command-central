@@ -1,6 +1,7 @@
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
 import type {
 	CodexRunPhase,
+	CodexRunRole,
 	CodexRunSourceRef,
 	CodexRunStatus,
 	CodexRunView,
@@ -51,6 +52,13 @@ const CODEX_PHASES = new Set<CodexRunPhase>([
 	"TimedOut",
 	"Stalled",
 	"CanceledByReconciliation",
+]);
+
+const CODEX_RUN_ROLES = new Set<CodexRunRole>([
+	"developer",
+	"planner",
+	"reviewer",
+	"test",
 ]);
 
 export class CodexRunObserverService {
@@ -241,6 +249,7 @@ export class CodexRunObserverService {
 			execNodeName: this.firstNonEmpty(task.exec_node, task.exec_host),
 			sourceAuthority: task.source_authority ?? "launcher",
 			ownerKind: task.owner_kind ?? "launcher",
+			role: this.normalizeRole(task.role),
 			callbackPresent: Boolean(task.callback_url),
 			reviewState: task.review_state ?? undefined,
 			fixupState: task.fixup_state ?? undefined,
@@ -264,6 +273,7 @@ export class CodexRunObserverService {
 		if (run.flowId) this.addFieldSource(run, "flowId", ref);
 		this.addFieldSource(run, "sourceAuthority", ref);
 		this.addFieldSource(run, "ownerKind", ref);
+		if (run.role) this.addFieldSource(run, "role", ref);
 		this.addFieldSource(run, "callbackPresent", ref);
 		if (run.sessionKey) this.addFieldSource(run, "sessionKey", ref);
 		if (run.execMode) this.addFieldSource(run, "execMode", ref);
@@ -345,6 +355,12 @@ export class CodexRunObserverService {
 		if (!run.ownerKind && task.owner_kind) {
 			run.ownerKind = task.owner_kind;
 			this.addFieldSource(run, "ownerKind", ref);
+		}
+
+		const role = this.normalizeRole(task.role);
+		if (!run.role && role) {
+			run.role = role;
+			this.addFieldSource(run, "role", ref);
 		}
 
 		if (run.callbackPresent == null && task.callback_url != null) {
@@ -515,6 +531,15 @@ export class CodexRunObserverService {
 		if (!status) return undefined;
 		return CODEX_PHASES.has(status as CodexRunPhase)
 			? (status as CodexRunPhase)
+			: undefined;
+	}
+
+	private normalizeRole(
+		role: string | null | undefined,
+	): CodexRunRole | undefined {
+		if (!role) return undefined;
+		return CODEX_RUN_ROLES.has(role as CodexRunRole)
+			? (role as CodexRunRole)
 			: undefined;
 	}
 

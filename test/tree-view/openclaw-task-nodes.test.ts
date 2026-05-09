@@ -301,6 +301,7 @@ describe("OpenClaw task nodes", () => {
 					attempts: 1,
 					max_attempts: 1,
 					model: "gpt-5.5",
+					role: "reviewer",
 					prompt_summary: "Projected Codex run",
 				},
 			},
@@ -333,6 +334,12 @@ describe("OpenClaw task nodes", () => {
 			id: "launcher-1",
 			path: "/tmp/my-app",
 		});
+
+		const runItem = provider.getTreeItem(run);
+		expect(String(runItem.description)).toContain("reviewer");
+		expect((runItem.tooltip as { value: string }).value).toContain(
+			"Role: `reviewer`",
+		);
 
 		const details = provider.getChildren(run);
 		expect(
@@ -371,6 +378,14 @@ describe("OpenClaw task nodes", () => {
 			details.some(
 				(node) =>
 					node.type === "detail" &&
+					node.label === "Role" &&
+					node.value === "reviewer",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
 					node.label === "Sources" &&
 					node.value ===
 						"OpenClaw task bg-1 + Launcher launcher-1 (/tmp/my-app)",
@@ -381,6 +396,7 @@ describe("OpenClaw task nodes", () => {
 				(node) =>
 					node.type === "detail" &&
 					node.label === "Fields from Launcher launcher-1 (/tmp/my-app)" &&
+					node.value.includes("role") &&
 					node.value.includes("model"),
 			),
 		).toBe(true);

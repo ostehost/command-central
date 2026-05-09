@@ -202,11 +202,11 @@ describe("Dead-session resume flow", () => {
 		// Simulate the warning message shown when session is dead but bundle exists
 		const bundleName = "command-central.app";
 		vscodeMock.window.showWarningMessage(
-			`Task session "${task.session_id}" is no longer live. Opening ${bundleName} and starting a new interactive resume.`,
+			`Task session "${task.session_id}" is no longer live. Starting a new interactive resume in ${bundleName}.`,
 		);
 
 		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
-			`Task session "agent-concierge-midnight-elite" is no longer live. Opening command-central.app and starting a new interactive resume.`,
+			`Task session "agent-concierge-midnight-elite" is no longer live. Starting a new interactive resume in command-central.app.`,
 		);
 	});
 
@@ -220,11 +220,11 @@ describe("Dead-session resume flow", () => {
 		});
 
 		vscodeMock.window.showWarningMessage(
-			`Task session "${task.session_id}" is no longer live. Starting interactive resume in a new terminal.`,
+			`Task session "${task.session_id}" is no longer live. Starting a new interactive resume in project terminal.`,
 		);
 
 		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
-			`Task session "agent-no-bundle-session" is no longer live. Starting interactive resume in a new terminal.`,
+			`Task session "agent-no-bundle-session" is no longer live. Starting a new interactive resume in project terminal.`,
 		);
 	});
 

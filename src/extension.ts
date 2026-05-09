@@ -1154,15 +1154,17 @@ export async function activate(
 			command: string,
 			terminalName: string,
 			cwd?: string,
-		): Promise<void> => {
+		): Promise<"launcher" | "integrated"> => {
 			if (!terminalManager) {
 				openIntegratedTerminal(terminalName, cwd ?? projectDir, command);
-				return;
+				return "integrated";
 			}
 			try {
 				await terminalManager.runInProjectTerminal(projectDir, command, cwd);
+				return "launcher";
 			} catch {
 				openIntegratedTerminal(terminalName, cwd ?? projectDir, command);
+				return "integrated";
 			}
 		};
 
@@ -1446,34 +1448,38 @@ export async function activate(
 				}
 			}
 
-			// Session is dead — provide contextual messaging.
+			// Session is dead — start a replacement through the launcher contract.
+			// Direct bundle AppleScript injection can say "started" even when no
+			// launcher session exists to receive the command.
 			const bundlePath = resolveProjectBundlePath(task);
+			const terminalTarget = bundlePath
+				? path.basename(bundlePath)
+				: "project terminal";
 			if (task.session_id && isValidSessionId(task.session_id)) {
-				if (bundlePath) {
-					vscode.window.showWarningMessage(
-						`Task session "${task.session_id}" is no longer live. Opening ${path.basename(bundlePath)} and starting a new interactive resume.`,
-					);
-				} else {
-					vscode.window.showWarningMessage(
-						`Task session "${task.session_id}" is no longer live. Starting interactive resume in a new terminal.`,
-					);
-				}
+				vscode.window.showWarningMessage(
+					`Task session "${task.session_id}" is no longer live. Starting a new interactive resume in ${terminalTarget}.`,
+				);
 			}
 
-			if (bundlePath && terminalManager) {
-				try {
-					await terminalManager.runInBundleTerminal(bundlePath, command);
-					return;
-				} catch {
-					// Fall through to project-terminal fallback.
-				}
+			try {
+				const launchTarget = await runCommandInProjectTerminalWithFallback(
+					task.project_dir,
+					command,
+					`Resume: ${task.id}`,
+				);
+				const startedTarget =
+					launchTarget === "launcher"
+						? terminalTarget
+						: "VS Code integrated terminal";
+				vscode.window.showInformationMessage(
+					`Started interactive resume for "${task.id}" in ${startedTarget}.`,
+				);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				vscode.window.showErrorMessage(
+					`Failed to start interactive resume for "${task.id}": ${message}`,
+				);
 			}
-
-			await runCommandInProjectTerminalWithFallback(
-				task.project_dir,
-				command,
-				`Resume: ${task.id}`,
-			);
 		};
 
 		const writeRegistryWithBackup = async (

@@ -68,6 +68,8 @@ const LAUNCHER_FALLBACK_PATHS: string[] = [
 
 /** Timeout in milliseconds for launcher subprocess calls */
 const LAUNCHER_TIMEOUT_MS = 10_000;
+const SESSION_LOOKUP_RETRIES = 5;
+const SESSION_LOOKUP_RETRY_DELAY_MS = 750;
 const AUTO_DETECTED_LAUNCHER_PATH_KEY =
 	"commandCentral.ghostty.autoDetectedLauncherPath";
 
@@ -602,20 +604,24 @@ export class TerminalManager {
 			// Try to find existing launcher session for the project
 			const info = await this.getTerminalInfo(projectDir);
 
+			const steerCommand = async (tmuxSession: string): Promise<void> => {
+				const steerPath =
+					await this.resolveLauncherHelperScriptPath("oste-steer.sh");
+				await this.execCommand(steerPath, [
+					tmuxSession,
+					"--raw",
+					command ?? "",
+				]);
+				this.logger.info(
+					`Sent command to launcher session ${tmuxSession}`,
+					"TerminalManager",
+				);
+			};
+
 			if (info.tmuxSession && command) {
 				// Send command to existing launcher session via oste-steer.sh
 				try {
-					const steerPath =
-						await this.resolveLauncherHelperScriptPath("oste-steer.sh");
-					await this.execCommand(steerPath, [
-						info.tmuxSession,
-						"--raw",
-						command,
-					]);
-					this.logger.info(
-						`Sent command to launcher session ${info.tmuxSession}`,
-						"TerminalManager",
-					);
+					await steerCommand(info.tmuxSession);
 					return;
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
@@ -638,26 +644,33 @@ export class TerminalManager {
 
 			// If we just created a terminal and have a command, wait briefly then steer
 			if (command) {
-				// Re-fetch session info after terminal creation
-				await new Promise((resolve) => setTimeout(resolve, 1500));
-				try {
+				let lastStartError: unknown = null;
+				for (let attempt = 0; attempt < SESSION_LOOKUP_RETRIES; attempt++) {
+					await new Promise((resolve) =>
+						setTimeout(resolve, SESSION_LOOKUP_RETRY_DELAY_MS),
+					);
 					const newInfo = await this.getTerminalInfo(projectDir);
 					if (newInfo.tmuxSession) {
-						const steerPath2 =
-							await this.resolveLauncherHelperScriptPath("oste-steer.sh");
-						await this.execCommand(steerPath2, [
-							newInfo.tmuxSession,
-							"--raw",
-							command,
-						]);
+						try {
+							await steerCommand(newInfo.tmuxSession);
+							return;
+						} catch (err) {
+							lastStartError = err;
+							const message = err instanceof Error ? err.message : String(err);
+							this.logger.warn(
+								`Failed to send command to launcher session ${newInfo.tmuxSession}: ${message}`,
+								"TerminalManager",
+							);
+						}
 					}
-				} catch (err) {
-					const message = err instanceof Error ? err.message : String(err);
-					this.logger.warn(
-						`Failed to send command after terminal creation: ${message}`,
-						"TerminalManager",
-					);
 				}
+
+				const details =
+					lastStartError instanceof Error ? `: ${lastStartError.message}` : "";
+				throw new LauncherExecutionError(
+					`Project terminal opened but no launcher session accepted the command${details}.`,
+					this.getLauncherPath(),
+				);
 			}
 		} catch (error) {
 			if (

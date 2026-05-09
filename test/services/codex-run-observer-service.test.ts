@@ -278,6 +278,38 @@ describe("CodexRunObserverService", () => {
 		]);
 	});
 
+	test("projects launcher role as read-only process metadata", () => {
+		const service = new CodexRunObserverService();
+		const [run] = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "oc-review-task",
+					session_id: "agent-review-task",
+					role: "reviewer",
+					agent_backend: "claude",
+				}),
+			],
+			openClawTasks: [
+				openClawTask({
+					taskId: "oc-review-task",
+					childSessionKey: "session:agent-review-task",
+					ownerKind: "openclaw",
+				}),
+			],
+			taskFlows: [],
+		});
+
+		expect(run?.source).toEqual({
+			kind: "openclaw-task",
+			id: "oc-review-task",
+		});
+		expect(run?.role).toBe("reviewer");
+		expect(run?.ownerKind).toBe("openclaw");
+		expect(run?.fieldSources.role).toEqual([
+			{ kind: "launcher", id: "oc-review-task", path: "/tmp/project-a" },
+		]);
+	});
+
 	test("joins launcher metadata when the session prefix is on the launcher side", () => {
 		const service = new CodexRunObserverService();
 		const [run] = service.project({
