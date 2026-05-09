@@ -595,10 +595,26 @@ function hasNodeExecutionMetadata(task: AgentTask): boolean {
 	);
 }
 
+/**
+ * Test seam: when set, isPathUnderLocalHome uses this value instead of
+ * os.homedir() to decide if a task path belongs to the current host.
+ *
+ * Hub-vs-node classification asks whether exec_cwd is under the current
+ * host's home. On the hub, /Users/ostehost/... is remote; on the MacBook node,
+ * the same path is local. Tests that pin one host context need to simulate it
+ * explicitly so the assertion is deterministic on both machines.
+ */
+let __localHomeOverrideForTests: string | null = null;
+
+/** @internal Test-only seam. Pass null to restore the real local home. */
+export function __setLocalHomeOverrideForTests(home: string | null): void {
+	__localHomeOverrideForTests = home;
+}
+
 function isPathUnderLocalHome(value?: string | null): boolean {
 	const trimmed = value?.trim();
 	if (!trimmed) return false;
-	const localHome = os.homedir();
+	const localHome = __localHomeOverrideForTests ?? os.homedir();
 	if (!localHome) return false;
 	const resolvedValue = path.resolve(trimmed);
 	const resolvedHome = path.resolve(localHome);

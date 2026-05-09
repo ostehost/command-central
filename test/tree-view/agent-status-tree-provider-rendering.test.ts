@@ -8,6 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as path from "node:path";
+import { __setLocalHomeOverrideForTests } from "../../src/providers/agent-status-tree-provider.js";
 import { OpenClawConfigService } from "../../src/services/openclaw-config-service.js";
 import { ReviewTracker } from "../../src/services/review-tracker.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
@@ -674,45 +675,76 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 			);
 		});
 
-		test("node-hosted visible task: description and tooltip name the node surface", () => {
-			const task = createMockTask({
-				status: "running",
-				terminal_backend: "tmux",
-				ghostty_bundle_id: "dev.partnerai.ghostty.command-central",
-				bundle_path: "/Applications/Projects/command-central.app",
-				project_dir: "/Users/ostehost/projects/command-central",
-				exec_mode: "spoke",
-				exec_node: "Mike MacBook Pro",
-				exec_host: "Mike's MacBook Pro",
-				exec_visible: true,
-				exec_cwd: "/Users/ostehost/projects/command-central",
+		// These tests pin host context explicitly: /Users/ostehost is remote
+		// from the hub, but local on the MacBook node.
+		describe("hub-mirror host context", () => {
+			beforeEach(() => {
+				__setLocalHomeOverrideForTests("/Users/hub-test-home");
 			});
-			provider.getDiffSummary = () => null;
-			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).toContain("node · visible");
-			expect(tooltipText(item)).toContain("Mike's MacBook Pro");
-			expect(tooltipText(item)).toContain("focus must execute on that node");
-			expect(tooltipText(item)).toContain("visible=yes");
-		});
 
-		test("node-hosted mirrored task stays node-routed when exec_mode is hub", () => {
-			const task = createMockTask({
-				status: "running",
-				terminal_backend: "tmux",
-				ghostty_bundle_id: "dev.partnerai.ghostty.ghostty-launcher",
-				bundle_path: "/Applications/Projects/ghostty-launcher.app",
-				project_dir: "/Users/ostehost/projects/ghostty-launcher",
-				exec_mode: "hub",
-				exec_node: null,
-				exec_host: "Mike's MacBook Pro",
-				exec_visible: true,
-				exec_cwd: "/Users/ostehost/projects/ghostty-launcher",
+			afterEach(() => {
+				__setLocalHomeOverrideForTests(null);
 			});
-			provider.getDiffSummary = () => null;
-			const item = provider.getTreeItem({ type: "task", task });
-			expect(item.description).toContain("node · visible");
-			expect(tooltipText(item)).toContain("Mike's MacBook Pro");
-			expect(tooltipText(item)).toContain("focus must execute on that node");
+
+			test("node-hosted visible task: description and tooltip name the node surface", () => {
+				const task = createMockTask({
+					status: "running",
+					terminal_backend: "tmux",
+					ghostty_bundle_id: "dev.partnerai.ghostty.command-central",
+					bundle_path: "/Applications/Projects/command-central.app",
+					project_dir: "/Users/ostehost/projects/command-central",
+					exec_mode: "spoke",
+					exec_node: "Mike MacBook Pro",
+					exec_host: "Mike's MacBook Pro",
+					exec_visible: true,
+					exec_cwd: "/Users/ostehost/projects/command-central",
+				});
+				provider.getDiffSummary = () => null;
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(item.description).toContain("node · visible");
+				expect(tooltipText(item)).toContain("Mike's MacBook Pro");
+				expect(tooltipText(item)).toContain("focus must execute on that node");
+				expect(tooltipText(item)).toContain("visible=yes");
+			});
+
+			test("node-hosted mirrored task stays node-routed when exec_mode is hub", () => {
+				const task = createMockTask({
+					status: "running",
+					terminal_backend: "tmux",
+					ghostty_bundle_id: "dev.partnerai.ghostty.ghostty-launcher",
+					bundle_path: "/Applications/Projects/ghostty-launcher.app",
+					project_dir: "/Users/ostehost/projects/ghostty-launcher",
+					exec_mode: "hub",
+					exec_node: null,
+					exec_host: "Mike's MacBook Pro",
+					exec_visible: true,
+					exec_cwd: "/Users/ostehost/projects/ghostty-launcher",
+				});
+				provider.getDiffSummary = () => null;
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(item.description).toContain("node · visible");
+				expect(tooltipText(item)).toContain("Mike's MacBook Pro");
+				expect(tooltipText(item)).toContain("focus must execute on that node");
+			});
+
+			test("node-local context: same /Users/ostehost task is not classified as remote", () => {
+				__setLocalHomeOverrideForTests("/Users/ostehost");
+				const task = createMockTask({
+					status: "running",
+					terminal_backend: "tmux",
+					ghostty_bundle_id: "dev.partnerai.ghostty.command-central",
+					bundle_path: "/Applications/Projects/command-central.app",
+					project_dir: "/Users/ostehost/projects/command-central",
+					exec_mode: "spoke",
+					exec_node: "Mike MacBook Pro",
+					exec_host: "Mike's MacBook Pro",
+					exec_visible: true,
+					exec_cwd: "/Users/ostehost/projects/command-central",
+				});
+				provider.getDiffSummary = () => null;
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(item.description).not.toContain("node · visible");
+			});
 		});
 
 		test("persist backend: description tagged and tooltip explains headless", () => {
