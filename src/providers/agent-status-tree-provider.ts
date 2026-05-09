@@ -71,6 +71,10 @@ import type { ListeningPort } from "../utils/port-detector.js";
 import { detectListeningPortsAsync } from "../utils/port-detector.js";
 import { canonicalizeProjectDir } from "../utils/project-scope.js";
 import { relativeTime } from "../utils/relative-time.js";
+import {
+	type AdvertisedReviewQueueState,
+	checkAdvertisedReviewQueue,
+} from "../utils/review-queue-health.js";
 import { resolveTasksFilePaths } from "../utils/tasks-file-resolver.js";
 import {
 	groupByTimePeriod,
@@ -1073,6 +1077,10 @@ export class AgentStatusTreeProvider
 		string,
 		{ state: DeclaredHandoffState; checkedAt: number }
 	>();
+	private _reviewQueueCache = new Map<
+		string,
+		{ state: AdvertisedReviewQueueState; checkedAt: number }
+	>();
 	private readonly _persistSessionHealthCache = new Map<
 		string,
 		{ alive: boolean; checkedAt: number }
@@ -1564,6 +1572,23 @@ export class AgentStatusTreeProvider
 		}
 		const state = checkDeclaredHandoff(task);
 		this._handoffFileCache.set(cacheKey, { state, checkedAt: now });
+		return state;
+	}
+
+	private getPendingReviewQueueState(
+		task: AgentTask,
+	): AdvertisedReviewQueueState {
+		if (isRemoteNodeTaskForCurrentHost(task)) return "unknown";
+
+		const cacheTtlMs = 5_000;
+		const cacheKey = `${task.project_dir}::${task.pending_review_path ?? ""}`;
+		const cached = this._reviewQueueCache.get(cacheKey);
+		const now = Date.now();
+		if (cached && now - cached.checkedAt < cacheTtlMs) {
+			return cached.state;
+		}
+		const state = checkAdvertisedReviewQueue(task);
+		this._reviewQueueCache.set(cacheKey, { state, checkedAt: now });
 		return state;
 	}
 
@@ -3666,6 +3691,13 @@ export class AgentStatusTreeProvider
 			) {
 				return "limbo";
 			}
+			if (
+				node.type === "task" &&
+				node.task.pending_review_path &&
+				this.getPendingReviewQueueState(node.task) === "missing"
+			) {
+				return "limbo";
+			}
 			return "done";
 		}
 		if (status === "completed_dirty" || status === "completed_stale") {
@@ -4401,6 +4433,24 @@ export class AgentStatusTreeProvider
 					iconColor: "charts.yellow",
 				});
 			}
+		}
+		if (
+			t.status === "completed" &&
+			t.review_status !== "pending" &&
+			t.review_status !== "changes_requested" &&
+			this.getDeclaredHandoffState(t) !== "missing" &&
+			t.pending_review_path &&
+			this.getPendingReviewQueueState(t) === "missing"
+		) {
+			details.push({
+				type: "detail",
+				label: "Review queue receipt not yet materialized",
+				value: "",
+				description: t.pending_review_path,
+				taskId: t.id,
+				icon: "watch",
+				iconColor: "charts.yellow",
+			});
 		}
 
 		// ── 2. Prompt — smart truncation ────────────────────────────────
@@ -7200,6 +7250,16 @@ export class AgentStatusTreeProvider
 				: null;
 		if (missingHandoffRelpath) {
 			descriptionParts.push(`missing handoff: ${missingHandoffRelpath}`);
+		}
+		const reviewQueuePending =
+			task.status === "completed" &&
+			task.review_status !== "pending" &&
+			task.review_status !== "changes_requested" &&
+			!missingHandoffRelpath &&
+			task.pending_review_path &&
+			this.getPendingReviewQueueState(task) === "missing";
+		if (reviewQueuePending) {
+			descriptionParts.push("review queue pending");
 		}
 		if (diffSummaryInline) {
 			descriptionParts.push(diffSummaryInline);
