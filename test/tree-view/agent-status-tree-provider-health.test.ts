@@ -455,6 +455,30 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			);
 		});
 
+		test("does not probe tmux for mirrored node tasks on the hub", () => {
+			const task = createMockTask({
+				id: "node-mirror-running",
+				status: "running",
+				terminal_backend: "tmux",
+				project_dir: "/Users/ostehost/projects/ghostty-launcher",
+				exec_mode: "hub",
+				exec_host: "Mike's MacBook Pro",
+				exec_cwd: "/Users/ostehost/projects/ghostty-launcher",
+				tmux_socket:
+					"/Users/ostehost/.local/state/ghostty-launcher/tmux/ghostty-launcher.sock",
+				tmux_window_id: "@7",
+			});
+			execFileSyncMock.mockClear();
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			expect(provider.getTasks()[0]?.status).toBe("running");
+			const tmuxCalls = execFileSyncMock.mock.calls.filter(
+				([command]) => command === "tmux",
+			);
+			expect(tmuxCalls).toHaveLength(0);
+		});
+
 		test("does not deduplicate tmux tasks with different window IDs in shared session", () => {
 			// Real-world scenario: multiple agents share one tmux session but each
 			// occupies a distinct window (@N).  They must all remain "running" — the

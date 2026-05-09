@@ -1521,6 +1521,8 @@ export class AgentStatusTreeProvider
 	}
 
 	private getDeclaredHandoffState(task: AgentTask): DeclaredHandoffState {
+		if (isRemoteNodeTaskForCurrentHost(task)) return "unknown";
+
 		const cacheTtlMs = 5_000;
 		const cacheKey = `${task.project_dir}::${task.handoff_file ?? ""}`;
 		const cached = this._handoffFileCache.get(cacheKey);
@@ -1607,6 +1609,7 @@ export class AgentStatusTreeProvider
 
 	private isRunningTaskHealthy(task: AgentTask): boolean {
 		if (task.status !== "running") return true;
+		if (isRemoteNodeTaskForCurrentHost(task)) return true;
 
 		const ageMs = this.getTaskAgeMs(task);
 		const staleThresholdMs = Math.max(
@@ -1665,6 +1668,7 @@ export class AgentStatusTreeProvider
 	 */
 	private hasPositiveLivenessEvidence(task: AgentTask): boolean {
 		if (task.status !== "running") return false;
+		if (isRemoteNodeTaskForCurrentHost(task)) return true;
 		if (
 			(task.terminal_backend === "tmux" ||
 				task.terminal_backend === undefined) &&
@@ -1825,6 +1829,7 @@ export class AgentStatusTreeProvider
 		const startRef = task.start_commit;
 		if (!startRef || startRef === "unknown") return false;
 		if (!task.project_dir) return false;
+		if (isRemoteNodeTaskForCurrentHost(task)) return false;
 
 		try {
 			const output = execFileSync(
@@ -2721,6 +2726,8 @@ export class AgentStatusTreeProvider
 	}
 
 	private isTaskSessionConfirmedDead(task: AgentTask): boolean {
+		if (isRemoteNodeTaskForCurrentHost(task)) return false;
+
 		if (task.terminal_backend === "persist") {
 			return !this.isPersistTaskAlive(task);
 		}
@@ -5589,6 +5596,7 @@ export class AgentStatusTreeProvider
 		task: AgentTask,
 	): Promise<string | undefined> {
 		if (task.status !== "running") return undefined;
+		if (isRemoteNodeTaskForCurrentHost(task)) return undefined;
 		if (!task.session_id || !isValidSessionId(task.session_id))
 			return undefined;
 		try {

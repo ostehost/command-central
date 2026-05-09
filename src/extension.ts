@@ -1093,6 +1093,7 @@ export async function activate(
 		const isTaskTmuxSessionAlive = async (
 			task: AgentTask,
 		): Promise<boolean> => {
+			if (isRemoteNodeTaskForCurrentHost(task)) return false;
 			if (!task.session_id || !isValidSessionId(task.session_id)) {
 				return false;
 			}
@@ -1113,6 +1114,7 @@ export async function activate(
 				"session_id" | "tmux_conf" | "tmux_socket" | "tmux_window_id"
 			>,
 		): Promise<boolean> => {
+			if (isRemoteNodeTaskForCurrentHost(task as AgentTask)) return false;
 			const target = resolveTaskWindowTarget(task);
 			if (!target) return false;
 			try {
@@ -2493,6 +2495,10 @@ export async function activate(
 								"Failed to open the terminal with the resumed session.",
 							);
 						}
+						return;
+					}
+					if (isRemoteNodeTaskForCurrentHost(task)) {
+						await showRemoteNodeTaskSurfaceOptions(task);
 						return;
 					}
 					if (task.status === "running") {
