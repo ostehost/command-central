@@ -381,7 +381,9 @@ test-integration:
 # Run real VS Code integration tests with @vscode/test-electron
 test-electron:
     @echo "🧪 Running real VS Code integration tests..."
+    @echo "   • Guard: must execute on Mike MacBook Pro node"
     @echo ""
+    @bun run scripts-v2/node-execution-guard.ts
     @bun run test/integration/runTest.ts
 
 # Run tests with coverage report

@@ -62,6 +62,30 @@ Decision:
 - CC should render Linear when the lifecycle owner supplies normalized issue metadata (`trackerKind`, `issueIdentifier`, `issueState`, `issueUrl`) and should show when tracker metadata is not provided.
 - Any future mutation-capable ticket action must route through the source owner. CC must not write Linear state or infer scheduler eligibility itself.
 
+## Execution Placement Guardrail
+
+MacBook/node-only computer-use validation is an execution-placement policy, not a Command Central runtime feature.
+
+Decision:
+
+- The Symphony runner may define a placement policy for a workstream or run attempt, including target node, workspace root, execution mode, and allowed verification commands.
+- OpenClaw native node routing must enforce MacBook/node execution for VS Code installed-extension smoke tests before VS Code can launch.
+- Command Central should project owner-provided placement fields (`exec_node`, `exec_host`, `exec_mode`, workspace, evidence paths) and show mismatches as status/evidence.
+- Command Central must not make its extension activation dependent on host-specific user names or paths.
+- Hub-side source, packaging, and review may continue when scoped to repository work. Real VS Code/computer-use proof must run on the MacBook node.
+
+Implementation:
+
+- `just test-electron` now has a pre-launch guard that refuses to run outside `/Users/ostehost` on the MacBook node.
+- The guard belongs to release/test orchestration, not extension product code.
+- A hub-side failure of the guard is a successful prevention event, not a skipped test or product failure.
+
+Rejected anti-patterns:
+
+- Adding host checks to extension activation.
+- Faking node proof by running `@vscode/test-electron` on the hub.
+- Moving Linear polling, scheduler ownership, retry/reconcile ownership, or tracker writes into Command Central to compensate for process gaps.
+
 ## Elixir Test Implementation Lessons
 
 Reviewed upstream `openai/symphony` Elixir tests from a shallow clone in `/tmp/symphony-review-mhTLe0`.
