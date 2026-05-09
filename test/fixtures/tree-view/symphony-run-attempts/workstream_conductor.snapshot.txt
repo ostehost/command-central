@@ -1,0 +1,10 @@
+- Symphony / Workstreams · 1 — 1 active {taskflows}
+  - Symphony preview conductor — Running · 0/2 tasks {taskflow.running}
+    - Status: Running {agentTaskDetail}
+    - Progress: 0/2 completed {agentTaskDetail}
+    - Duration: 0m {agentTaskDetail}
+    - Implement conductor grouping — subagent · Running · <age> {openclawTask.running}
+      - Runtime: subagent {agentTaskDetail}
+      - Status: Running {agentTaskDetail}
+      - Duration: 0m {agentTaskDetail}
+    - Review conductor evidence — Queued {taskFlowChild}

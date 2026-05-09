@@ -79,6 +79,7 @@ describe("OpenClaw task nodes", () => {
 	function createFlow(
 		overrides: Partial<{
 			flowId: string;
+			label: string;
 			status:
 				| "queued"
 				| "running"
@@ -212,7 +213,7 @@ describe("OpenClaw task nodes", () => {
 		const root = provider.getChildren();
 		const runsNode = root.find((node) => node.type === "codexRuns");
 		if (!runsNode || runsNode.type !== "codexRuns") {
-			throw new Error("No Codex Runs node found");
+			throw new Error("No Symphony Run Attempts node found");
 		}
 		return runsNode;
 	}
@@ -241,34 +242,93 @@ describe("OpenClaw task nodes", () => {
 		return run;
 	}
 
+	function normalizeSnapshotText(value: string): string {
+		return value
+			.replace(/\b\d{4}-\d{2}-\d{2}T[\d:.]+Z\b/g, "<timestamp>")
+			.replace(/\b\d+\s*(?:s|m|h|d) ago\b/g, "<age>")
+			.replace(/\b\d+(?:\.\d+)?(?:ms|s)\b/g, "<duration>");
+	}
+
+	function itemText(
+		provider: { getTreeItem: (element: AgentNode) => unknown },
+		node: AgentNode,
+	): string {
+		const item = provider.getTreeItem(node) as {
+			label?: string;
+			description?: string;
+			contextValue?: string;
+		};
+		const label =
+			typeof item.label === "string" ? item.label : JSON.stringify(item.label);
+		const description = item.description ? ` — ${item.description}` : "";
+		const context = item.contextValue ? ` {${item.contextValue}}` : "";
+		return normalizeSnapshotText(`${label}${description}${context}`);
+	}
+
+	function renderTreeSnapshot(
+		provider: {
+			getTreeItem: (element: AgentNode) => unknown;
+			getChildren: (element?: AgentNode) => AgentNode[];
+		},
+		root: AgentNode,
+		maxDepth = 3,
+	): string {
+		const lines: string[] = [];
+		const walk = (node: AgentNode, depth: number): void => {
+			lines.push(`${"  ".repeat(depth)}- ${itemText(provider, node)}`);
+			if (depth >= maxDepth) return;
+			for (const child of provider.getChildren(node)) {
+				walk(child, depth + 1);
+			}
+		};
+		walk(root, 0);
+		return lines.join("\n");
+	}
+
+	function assertTreeSnapshot(name: string, content: string): void {
+		const snapshotPath = path.join(
+			process.cwd(),
+			"test",
+			"fixtures",
+			"tree-view",
+			"symphony-run-attempts",
+			`${name}.snapshot.txt`,
+		);
+		if (process.env["UPDATE_TREE_SNAPSHOTS"] === "1") {
+			fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
+			fs.writeFileSync(snapshotPath, `${content}\n`);
+		}
+		expect(content).toBe(fs.readFileSync(snapshotPath, "utf8").trimEnd());
+	}
+
 	test("OpenClaw tasks appear inline in flat mode", async () => {
 		const provider = await createProvider([createTask()]);
 		const root = provider.getChildren();
 		expect(root.some((node) => node.type === "openclawTask")).toBe(true);
 	});
 
-	test("Symphony Codex Runs container remains visible when empty", async () => {
+	test("Symphony Run Attempts container remains visible when empty", async () => {
 		const provider = await createProvider([]);
 		const root = provider.getChildren();
 		const runsNode = root.find((node) => node.type === "codexRuns");
 		if (!runsNode || runsNode.type !== "codexRuns") {
-			throw new Error("No Symphony / Codex Runs node found");
+			throw new Error("No Symphony / Run Attempts node found");
 		}
 
 		const item = provider.getTreeItem(runsNode);
-		expect(item.label).toBe("Symphony / Codex Runs · 0");
+		expect(item.label).toBe("Symphony / Run Attempts · 0");
 		expect(item.description).toBe("no projected runs");
 
 		const children = provider.getChildren(runsNode);
 		expect(children).toContainEqual({
 			type: "state",
-			label: "No projected Codex runs",
+			label: "No projected run attempts",
 			description: "OpenClaw, TaskFlow, or launcher rows will appear here",
 			icon: "circle-slash",
 		});
 	});
 
-	test("Codex Runs container appears and expands to projected details", async () => {
+	test("Symphony Run Attempts container appears and expands to projected details", async () => {
 		const provider = await createProvider([
 			createTask({
 				taskId: "bg-1",
@@ -310,17 +370,17 @@ describe("OpenClaw task nodes", () => {
 		const root = provider.getChildren();
 		const runsNode = root.find((node) => node.type === "codexRuns");
 		if (!runsNode || runsNode.type !== "codexRuns") {
-			throw new Error("No Codex Runs node found");
+			throw new Error("No Symphony Run Attempts node found");
 		}
 
 		const item = provider.getTreeItem(runsNode);
-		expect(item.label).toBe("Symphony / Codex Runs · 1");
+		expect(item.label).toBe("Symphony / Run Attempts · 1");
 		expect(item.description).toBe("1 working");
 		expect((item.tooltip as { value: string }).value).toContain(
-			"read-only projected run",
+			"read-only projected run attempt",
 		);
 		expect((item.tooltip as { value: string }).value).toContain(
-			"Lifecycle authority stays with the source owner",
+			"Lifecycle ownership stays with the source owner",
 		);
 
 		const runs = provider.getChildren(runsNode);
@@ -354,7 +414,7 @@ describe("OpenClaw task nodes", () => {
 			details.some(
 				(node) =>
 					node.type === "detail" &&
-					node.label === "Source status" &&
+					node.label === "Owner status" &&
 					node.value === "running",
 			),
 		).toBe(true);
@@ -362,7 +422,7 @@ describe("OpenClaw task nodes", () => {
 			details.some(
 				(node) =>
 					node.type === "detail" &&
-					node.label === "Lifecycle authority" &&
+					node.label === "Lifecycle owner" &&
 					node.value === "OpenClaw task bg-1",
 			),
 		).toBe(true);
@@ -370,7 +430,7 @@ describe("OpenClaw task nodes", () => {
 			details.some(
 				(node) =>
 					node.type === "detail" &&
-					node.label === "Ownership" &&
+					node.label === "Projection boundary" &&
 					node.value === "Source-owned row with Launcher metadata",
 			),
 		).toBe(true);
@@ -395,7 +455,7 @@ describe("OpenClaw task nodes", () => {
 			details.some(
 				(node) =>
 					node.type === "detail" &&
-					node.label === "Fields from Launcher launcher-1 (/tmp/my-app)" &&
+					node.label === "Provenance from Launcher launcher-1 (/tmp/my-app)" &&
 					node.value.includes("role") &&
 					node.value.includes("model"),
 			),
@@ -404,7 +464,7 @@ describe("OpenClaw task nodes", () => {
 			details.some(
 				(node) =>
 					node.type === "detail" &&
-					node.label === "Run ID" &&
+					node.label === "Run attempt ID" &&
 					node.value === "bg-1",
 			),
 		).toBe(true);
@@ -426,7 +486,7 @@ describe("OpenClaw task nodes", () => {
 		).toBe(true);
 	});
 
-	test("legacy OpenClaw and launcher rows disclose Codex Runs coexistence", async () => {
+	test("legacy OpenClaw and launcher rows disclose Symphony Run Attempts coexistence", async () => {
 		const openClawTask = createTask({
 			taskId: "bg-1",
 			childSessionKey: "session:agent-my-app",
@@ -462,7 +522,7 @@ describe("OpenClaw task nodes", () => {
 			task: openClawTask,
 		});
 		expect((openClawItem.tooltip as { value: string }).value).toContain(
-			"Also shown in Codex Runs as OpenClaw task bg-1.",
+			"Also shown in Symphony / Run Attempts as OpenClaw task bg-1.",
 		);
 
 		const launcherItem = provider.getTreeItem({
@@ -474,7 +534,7 @@ describe("OpenClaw task nodes", () => {
 		);
 	});
 
-	test("Codex Runs respect the Agent Status project filter", async () => {
+	test("Symphony Run Attempts respect the Agent Status project filter", async () => {
 		const provider = await createProvider([
 			createTask({
 				taskId: "bg-1",
@@ -533,7 +593,7 @@ describe("OpenClaw task nodes", () => {
 		const root = provider.getChildren();
 		const runsNode = root.find((node) => node.type === "codexRuns");
 		if (!runsNode || runsNode.type !== "codexRuns") {
-			throw new Error("No Codex Runs node found");
+			throw new Error("No Symphony Run Attempts node found");
 		}
 
 		expect(runsNode.runs.map((run) => run.workspacePath)).toEqual([
@@ -542,7 +602,7 @@ describe("OpenClaw task nodes", () => {
 		expect(runsNode.runs.map((run) => run.taskId)).toEqual(["bg-1"]);
 	});
 
-	test("Codex Runs keep dogfood launcher-only rows distinct", async () => {
+	test("Symphony Run Attempts keep dogfood launcher-only rows distinct", async () => {
 		const provider = await createProvider([]);
 		const fixturePath = path.join(
 			process.cwd(),
@@ -568,7 +628,7 @@ describe("OpenClaw task nodes", () => {
 		const root = provider.getChildren();
 		const runsNode = root.find((node) => node.type === "codexRuns");
 		if (!runsNode || runsNode.type !== "codexRuns") {
-			throw new Error("No Codex Runs node found");
+			throw new Error("No Symphony Run Attempts node found");
 		}
 
 		const launcherSourceIds = runsNode.runs
@@ -599,7 +659,7 @@ describe("OpenClaw task nodes", () => {
 		);
 	});
 
-	test("Codex Runs exclude non-Codex launcher-only rows from projection", async () => {
+	test("Symphony Run Attempts exclude non-Codex launcher-only rows from projection", async () => {
 		const provider = await createProvider([]);
 		const launcherTask = createLauncherTask({
 			id: "codex-looking-claude-row",
@@ -617,6 +677,90 @@ describe("OpenClaw task nodes", () => {
 			),
 		).toBe(true);
 		expect(getCodexRunNodes(provider)).toHaveLength(0);
+	});
+
+	test("Symphony Run Attempts idle tree matches the operator snapshot", async () => {
+		const provider = await createProvider([]);
+		assertTreeSnapshot(
+			"idle",
+			renderTreeSnapshot(provider, getCodexRunsNode(provider)),
+		);
+	});
+
+	test("Symphony Run Attempts active joined tree matches the operator snapshot", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "bg-joined",
+				task: "Review the Symphony projection",
+				childSessionKey: "session:agent-symphony",
+				status: "running",
+				runId: "run-bg-joined",
+				lastEventAt: Date.now() - 30_000,
+			}),
+		]);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-joined",
+				status: "running",
+				project_dir: "/tmp/symphony-app",
+				project_name: "Symphony App",
+				session_id: "agent-symphony",
+				stream_file: "/tmp/symphony-app/stream.jsonl",
+				handoff_file: "/tmp/symphony-app/handoff.md",
+				prompt_file: "/tmp/symphony-app/prompt.md",
+				model: "gpt-5.5",
+				role: "reviewer",
+				agent_backend: "codex",
+				terminal_backend: "applescript",
+				prompt_summary: "Review the Symphony projection",
+				updated_at: new Date(Date.now() - 20_000).toISOString(),
+			}),
+		]);
+
+		assertTreeSnapshot(
+			"active_joined",
+			renderTreeSnapshot(provider, getCodexRunsNode(provider)),
+		);
+	});
+
+	test("Symphony Workstreams tree matches the conductor snapshot", async () => {
+		const matchedTask = createTask({
+			taskId: "bg-workstream-1",
+			task: "Implement conductor grouping",
+			runtime: "subagent",
+			status: "running",
+			childSessionKey: "session-workstream-1",
+		});
+		const provider = await createProvider(
+			[matchedTask],
+			[
+				createFlow({
+					flowId: "flow-symphony-preview",
+					label: "Symphony preview conductor",
+					status: "running",
+					tasks: [
+						matchedTask,
+						createTask({
+							taskId: "bg-workstream-2",
+							task: "Review conductor evidence",
+							runtime: "subagent",
+							status: "queued",
+							childSessionKey: "session-workstream-2",
+						}),
+					],
+				}),
+			],
+		);
+		const root = provider.getChildren();
+		const flowsNode = root.find((node) => node.type === "taskflows");
+		if (!flowsNode || flowsNode.type !== "taskflows") {
+			throw new Error("No Symphony Workstreams node found");
+		}
+
+		assertTreeSnapshot(
+			"workstream_conductor",
+			renderTreeSnapshot(provider, flowsNode),
+		);
 	});
 
 	test("dedups OpenClaw tasks that match launcher session ids", async () => {
@@ -953,7 +1097,7 @@ describe("OpenClaw task nodes", () => {
 		).toBe(true);
 	});
 
-	test("Codex Runs projection keeps loose OpenClaw launcher matches separate", async () => {
+	test("Symphony Run Attempts projection keeps loose OpenClaw launcher matches separate", async () => {
 		const cases = [
 			{
 				openclaw: createTask({
@@ -1018,7 +1162,7 @@ describe("OpenClaw task nodes", () => {
 		}
 	});
 
-	test("Codex Runs projection enriches exact session joins without changing lifecycle authority", async () => {
+	test("Symphony Run Attempts projection enriches exact session joins without changing lifecycle authority", async () => {
 		const provider = await createProvider([
 			createTask({
 				taskId: "bg-projected-exact",
@@ -1058,7 +1202,7 @@ describe("OpenClaw task nodes", () => {
 			details.some(
 				(node) =>
 					node.type === "detail" &&
-					node.label === "Lifecycle authority" &&
+					node.label === "Lifecycle owner" &&
 					node.value === "OpenClaw task bg-projected-exact",
 			),
 		).toBe(true);
@@ -1087,7 +1231,7 @@ describe("OpenClaw task nodes", () => {
 		expect(item.command).toBeUndefined();
 		expect(item.contextValue).toBe("codexRun.running");
 		expect((item.tooltip as { value: string }).value).toContain(
-			"Lifecycle Authority",
+			"Lifecycle Owner",
 		);
 
 		const detailItems = provider.getChildren(runNode).map((node) => ({

@@ -1,0 +1,2 @@
+- Symphony / Run Attempts · 0 — no projected runs {codexRuns}
+  - No projected run attempts — OpenClaw, TaskFlow, or launcher rows will appear here {agentState}

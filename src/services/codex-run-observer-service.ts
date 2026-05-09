@@ -563,7 +563,7 @@ export class CodexRunObserverService {
 
 	/**
 	 * Source-owned launcher rows are explicit workflow/run records, not generic
-	 * process-discovery rows. They are safe to project as standalone Codex Runs
+	 * process-discovery rows. They are safe to project as standalone Symphony run attempts
 	 * because lifecycle authority still stays with the launcher/source owner.
 	 */
 	private isSourceOwnedLauncherRun(task: AgentTask): boolean {

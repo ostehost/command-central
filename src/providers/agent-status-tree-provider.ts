@@ -3244,7 +3244,7 @@ export class AgentStatusTreeProvider
 				return [
 					{
 						type: "state",
-						label: "No projected Codex runs",
+						label: "No projected run attempts",
 						description:
 							"OpenClaw, TaskFlow, or launcher rows will appear here",
 						icon: "circle-slash",
@@ -4720,13 +4720,13 @@ export class AgentStatusTreeProvider
 		};
 
 		pushDetail("Status", this.formatCodexRunStatus(run.status), "pulse");
-		pushDetail("Source status", run.sourceStatus, "symbol-event");
+		pushDetail("Owner status", run.sourceStatus, "symbol-event");
+		pushDetail("Lifecycle owner", this.formatCodexRunAuthority(run), "shield");
 		pushDetail(
-			"Lifecycle authority",
-			this.formatCodexRunAuthority(run),
-			"shield",
+			"Projection boundary",
+			this.formatCodexRunOwnership(run),
+			"account",
 		);
-		pushDetail("Ownership", this.formatCodexRunOwnership(run), "account");
 		pushDetail("Role", run.role, "person");
 		pushDetail("Model", run.model, "symbol-constant");
 		pushDetail("Phase", run.phase, "debug-step-over");
@@ -4734,7 +4734,7 @@ export class AgentStatusTreeProvider
 		pushDetail("Workspace", run.workspacePath, "folder");
 		pushDetail("Thread", run.threadId, "comment-discussion");
 		pushDetail("Turn", run.turnId, "debug-restart");
-		pushDetail("Run ID", run.runId, "symbol-key");
+		pushDetail("Run attempt ID", run.runId, "symbol-key");
 		pushDetail("Sources", this.formatCodexRunSource(run), "references");
 		for (const provenance of this.formatCodexRunFieldSourceDetails(run)) {
 			pushDetail(provenance.label, provenance.value, "symbol-field");
@@ -4805,7 +4805,7 @@ export class AgentStatusTreeProvider
 		return [...fieldsBySource.entries()]
 			.sort(([left], [right]) => left.localeCompare(right))
 			.map(([source, fields]) => ({
-				label: `Fields from ${source}`,
+				label: `Provenance from ${source}`,
 				value: [...new Set(fields)].sort().join(", "),
 			}));
 	}
@@ -4889,13 +4889,13 @@ export class AgentStatusTreeProvider
 
 		return new vscode.MarkdownString(
 			[
-				"**Symphony / Codex Runs**",
-				`${runs.length} read-only projected ${runs.length === 1 ? "run" : "runs"}`,
+				"**Symphony / Run Attempts**",
+				`${runs.length} read-only projected ${runs.length === 1 ? "run attempt" : "run attempts"}`,
 				statusLine,
 				runs.length > 0
 					? `${ownedCount} source-owned · ${launcherOnlyCount} launcher-only`
 					: "No source rows are currently projected into this view.",
-				"Lifecycle authority stays with the source owner (OpenClaw, TaskFlow, or launcher).",
+				"Lifecycle ownership stays with the source owner (OpenClaw, TaskFlow, or launcher).",
 			]
 				.filter((part) => part.length > 0)
 				.join("\n\n"),
@@ -5015,7 +5015,7 @@ export class AgentStatusTreeProvider
 	}
 
 	private formatCodexRunLegacyOpenClawNote(task: OpenClawTask): string {
-		return `Also shown in Codex Runs as OpenClaw task ${task.taskId}.`;
+		return `Also shown in Symphony / Run Attempts as OpenClaw task ${task.taskId}.`;
 	}
 
 	private formatCodexRunLegacyLauncherNote(task: AgentTask): string | null {
@@ -5025,9 +5025,9 @@ export class AgentStatusTreeProvider
 		);
 		if (!codexLauncher && !matchedOwner) return null;
 		if (matchedOwner) {
-			return "Also represented in Codex Runs through an explicit OpenClaw session join.";
+			return "Also represented in Symphony / Run Attempts through an explicit OpenClaw session join.";
 		}
-		return "Also shown in Codex Runs as a launcher-only Codex row.";
+		return "Also shown in Symphony / Run Attempts as a launcher-owned run attempt.";
 	}
 
 	private openClawTaskMatchesLauncherTask(
@@ -6533,15 +6533,17 @@ export class AgentStatusTreeProvider
 				f.status === "waiting",
 		).length;
 		const item = new vscode.TreeItem(
-			count === 1 ? "Task Flows · 1" : `Task Flows · ${count}`,
+			count === 1
+				? "Symphony / Workstreams · 1"
+				: `Symphony / Workstreams · ${count}`,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description =
 			activeCount > 0
 				? `${activeCount} active`
 				: count === 1
-					? "1 flow"
-					: `${count} flows`;
+					? "1 workstream"
+					: `${count} workstreams`;
 		item.contextValue = "taskflows";
 		item.iconPath = new vscode.ThemeIcon("layers");
 		return item;
@@ -6551,8 +6553,8 @@ export class AgentStatusTreeProvider
 		const count = node.runs.length;
 		const item = new vscode.TreeItem(
 			count === 1
-				? "Symphony / Codex Runs · 1"
-				: `Symphony / Codex Runs · ${count}`,
+				? "Symphony / Run Attempts · 1"
+				: `Symphony / Run Attempts · ${count}`,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = this.formatCodexRunsDescription(node.runs);
@@ -6580,11 +6582,11 @@ export class AgentStatusTreeProvider
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${run.title}**`,
-				`Run ID: \`${run.runId}\``,
+				`Run Attempt ID: \`${run.runId}\``,
 				`Status: ${this.formatCodexRunStatus(run.status)}`,
-				run.sourceStatus ? `Source Status: \`${run.sourceStatus}\`` : null,
-				`Lifecycle Authority: ${this.formatCodexRunAuthority(run)}`,
-				`Ownership: ${this.formatCodexRunOwnership(run)}`,
+				run.sourceStatus ? `Owner Status: \`${run.sourceStatus}\`` : null,
+				`Lifecycle Owner: ${this.formatCodexRunAuthority(run)}`,
+				`Projection Boundary: ${this.formatCodexRunOwnership(run)}`,
 				run.role ? `Role: \`${run.role}\`` : null,
 				`Sources: ${this.formatCodexRunSource(run)}`,
 				run.execMode ? `Execution Mode: \`${run.execMode}\`` : null,

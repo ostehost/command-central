@@ -83,5 +83,3 @@ export type CodexRunViewField = keyof Omit<CodexRunView, "fieldSources">;
 
 export type WorkflowRunView = CodexRunView;
 export type WorkflowRunSourceRef = CodexRunSourceRef;
-export type WorkflowRunStatus = CodexRunStatus;
-export type WorkflowRunPhase = CodexRunPhase;
