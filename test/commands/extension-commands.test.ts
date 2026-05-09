@@ -8,9 +8,10 @@
  * Commands are tested via their handler logic patterns, not by loading extension.ts.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as path from "node:path";
 import {
+	__setLocalHomeOverrideForTests,
 	type AgentTask,
 	getTaskExecutionHostLabel,
 	isRemoteNodeTaskForCurrentHost,
@@ -29,6 +30,10 @@ let vscodeMock: ReturnType<typeof setupVSCodeMock>;
 beforeEach(() => {
 	mock.restore();
 	vscodeMock = setupVSCodeMock();
+});
+
+afterEach(() => {
+	__setLocalHomeOverrideForTests(null);
 });
 
 function createTask(overrides: Partial<AgentTask> = {}): AgentTask {
@@ -166,6 +171,7 @@ describe("focusAgentTerminal command", () => {
 	});
 
 	test("node-hosted task is detected before hub-local focus strategies", () => {
+		__setLocalHomeOverrideForTests("/Users/hub-test-home");
 		const task = createTask({
 			terminal_backend: "tmux",
 			ghostty_bundle_id: "dev.partnerai.ghostty.command-central",
@@ -184,6 +190,7 @@ describe("focusAgentTerminal command", () => {
 	});
 
 	test("mirrored node task is detected even when launcher persisted exec_mode=hub", () => {
+		__setLocalHomeOverrideForTests("/Users/hub-test-home");
 		const task = createTask({
 			terminal_backend: "tmux",
 			ghostty_bundle_id: "dev.partnerai.ghostty.ghostty-launcher",

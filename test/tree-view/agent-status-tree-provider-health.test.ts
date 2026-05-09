@@ -14,6 +14,7 @@ const realChildProcess = (globalThis as Record<string, unknown>)[
 ] as typeof import("node:child_process");
 
 import * as path from "node:path";
+import { __setLocalHomeOverrideForTests } from "../../src/providers/agent-status-tree-provider.js";
 import {
 	type AgentStatusTreeProvider,
 	createMockRegistry,
@@ -41,6 +42,7 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 	});
 
 	afterEach(() => {
+		__setLocalHomeOverrideForTests(null);
 		disposeHarness(h);
 	});
 
@@ -456,6 +458,7 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 		});
 
 		test("does not probe tmux for mirrored node tasks on the hub", () => {
+			__setLocalHomeOverrideForTests("/Users/hub-test-home");
 			const task = createMockTask({
 				id: "node-mirror-running",
 				status: "running",
