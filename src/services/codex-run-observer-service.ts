@@ -81,7 +81,10 @@ export class CodexRunObserverService {
 			const existing = this.findLauncherMatch(task, runs);
 			if (existing) {
 				this.joinLauncherTask(existing, task);
-			} else if (this.isCodexLauncherTask(task)) {
+			} else if (
+				this.isCodexLauncherTask(task) ||
+				this.isSourceOwnedLauncherRun(task)
+			) {
 				runs.push(this.projectLauncherTask(task));
 			}
 		}
@@ -556,6 +559,45 @@ export class CodexRunObserverService {
 		return [task.agent_backend, task.cli_name].some((value) =>
 			value?.toLowerCase().includes("codex"),
 		);
+	}
+
+	/**
+	 * Source-owned launcher rows are explicit workflow/run records, not generic
+	 * process-discovery rows. They are safe to project as standalone Codex Runs
+	 * because lifecycle authority still stays with the launcher/source owner.
+	 */
+	private isSourceOwnedLauncherRun(task: AgentTask): boolean {
+		const meta = task as AgentTask & {
+			sourceAuthority?: string | null;
+			ownerKind?: string | null;
+			ownerActions?: unknown;
+			workflowRun?: unknown;
+		};
+
+		const sourceAuthority = this.firstNonEmpty(
+			meta.source_authority,
+			meta.sourceAuthority,
+		).toLowerCase();
+		if (sourceAuthority === "launcher") return true;
+
+		if (this.firstNonEmpty(meta.owner_kind, meta.ownerKind)) return true;
+		if (this.isNonEmptyArray(meta.owner_actions)) return true;
+		if (this.isNonEmptyArray(meta.ownerActions)) return true;
+		if (meta.workflow_run != null || meta.workflowRun != null) return true;
+
+		if (meta.provenance && typeof meta.provenance === "object") {
+			const provenance = meta.provenance as {
+				source_ref?: unknown;
+				sourceRef?: unknown;
+			};
+			return provenance.source_ref != null || provenance.sourceRef != null;
+		}
+
+		return false;
+	}
+
+	private isNonEmptyArray(value: unknown): boolean {
+		return Array.isArray(value) && value.length > 0;
 	}
 
 	private openClawTaskRef(

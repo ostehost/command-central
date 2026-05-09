@@ -139,6 +139,9 @@ export interface AgentTask {
 	project_id?: string | null;
 	source_authority?: string | null;
 	owner_kind?: string | null;
+	owner_actions?: unknown[] | null;
+	workflow_run?: unknown;
+	provenance?: unknown;
 	status: AgentTaskStatus;
 	project_dir: string;
 	project_name: string;

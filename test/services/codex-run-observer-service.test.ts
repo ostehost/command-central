@@ -310,6 +310,85 @@ describe("CodexRunObserverService", () => {
 		]);
 	});
 
+	test("projects source-owned Claude launcher rows as standalone runs", () => {
+		const service = new CodexRunObserverService();
+
+		const sourceOwnedVariants: Array<Partial<AgentTask>> = [
+			{ source_authority: "launcher" },
+			{ owner_kind: "launcher" },
+			{ owner_kind: "openclaw" },
+			{ owner_actions: [{ name: "approve" }] },
+			{ workflow_run: { id: "wf-1" } },
+			{ provenance: { source_ref: "launcher:abc" } },
+		];
+
+		for (const overrides of sourceOwnedVariants) {
+			const runs = service.project({
+				agentTasks: [
+					launcherTask({
+						id: "claude-source-owned",
+						agent_backend: "claude",
+						session_id: "claude-source-owned-session",
+						...overrides,
+					}),
+				],
+				openClawTasks: [],
+				taskFlows: [],
+			});
+
+			expect(runs).toHaveLength(1);
+			expect(runs[0]?.source).toEqual({
+				kind: "launcher",
+				id: "claude-source-owned",
+				path: "/tmp/project-a",
+			});
+			expect(runs[0]?.runtime).toBe("claude");
+		}
+
+		const camelRuns = service.project({
+			agentTasks: [
+				{
+					...launcherTask({
+						id: "claude-source-owned-camel",
+						agent_backend: "claude",
+						session_id: "claude-source-owned-camel-session",
+					}),
+					sourceAuthority: "launcher",
+					ownerKind: "launcher",
+				} as AgentTask,
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		expect(camelRuns).toHaveLength(1);
+		expect(camelRuns[0]?.source.kind).toBe("launcher");
+	});
+
+	test("excludes Claude launcher rows that lack source-owned metadata", () => {
+		const service = new CodexRunObserverService();
+		const runs = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "plain-claude-task",
+					agent_backend: "claude",
+					session_id: "plain-claude-session",
+				}),
+				launcherTask({
+					id: "empty-owner-actions",
+					agent_backend: "claude",
+					session_id: "empty-owner-actions-session",
+					owner_actions: [],
+					provenance: {},
+				}),
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		expect(runs).toEqual([]);
+	});
+
 	test("joins launcher metadata when the session prefix is on the launcher side", () => {
 		const service = new CodexRunObserverService();
 		const [run] = service.project({
