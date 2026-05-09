@@ -659,6 +659,47 @@ describe("OpenClaw task nodes", () => {
 		);
 	});
 
+	test("Symphony Run Attempts surface mode and next step for failed owner rows", async () => {
+		const provider = await createProvider([]);
+		setLauncherTasks(provider, [
+			{
+				...createLauncherTask({
+					id: "team-contract-failure",
+					status: "contract_failure",
+					source_authority: "launcher",
+					owner_kind: "launcher",
+					agent_backend: "claude",
+					prompt_summary: "Fix Symphony continuation",
+				}),
+				team: "full",
+			} as AgentTask,
+		]);
+
+		const run = findCodexRun(
+			provider,
+			(candidate) => candidate.runId === "team-contract-failure",
+		);
+		const details = provider.getChildren({ type: "codexRun", run });
+
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Mode" &&
+					node.value === "team:full",
+			),
+		).toBe(true);
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Next step" &&
+					node.value ===
+						"Review evidence, then route launcher fixup or relaunch (team:full)",
+			),
+		).toBe(true);
+	});
+
 	test("Symphony Run Attempts exclude non-Codex launcher-only rows from projection", async () => {
 		const provider = await createProvider([]);
 		const launcherTask = createLauncherTask({

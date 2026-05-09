@@ -31,6 +31,18 @@ type ArtifactCarrier = {
 	branch?: unknown;
 };
 
+type ModeCarrier = {
+	agent_backend?: unknown;
+	runtime?: unknown;
+	source_authority?: unknown;
+	owner_kind?: unknown;
+	team?: unknown;
+	team_template?: unknown;
+	agent_mode?: unknown;
+	orchestration_mode?: unknown;
+	provenance?: unknown;
+};
+
 const ACTIVE_STATUS_ORDER: Record<CodexRunStatus, number> = {
 	running: 0,
 	queued: 1,
@@ -169,6 +181,7 @@ export class CodexRunObserverService {
 		if (run.host) this.addFieldSource(run, "host", ref);
 		if (run.model) this.addFieldSource(run, "model", ref);
 		if (run.lastEventAt != null) this.addFieldSource(run, "lastEventAt", ref);
+		if (run.nextAction) this.addFieldSource(run, "nextAction", ref);
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
 		if (run.endedAt != null) this.addFieldSource(run, "endedAt", ref);
 		if (artifacts.length > 0) this.addFieldSource(run, "artifactPaths", ref);
@@ -188,6 +201,7 @@ export class CodexRunObserverService {
 			runtime: "taskflow",
 			flowId: flow.flowId,
 			sourceAuthority: "taskflow",
+			orchestrationMode: "workstream",
 			lastEvent: flow.error,
 			lastEventAt: flow.endedAt ?? flow.startedAt ?? flow.createdAt,
 			startedAt: flow.startedAt,
@@ -202,6 +216,7 @@ export class CodexRunObserverService {
 		this.addFieldSource(run, "status", ref);
 		this.addFieldSource(run, "flowId", ref);
 		this.addFieldSource(run, "sourceAuthority", ref);
+		this.addFieldSource(run, "orchestrationMode", ref);
 		this.addFieldSource(run, "lastEventAt", ref);
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
 		if (run.endedAt != null) this.addFieldSource(run, "endedAt", ref);
@@ -231,6 +246,7 @@ export class CodexRunObserverService {
 		const model = this.firstNonEmpty(task.actual_model, task.model);
 		const artifacts = this.collectArtifactPaths(task);
 		const evidence = this.collectEvidence(task, ref);
+		const orchestrationMode = this.resolveOrchestrationMode(task);
 		const run: CodexRunView = {
 			runId: this.firstNonEmpty(
 				task.id,
@@ -260,6 +276,7 @@ export class CodexRunObserverService {
 			sourceAuthority: task.source_authority ?? "launcher",
 			ownerKind: task.owner_kind ?? "launcher",
 			role: this.normalizeRole(task.role),
+			orchestrationMode,
 			callbackPresent: Boolean(task.callback_url),
 			reviewState: task.review_state ?? undefined,
 			fixupState: task.fixup_state ?? undefined,
@@ -267,6 +284,14 @@ export class CodexRunObserverService {
 			host: task.exec_host ?? undefined,
 			model,
 			lastEvent: task.error_message ?? undefined,
+			nextAction: this.resolveNextAction(
+				this.normalizeStatus(sourceStatus),
+				sourceStatus,
+				task.owner_kind ?? "launcher",
+				task.review_state ?? undefined,
+				task.fixup_state ?? undefined,
+				orchestrationMode,
+			),
 			lastEventAt: updatedAt ?? completedAt ?? startedAt,
 			startedAt,
 			endedAt: completedAt,
@@ -285,6 +310,8 @@ export class CodexRunObserverService {
 		this.addFieldSource(run, "sourceAuthority", ref);
 		this.addFieldSource(run, "ownerKind", ref);
 		if (run.role) this.addFieldSource(run, "role", ref);
+		if (run.orchestrationMode)
+			this.addFieldSource(run, "orchestrationMode", ref);
 		this.addFieldSource(run, "callbackPresent", ref);
 		if (run.sessionKey) this.addFieldSource(run, "sessionKey", ref);
 		if (run.execMode) this.addFieldSource(run, "execMode", ref);
@@ -296,6 +323,7 @@ export class CodexRunObserverService {
 		if (run.fixupState) this.addFieldSource(run, "fixupState", ref);
 		if (run.model) this.addFieldSource(run, "model", ref);
 		if (run.lastEventAt != null) this.addFieldSource(run, "lastEventAt", ref);
+		if (run.nextAction) this.addFieldSource(run, "nextAction", ref);
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
 		if (run.endedAt != null) this.addFieldSource(run, "endedAt", ref);
 		if (artifacts.length > 0) this.addFieldSource(run, "artifactPaths", ref);
@@ -369,6 +397,14 @@ export class CodexRunObserverService {
 			this.addFieldSource(run, "ownerKind", ref);
 		}
 
+		if (!run.orchestrationMode) {
+			const orchestrationMode = this.resolveOrchestrationMode(task);
+			if (orchestrationMode) {
+				run.orchestrationMode = orchestrationMode;
+				this.addFieldSource(run, "orchestrationMode", ref);
+			}
+		}
+
 		const role = this.normalizeRole(task.role);
 		if (!run.role && role) {
 			run.role = role;
@@ -388,6 +424,19 @@ export class CodexRunObserverService {
 		if (!run.fixupState && task.fixup_state) {
 			run.fixupState = task.fixup_state;
 			this.addFieldSource(run, "fixupState", ref);
+		}
+
+		const nextAction = this.resolveNextAction(
+			run.status,
+			task.status,
+			run.ownerKind,
+			run.reviewState,
+			run.fixupState,
+			run.orchestrationMode,
+		);
+		if (nextAction && run.nextAction !== nextAction) {
+			run.nextAction = nextAction;
+			this.addFieldSource(run, "nextAction", ref);
 		}
 
 		if (!run.workspacePath && task.project_dir) {
@@ -754,6 +803,84 @@ export class CodexRunObserverService {
 		push("Branch", source.branch, "metadata");
 
 		return this.uniqueEvidence(evidence);
+	}
+
+	private resolveOrchestrationMode(source: ModeCarrier): string | undefined {
+		const explicitMode = this.firstNonEmpty(
+			this.stringValue(source.orchestration_mode),
+			this.stringValue(source.agent_mode),
+		);
+		if (explicitMode) return explicitMode;
+
+		const teamTemplate = this.firstNonEmpty(
+			this.stringValue(source.team_template),
+			this.stringValue(source.team),
+		);
+		if (teamTemplate) return `team:${teamTemplate}`;
+
+		const provenance = this.objectValue(source.provenance);
+		const adapterKind = this.stringValue(provenance?.["adapter_kind"]);
+		if (adapterKind) {
+			const normalizedAdapter = adapterKind.toLowerCase();
+			if (normalizedAdapter.includes("ralph")) return "ralph";
+			if (normalizedAdapter.includes("team")) return "team";
+			if (normalizedAdapter.includes("ghostty-launcher")) return "normal";
+			return adapterKind;
+		}
+
+		const ownershipHint = this.firstNonEmpty(
+			this.stringValue(source.source_authority),
+			this.stringValue(source.owner_kind),
+		).toLowerCase();
+		if (ownershipHint.includes("ralph")) return "ralph";
+
+		if (this.stringValue(source.agent_backend)) {
+			return "normal";
+		}
+
+		return undefined;
+	}
+
+	private resolveNextAction(
+		status: CodexRunStatus,
+		sourceStatus?: string,
+		ownerKind?: string,
+		reviewState?: string,
+		fixupState?: string,
+		orchestrationMode?: string,
+	): string | undefined {
+		const owner = ownerKind || "source owner";
+		const mode = orchestrationMode ? ` (${orchestrationMode})` : "";
+		if (sourceStatus === "contract_failure") {
+			return `Review evidence, then route ${owner} fixup or relaunch${mode}`;
+		}
+		if (status === "failed" || status === "timed_out" || status === "lost") {
+			return `Inspect evidence, then dispatch owner-routed fixup${mode}`;
+		}
+		if (status === "blocked" || status === "waiting") {
+			return `Steer the active owner or unblock prerequisites${mode}`;
+		}
+		if (status === "stopped" || status === "cancelled") {
+			return `Decide whether to relaunch through ${owner}${mode}`;
+		}
+		if (reviewState === "pending") {
+			return "Review pending handoff, report findings, then continue";
+		}
+		if (fixupState === "pending") {
+			return `Dispatch queued fixup through ${owner}${mode}`;
+		}
+		return undefined;
+	}
+
+	private stringValue(value: unknown): string | undefined {
+		return typeof value === "string" && value.trim() ? value.trim() : undefined;
+	}
+
+	private objectValue(value: unknown): Record<string, unknown> | undefined {
+		if (!value || typeof value !== "object" || Array.isArray(value)) {
+			return undefined;
+		}
+		return value as Record<string, unknown>;
 	}
 
 	private parseTimestamp(value: string | null | undefined): number | undefined {

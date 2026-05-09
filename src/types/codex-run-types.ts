@@ -71,6 +71,7 @@ export interface CodexRunView {
 	sourceAuthority?: string;
 	ownerKind?: string;
 	role?: CodexRunRole;
+	orchestrationMode?: string;
 	callbackPresent?: boolean;
 	reviewState?: string;
 	fixupState?: string;
@@ -80,6 +81,7 @@ export interface CodexRunView {
 	model?: string;
 	currentTool?: string;
 	lastEvent?: string;
+	nextAction?: string;
 	lastEventAt?: number;
 	startedAt?: number;
 	endedAt?: number;

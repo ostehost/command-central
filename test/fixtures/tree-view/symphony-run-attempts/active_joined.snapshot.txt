@@ -1,15 +1,16 @@
 - Symphony / Run Attempts · 1 — 1 working {codexRuns}
-  - Review the Symphony projection — Running · Source-owned row with Launcher metadata · reviewer · cron · <age> · gpt-5.5 {codexRun.running}
+  - Review the Symphony projection — Running · Source-owned row with Launcher metadata · normal · reviewer · cron · <age> · gpt-5.5 {codexRun.running}
     - Status: Running {agentTaskDetail}
     - Owner status: running {agentTaskDetail}
     - Lifecycle owner: OpenClaw task bg-joined {agentTaskDetail}
     - Projection boundary: Source-owned row with Launcher metadata {agentTaskDetail}
+    - Mode: normal {agentTaskDetail}
     - Role: reviewer {agentTaskDetail}
     - Model: gpt-5.5 {agentTaskDetail}
     - Workspace: /tmp/symphony-app {agentTaskDetail}
     - Run attempt ID: run-bg-joined {agentTaskDetail}
     - Sources: OpenClaw task bg-joined + Launcher launcher-joined (/tmp/symphony-app) {agentTaskDetail}
-    - Provenance from Launcher launcher-joined (/tmp/symphony-app): artifact paths, evidence, last event at, model, role, started at, workspace path {agentTaskDetail}
+    - Provenance from Launcher launcher-joined (/tmp/symphony-app): artifact paths, evidence, last event at, model, orchestration mode, role, started at, workspace path {agentTaskDetail}
     - Provenance from OpenClaw task bg-joined: last event at, run id, session key, source authority, source status, status, task id, title {agentTaskDetail}
     - Last event: <timestamp> {agentTaskDetail}
     - Evidence: Prompt: /tmp/symphony-app/prompt.md {agentTaskDetail}

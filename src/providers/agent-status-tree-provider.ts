@@ -142,6 +142,10 @@ export interface AgentTask {
 	owner_actions?: unknown[] | null;
 	workflow_run?: unknown;
 	provenance?: unknown;
+	team?: string | null;
+	team_template?: string | null;
+	agent_mode?: string | null;
+	orchestration_mode?: string | null;
 	status: AgentTaskStatus;
 	project_dir: string;
 	project_name: string;
@@ -4727,6 +4731,8 @@ export class AgentStatusTreeProvider
 			this.formatCodexRunOwnership(run),
 			"account",
 		);
+		pushDetail("Mode", run.orchestrationMode, "symbol-operator");
+		pushDetail("Next step", run.nextAction, "debug-step-into");
 		pushDetail("Role", run.role, "person");
 		pushDetail("Model", run.model, "symbol-constant");
 		pushDetail("Phase", run.phase, "debug-step-over");
@@ -6603,6 +6609,7 @@ export class AgentStatusTreeProvider
 		const descriptionParts = [
 			this.formatCodexRunStatus(run.status),
 			this.formatCodexRunOwnership(run),
+			run.orchestrationMode,
 			run.role,
 			run.runtime,
 			activity ? relativeTime(activity) : undefined,
@@ -6621,6 +6628,8 @@ export class AgentStatusTreeProvider
 				run.sourceStatus ? `Owner Status: \`${run.sourceStatus}\`` : null,
 				`Lifecycle Owner: ${this.formatCodexRunAuthority(run)}`,
 				`Projection Boundary: ${this.formatCodexRunOwnership(run)}`,
+				run.orchestrationMode ? `Mode: \`${run.orchestrationMode}\`` : null,
+				run.nextAction ? `Next Step: ${run.nextAction}` : null,
 				run.role ? `Role: \`${run.role}\`` : null,
 				`Sources: ${this.formatCodexRunSource(run)}`,
 				run.execMode ? `Execution Mode: \`${run.execMode}\`` : null,

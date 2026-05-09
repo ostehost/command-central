@@ -706,6 +706,68 @@ describe("CodexRunObserverService", () => {
 		expect(run?.phase).toBe("LaunchingAgentProcess");
 	});
 
+	test("projects launcher mode and next action for failed autonomous attempts", () => {
+		const service = new CodexRunObserverService();
+		const runs = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "normal-failure",
+					status: "contract_failure",
+					agent_backend: "claude",
+					source_authority: "launcher",
+					owner_kind: "launcher",
+					error_message: "handoff artifact missing",
+				}),
+				{
+					...launcherTask({
+						id: "team-failure",
+						status: "failed",
+						agent_backend: "claude",
+						source_authority: "launcher",
+						owner_kind: "launcher",
+						session_id: "team-failure-session",
+					}),
+					team: "full",
+				} as AgentTask,
+				launcherTask({
+					id: "ralph-failure",
+					status: "failed",
+					agent_backend: "claude",
+					source_authority: "launcher",
+					owner_kind: "launcher",
+					session_id: "ralph-failure-session",
+					provenance: { adapter_kind: "ralph-loop" },
+				}),
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		const byId = new Map(runs.map((run) => [run.runId, run]));
+		expect(byId.get("normal-failure")).toMatchObject({
+			status: "failed",
+			sourceStatus: "contract_failure",
+			orchestrationMode: "normal",
+			nextAction:
+				"Review evidence, then route launcher fixup or relaunch (normal)",
+		});
+		expect(byId.get("team-failure")).toMatchObject({
+			orchestrationMode: "team:full",
+			nextAction:
+				"Inspect evidence, then dispatch owner-routed fixup (team:full)",
+		});
+		expect(byId.get("ralph-failure")).toMatchObject({
+			orchestrationMode: "ralph",
+			nextAction: "Inspect evidence, then dispatch owner-routed fixup (ralph)",
+		});
+		expect(byId.get("team-failure")?.fieldSources.orchestrationMode).toEqual([
+			{ kind: "launcher", id: "team-failure", path: "/tmp/project-a" },
+		]);
+		expect(byId.get("team-failure")?.fieldSources.nextAction).toEqual([
+			{ kind: "launcher", id: "team-failure", path: "/tmp/project-a" },
+		]);
+	});
+
 	test("orders projection deterministically by active state, activity, and run id", () => {
 		const service = new CodexRunObserverService();
 		const inputs = {
