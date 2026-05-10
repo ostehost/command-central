@@ -117,7 +117,7 @@ Recommended next step: cut rc23 only after deciding that the harness hardening p
 Implemented in follow-up commits:
 
 - `2cead4f test(agent-status): record expected proof artifact sha`: the proof runner accepts `--expected-sha` or `COMMAND_CENTRAL_EXPECTED_VSIX_SHA256`.
-- Current cleanup: the manifest separates expected-SHA matching from published artifact matching.
+- `0a28d99 test(agent-status): distinguish proof artifact identity`: the manifest separates expected-SHA matching from published artifact matching.
 
 Before using this proof path as a release gate, pass the accepted prerelease SHA explicitly:
 
@@ -132,15 +132,15 @@ This prevents `installed_version` or expected-SHA success from being mistaken fo
 
 For multi-node Symphony proof, each node should emit its own manifest. Command Central should not merge those manifests or own cross-node orchestration; the conductor/orchestrator should aggregate node proof while CC remains the local read-only Status Surface.
 
-Expected-SHA proof for unshipped commit `2cead4f`:
+Expected-SHA proof for unshipped commit `0a28d99`:
 
-- Temporary artifact: `/tmp/command-central-proof-2cead4f.vsix`
-- SHA256: `bc9e0ffb8c6baf145bb870aeb717a78886898ecefec71c54da38969b6bf35fbd`
-- Passive manifest: `/Users/ostehost/.openclaw/tmp/cc-proof-command-central-final3/logs/installed-vsix-agent-status-proof-1778373767480.json`
-- Passive result: expected SHA matched; identity kind was temporary proof artifact; task count `304`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 27`, errors none
-- Live target: `cc-installed-vsix-proof-live7-20260509-2045`
-- Live manifest: `/Users/ostehost/.openclaw/tmp/cc-proof-command-central-final3/logs/installed-vsix-agent-status-proof-1778373838431.json`
-- Live result: expected SHA matched; identity kind was temporary proof artifact; task count `305`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 28`, copy/open/focus passed, errors none
+- Temporary artifact: `/tmp/command-central-proof-0a28d99.vsix`
+- SHA256: `67c820e5c73611359ac4627c21f8d8a6e6417027240ee6b6e3d2cc50baa17f8e`
+- Passive manifest: `/Users/ostehost/.openclaw/tmp/cc-proof-command-central-final3/logs/installed-vsix-agent-status-proof-1778375375340.json`
+- Passive result: `vsix_matches_expected_sha: true`, `expected_vsix_identity_kind: temporary-proof-artifact`, `published_release_match: null`, task count `306`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 29`, errors none
+- Live target: `cc-installed-vsix-proof-live8-20260509-2110`
+- Live manifest: `/Users/ostehost/.openclaw/tmp/cc-proof-command-central-final3/logs/installed-vsix-agent-status-proof-1778375393477.json`
+- Live result: `vsix_matches_expected_sha: true`, `expected_vsix_identity_kind: temporary-proof-artifact`, `published_release_match: null`, task count `306`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 29`, copy/open/focus passed, errors none
 
 ## Process Finding
 
