@@ -893,7 +893,36 @@ function normalizeTask(
 	const promptFile = asString(raw["prompt_file"]) ?? "";
 
 	return {
+		task_id: asString(raw["task_id"]) ?? null,
 		id,
+		flow_id: asString(raw["flow_id"]) ?? null,
+		project_id: asString(raw["project_id"]) ?? null,
+		source_authority: asString(raw["source_authority"]) ?? null,
+		owner_kind: asString(raw["owner_kind"]) ?? null,
+		owner_actions: Array.isArray(raw["owner_actions"])
+			? raw["owner_actions"]
+			: null,
+		workflow_run:
+			raw["workflow_run"] && typeof raw["workflow_run"] === "object"
+				? raw["workflow_run"]
+				: undefined,
+		provenance:
+			raw["provenance"] && typeof raw["provenance"] === "object"
+				? raw["provenance"]
+				: undefined,
+		tracker_kind: asString(raw["tracker_kind"]) ?? null,
+		issue_id: asString(raw["issue_id"]) ?? null,
+		issue_identifier: asString(raw["issue_identifier"]) ?? null,
+		issue_state: asString(raw["issue_state"]) ?? null,
+		issue_url: asString(raw["issue_url"]) ?? null,
+		workflow_run_id: asString(raw["workflow_run_id"]) ?? null,
+		workflow_path: asString(raw["workflow_path"]) ?? null,
+		workflow_file: asString(raw["workflow_file"]) ?? null,
+		workflow_name: asString(raw["workflow_name"]) ?? null,
+		team: asString(raw["team"]) ?? null,
+		team_template: asString(raw["team_template"]) ?? null,
+		agent_mode: asString(raw["agent_mode"]) ?? null,
+		orchestration_mode: asString(raw["orchestration_mode"]) ?? null,
 		status,
 		project_dir: projectDir,
 		project_name: projectName,

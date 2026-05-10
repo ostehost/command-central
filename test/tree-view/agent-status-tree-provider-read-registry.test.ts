@@ -232,6 +232,83 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 		}
 	});
 
+	test("preserves Symphony owner metadata from tasks.json", () => {
+		const provider = makeProvider();
+		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
+		const tasksFile = path.join(tmpDir, "tasks.json");
+		fs.writeFileSync(
+			tasksFile,
+			JSON.stringify({
+				version: 2,
+				tasks: {
+					sourceOwned: {
+						task_id: "sourceOwned",
+						id: "sourceOwned",
+						flow_id: "flow-source",
+						project_id: "command-central",
+						status: "running",
+						source_authority: "launcher",
+						owner_kind: "launcher",
+						owner_actions: [
+							{
+								action: "focusTerminal",
+								ownerKind: "launcher",
+							},
+						],
+						workflow_run: {
+							id: "sourceOwned",
+							pending_review_path: "/tmp/oste-pending-review/sourceOwned.json",
+						},
+						provenance: {
+							source_ref: "launcher:sourceOwned",
+							adapter_kind: "ghostty-launcher",
+						},
+						orchestration_mode: "normal",
+						agent_mode: "normal",
+						team_template: "full",
+						project_dir: "/Users/ostehost/projects/command-central",
+						project_name: "command-central",
+						session_id: "agent-command-central",
+						agent_backend: "claude",
+						bundle_path: "/Applications/Projects/command-central.app",
+						prompt_file: "/tmp/task.md",
+						started_at: "2026-05-09T23:57:31Z",
+						attempts: 1,
+						max_attempts: 3,
+					},
+				},
+			}),
+		);
+
+		try {
+			setProviderTaskFiles(provider, [tasksFile]);
+			const registry = realReadRegistry.call(provider);
+			const task = registry.tasks["sourceOwned"];
+			expect(task?.task_id).toBe("sourceOwned");
+			expect(task?.flow_id).toBe("flow-source");
+			expect(task?.project_id).toBe("command-central");
+			expect(task?.source_authority).toBe("launcher");
+			expect(task?.owner_kind).toBe("launcher");
+			expect(task?.owner_actions).toEqual([
+				{ action: "focusTerminal", ownerKind: "launcher" },
+			]);
+			expect(task?.workflow_run).toEqual({
+				id: "sourceOwned",
+				pending_review_path: "/tmp/oste-pending-review/sourceOwned.json",
+			});
+			expect(task?.provenance).toEqual({
+				source_ref: "launcher:sourceOwned",
+				adapter_kind: "ghostty-launcher",
+			});
+			expect(task?.orchestration_mode).toBe("normal");
+			expect(task?.agent_mode).toBe("normal");
+			expect(task?.team_template).toBe("full");
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+			provider.dispose();
+		}
+	});
+
 	test("merges additional mirrored node task registries", () => {
 		const provider = makeProvider();
 		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
