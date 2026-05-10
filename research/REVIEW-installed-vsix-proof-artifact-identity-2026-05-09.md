@@ -114,7 +114,9 @@ Recommended next step: cut rc23 only after deciding that the harness hardening p
 
 ## Next Harness Hardening
 
-Before using this proof path as a release gate, add an explicit release-identity check:
+Implemented in follow-up commit `2cead4f test(agent-status): record expected proof artifact sha`: the proof runner now accepts `--expected-sha` or `COMMAND_CENTRAL_EXPECTED_VSIX_SHA256` and the manifest records `expected_vsix_sha256` plus `vsix_matches_published_release`.
+
+Before using this proof path as a release gate, pass the accepted prerelease SHA explicitly:
 
 - Accept an expected SHA or allowlist for published artifacts.
 - Emit `vsix_matches_published_release: true | false`.
@@ -124,6 +126,16 @@ Before using this proof path as a release gate, add an explicit release-identity
 This prevents `installed_version` from being mistaken for published artifact identity. `installed_version` proves the package manifest version loaded by VS Code; `vsix_sha256` plus an expected-release SHA proves the artifact identity.
 
 For multi-node Symphony proof, each node should emit its own manifest. Command Central should not merge those manifests or own cross-node orchestration; the conductor/orchestrator should aggregate node proof while CC remains the local read-only Status Surface.
+
+Expected-SHA proof for unshipped commit `2cead4f`:
+
+- Temporary artifact: `/tmp/command-central-proof-2cead4f.vsix`
+- SHA256: `bc9e0ffb8c6baf145bb870aeb717a78886898ecefec71c54da38969b6bf35fbd`
+- Passive manifest: `/Users/ostehost/.openclaw/tmp/cc-proof-command-central-final3/logs/installed-vsix-agent-status-proof-1778373767480.json`
+- Passive result: `vsix_matches_published_release: true`, task count `304`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 27`, errors none
+- Live target: `cc-installed-vsix-proof-live7-20260509-2045`
+- Live manifest: `/Users/ostehost/.openclaw/tmp/cc-proof-command-central-final3/logs/installed-vsix-agent-status-proof-1778373838431.json`
+- Live result: `vsix_matches_published_release: true`, task count `305`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 28`, copy/open/focus passed, errors none
 
 ## Process Finding
 
