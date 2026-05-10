@@ -241,7 +241,10 @@ async function runLiveActionProbes(
 		errors.push("Live target has no copy command.");
 		actions.push(makeAction("copy", "failed", undefined, "missing command"));
 	} else {
-		const before = await vscode.env.clipboard.readText();
+		const before = `command-central-proof-sentinel-${Date.now()}-${Math.random()
+			.toString(16)
+			.slice(2)}`;
+		await vscode.env.clipboard.writeText(before);
 		await executeSerializedCommand(copyNode);
 		const after = await vscode.env.clipboard.readText();
 		if (after && after !== before) {
