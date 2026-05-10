@@ -394,6 +394,14 @@ test-installed-vsix-agent-status *args:
     @echo ""
     @bun run test/integration/runInstalledVsixAgentStatusProof.ts {{args}}
 
+# Verify the normal VS Code profile is actually consuming the expected VSIX.
+verify-vscode-consumption *args:
+    @echo "🔎 Verifying VS Code extension consumption..."
+    @echo "   • Checks code --list-extensions --show-versions"
+    @echo "   • Checks the installed ~/.vscode/extensions package"
+    @echo ""
+    @bun run scripts-v2/verify-vscode-extension-consumption.ts {{args}}
+
 # Run tests with coverage report
 test-coverage:
     @echo "📊 Running tests with coverage..."
@@ -597,9 +605,10 @@ cut-preview *args="--prerelease":
     @echo "│  Next steps (manual)                             │"
     @echo "├──────────────────────────────────────────────────┤"
     @echo "│  1. Cmd+Shift+P → 'Developer: Reload Window'     │"
-    @echo "│  2. Smoke test the extension in VS Code          │"
-    @echo "│  3. Review git status, stage + commit the churn  │"
-    @echo "│  4. Do NOT push/tag — user drives git            │"
+    @echo "│  2. Run just verify-vscode-consumption           │"
+    @echo "│  3. Smoke test the extension in VS Code          │"
+    @echo "│  4. Review git status, stage + commit the churn  │"
+    @echo "│  5. Do NOT push/tag — user drives git            │"
     @echo "╰──────────────────────────────────────────────────╯"
 
 # Preflight: refuse dirty trees (both repos), warn off-hub.

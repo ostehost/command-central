@@ -102,10 +102,22 @@ Gate artifact output:
 
 ### Step 3: Test Installation
 
-After `just dist`, VS Code should have the new version:
+After `just dist`, prove the normal VS Code profile has the new version before calling the candidate consumable:
+
+```bash
+just verify-vscode-consumption \
+  --vsix releases/command-central-<version>.vsix \
+  --expected-version <version> \
+  --manifest-out research/prerelease-gate/vscode-consumption-<version>.json
+```
+
+Then reload VS Code and smoke the installed extension:
 - Open Command Palette
+- Run `Developer: Reload Window`
 - Run extension commands
 - Verify key functionality
+
+For MacBook node dogfood, run the same command on the node against `/Users/ostehost/.vscode/extensions`; the receipt must show the exact expected version before reporting a prerelease as installed for consumption.
 
 ### Step 4: Commit
 

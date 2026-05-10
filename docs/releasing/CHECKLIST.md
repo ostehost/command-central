@@ -39,6 +39,8 @@ Use this checklist before running `just dist`.
 ## Post-Build
 
 - [ ] Extension loads in VS Code
+- [ ] Normal VS Code profile reports the exact built version:
+      `just verify-vscode-consumption --vsix releases/command-central-<version>.vsix --expected-version <version> --manifest-out research/prerelease-gate/vscode-consumption-<version>.json`
 - [ ] Commands appear in Command Palette
 - [ ] No errors in Extension Host console
 - [ ] Quick smoke test of key features
@@ -68,6 +70,9 @@ just prerelease-gate
 
 # Build prerelease after gate
 just prerelease
+
+# Prove the normal VS Code profile is consuming the built VSIX
+just verify-vscode-consumption --vsix releases/command-central-<version>.vsix --expected-version <version>
 
 # Build release
 just dist            # patch (default)
