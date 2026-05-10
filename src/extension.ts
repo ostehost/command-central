@@ -366,13 +366,6 @@ function matchesRequiredTaskId(
 	if (element.type === "openclawTask") {
 		return element.task.taskId === requiredTaskId;
 	}
-	if (element.type === "detail") {
-		return (
-			element.taskId.includes(requiredTaskId) ||
-			element.label.includes(requiredTaskId) ||
-			element.value.includes(requiredTaskId)
-		);
-	}
 	return false;
 }
 
