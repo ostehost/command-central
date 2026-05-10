@@ -25,6 +25,7 @@ interface ProofAction {
 interface ProofManifest {
 	proof_kind: "installed-vsix-agent-status";
 	mode: ProofMode;
+	passive_or_live_mode: ProofMode;
 	machine: {
 		hostname: string;
 		platform: NodeJS.Platform;
@@ -36,11 +37,19 @@ interface ProofManifest {
 	vsix_path: string;
 	vsix_sha256: string;
 	commit: string;
+	command_central_loaded_from_vsix: true;
 	is_extension_development_path_used_for_cc: false;
 	task_registry_path: string;
 	tree_snapshot: AgentStatusProofTreeSnapshot;
+	selected_symphony_nodes: Array<{
+		path: string[];
+		label: string;
+		node_kind: string;
+		owner_fields?: Record<string, unknown>;
+	}>;
 	source_authority_matrix: ReturnType<typeof buildSourceAuthorityMatrix>;
 	actions: ProofAction[];
+	action_probe_results: ProofAction[];
 	skips: string[];
 	errors: string[];
 }
@@ -165,6 +174,27 @@ function makeAction(
 		ui_effect: uiEffect,
 		detail,
 	};
+}
+
+function selectedNodeSummary(selected: AgentStatusProofSelectedNode): {
+	path: string[];
+	label: string;
+	node_kind: string;
+	owner_fields?: Record<string, unknown>;
+} {
+	return {
+		path: selected.path,
+		label: selected.node.label,
+		node_kind: selected.node.nodeKind,
+		owner_fields: selected.node.ownerFields,
+	};
+}
+
+function hasDetailLabel(
+	node: AgentStatusProofTreeNode,
+	prefix: string,
+): boolean {
+	return allNodes(node).some((candidate) => candidate.label.startsWith(prefix));
 }
 
 async function getProofTreeSnapshot(
@@ -325,6 +355,7 @@ export async function run(): Promise<void> {
 			getAgentStatusTreeSnapshot(options?: {
 				maxDepth?: number;
 				maxChildrenPerNode?: number;
+				rootLabelPrefixes?: string[];
 				requiredLabels?: string[];
 				requiredTaskId?: string;
 			}): AgentStatusProofTreeSnapshot;
@@ -345,8 +376,28 @@ export async function run(): Promise<void> {
 	const selectedRows = [
 		...findNodesByLabel(snapshot.roots, (label) =>
 			label.startsWith("Symphony /"),
-		),
+		).map((node) => ({ path: [node.label], node })),
 	];
+	const passiveRun = snapshot.roots
+		.find((root) => root.label.startsWith("Symphony / Run Attempts"))
+		?.children?.find((node) => node.nodeKind === "codexRun");
+	if (passiveRun && mode === "passive") {
+		if (!hasDetailLabel(passiveRun, "Lifecycle owner")) {
+			errors.push("Passive run attempt is missing lifecycle-owner detail.");
+		}
+		if (!hasDetailLabel(passiveRun, "Provenance from")) {
+			errors.push("Passive run attempt is missing provenance detail.");
+		}
+		if (!hasDetailLabel(passiveRun, "Tracker source")) {
+			errors.push(
+				"Passive run attempt is missing explicit tracker-state detail.",
+			);
+		}
+		selectedRows.push({
+			path: ["Symphony / Run Attempts", passiveRun.label],
+			node: passiveRun,
+		});
+	}
 	const liveSelected = snapshot.selected.requiredTaskId;
 	if (mode === "live") {
 		if (!requiredTaskId) {
@@ -381,22 +432,28 @@ export async function run(): Promise<void> {
 		const hasAuthority = targetNodes.some((node) =>
 			node.label.startsWith("Lifecycle owner"),
 		);
+		const hasTrackerState = targetNodes.some((node) =>
+			node.label.startsWith("Tracker source"),
+		);
 		if (mode === "live") {
 			if (!hasEvidence) errors.push("Live target is missing evidence rows.");
 			if (!hasProvenance)
 				errors.push("Live target is missing provenance rows.");
 			if (!hasAuthority)
 				errors.push("Live target is missing owner authority fields.");
+			if (!hasTrackerState)
+				errors.push("Live target is missing explicit tracker-state detail.");
 			const probes = await runLiveActionProbes(liveSelected);
 			actions.push(...probes.actions);
 			errors.push(...probes.errors);
 		}
-		selectedRows.push(liveSelected.node);
+		selectedRows.push(liveSelected);
 	}
 
 	const manifest: ProofManifest = {
 		proof_kind: "installed-vsix-agent-status",
 		mode,
+		passive_or_live_mode: mode,
 		machine: {
 			hostname: os.hostname(),
 			platform: process.platform,
@@ -408,13 +465,14 @@ export async function run(): Promise<void> {
 		vsix_path: requireEnv("COMMAND_CENTRAL_VSIX_PROOF_PATH"),
 		vsix_sha256: requireEnv("COMMAND_CENTRAL_VSIX_SHA256"),
 		commit: requireEnv("COMMAND_CENTRAL_PROOF_COMMIT"),
+		command_central_loaded_from_vsix: true,
 		is_extension_development_path_used_for_cc: false,
 		task_registry_path: requireEnv("COMMAND_CENTRAL_TASK_REGISTRY_PATH"),
 		tree_snapshot: snapshot,
-		source_authority_matrix: buildSourceAuthorityMatrix(
-			selectedRows.map((node) => ({ path: [node.label], node })),
-		),
+		selected_symphony_nodes: selectedRows.map(selectedNodeSummary),
+		source_authority_matrix: buildSourceAuthorityMatrix(selectedRows),
 		actions,
+		action_probe_results: actions,
 		skips,
 		errors,
 	};
