@@ -4960,7 +4960,7 @@ export class AgentStatusTreeProvider
 	}
 
 	private formatCodexRunTrackerSource(run: CodexRunView): string {
-		return run.trackerKind ?? "Not provided by lifecycle owner";
+		return run.trackerKind?.trim() || "Not provided by lifecycle owner";
 	}
 
 	private formatCodexRunIssue(run: CodexRunView): string | undefined {
