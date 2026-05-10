@@ -4885,21 +4885,32 @@ export class AgentStatusTreeProvider
 		const runs = node.runs;
 		const retryQueued = this.getSymphonyRetryQueuedRuns(runs);
 		const released = this.getSymphonyReleasedRuns(runs);
-		const runtimeSeconds = runs.reduce(
-			(total, run) => total + (run.runtimeSeconds ?? 0),
-			0,
-		);
-		const turnCount = runs.reduce(
-			(total, run) => total + (run.turnCount ?? 0),
-			0,
-		);
-		const tokenTotal = runs.reduce(
-			(total, run) => total + (run.totalTokens ?? 0),
-			0,
-		);
+		const notProvided = "Not provided by lifecycle owner";
+		const sumProvided = (
+			pick: (run: CodexRunView) => number | undefined,
+		): string => {
+			const provided = runs
+				.map((run) => pick(run))
+				.filter((value): value is number => typeof value === "number");
+			if (provided.length === 0) return notProvided;
+			return `${provided.reduce((total, value) => total + value, 0)}`;
+		};
+		const sumProvidedSeconds = (
+			pick: (run: CodexRunView) => number | undefined,
+		): string => {
+			const provided = runs
+				.map((run) => pick(run))
+				.filter((value): value is number => typeof value === "number");
+			if (provided.length === 0) return notProvided;
+			return `${Math.round(provided.reduce((total, value) => total + value, 0))}`;
+		};
 		const rateLimitSnapshots = runs
 			.map((run) => run.rateLimitSummary)
 			.filter((value): value is string => Boolean(value));
+		const rateLimitsValue =
+			rateLimitSnapshots.length === 0
+				? notProvided
+				: [...new Set(rateLimitSnapshots)].join(" · ");
 
 		const details: DetailNode[] = [
 			{
@@ -4909,6 +4920,17 @@ export class AgentStatusTreeProvider
 					"Read-only Status Surface; lifecycle, retry, tracker, and scheduler state stay source-owned",
 				taskId,
 				icon: "shield",
+			},
+			{
+				type: "detail",
+				label: "Orchestrator Runtime State",
+				// The Symphony spec defines snapshot status values: fresh|timeout|unavailable.
+				// Command Central is a read-only Status Surface and never receives a real
+				// orchestrator snapshot today, so we honestly report the missing source
+				// rather than synthesise a value.
+				value: notProvided,
+				taskId,
+				icon: "broadcast",
 			},
 			{
 				type: "detail",
@@ -4926,17 +4948,52 @@ export class AgentStatusTreeProvider
 			},
 			{
 				type: "detail",
-				label: "Running Sessions",
+				label: "running",
 				value: `${this.getSymphonyRunningSessionRuns(runs).length}`,
 				taskId,
 				icon: "pulse",
 			},
 			{
 				type: "detail",
-				label: "Retry Queue",
+				label: "retrying",
 				value: `${retryQueued.length}`,
 				taskId,
 				icon: "history",
+			},
+			{
+				type: "detail",
+				label: "codex_totals.input_tokens",
+				value: sumProvided((run) => run.inputTokens),
+				taskId,
+				icon: "arrow-down",
+			},
+			{
+				type: "detail",
+				label: "codex_totals.output_tokens",
+				value: sumProvided((run) => run.outputTokens),
+				taskId,
+				icon: "arrow-up",
+			},
+			{
+				type: "detail",
+				label: "codex_totals.total_tokens",
+				value: sumProvided((run) => run.totalTokens),
+				taskId,
+				icon: "dashboard",
+			},
+			{
+				type: "detail",
+				label: "codex_totals.seconds_running",
+				value: sumProvidedSeconds((run) => run.runtimeSeconds),
+				taskId,
+				icon: "clock",
+			},
+			{
+				type: "detail",
+				label: "rate_limits",
+				value: rateLimitsValue,
+				taskId,
+				icon: "pulse",
 			},
 		];
 
@@ -4947,42 +5004,6 @@ export class AgentStatusTreeProvider
 				value: `${released.length}`,
 				taskId,
 				icon: "check",
-			});
-		}
-		if (turnCount > 0) {
-			details.push({
-				type: "detail",
-				label: "Turns",
-				value: `${turnCount}`,
-				taskId,
-				icon: "list-ordered",
-			});
-		}
-		if (tokenTotal > 0) {
-			details.push({
-				type: "detail",
-				label: "Tokens",
-				value: `${tokenTotal}`,
-				taskId,
-				icon: "dashboard",
-			});
-		}
-		if (runtimeSeconds > 0) {
-			details.push({
-				type: "detail",
-				label: "Runtime",
-				value: `${Math.round(runtimeSeconds)}s`,
-				taskId,
-				icon: "clock",
-			});
-		}
-		if (rateLimitSnapshots.length > 0) {
-			details.push({
-				type: "detail",
-				label: "Rate-limit snapshots",
-				value: [...new Set(rateLimitSnapshots)].join(" · "),
-				taskId,
-				icon: "pulse",
 			});
 		}
 		return details;

@@ -434,13 +434,23 @@ describe("OpenClaw task nodes", () => {
 		expect(dashboardValues.get("Boundary")).toContain(
 			"Read-only Status Surface",
 		);
-		expect(dashboardValues.get("Running Sessions")).toBe("1");
-		expect(dashboardValues.get("Retry Queue")).toBe("1");
+		expect(dashboardValues.get("Orchestrator Runtime State")).toBe(
+			"Not provided by lifecycle owner",
+		);
+		expect(dashboardValues.get("running")).toBe("1");
+		expect(dashboardValues.get("retrying")).toBe("1");
 		expect(dashboardValues.get("Released")).toBe("1");
-		expect(dashboardValues.get("Turns")).toBe("3");
-		expect(dashboardValues.get("Tokens")).toBe("900");
-		expect(dashboardValues.get("Runtime")).toBe("120s");
-		expect(dashboardValues.get("Rate-limit snapshots")).toBe("remaining=42");
+		expect(dashboardValues.get("codex_totals.total_tokens")).toBe("900");
+		expect(dashboardValues.get("codex_totals.seconds_running")).toBe("120");
+		expect(dashboardValues.get("rate_limits")).toBe("remaining=42");
+		// codex_totals fields with no source row contributing must be honest
+		// rather than synthesised.
+		expect(dashboardValues.get("codex_totals.input_tokens")).toBe(
+			"Not provided by lifecycle owner",
+		);
+		expect(dashboardValues.get("codex_totals.output_tokens")).toBe(
+			"Not provided by lifecycle owner",
+		);
 
 		const runningGroup = getSymphonyRunGroupNode(provider, "running");
 		const retryGroup = getSymphonyRunGroupNode(provider, "retryQueued");
@@ -1142,6 +1152,74 @@ describe("OpenClaw task nodes", () => {
 				(node) => node.type === "task" && node.task.id === "launcher-abc",
 			),
 		).toBe(false);
+	});
+
+	test("Symphony Workstreams group children by explicit identity, not workstream/task title text", async () => {
+		// Two TaskFlow children share the workstream's title verbatim, but only one
+		// carries an explicit launcher identity (taskId match). Title-text grouping
+		// would adopt both rows; explicit-identity grouping must keep the unmatched
+		// row as a placeholder and never broad-match by label/title text.
+		const explicitChild = createTask({
+			taskId: "launcher-explicit-id",
+			runtime: "subagent",
+			task: "Symphony preview conductor",
+			label: "Symphony preview conductor",
+			childSessionKey: "session:flow-only",
+		});
+		const titleOnlyChild = createTask({
+			taskId: "bg-title-only",
+			runtime: "subagent",
+			task: "Symphony preview conductor",
+			label: "Symphony preview conductor",
+			childSessionKey: "session:flow-title-only",
+		});
+		const provider = await createProvider(
+			[],
+			[
+				createFlow({
+					flowId: "flow-symphony-preview",
+					label: "Symphony preview conductor",
+					status: "running",
+					tasks: [explicitChild, titleOnlyChild],
+				}),
+			],
+		);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "launcher-explicit-id",
+				session_id: "different-session-from-flow",
+			}),
+			createLauncherTask({
+				id: "launcher-title-only",
+				prompt_summary: "Symphony preview conductor",
+				session_id: "different-session-still",
+			}),
+		]);
+
+		const children = getSingleTaskFlowChildren(provider);
+
+		// Explicit taskId match → reuse the launcher row by identity.
+		expect(
+			children.some(
+				(node) =>
+					node.type === "task" && node.task.id === "launcher-explicit-id",
+			),
+		).toBe(true);
+		// Title/prompt-text match alone must NOT be promoted to a launcher row.
+		expect(
+			children.some(
+				(node) =>
+					node.type === "task" && node.task.id === "launcher-title-only",
+			),
+		).toBe(false);
+		// The unmatched workstream task stays a placeholder so the operator can
+		// see the missing identity.
+		expect(
+			children.some(
+				(node) =>
+					node.type === "taskFlowChild" && node.taskId === "bg-title-only",
+			),
+		).toBe(true);
 	});
 
 	test("task flow children reuse launchers by explicit task and run identity", async () => {
