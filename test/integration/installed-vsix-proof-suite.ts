@@ -36,6 +36,8 @@ interface ProofManifest {
 	installed_version: string;
 	vsix_path: string;
 	vsix_sha256: string;
+	expected_vsix_sha256?: string;
+	vsix_matches_published_release?: boolean;
 	commit: string;
 	command_central_loaded_from_vsix: true;
 	is_extension_development_path_used_for_cc: false;
@@ -320,6 +322,9 @@ export async function run(): Promise<void> {
 	const extensionId = requireEnv("COMMAND_CENTRAL_EXTENSION_ID");
 	const manifestPath = requireEnv("COMMAND_CENTRAL_PROOF_MANIFEST");
 	const expectedVersion = requireEnv("COMMAND_CENTRAL_EXPECTED_VERSION");
+	const expectedVsixSha256 = process.env["COMMAND_CENTRAL_EXPECTED_VSIX_SHA256"]
+		?.trim()
+		.toLowerCase();
 	const repoRoot = requireEnv("COMMAND_CENTRAL_REPO_ROOT");
 	const requiredTaskId = process.env["COMMAND_CENTRAL_REQUIRED_TASK_ID"];
 
@@ -369,6 +374,14 @@ export async function run(): Promise<void> {
 	const errors: string[] = [];
 	const skips: string[] = [];
 	const actions: ProofAction[] = [];
+	const actualVsixSha256 = requireEnv(
+		"COMMAND_CENTRAL_VSIX_SHA256",
+	).toLowerCase();
+	if (expectedVsixSha256 && actualVsixSha256 !== expectedVsixSha256) {
+		errors.push(
+			`VSIX SHA256 mismatch: expected ${expectedVsixSha256}, got ${actualVsixSha256}.`,
+		);
+	}
 	if (!hasRequiredSymphonyRoots(snapshot)) {
 		errors.push(
 			"Missing required Symphony / Workstreams or Symphony / Run Attempts root.",
@@ -466,7 +479,11 @@ export async function run(): Promise<void> {
 		extension_id: extensionId,
 		installed_version: extension.packageJSON.version,
 		vsix_path: requireEnv("COMMAND_CENTRAL_VSIX_PROOF_PATH"),
-		vsix_sha256: requireEnv("COMMAND_CENTRAL_VSIX_SHA256"),
+		vsix_sha256: actualVsixSha256,
+		expected_vsix_sha256: expectedVsixSha256 || undefined,
+		vsix_matches_published_release: expectedVsixSha256
+			? actualVsixSha256 === expectedVsixSha256
+			: undefined,
 		commit: requireEnv("COMMAND_CENTRAL_PROOF_COMMIT"),
 		command_central_loaded_from_vsix: true,
 		is_extension_development_path_used_for_cc: false,

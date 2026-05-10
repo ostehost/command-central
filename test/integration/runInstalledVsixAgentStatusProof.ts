@@ -20,6 +20,7 @@ export type InstalledVsixProofMode = "passive" | "live";
 export interface InstalledVsixProofArgs {
 	mode: InstalledVsixProofMode;
 	vsixPath?: string;
+	expectedSha256?: string;
 }
 
 export interface VsixResolutionInput {
@@ -55,6 +56,13 @@ export function parseInstalledProofArgs(
 			const value = argv[index + 1];
 			if (!value) throw new Error("--vsix requires a path.");
 			parsed.vsixPath = value;
+			index += 1;
+			continue;
+		}
+		if (arg === "--expected-sha") {
+			const value = argv[index + 1];
+			if (!value) throw new Error("--expected-sha requires a SHA256 value.");
+			parsed.expectedSha256 = value;
 			index += 1;
 			continue;
 		}
@@ -293,6 +301,10 @@ export async function runInstalledVsixAgentStatusProof(): Promise<void> {
 	});
 	const manifestVersion = readVsixManifestVersion(vsixPath);
 	const vsixSha256 = await sha256File(vsixPath);
+	const expectedVsixSha256 =
+		args.expectedSha256?.trim() ||
+		process.env["COMMAND_CENTRAL_EXPECTED_VSIX_SHA256"]?.trim() ||
+		"";
 	const registryPath = taskRegistryPath();
 	const requestedVersion = process.env["VSCODE_VERSION"];
 	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "cc-installed-proof-"));
@@ -336,6 +348,7 @@ export async function runInstalledVsixAgentStatusProof(): Promise<void> {
 				CI: process.env["CI"] ?? "false",
 				COMMAND_CENTRAL_EXTENSION_ID: extensionId,
 				COMMAND_CENTRAL_EXPECTED_VERSION: manifestVersion,
+				COMMAND_CENTRAL_EXPECTED_VSIX_SHA256: expectedVsixSha256,
 				COMMAND_CENTRAL_PROOF_COMMIT: gitCommit(repoRoot),
 				COMMAND_CENTRAL_PROOF_MANIFEST: manifestPath,
 				COMMAND_CENTRAL_PROOF_MODE: args.mode,

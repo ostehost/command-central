@@ -40,9 +40,18 @@ describe("installed VSIX Agent Status proof harness", () => {
 
 	test("parses passive and live modes without hard-coding an rc version", () => {
 		expect(parseInstalledProofArgs(["--passive"]).mode).toBe("passive");
-		expect(parseInstalledProofArgs(["--live", "--vsix", "x.vsix"])).toEqual({
+		expect(
+			parseInstalledProofArgs([
+				"--live",
+				"--vsix",
+				"x.vsix",
+				"--expected-sha",
+				"abc123",
+			]),
+		).toEqual({
 			mode: "live",
 			vsixPath: "x.vsix",
+			expectedSha256: "abc123",
 		});
 	});
 
