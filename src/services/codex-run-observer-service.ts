@@ -7,6 +7,11 @@ import type {
 	CodexRunStatus,
 	CodexRunView,
 	CodexRunViewField,
+	SymphonyRetryEntryView,
+	SymphonyRunningEntryView,
+	SymphonyRuntimeSnapshotSource,
+	SymphonyRuntimeSnapshotStatus,
+	SymphonyRuntimeSnapshotView,
 } from "../types/codex-run-types.js";
 import type { OpenClawTask } from "../types/openclaw-task-types.js";
 import type { TaskFlow, TaskFlowTask } from "../types/taskflow-types.js";
@@ -54,6 +59,11 @@ type RuntimeSnapshotFields = Pick<
 	| "retryDueAt"
 	| "retryError"
 	| "rateLimitSummary"
+>;
+
+type SymphonyRuntimeSnapshotField = Pick<
+	CodexRunView,
+	"symphonyRuntimeSnapshot"
 >;
 
 type SymphonyContractFields = Pick<
@@ -157,6 +167,10 @@ export class CodexRunObserverService {
 		const runtimeSnapshot = this.extractRuntimeSnapshot(
 			task as unknown as Record<string, unknown>,
 		);
+		const symphonyRuntimeSnapshot = this.extractSymphonyRuntimeSnapshot(
+			task as unknown as Record<string, unknown>,
+			ref,
+		);
 		const run: CodexRunView = {
 			runId,
 			title,
@@ -184,6 +198,7 @@ export class CodexRunObserverService {
 			model: task.model,
 			lastEvent,
 			...runtimeSnapshot,
+			...symphonyRuntimeSnapshot,
 			lastEventAt: task.lastEventAt,
 			startedAt: task.startedAt,
 			endedAt: task.endedAt,
@@ -215,6 +230,7 @@ export class CodexRunObserverService {
 		if (run.host) this.addFieldSource(run, "host", ref);
 		if (run.model) this.addFieldSource(run, "model", ref);
 		this.addRuntimeSnapshotSources(run, runtimeSnapshot, ref);
+		this.addSymphonyRuntimeSnapshotSource(run, symphonyRuntimeSnapshot, ref);
 		if (run.lastEventAt != null) this.addFieldSource(run, "lastEventAt", ref);
 		if (run.nextAction) this.addFieldSource(run, "nextAction", ref);
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
@@ -244,6 +260,14 @@ export class CodexRunObserverService {
 			provenance: [this.formatSourceRef(ref)],
 			fieldSources: {},
 		};
+		const symphonyRuntimeSnapshot = this.extractSymphonyRuntimeSnapshot(
+			flow as unknown as Record<string, unknown>,
+			ref,
+		);
+		if (symphonyRuntimeSnapshot.symphonyRuntimeSnapshot) {
+			run.symphonyRuntimeSnapshot =
+				symphonyRuntimeSnapshot.symphonyRuntimeSnapshot;
+		}
 
 		this.addFieldSource(run, "runId", ref);
 		this.addFieldSource(run, "title", ref);
@@ -252,6 +276,7 @@ export class CodexRunObserverService {
 		this.addFieldSource(run, "flowId", ref);
 		this.addFieldSource(run, "sourceAuthority", ref);
 		this.addFieldSource(run, "orchestrationMode", ref);
+		this.addSymphonyRuntimeSnapshotSource(run, symphonyRuntimeSnapshot, ref);
 		this.addFieldSource(run, "lastEventAt", ref);
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
 		if (run.endedAt != null) this.addFieldSource(run, "endedAt", ref);
@@ -287,6 +312,10 @@ export class CodexRunObserverService {
 		);
 		const runtimeSnapshot = this.extractRuntimeSnapshot(
 			task as unknown as Record<string, unknown>,
+		);
+		const symphonyRuntimeSnapshot = this.extractSymphonyRuntimeSnapshot(
+			task as unknown as Record<string, unknown>,
+			ref,
 		);
 		const run: CodexRunView = {
 			runId: this.firstNonEmpty(
@@ -327,6 +356,7 @@ export class CodexRunObserverService {
 			model,
 			lastEvent: task.error_message ?? undefined,
 			...runtimeSnapshot,
+			...symphonyRuntimeSnapshot,
 			nextAction: this.resolveNextAction(
 				this.normalizeStatus(sourceStatus),
 				sourceStatus,
@@ -367,6 +397,7 @@ export class CodexRunObserverService {
 		if (run.fixupState) this.addFieldSource(run, "fixupState", ref);
 		if (run.model) this.addFieldSource(run, "model", ref);
 		this.addRuntimeSnapshotSources(run, runtimeSnapshot, ref);
+		this.addSymphonyRuntimeSnapshotSource(run, symphonyRuntimeSnapshot, ref);
 		if (run.lastEventAt != null) this.addFieldSource(run, "lastEventAt", ref);
 		if (run.nextAction) this.addFieldSource(run, "nextAction", ref);
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
@@ -386,6 +417,15 @@ export class CodexRunObserverService {
 					existing.flowId = flow.flowId;
 					this.addFieldSource(existing, "flowId", flowRef);
 				}
+				const symphonyRuntimeSnapshot = this.extractSymphonyRuntimeSnapshot(
+					flow as unknown as Record<string, unknown>,
+					flowRef,
+				);
+				this.mergeSymphonyRuntimeSnapshot(
+					existing,
+					symphonyRuntimeSnapshot,
+					flowRef,
+				);
 				this.fillTimingFromFlow(existing, flow, flowRef);
 			} else {
 				runs.push(this.projectTaskFlowChild(flow, task));
@@ -480,6 +520,11 @@ export class CodexRunObserverService {
 			task as unknown as Record<string, unknown>,
 		);
 		this.mergeRuntimeSnapshot(run, runtimeSnapshot, ref);
+		const symphonyRuntimeSnapshot = this.extractSymphonyRuntimeSnapshot(
+			task as unknown as Record<string, unknown>,
+			ref,
+		);
+		this.mergeSymphonyRuntimeSnapshot(run, symphonyRuntimeSnapshot, ref);
 
 		const nextAction = this.resolveNextAction(
 			run.status,
@@ -1026,6 +1071,223 @@ export class CodexRunObserverService {
 			if (snapshot[field] == null) continue;
 			this.addFieldSource(run, field, ref);
 		}
+	}
+
+	private extractSymphonyRuntimeSnapshot(
+		source: Record<string, unknown>,
+		ref: CodexRunSourceRef,
+	): SymphonyRuntimeSnapshotField {
+		const raw = this.objectValue(
+			source["symphony_runtime_snapshot"] ??
+				source["symphonyRuntimeSnapshot"] ??
+				source["orchestrator_runtime_state"] ??
+				source["orchestratorRuntimeState"],
+		);
+		if (!raw) return {};
+
+		const error = this.objectValue(raw["error"]);
+		const errorCode = this.stringValue(error?.["code"]);
+		const status = this.normalizeSymphonyRuntimeSnapshotStatus(
+			this.stringValue(raw["status"]),
+			errorCode,
+		);
+		const counts = this.objectValue(raw["counts"]);
+		const codexTotals = this.objectValue(
+			raw["codex_totals"] ?? raw["codexTotals"],
+		);
+		const running = Array.isArray(raw["running"])
+			? raw["running"]
+					.map((entry) => this.normalizeSymphonyRunningEntry(entry))
+					.filter((entry): entry is SymphonyRunningEntryView => Boolean(entry))
+			: undefined;
+		const retrying = Array.isArray(raw["retrying"])
+			? raw["retrying"]
+					.map((entry) => this.normalizeSymphonyRetryEntry(entry))
+					.filter((entry): entry is SymphonyRetryEntryView => Boolean(entry))
+			: undefined;
+		const snapshot: SymphonyRuntimeSnapshotView = {
+			generatedAt: this.firstNonEmpty(
+				this.stringValue(raw["generated_at"]),
+				this.stringValue(raw["generatedAt"]),
+			),
+			status,
+			error: errorCode
+				? {
+						code: errorCode,
+						message:
+							this.firstNonEmpty(
+								this.stringValue(error?.["message"]),
+								errorCode,
+							) || errorCode,
+					}
+				: undefined,
+			counts: counts
+				? {
+						running: this.numberValue(counts["running"]),
+						retrying: this.numberValue(counts["retrying"]),
+					}
+				: undefined,
+			running,
+			retrying,
+			codexTotals: codexTotals
+				? {
+						inputTokens: this.numberValue(
+							codexTotals["input_tokens"] ?? codexTotals["inputTokens"],
+						),
+						outputTokens: this.numberValue(
+							codexTotals["output_tokens"] ?? codexTotals["outputTokens"],
+						),
+						totalTokens: this.numberValue(
+							codexTotals["total_tokens"] ?? codexTotals["totalTokens"],
+						),
+						secondsRunning: this.numberValue(
+							codexTotals["seconds_running"] ?? codexTotals["secondsRunning"],
+						),
+					}
+				: undefined,
+			rateLimits: raw["rate_limits"] ?? raw["rateLimits"],
+			source: this.symfonySnapshotSource(ref),
+			sourcePath: this.firstNonEmpty(
+				this.stringValue(raw["source_path"]),
+				this.stringValue(raw["sourcePath"]),
+				ref.path,
+			),
+		};
+
+		return { symphonyRuntimeSnapshot: snapshot };
+	}
+
+	private mergeSymphonyRuntimeSnapshot(
+		run: CodexRunView,
+		snapshot: SymphonyRuntimeSnapshotField,
+		ref: CodexRunSourceRef,
+	): void {
+		if (run.symphonyRuntimeSnapshot || !snapshot.symphonyRuntimeSnapshot) {
+			return;
+		}
+		run.symphonyRuntimeSnapshot = snapshot.symphonyRuntimeSnapshot;
+		this.addFieldSource(run, "symphonyRuntimeSnapshot", ref);
+	}
+
+	private addSymphonyRuntimeSnapshotSource(
+		run: CodexRunView,
+		snapshot: SymphonyRuntimeSnapshotField,
+		ref: CodexRunSourceRef,
+	): void {
+		if (!snapshot.symphonyRuntimeSnapshot) return;
+		this.addFieldSource(run, "symphonyRuntimeSnapshot", ref);
+	}
+
+	private normalizeSymphonyRuntimeSnapshotStatus(
+		status: string | undefined,
+		errorCode: string | undefined,
+	): SymphonyRuntimeSnapshotStatus {
+		if (errorCode === "snapshot_timeout") return "timeout";
+		if (errorCode === "snapshot_unavailable") return "unavailable";
+		if (
+			status === "fresh" ||
+			status === "timeout" ||
+			status === "unavailable" ||
+			status === "not_provided"
+		) {
+			return status;
+		}
+		return "fresh";
+	}
+
+	private normalizeSymphonyRunningEntry(
+		value: unknown,
+	): SymphonyRunningEntryView | undefined {
+		const entry = this.objectValue(value);
+		if (!entry) return undefined;
+		const tokens = this.objectValue(entry["tokens"]);
+		return {
+			issueId: this.stringValue(entry["issue_id"] ?? entry["issueId"]),
+			issueIdentifier: this.stringValue(
+				entry["issue_identifier"] ??
+					entry["identifier"] ??
+					entry["issueIdentifier"],
+			),
+			issueState: this.stringValue(entry["issue_state"] ?? entry["issueState"]),
+			runAttempt: this.stringValue(
+				entry["run_attempt"] ?? entry["runAttempt"] ?? entry["run_id"],
+			),
+			workspacePath: this.stringValue(
+				entry["workspace_path"] ?? entry["workspacePath"],
+			),
+			sessionId: this.stringValue(entry["session_id"] ?? entry["sessionId"]),
+			phase: this.stringValue(entry["phase"] ?? entry["lifecycle_phase"]),
+			startedAt: this.stringValue(entry["started_at"] ?? entry["startedAt"]),
+			lastCodexEvent: this.stringValue(
+				entry["last_codex_event"] ??
+					entry["last_event"] ??
+					entry["lastCodexEvent"],
+			),
+			lastCodexEventAt: this.stringValue(
+				entry["last_codex_timestamp"] ??
+					entry["last_event_at"] ??
+					entry["lastCodexEventAt"],
+			),
+			lastCodexMessage: this.stringValue(
+				entry["last_codex_message"] ??
+					entry["last_message"] ??
+					entry["lastCodexMessage"],
+			),
+			turnCount: this.numberValue(entry["turn_count"] ?? entry["turnCount"]),
+			codexInputTokens: this.numberValue(
+				entry["codex_input_tokens"] ??
+					entry["input_tokens"] ??
+					tokens?.["input_tokens"] ??
+					tokens?.["inputTokens"],
+			),
+			codexOutputTokens: this.numberValue(
+				entry["codex_output_tokens"] ??
+					entry["output_tokens"] ??
+					tokens?.["output_tokens"] ??
+					tokens?.["outputTokens"],
+			),
+			codexTotalTokens: this.numberValue(
+				entry["codex_total_tokens"] ??
+					entry["total_tokens"] ??
+					tokens?.["total_tokens"] ??
+					tokens?.["totalTokens"],
+			),
+		};
+	}
+
+	private normalizeSymphonyRetryEntry(
+		value: unknown,
+	): SymphonyRetryEntryView | undefined {
+		const entry = this.objectValue(value);
+		if (!entry) return undefined;
+		return {
+			issueId: this.stringValue(entry["issue_id"] ?? entry["issueId"]),
+			issueIdentifier: this.stringValue(
+				entry["issue_identifier"] ??
+					entry["identifier"] ??
+					entry["issueIdentifier"],
+			),
+			issueState: this.stringValue(entry["issue_state"] ?? entry["issueState"]),
+			runAttempt: this.stringValue(
+				entry["run_attempt"] ?? entry["runAttempt"] ?? entry["run_id"],
+			),
+			attempt: this.numberValue(entry["attempt"]),
+			dueAt: this.firstNonEmpty(
+				this.stringValue(entry["due_at"]),
+				this.stringValue(entry["dueAt"]),
+				this.formatDueAtValue(entry["due_at_ms"] ?? entry["dueAtMs"]),
+			),
+			error: this.stringValue(entry["error"]),
+		};
+	}
+
+	private symfonySnapshotSource(
+		ref: CodexRunSourceRef,
+	): SymphonyRuntimeSnapshotSource {
+		if (ref.kind === "launcher") return "launcher";
+		if (ref.kind === "taskflow") return "taskflow";
+		if (ref.kind === "openclaw-task") return "openclaw";
+		return "fixture";
 	}
 
 	private collectArtifactPaths(source: ArtifactCarrier): string[] {

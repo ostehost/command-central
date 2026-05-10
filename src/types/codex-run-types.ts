@@ -50,6 +50,76 @@ export interface CodexRunEvidence {
 	source?: CodexRunSourceRef;
 }
 
+export type SymphonyRuntimeSnapshotStatus =
+	| "fresh"
+	| "timeout"
+	| "unavailable"
+	| "not_provided";
+
+export type SymphonyRuntimeSnapshotSource =
+	| "launcher"
+	| "taskflow"
+	| "openclaw"
+	| "fixture";
+
+export interface SymphonyRuntimeSnapshotError {
+	code: "snapshot_timeout" | "snapshot_unavailable" | string;
+	message: string;
+}
+
+export interface SymphonyRuntimeSnapshotCounts {
+	running?: number;
+	retrying?: number;
+}
+
+export interface SymphonyCodexTotalsView {
+	inputTokens?: number;
+	outputTokens?: number;
+	totalTokens?: number;
+	secondsRunning?: number;
+}
+
+export interface SymphonyRunningEntryView {
+	issueId?: string;
+	issueIdentifier?: string;
+	issueState?: string;
+	runAttempt?: string;
+	workspacePath?: string;
+	sessionId?: string;
+	phase?: CodexRunPhase | string;
+	startedAt?: string;
+	lastCodexEvent?: string;
+	lastCodexEventAt?: string;
+	lastCodexMessage?: string;
+	turnCount?: number;
+	codexInputTokens?: number;
+	codexOutputTokens?: number;
+	codexTotalTokens?: number;
+}
+
+export interface SymphonyRetryEntryView {
+	issueId?: string;
+	issueIdentifier?: string;
+	issueState?: string;
+	runAttempt?: string;
+	attempt?: number;
+	dueAt?: string;
+	error?: string;
+}
+
+export interface SymphonyRuntimeSnapshotView {
+	generatedAt?: string;
+	status: SymphonyRuntimeSnapshotStatus;
+	error?: SymphonyRuntimeSnapshotError;
+	counts?: SymphonyRuntimeSnapshotCounts;
+	running?: SymphonyRunningEntryView[];
+	retrying?: SymphonyRetryEntryView[];
+	codexTotals?: SymphonyCodexTotalsView;
+	rateLimits?: unknown;
+	source: SymphonyRuntimeSnapshotSource;
+	sourcePath?: string;
+}
+
 export interface CodexRunView {
 	runId: string;
 	title: string;
@@ -99,6 +169,7 @@ export interface CodexRunView {
 	retryDueAt?: string;
 	retryError?: string;
 	rateLimitSummary?: string;
+	symphonyRuntimeSnapshot?: SymphonyRuntimeSnapshotView;
 	lastEventAt?: number;
 	startedAt?: number;
 	endedAt?: number;

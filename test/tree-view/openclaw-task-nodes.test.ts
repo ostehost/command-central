@@ -473,6 +473,215 @@ describe("OpenClaw task nodes", () => {
 		).toEqual(["codexRun"]);
 	});
 
+	test("Symphony Operations Dashboard consumes owner-provided runtime snapshot rows read-only", async () => {
+		const provider = await createProvider([]);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "snapshot-row",
+				agent_backend: "codex",
+				source_authority: "launcher",
+				owner_kind: "launcher",
+				prompt_summary: "Elixir-shaped Symphony snapshot owner",
+				symphony_runtime_snapshot: {
+					generated_at: "2026-05-10T14:55:00Z",
+					counts: { running: 1, retrying: 1 },
+					running: [
+						{
+							issue_identifier: "SYM-101",
+							issue_state: "In Progress",
+							run_attempt: "attempt-101",
+							workspace_path: "/tmp/symphony/SYM-101",
+							session_id: "thread-101-turn-1",
+							phase: "StreamingTurn",
+							last_codex_event: "agent_message_delta",
+							last_codex_message: "editing files",
+							turn_count: 3,
+							tokens: {
+								input_tokens: 1200,
+								output_tokens: 400,
+								total_tokens: 1600,
+							},
+						},
+					],
+					retrying: [
+						{
+							issue_identifier: "SYM-202",
+							issue_state: "RetryQueued",
+							run_attempt: "attempt-202",
+							attempt: 2,
+							due_at: "2026-05-10T15:00:00Z",
+							error: "rate limited",
+						},
+					],
+					codex_totals: {
+						input_tokens: 1200,
+						output_tokens: 400,
+						total_tokens: 1600,
+						seconds_running: 245,
+					},
+					rate_limits: { remaining: 17, limit: 100 },
+				},
+			}),
+		]);
+
+		const symphonyChildren = provider.getChildren(getSymphonyNode(provider));
+		const dashboard = symphonyChildren.find(
+			(node) => node.type === "symphonyDashboard",
+		);
+		if (!dashboard || dashboard.type !== "symphonyDashboard") {
+			throw new Error("No Operations Dashboard node found");
+		}
+		const dashboardValues = new Map(
+			provider
+				.getChildren(dashboard)
+				.filter((node) => node.type === "detail")
+				.map((node) => [node.label, node.value]),
+		);
+		expect(dashboardValues.get("Orchestrator Runtime State")).toBe("fresh");
+		expect(dashboardValues.get("generated_at")).toBe("2026-05-10T14:55:00Z");
+		expect(dashboardValues.get("running")).toBe("1");
+		expect(dashboardValues.get("retrying")).toBe("1");
+		expect(dashboardValues.get("codex_totals.input_tokens")).toBe("1200");
+		expect(dashboardValues.get("codex_totals.output_tokens")).toBe("400");
+		expect(dashboardValues.get("codex_totals.total_tokens")).toBe("1600");
+		expect(dashboardValues.get("codex_totals.seconds_running")).toBe("245");
+		expect(dashboardValues.get("rate_limits")).toBe(
+			'{"remaining":17,"limit":100}',
+		);
+
+		const runningGroup = getSymphonyRunGroupNode(provider, "running");
+		const retryGroup = getSymphonyRunGroupNode(provider, "retryQueued");
+		if (!runningGroup || !retryGroup) {
+			throw new Error("Expected Symphony snapshot groups were not rendered");
+		}
+		expect(provider.getTreeItem(runningGroup).label).toBe(
+			"Running Sessions · 1",
+		);
+		expect(provider.getTreeItem(retryGroup).label).toBe("Retry Queue · 1");
+		const runningRows = provider.getChildren(runningGroup);
+		const retryRows = provider.getChildren(retryGroup);
+		expect(runningRows.map((node) => node.type)).toEqual([
+			"symphonySnapshotEntry",
+		]);
+		expect(retryRows.map((node) => node.type)).toEqual([
+			"symphonySnapshotEntry",
+		]);
+		const runningRow = runningRows[0];
+		const retryRow = retryRows[0];
+		if (!runningRow || !retryRow) {
+			throw new Error("Expected snapshot entries were not rendered");
+		}
+		expect(provider.getTreeItem(runningRow).label).toBe(
+			"Live Session: thread-101-turn-1",
+		);
+		expect(provider.getTreeItem(retryRow).label).toBe(
+			"Retry Entry: SYM-202 · RetryQueued",
+		);
+		const runningDetails = new Map(
+			provider
+				.getChildren(runningRow)
+				.filter((node) => node.type === "detail")
+				.map((node) => [node.label, node.value]),
+		);
+		expect(runningDetails.get("Issue")).toBe("SYM-101 · In Progress");
+		expect(runningDetails.get("Run Attempt")).toBe("attempt-101");
+		expect(runningDetails.get("Live Session")).toBe("thread-101-turn-1");
+		expect(runningDetails.get("Phase")).toBe("StreamingTurn");
+		expect(runningDetails.get("last_codex_event")).toBe("agent_message_delta");
+		expect(runningDetails.get("turn_count")).toBe("3");
+		expect(runningDetails.get("codex_total_tokens")).toBe("1600");
+		const retryDetails = new Map(
+			provider
+				.getChildren(retryRow)
+				.filter((node) => node.type === "detail")
+				.map((node) => [node.label, node.value]),
+		);
+		expect(retryDetails.get("Issue")).toBe("SYM-202 · RetryQueued");
+		expect(retryDetails.get("Run Attempt")).toBe("attempt-202");
+		expect(retryDetails.get("attempt")).toBe("2");
+		expect(retryDetails.get("due_at")).toBe("2026-05-10T15:00:00Z");
+		expect(retryDetails.get("error")).toBe("rate limited");
+	});
+
+	test("Symphony Operations Dashboard reports snapshot error envelopes from source", async () => {
+		const provider = await createProvider([]);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "timeout-row",
+				agent_backend: "codex",
+				source_authority: "launcher",
+				owner_kind: "launcher",
+				symphony_runtime_snapshot: {
+					generated_at: "2026-05-10T14:56:00Z",
+					error: {
+						code: "snapshot_timeout",
+						message: "Snapshot timed out",
+					},
+				},
+			}),
+		]);
+		let dashboard = provider
+			.getChildren(getSymphonyNode(provider))
+			.find((node) => node.type === "symphonyDashboard");
+		if (!dashboard || dashboard.type !== "symphonyDashboard") {
+			throw new Error("No Operations Dashboard node found");
+		}
+		let dashboardValues = new Map(
+			provider
+				.getChildren(dashboard)
+				.filter((node) => node.type === "detail")
+				.map((node) => [node.label, node.value]),
+		);
+		expect(dashboardValues.get("Orchestrator Runtime State")).toBe(
+			"snapshot_timeout: Snapshot timed out",
+		);
+
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "unavailable-row",
+				agent_backend: "codex",
+				source_authority: "launcher",
+				owner_kind: "launcher",
+				symphony_runtime_snapshot: {
+					error: {
+						code: "snapshot_unavailable",
+						message: "Snapshot unavailable",
+					},
+				},
+			}),
+		]);
+		dashboard = provider
+			.getChildren(getSymphonyNode(provider))
+			.find((node) => node.type === "symphonyDashboard");
+		if (!dashboard || dashboard.type !== "symphonyDashboard") {
+			throw new Error("No Operations Dashboard node found");
+		}
+		dashboardValues = new Map(
+			provider
+				.getChildren(dashboard)
+				.filter((node) => node.type === "detail")
+				.map((node) => [node.label, node.value]),
+		);
+		expect(dashboardValues.get("Orchestrator Runtime State")).toBe(
+			"snapshot_unavailable: Snapshot unavailable",
+		);
+	});
+
+	test("Symphony command surface does not add lifecycle mutation commands", () => {
+		const packageJson = JSON.parse(
+			fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+		) as { contributes?: { commands?: Array<{ command?: string }> } };
+		const commands = packageJson.contributes?.commands ?? [];
+		const forbidden = commands
+			.map((entry) => entry.command ?? "")
+			.filter((command) =>
+				/(symphony|codex|agentStatus).*(retry|cancel|dispatch|tracker|linear)/i.test(
+					command,
+				),
+			);
+		expect(forbidden).toEqual([]);
+	});
+
 	test("Symphony Run Attempts container appears and expands to projected details", async () => {
 		const provider = await createProvider([
 			createTask({
