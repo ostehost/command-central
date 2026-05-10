@@ -791,6 +791,55 @@ describe("CodexRunObserverService", () => {
 		]);
 	});
 
+	test("projects Elixir-style runtime snapshot fields from source-owned rows", () => {
+		const service = new CodexRunObserverService();
+		const [run] = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "snapshot-row",
+					agent_backend: "claude",
+					source_authority: "launcher",
+					owner_kind: "launcher",
+					turn_count: 7,
+					codex_input_tokens: 1200,
+					codex_output_tokens: 800,
+					codex_total_tokens: 2000,
+					runtime_seconds: 1834.2,
+					retry_attempt: 3,
+					retry_due_at: "2026-02-24T20:16:00Z",
+					retry_error: "no available orchestrator slots",
+					rate_limits: {
+						remaining: 42,
+						limit: 100,
+						reset_at: "2026-02-24T21:00:00Z",
+					},
+				}),
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		expect(run).toMatchObject({
+			runId: "snapshot-row",
+			turnCount: 7,
+			inputTokens: 1200,
+			outputTokens: 800,
+			totalTokens: 2000,
+			runtimeSeconds: 1834.2,
+			retryAttempt: 3,
+			retryDueAt: "2026-02-24T20:16:00Z",
+			retryError: "no available orchestrator slots",
+			rateLimitSummary:
+				"remaining=42 · limit=100 · reset_at=2026-02-24T21:00:00Z",
+		});
+		expect(run?.fieldSources.totalTokens).toEqual([
+			{ kind: "launcher", id: "snapshot-row", path: "/tmp/project-a" },
+		]);
+		expect(run?.fieldSources.retryAttempt).toEqual([
+			{ kind: "launcher", id: "snapshot-row", path: "/tmp/project-a" },
+		]);
+	});
+
 	test("orders projection deterministically by active state, activity, and run id", () => {
 		const service = new CodexRunObserverService();
 		const inputs = {

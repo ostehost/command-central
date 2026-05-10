@@ -90,6 +90,15 @@ export interface CodexRunView {
 	currentTool?: string;
 	lastEvent?: string;
 	nextAction?: string;
+	turnCount?: number;
+	inputTokens?: number;
+	outputTokens?: number;
+	totalTokens?: number;
+	runtimeSeconds?: number;
+	retryAttempt?: number;
+	retryDueAt?: string;
+	retryError?: string;
+	rateLimitSummary?: string;
 	lastEventAt?: number;
 	startedAt?: number;
 	endedAt?: number;

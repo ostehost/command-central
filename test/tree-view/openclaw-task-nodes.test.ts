@@ -1277,6 +1277,52 @@ describe("OpenClaw task nodes", () => {
 		).toBe(true);
 	});
 
+	test("Symphony Run Attempts mirrors runtime snapshot rows from owner metadata", async () => {
+		const provider = await createProvider([]);
+		setLauncherTasks(provider, [
+			createLauncherTask({
+				id: "snapshot-row",
+				agent_backend: "claude",
+				source_authority: "launcher",
+				owner_kind: "launcher",
+				turn_count: 7,
+				codex_input_tokens: 1200,
+				codex_output_tokens: 800,
+				codex_total_tokens: 2000,
+				runtime_seconds: 1834.2,
+				retry_attempt: 3,
+				retry_due_at: "2026-02-24T20:16:00Z",
+				retry_error: "no available orchestrator slots",
+				rate_limit_summary: "remaining=42 · reset_at=2026-02-24T21:00:00Z",
+			}),
+		]);
+
+		const runsNode = getCodexRunsNode(provider);
+		const runsItem = provider.getTreeItem(runsNode);
+		expect(runsItem.description).toContain("1 retrying");
+		expect(runsItem.description).toContain("2000 tokens");
+
+		const [runNode] = getCodexRunNodes(provider);
+		if (!runNode) throw new Error("No projected Codex run found");
+		const details = provider.getChildren(runNode);
+		const valuesByLabel = new Map(
+			details
+				.filter((node) => node.type === "detail")
+				.map((node) => [node.label, node.value]),
+		);
+		expect(valuesByLabel.get("Turns")).toBe("7");
+		expect(valuesByLabel.get("Tokens")).toBe(
+			"input 1200 · output 800 · total 2000",
+		);
+		expect(valuesByLabel.get("Runtime")).toBe("1834s");
+		expect(valuesByLabel.get("Retry")).toBe(
+			"attempt 3 · due 2026-02-24T20:16:00Z · error no available orchestrator slots",
+		);
+		expect(valuesByLabel.get("Rate limits")).toBe(
+			"remaining=42 · reset_at=2026-02-24T21:00:00Z",
+		);
+	});
+
 	test("projected Codex Run tree items remain read-only", async () => {
 		const provider = await createProvider([
 			createTask({

@@ -43,6 +43,19 @@ type ModeCarrier = {
 	provenance?: unknown;
 };
 
+type RuntimeSnapshotFields = Pick<
+	CodexRunView,
+	| "turnCount"
+	| "inputTokens"
+	| "outputTokens"
+	| "totalTokens"
+	| "runtimeSeconds"
+	| "retryAttempt"
+	| "retryDueAt"
+	| "retryError"
+	| "rateLimitSummary"
+>;
+
 type SymphonyContractFields = Pick<
 	CodexRunView,
 	| "trackerKind"
@@ -141,6 +154,9 @@ export class CodexRunObserverService {
 		const contract = this.extractSymphonyContract(
 			task as unknown as Record<string, unknown>,
 		);
+		const runtimeSnapshot = this.extractRuntimeSnapshot(
+			task as unknown as Record<string, unknown>,
+		);
 		const run: CodexRunView = {
 			runId,
 			title,
@@ -167,6 +183,7 @@ export class CodexRunObserverService {
 			host: task.host,
 			model: task.model,
 			lastEvent,
+			...runtimeSnapshot,
 			lastEventAt: task.lastEventAt,
 			startedAt: task.startedAt,
 			endedAt: task.endedAt,
@@ -197,6 +214,7 @@ export class CodexRunObserverService {
 		if (run.workspacePath) this.addFieldSource(run, "workspacePath", ref);
 		if (run.host) this.addFieldSource(run, "host", ref);
 		if (run.model) this.addFieldSource(run, "model", ref);
+		this.addRuntimeSnapshotSources(run, runtimeSnapshot, ref);
 		if (run.lastEventAt != null) this.addFieldSource(run, "lastEventAt", ref);
 		if (run.nextAction) this.addFieldSource(run, "nextAction", ref);
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
@@ -267,6 +285,9 @@ export class CodexRunObserverService {
 		const contract = this.extractSymphonyContract(
 			task as unknown as Record<string, unknown>,
 		);
+		const runtimeSnapshot = this.extractRuntimeSnapshot(
+			task as unknown as Record<string, unknown>,
+		);
 		const run: CodexRunView = {
 			runId: this.firstNonEmpty(
 				task.id,
@@ -305,6 +326,7 @@ export class CodexRunObserverService {
 			host: task.exec_host ?? undefined,
 			model,
 			lastEvent: task.error_message ?? undefined,
+			...runtimeSnapshot,
 			nextAction: this.resolveNextAction(
 				this.normalizeStatus(sourceStatus),
 				sourceStatus,
@@ -344,6 +366,7 @@ export class CodexRunObserverService {
 		if (run.reviewState) this.addFieldSource(run, "reviewState", ref);
 		if (run.fixupState) this.addFieldSource(run, "fixupState", ref);
 		if (run.model) this.addFieldSource(run, "model", ref);
+		this.addRuntimeSnapshotSources(run, runtimeSnapshot, ref);
 		if (run.lastEventAt != null) this.addFieldSource(run, "lastEventAt", ref);
 		if (run.nextAction) this.addFieldSource(run, "nextAction", ref);
 		if (run.startedAt != null) this.addFieldSource(run, "startedAt", ref);
@@ -452,6 +475,11 @@ export class CodexRunObserverService {
 			run.fixupState = task.fixup_state;
 			this.addFieldSource(run, "fixupState", ref);
 		}
+
+		const runtimeSnapshot = this.extractRuntimeSnapshot(
+			task as unknown as Record<string, unknown>,
+		);
+		this.mergeRuntimeSnapshot(run, runtimeSnapshot, ref);
 
 		const nextAction = this.resolveNextAction(
 			run.status,
@@ -882,6 +910,124 @@ export class CodexRunObserverService {
 		}
 	}
 
+	private extractRuntimeSnapshot(
+		source: Record<string, unknown>,
+	): RuntimeSnapshotFields {
+		const tokens = this.objectValue(source["tokens"]);
+		const retry = this.objectValue(source["retry"]);
+		const rateLimits =
+			source["rate_limits"] ??
+			source["rateLimits"] ??
+			source["codex_rate_limits"] ??
+			source["codexRateLimits"];
+
+		return {
+			turnCount: this.numberValue(source["turn_count"] ?? source["turnCount"]),
+			inputTokens: this.numberValue(
+				source["codex_input_tokens"] ??
+					source["codexInputTokens"] ??
+					source["input_tokens"] ??
+					source["inputTokens"] ??
+					tokens?.["input_tokens"] ??
+					tokens?.["inputTokens"],
+			),
+			outputTokens: this.numberValue(
+				source["codex_output_tokens"] ??
+					source["codexOutputTokens"] ??
+					source["output_tokens"] ??
+					source["outputTokens"] ??
+					tokens?.["output_tokens"] ??
+					tokens?.["outputTokens"],
+			),
+			totalTokens: this.numberValue(
+				source["codex_total_tokens"] ??
+					source["codexTotalTokens"] ??
+					source["total_tokens"] ??
+					source["totalTokens"] ??
+					tokens?.["total_tokens"] ??
+					tokens?.["totalTokens"],
+			),
+			runtimeSeconds: this.numberValue(
+				source["runtime_seconds"] ??
+					source["runtimeSeconds"] ??
+					source["seconds_running"] ??
+					source["secondsRunning"],
+			),
+			retryAttempt: this.numberValue(
+				source["retry_attempt"] ??
+					source["retryAttempt"] ??
+					source["attempt"] ??
+					retry?.["attempt"],
+			),
+			retryDueAt:
+				this.firstNonEmpty(
+					this.stringValue(source["retry_due_at"]),
+					this.stringValue(source["retryDueAt"]),
+					this.stringValue(source["due_at"]),
+					this.stringValue(retry?.["due_at"]),
+					this.formatDueAtValue(
+						source["retry_due_at_ms"] ?? source["due_at_ms"],
+					),
+					this.formatDueAtValue(retry?.["due_at_ms"]),
+				) || undefined,
+			retryError:
+				this.firstNonEmpty(
+					this.stringValue(source["retry_error"]),
+					this.stringValue(source["retryError"]),
+					this.stringValue(retry?.["error"]),
+				) || undefined,
+			rateLimitSummary:
+				this.firstNonEmpty(
+					this.stringValue(source["rate_limit_summary"]),
+					this.stringValue(source["rateLimitSummary"]),
+					this.formatRateLimitSummary(rateLimits),
+				) || undefined,
+		};
+	}
+
+	private mergeRuntimeSnapshot(
+		run: CodexRunView,
+		snapshot: RuntimeSnapshotFields,
+		ref: CodexRunSourceRef,
+	): void {
+		for (const field of [
+			"turnCount",
+			"inputTokens",
+			"outputTokens",
+			"totalTokens",
+			"runtimeSeconds",
+			"retryAttempt",
+			"retryDueAt",
+			"retryError",
+			"rateLimitSummary",
+		] as const) {
+			if (run[field] != null || snapshot[field] == null) continue;
+			run[field] = snapshot[field] as never;
+			this.addFieldSource(run, field, ref);
+		}
+	}
+
+	private addRuntimeSnapshotSources(
+		run: CodexRunView,
+		snapshot: RuntimeSnapshotFields,
+		ref: CodexRunSourceRef,
+	): void {
+		for (const field of [
+			"turnCount",
+			"inputTokens",
+			"outputTokens",
+			"totalTokens",
+			"runtimeSeconds",
+			"retryAttempt",
+			"retryDueAt",
+			"retryError",
+			"rateLimitSummary",
+		] as const) {
+			if (snapshot[field] == null) continue;
+			this.addFieldSource(run, field, ref);
+		}
+	}
+
 	private collectArtifactPaths(source: ArtifactCarrier): string[] {
 		const paths: string[] = [];
 		if (Array.isArray(source.artifactPaths)) {
@@ -1023,6 +1169,48 @@ export class CodexRunObserverService {
 			return undefined;
 		}
 		return value as Record<string, unknown>;
+	}
+
+	private numberValue(value: unknown): number | undefined {
+		if (typeof value === "number" && Number.isFinite(value)) return value;
+		if (typeof value !== "string" || !value.trim()) return undefined;
+		const parsed = Number(value);
+		return Number.isFinite(parsed) ? parsed : undefined;
+	}
+
+	private formatDueAtValue(value: unknown): string | undefined {
+		if (typeof value === "string" && value.trim()) return value.trim();
+		const numeric = this.numberValue(value);
+		if (numeric == null) return undefined;
+		if (numeric > 1_000_000_000_000) {
+			return new Date(numeric).toISOString();
+		}
+		return `${numeric}ms`;
+	}
+
+	private formatRateLimitSummary(value: unknown): string | undefined {
+		if (typeof value === "string" && value.trim()) return value.trim();
+		const object = this.objectValue(value);
+		if (!object) return undefined;
+		const parts: string[] = [];
+		for (const key of [
+			"remaining",
+			"limit",
+			"reset_at",
+			"resetAt",
+			"window_seconds",
+			"windowSeconds",
+		]) {
+			const scalar = object[key];
+			if (
+				typeof scalar === "string" ||
+				typeof scalar === "number" ||
+				typeof scalar === "boolean"
+			) {
+				parts.push(`${key}=${String(scalar)}`);
+			}
+		}
+		return parts.length > 0 ? parts.join(" · ") : undefined;
 	}
 
 	private parseTimestamp(value: string | null | undefined): number | undefined {

@@ -32,6 +32,15 @@ export interface OpenClawTask {
 	workspacePath?: string;
 	host?: string;
 	model?: string;
+	turnCount?: number;
+	inputTokens?: number;
+	outputTokens?: number;
+	totalTokens?: number;
+	runtimeSeconds?: number;
+	retryAttempt?: number;
+	retryDueAt?: string;
+	retryError?: string;
+	rateLimitSummary?: string;
 	artifactPaths?: string[];
 	label?: string;
 	task: string;

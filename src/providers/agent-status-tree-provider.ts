@@ -209,6 +209,16 @@ export interface AgentTask {
 	actual_model?: string | null;
 	thinking_budget?: number | null;
 	prompt_summary?: string | null;
+	turn_count?: number | null;
+	codex_input_tokens?: number | null;
+	codex_output_tokens?: number | null;
+	codex_total_tokens?: number | null;
+	runtime_seconds?: number | null;
+	retry_attempt?: number | null;
+	retry_due_at?: string | null;
+	retry_error?: string | null;
+	rate_limit_summary?: string | null;
+	rate_limits?: unknown;
 }
 
 // ── Tree node types ──────────────────────────────────────────────────
@@ -994,6 +1004,24 @@ function normalizeTask(
 		actual_model: asString(raw["actual_model"]) ?? null,
 		thinking_budget: asNullableNumber(raw["thinking_budget"]) ?? null,
 		prompt_summary: asString(raw["prompt_summary"]) ?? null,
+		turn_count: asNullableNumber(raw["turn_count"]) ?? null,
+		codex_input_tokens:
+			asNullableNumber(raw["codex_input_tokens"] ?? raw["input_tokens"]) ??
+			null,
+		codex_output_tokens:
+			asNullableNumber(raw["codex_output_tokens"] ?? raw["output_tokens"]) ??
+			null,
+		codex_total_tokens:
+			asNullableNumber(raw["codex_total_tokens"] ?? raw["total_tokens"]) ??
+			null,
+		runtime_seconds:
+			asNullableNumber(raw["runtime_seconds"] ?? raw["seconds_running"]) ??
+			null,
+		retry_attempt: asNullableNumber(raw["retry_attempt"]) ?? null,
+		retry_due_at: asString(raw["retry_due_at"] ?? raw["due_at"]) ?? null,
+		retry_error: asString(raw["retry_error"]) ?? null,
+		rate_limit_summary: asString(raw["rate_limit_summary"]) ?? null,
+		rate_limits: raw["rate_limits"] ?? raw["rateLimits"],
 	};
 }
 
@@ -4858,6 +4886,11 @@ export class AgentStatusTreeProvider
 		pushDetail("Role", run.role, "person");
 		pushDetail("Model", run.model, "symbol-constant");
 		pushDetail("Phase", run.phase, "debug-step-over");
+		pushDetail("Turns", this.formatCodexRunTurns(run), "list-ordered");
+		pushDetail("Tokens", this.formatCodexRunTokens(run), "dashboard");
+		pushDetail("Runtime", this.formatCodexRunRuntime(run), "clock");
+		pushDetail("Retry", this.formatCodexRunRetry(run), "debug-restart");
+		pushDetail("Rate limits", run.rateLimitSummary, "pulse");
 		pushDetail("Current/last tool", run.currentTool, "tools");
 		pushDetail("Workspace", run.workspacePath, "folder");
 		pushDetail("Thread", run.threadId, "comment-discussion");
@@ -4977,6 +5010,33 @@ export class AgentStatusTreeProvider
 		);
 	}
 
+	private formatCodexRunTurns(run: CodexRunView): string | undefined {
+		return run.turnCount == null ? undefined : `${run.turnCount}`;
+	}
+
+	private formatCodexRunTokens(run: CodexRunView): string | undefined {
+		const parts = [
+			run.inputTokens == null ? null : `input ${run.inputTokens}`,
+			run.outputTokens == null ? null : `output ${run.outputTokens}`,
+			run.totalTokens == null ? null : `total ${run.totalTokens}`,
+		].filter((part): part is string => part !== null);
+		return parts.length > 0 ? parts.join(" · ") : undefined;
+	}
+
+	private formatCodexRunRuntime(run: CodexRunView): string | undefined {
+		if (run.runtimeSeconds == null) return undefined;
+		return `${Math.round(run.runtimeSeconds)}s`;
+	}
+
+	private formatCodexRunRetry(run: CodexRunView): string | undefined {
+		const parts = [
+			run.retryAttempt == null ? null : `attempt ${run.retryAttempt}`,
+			run.retryDueAt ? `due ${run.retryDueAt}` : null,
+			run.retryError ? `error ${run.retryError}` : null,
+		].filter((part): part is string => part !== null);
+		return parts.length > 0 ? parts.join(" · ") : undefined;
+	}
+
 	private formatCodexRunFieldSourceDetails(run: CodexRunView): Array<{
 		label: string;
 		value: string;
@@ -5041,14 +5101,23 @@ export class AgentStatusTreeProvider
 		const completedCount = runs.filter(
 			(run) => run.status === "succeeded",
 		).length;
+		const retryingCount = runs.filter(
+			(run) => run.retryAttempt != null || run.retryDueAt != null,
+		).length;
+		const tokenTotal = runs.reduce(
+			(total, run) => total + (run.totalTokens ?? 0),
+			0,
+		);
 
 		const parts = [
 			workingCount > 0 ? `${workingCount} working` : null,
+			retryingCount > 0 ? `${retryingCount} retrying` : null,
 			attentionCount > 0 ? `${attentionCount} needs attention` : null,
 			stoppedCount > 0 ? `${stoppedCount} stopped` : null,
 			cancelledCount > 0 ? `${cancelledCount} cancelled` : null,
 			unknownCount > 0 ? `${unknownCount} unknown` : null,
 			completedCount > 0 ? `${completedCount} completed` : null,
+			tokenTotal > 0 ? `${tokenTotal} tokens` : null,
 		].filter((part): part is string => part !== null);
 
 		if (parts.length > 0) {
@@ -5080,12 +5149,26 @@ export class AgentStatusTreeProvider
 			(run) => run.source.kind !== "launcher",
 		).length;
 		const launcherOnlyCount = runs.length - ownedCount;
+		const retryingCount = runs.filter(
+			(run) => run.retryAttempt != null || run.retryDueAt != null,
+		).length;
+		const tokenTotal = runs.reduce(
+			(total, run) => total + (run.totalTokens ?? 0),
+			0,
+		);
+		const runtimeTotal = runs.reduce(
+			(total, run) => total + (run.runtimeSeconds ?? 0),
+			0,
+		);
 
 		return new vscode.MarkdownString(
 			[
 				"**Symphony / Run Attempts**",
 				`${runs.length} read-only projected ${runs.length === 1 ? "run attempt" : "run attempts"}`,
 				statusLine,
+				retryingCount > 0 ? `Retry queue rows: ${retryingCount}` : "",
+				tokenTotal > 0 ? `Total tokens: ${tokenTotal}` : "",
+				runtimeTotal > 0 ? `Runtime seconds: ${Math.round(runtimeTotal)}` : "",
 				runs.length > 0
 					? `${ownedCount} source-owned · ${launcherOnlyCount} launcher-only`
 					: "No source rows are currently projected into this view.",
