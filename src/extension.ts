@@ -413,7 +413,11 @@ function getAgentStatusTreeSnapshot(
 
 		const children =
 			depth < maxDepth ? provider.getChildren(element) : ([] as AgentNode[]);
-		const cappedChildren = children.slice(0, maxChildrenPerNode);
+		const childLimit =
+			element.type === "codexRuns"
+				? Math.min(maxChildrenPerNode, 5)
+				: maxChildrenPerNode;
+		const cappedChildren = children.slice(0, childLimit);
 		if (
 			options.requiredTaskId &&
 			!cappedChildren.some((child) =>
