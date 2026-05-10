@@ -35,12 +35,9 @@ function createTask(id: string) {
 function expectedEmptyAgentStatusChildren(): AgentNode[] {
 	return [
 		{
-			type: "taskflows",
-			flows: [],
-		},
-		{
-			type: "codexRuns",
+			type: "symphony",
 			runs: [],
+			flows: [],
 		},
 		{
 			type: "state",

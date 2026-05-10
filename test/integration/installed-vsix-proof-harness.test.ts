@@ -88,16 +88,22 @@ describe("installed VSIX Agent Status proof harness", () => {
 			taskCount: 1,
 			roots: [
 				{
-					label: "Symphony / Run Attempts · 1",
-					nodeKind: "codexRuns",
+					label: "Symphony",
+					nodeKind: "symphony",
 					children: [
 						{
-							label: "Run A",
-							nodeKind: "codexRun",
-							command: {
-								command: "commandCentral.dispatchRetry",
-								title: "Dispatch Retry",
-							},
+							label: "Run Attempts · 1",
+							nodeKind: "codexRuns",
+							children: [
+								{
+									label: "Run A",
+									nodeKind: "codexRun",
+									command: {
+										command: "commandCentral.dispatchRetry",
+										title: "Dispatch Retry",
+									},
+								},
+							],
 						},
 					],
 				},

@@ -407,7 +407,7 @@ function getAgentStatusTreeSnapshot(
 		const children =
 			depth < maxDepth ? provider.getChildren(element) : ([] as AgentNode[]);
 		const childLimit =
-			element.type === "codexRuns"
+			element.type === "codexRuns" || element.type === "symphonyRunGroup"
 				? Math.min(maxChildrenPerNode, 5)
 				: maxChildrenPerNode;
 		const cappedChildren = children.slice(0, childLimit);

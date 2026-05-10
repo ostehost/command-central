@@ -1,4 +1,4 @@
-- Symphony / Workstreams · 1 — 1 active {taskflows}
+- Workstreams · 1 — 1 active {taskflows}
   - Symphony preview conductor — Running · 0/2 tasks {taskflow.running}
     - Status: Running {agentTaskDetail}
     - Progress: 0/2 completed {agentTaskDetail}

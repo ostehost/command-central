@@ -13,7 +13,7 @@ export async function run(): Promise<void> {
 	const agentStatus = testApi.getAgentStatusSnapshot();
 	const tree = testApi.getAgentStatusTreeSnapshot({
 		maxDepth: 2,
-		requiredLabels: ["Symphony / Workstreams", "Symphony / Run Attempts"],
+		requiredLabels: ["Symphony", "Workstreams", "Run Attempts"],
 	});
 
 	assert.equal(
@@ -26,11 +26,15 @@ export async function run(): Promise<void> {
 		"Agent status root children count should be readable without throwing.",
 	);
 	assert.ok(
-		tree.selected.requiredLabels["Symphony / Workstreams"]?.length,
-		"Agent Status tree inspection should expose the static Symphony / Workstreams root.",
+		tree.selected.requiredLabels["Symphony"]?.length,
+		"Agent Status tree inspection should expose the static Symphony root.",
 	);
 	assert.ok(
-		tree.selected.requiredLabels["Symphony / Run Attempts"]?.length,
-		"Agent Status tree inspection should expose the Symphony / Run Attempts root.",
+		tree.selected.requiredLabels["Workstreams"]?.length,
+		"Agent Status tree inspection should expose the Symphony Workstreams node.",
+	);
+	assert.ok(
+		tree.selected.requiredLabels["Run Attempts"]?.length,
+		"Agent Status tree inspection should expose the Symphony Run Attempts node.",
 	);
 }

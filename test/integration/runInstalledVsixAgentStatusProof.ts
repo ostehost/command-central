@@ -291,7 +291,7 @@ async function readManifestSummary(manifestPath: string): Promise<{
 		taskCount: manifest.tree_snapshot.taskCount,
 		roots: manifest.tree_snapshot.roots
 			.map((root) => root.label)
-			.filter((label) => label.startsWith("Symphony /")),
+			.filter((label) => label.startsWith("Symphony")),
 		mode: manifest.mode,
 		actionsPassed: manifest.actions.filter(
 			(action) => action.status === "passed",

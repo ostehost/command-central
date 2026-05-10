@@ -231,6 +231,9 @@ export type AgentNode =
 	| DiscoveredNode
 	| OpenClawTaskNode
 	| BackgroundTasksNode
+	| SymphonyRootNode
+	| SymphonyDashboardNode
+	| SymphonyRunGroupNode
 	| TaskFlowGroupNode
 	| TaskFlowChildNode
 	| TaskFlowsContainerNode
@@ -239,6 +242,26 @@ export type AgentNode =
 	| StatusTimeGroupNode
 	| OlderRunsNode
 	| StateNode;
+
+export interface SymphonyRootNode {
+	type: "symphony";
+	runs: CodexRunView[];
+	flows: TaskFlow[];
+}
+
+export interface SymphonyDashboardNode {
+	type: "symphonyDashboard";
+	runs: CodexRunView[];
+	flows: TaskFlow[];
+}
+
+export type SymphonyRunGroupKind = "running" | "retryQueued" | "released";
+
+export interface SymphonyRunGroupNode {
+	type: "symphonyRunGroup";
+	kind: SymphonyRunGroupKind;
+	runs: CodexRunView[];
+}
 
 export interface TaskFlowGroupNode {
 	type: "taskFlowGroup";
@@ -3063,6 +3086,15 @@ export class AgentStatusTreeProvider
 		if (element.type === "backgroundTasks") {
 			return this.createBackgroundTasksItem(element);
 		}
+		if (element.type === "symphony") {
+			return this.createSymphonyItem(element);
+		}
+		if (element.type === "symphonyDashboard") {
+			return this.createSymphonyDashboardItem(element);
+		}
+		if (element.type === "symphonyRunGroup") {
+			return this.createSymphonyRunGroupItem(element);
+		}
 		if (element.type === "taskFlowGroup") {
 			return this.createTaskFlowItem(element.flow);
 		}
@@ -3148,12 +3180,9 @@ export class AgentStatusTreeProvider
 					this.isCodexRunInProject(run, this._projectFilter ?? ""),
 				);
 			}
-			const codexRunsNode: CodexRunsContainerNode = {
-				type: "codexRuns",
+			const symphonyNode: SymphonyRootNode = {
+				type: "symphony",
 				runs: codexRuns,
-			};
-			const taskFlowsNode: TaskFlowsContainerNode = {
-				type: "taskflows",
 				flows: taskFlows,
 			};
 			const hasAnyAgents =
@@ -3164,8 +3193,7 @@ export class AgentStatusTreeProvider
 			if (!hasAnyAgents) {
 				if (this._initialReadInProgress && this._filePath) {
 					return [
-						taskFlowsNode,
-						codexRunsNode,
+						symphonyNode,
 						{
 							type: "state",
 							label: "Scanning for agents...",
@@ -3176,8 +3204,7 @@ export class AgentStatusTreeProvider
 				}
 				if (this._registryLoadIssue) {
 					return [
-						taskFlowsNode,
-						codexRunsNode,
+						symphonyNode,
 						{
 							type: "state",
 							label: "Could not read tasks.json",
@@ -3187,8 +3214,7 @@ export class AgentStatusTreeProvider
 					];
 				}
 				return [
-					taskFlowsNode,
-					codexRunsNode,
+					symphonyNode,
 					{
 						type: "state",
 						label: "Waiting for agents...",
@@ -3275,8 +3301,7 @@ export class AgentStatusTreeProvider
 
 			return [
 				...summaryNodes,
-				taskFlowsNode,
-				codexRunsNode,
+				symphonyNode,
 				...(!showOpenClawInline && openclawTasks.length > 0
 					? [
 							{
@@ -3319,6 +3344,30 @@ export class AgentStatusTreeProvider
 
 		if (element.type === "openclawTask") {
 			return this.getOpenClawTaskDetailChildren(element.task);
+		}
+
+		if (element.type === "symphony") {
+			return this.getSymphonyChildren(element);
+		}
+
+		if (element.type === "symphonyDashboard") {
+			return this.getSymphonyDashboardDetailChildren(element);
+		}
+
+		if (element.type === "symphonyRunGroup") {
+			if (element.runs.length === 0) {
+				return [
+					{
+						type: "state",
+						label: this.getSymphonyRunGroupEmptyLabel(element.kind),
+						description: this.getSymphonyRunGroupEmptyDescription(element.kind),
+						icon: "circle-slash",
+					},
+				];
+			}
+			return element.runs.map(
+				(run): CodexRunNode => ({ type: "codexRun", run }),
+			);
 		}
 
 		if (element.type === "taskflows") {
@@ -4829,6 +4878,116 @@ export class AgentStatusTreeProvider
 		return details;
 	}
 
+	private getSymphonyDashboardDetailChildren(
+		node: SymphonyDashboardNode,
+	): DetailNode[] {
+		const taskId = "symphony-operations-dashboard";
+		const runs = node.runs;
+		const retryQueued = this.getSymphonyRetryQueuedRuns(runs);
+		const released = this.getSymphonyReleasedRuns(runs);
+		const runtimeSeconds = runs.reduce(
+			(total, run) => total + (run.runtimeSeconds ?? 0),
+			0,
+		);
+		const turnCount = runs.reduce(
+			(total, run) => total + (run.turnCount ?? 0),
+			0,
+		);
+		const tokenTotal = runs.reduce(
+			(total, run) => total + (run.totalTokens ?? 0),
+			0,
+		);
+		const rateLimitSnapshots = runs
+			.map((run) => run.rateLimitSummary)
+			.filter((value): value is string => Boolean(value));
+
+		const details: DetailNode[] = [
+			{
+				type: "detail",
+				label: "Boundary",
+				value:
+					"Read-only Status Surface; lifecycle, retry, tracker, and scheduler state stay source-owned",
+				taskId,
+				icon: "shield",
+			},
+			{
+				type: "detail",
+				label: "Run Attempts",
+				value: `${runs.length}`,
+				taskId,
+				icon: "run-all",
+			},
+			{
+				type: "detail",
+				label: "Workstreams",
+				value: `${node.flows.length}`,
+				taskId,
+				icon: "layers",
+			},
+			{
+				type: "detail",
+				label: "Running Sessions",
+				value: `${this.getSymphonyRunningSessionRuns(runs).length}`,
+				taskId,
+				icon: "pulse",
+			},
+			{
+				type: "detail",
+				label: "Retry Queue",
+				value: `${retryQueued.length}`,
+				taskId,
+				icon: "history",
+			},
+		];
+
+		if (released.length > 0) {
+			details.push({
+				type: "detail",
+				label: "Released",
+				value: `${released.length}`,
+				taskId,
+				icon: "check",
+			});
+		}
+		if (turnCount > 0) {
+			details.push({
+				type: "detail",
+				label: "Turns",
+				value: `${turnCount}`,
+				taskId,
+				icon: "list-ordered",
+			});
+		}
+		if (tokenTotal > 0) {
+			details.push({
+				type: "detail",
+				label: "Tokens",
+				value: `${tokenTotal}`,
+				taskId,
+				icon: "dashboard",
+			});
+		}
+		if (runtimeSeconds > 0) {
+			details.push({
+				type: "detail",
+				label: "Runtime",
+				value: `${Math.round(runtimeSeconds)}s`,
+				taskId,
+				icon: "clock",
+			});
+		}
+		if (rateLimitSnapshots.length > 0) {
+			details.push({
+				type: "detail",
+				label: "Rate-limit snapshots",
+				value: [...new Set(rateLimitSnapshots)].join(" · "),
+				taskId,
+				icon: "pulse",
+			});
+		}
+		return details;
+	}
+
 	private getCodexRunDetailChildren(run: CodexRunView): DetailNode[] {
 		const taskId = `codex-run-${run.runId}`;
 		const details: DetailNode[] = [];
@@ -5083,6 +5242,136 @@ export class AgentStatusTreeProvider
 
 	private isAttentionCodexRunStatus(status: CodexRunStatus): boolean {
 		return status === "failed" || status === "timed_out" || status === "lost";
+	}
+
+	private getSymphonyChildren(node: SymphonyRootNode): AgentNode[] {
+		const running = this.getSymphonyRunningSessionRuns(node.runs);
+		const retryQueued = this.getSymphonyRetryQueuedRuns(node.runs);
+		const released = this.getSymphonyReleasedRuns(node.runs);
+		const children: AgentNode[] = [
+			{ type: "symphonyDashboard", runs: node.runs, flows: node.flows },
+			{ type: "symphonyRunGroup", kind: "running", runs: running },
+			{ type: "symphonyRunGroup", kind: "retryQueued", runs: retryQueued },
+		];
+		if (released.length > 0) {
+			children.push({
+				type: "symphonyRunGroup",
+				kind: "released",
+				runs: released,
+			});
+		}
+		children.push(
+			{ type: "taskflows", flows: node.flows },
+			{ type: "codexRuns", runs: node.runs },
+		);
+		return children;
+	}
+
+	private getSymphonyRunningSessionRuns(runs: CodexRunView[]): CodexRunView[] {
+		return runs.filter(
+			(run) =>
+				run.status === "running" &&
+				!this.isSymphonyRetryQueuedRun(run) &&
+				!this.isSymphonyReleasedRun(run),
+		);
+	}
+
+	private getSymphonyRetryQueuedRuns(runs: CodexRunView[]): CodexRunView[] {
+		return runs.filter((run) => this.isSymphonyRetryQueuedRun(run));
+	}
+
+	private getSymphonyReleasedRuns(runs: CodexRunView[]): CodexRunView[] {
+		return runs.filter((run) => this.isSymphonyReleasedRun(run));
+	}
+
+	private isSymphonyRetryQueuedRun(run: CodexRunView): boolean {
+		return (
+			this.normalizeSymphonySourceStatus(run.sourceStatus) === "retryqueued" ||
+			run.retryAttempt != null ||
+			run.retryDueAt != null ||
+			Boolean(run.retryError)
+		);
+	}
+
+	private isSymphonyReleasedRun(run: CodexRunView): boolean {
+		return this.normalizeSymphonySourceStatus(run.sourceStatus) === "released";
+	}
+
+	private normalizeSymphonySourceStatus(value: string | undefined): string {
+		return value?.replace(/[\s_-]+/g, "").toLowerCase() ?? "";
+	}
+
+	private formatSymphonyRootDescription(
+		runs: CodexRunView[],
+		flows: TaskFlow[],
+	): string {
+		const running = this.getSymphonyRunningSessionRuns(runs).length;
+		const retryQueued = this.getSymphonyRetryQueuedRuns(runs).length;
+		const parts = [
+			`${runs.length} ${runs.length === 1 ? "run attempt" : "run attempts"}`,
+			`${flows.length} ${flows.length === 1 ? "workstream" : "workstreams"}`,
+			running > 0 ? `${running} running` : null,
+			retryQueued > 0 ? `${retryQueued} RetryQueued` : null,
+		].filter((part): part is string => part !== null);
+		return parts.join(" · ");
+	}
+
+	private formatSymphonyDashboardDescription(runs: CodexRunView[]): string {
+		const running = this.getSymphonyRunningSessionRuns(runs).length;
+		const retryQueued = this.getSymphonyRetryQueuedRuns(runs).length;
+		const rateLimited = runs.filter((run) => run.rateLimitSummary).length;
+		const parts = [
+			running > 0 ? `${running} running` : null,
+			retryQueued > 0 ? `${retryQueued} RetryQueued` : null,
+			rateLimited > 0 ? `${rateLimited} rate-limit snapshots` : null,
+		].filter((part): part is string => part !== null);
+		return parts.length > 0 ? parts.join(" · ") : "read-only status surface";
+	}
+
+	private getSymphonyRunGroupLabel(kind: SymphonyRunGroupKind): string {
+		switch (kind) {
+			case "running":
+				return "Running Sessions";
+			case "retryQueued":
+				return "Retry Queue";
+			case "released":
+				return "Released";
+		}
+	}
+
+	private getSymphonyRunGroupSpecStatus(kind: SymphonyRunGroupKind): string {
+		switch (kind) {
+			case "running":
+				return "Running";
+			case "retryQueued":
+				return "RetryQueued";
+			case "released":
+				return "Released";
+		}
+	}
+
+	private getSymphonyRunGroupEmptyLabel(kind: SymphonyRunGroupKind): string {
+		switch (kind) {
+			case "running":
+				return "No running sessions";
+			case "retryQueued":
+				return "Retry queue empty";
+			case "released":
+				return "No released run attempts";
+		}
+	}
+
+	private getSymphonyRunGroupEmptyDescription(
+		kind: SymphonyRunGroupKind,
+	): string {
+		switch (kind) {
+			case "running":
+				return "Source-owned Running rows will appear here";
+			case "retryQueued":
+				return "Source-owned RetryQueued rows will appear here";
+			case "released":
+				return "Only shown when a source owner reports Released evidence";
+		}
 	}
 
 	private formatCodexRunsDescription(runs: CodexRunView[]): string {
@@ -6787,6 +7076,92 @@ export class AgentStatusTreeProvider
 		return item;
 	}
 
+	private createSymphonyItem(node: SymphonyRootNode): vscode.TreeItem {
+		const item = new vscode.TreeItem(
+			"Symphony",
+			vscode.TreeItemCollapsibleState.Expanded,
+		);
+		item.description = this.formatSymphonyRootDescription(
+			node.runs,
+			node.flows,
+		);
+		item.contextValue = "symphony";
+		item.iconPath = new vscode.ThemeIcon("server-process");
+		item.tooltip = new vscode.MarkdownString(
+			[
+				"**Symphony**",
+				"Read-only Status Surface for source-owned Workstreams and Run Attempts.",
+				"Command Central does not orchestrate, schedule, retry, cancel, poll Linear, or write tracker state.",
+			].join("\n\n"),
+		);
+		return item;
+	}
+
+	private createSymphonyDashboardItem(
+		node: SymphonyDashboardNode,
+	): vscode.TreeItem {
+		const item = new vscode.TreeItem(
+			"Operations Dashboard",
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description = this.formatSymphonyDashboardDescription(node.runs);
+		item.contextValue = "symphonyDashboard";
+		item.iconPath = new vscode.ThemeIcon("dashboard");
+		item.tooltip = new vscode.MarkdownString(
+			[
+				"**Operations Dashboard**",
+				"Aggregates projected source-owned state for operator visibility.",
+				"All lifecycle, retry, and tracker authority stays with the source owner.",
+			].join("\n\n"),
+		);
+		return item;
+	}
+
+	private createSymphonyRunGroupItem(
+		node: SymphonyRunGroupNode,
+	): vscode.TreeItem {
+		const label = this.getSymphonyRunGroupLabel(node.kind);
+		const item = new vscode.TreeItem(
+			`${label} · ${node.runs.length}`,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description = this.getSymphonyRunGroupSpecStatus(node.kind);
+		item.contextValue = `symphonyRunGroup.${node.kind}`;
+		item.iconPath = this.getSymphonyRunGroupIcon(node.kind);
+		item.tooltip = new vscode.MarkdownString(
+			[
+				`**${label}**`,
+				`Spec state: \`${this.getSymphonyRunGroupSpecStatus(node.kind)}\``,
+				`${node.runs.length} read-only projected ${
+					node.runs.length === 1 ? "Run Attempt" : "Run Attempts"
+				}`,
+			].join("\n\n"),
+		);
+		return item;
+	}
+
+	private getSymphonyRunGroupIcon(
+		kind: SymphonyRunGroupKind,
+	): vscode.ThemeIcon {
+		switch (kind) {
+			case "running":
+				return new vscode.ThemeIcon(
+					"pulse",
+					new vscode.ThemeColor("charts.blue"),
+				);
+			case "retryQueued":
+				return new vscode.ThemeIcon(
+					"history",
+					new vscode.ThemeColor("charts.yellow"),
+				);
+			case "released":
+				return new vscode.ThemeIcon(
+					"check",
+					new vscode.ThemeColor("charts.green"),
+				);
+		}
+	}
+
 	private createBackgroundTasksItem(
 		node: BackgroundTasksNode,
 	): vscode.TreeItem {
@@ -6810,9 +7185,7 @@ export class AgentStatusTreeProvider
 				f.status === "waiting",
 		).length;
 		const item = new vscode.TreeItem(
-			count === 1
-				? "Symphony / Workstreams · 1"
-				: `Symphony / Workstreams · ${count}`,
+			count === 1 ? "Workstreams · 1" : `Workstreams · ${count}`,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description =
@@ -6829,9 +7202,7 @@ export class AgentStatusTreeProvider
 	private createCodexRunsItem(node: CodexRunsContainerNode): vscode.TreeItem {
 		const count = node.runs.length;
 		const item = new vscode.TreeItem(
-			count === 1
-				? "Symphony / Run Attempts · 1"
-				: `Symphony / Run Attempts · ${count}`,
+			count === 1 ? "Run Attempts · 1" : `Run Attempts · ${count}`,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = this.formatCodexRunsDescription(node.runs);

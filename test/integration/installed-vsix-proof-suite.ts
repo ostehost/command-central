@@ -220,8 +220,8 @@ async function getProofTreeSnapshot(
 		const snapshot = testApi.getAgentStatusTreeSnapshot({
 			maxDepth: 4,
 			maxChildrenPerNode: 35,
-			rootLabelPrefixes: ["Symphony /"],
-			requiredLabels: ["Symphony / Workstreams", "Symphony / Run Attempts"],
+			rootLabelPrefixes: ["Symphony"],
+			requiredLabels: ["Symphony", "Workstreams", "Run Attempts"],
 			requiredTaskId,
 		});
 		if (hasRequiredSymphonyRoots(snapshot)) return snapshot;
@@ -231,8 +231,8 @@ async function getProofTreeSnapshot(
 	return testApi.getAgentStatusTreeSnapshot({
 		maxDepth: 4,
 		maxChildrenPerNode: 35,
-		rootLabelPrefixes: ["Symphony /"],
-		requiredLabels: ["Symphony / Workstreams", "Symphony / Run Attempts"],
+		rootLabelPrefixes: ["Symphony"],
+		requiredLabels: ["Symphony", "Workstreams", "Run Attempts"],
 		requiredTaskId,
 	});
 }
@@ -395,19 +395,23 @@ export async function run(): Promise<void> {
 	}
 	if (!hasRequiredSymphonyRoots(snapshot)) {
 		errors.push(
-			"Missing required Symphony / Workstreams or Symphony / Run Attempts root.",
+			"Missing required Symphony root with Workstreams and Run Attempts children.",
 		);
 	}
 	errors.push(...findSpecBoundaryViolations(snapshot));
 
 	const selectedRows = [
-		...findNodesByLabel(snapshot.roots, (label) =>
-			label.startsWith("Symphony /"),
+		...findNodesByLabel(
+			snapshot.roots,
+			(label) =>
+				label.startsWith("Symphony") ||
+				label.startsWith("Workstreams") ||
+				label.startsWith("Run Attempts"),
 		).map((node) => ({ path: [node.label], node })),
 	];
-	const passiveRun = snapshot.roots
-		.find((root) => root.label.startsWith("Symphony / Run Attempts"))
-		?.children?.find((node) => node.nodeKind === "codexRun");
+	const passiveRun = findNodesByLabel(snapshot.roots, (label) =>
+		label.startsWith("Run Attempts"),
+	)[0]?.children?.find((node) => node.nodeKind === "codexRun");
 	if (passiveRun && mode === "passive") {
 		if (!hasDetailLabel(passiveRun, "Lifecycle owner")) {
 			errors.push("Passive run attempt is missing lifecycle-owner detail.");
@@ -421,7 +425,7 @@ export async function run(): Promise<void> {
 			);
 		}
 		selectedRows.push({
-			path: ["Symphony / Run Attempts", passiveRun.label],
+			path: ["Symphony", "Run Attempts", passiveRun.label],
 			node: passiveRun,
 		});
 	}
