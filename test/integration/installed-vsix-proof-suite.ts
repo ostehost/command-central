@@ -181,7 +181,7 @@ async function getProofTreeSnapshot(
 	for (let attempt = 0; attempt < 10; attempt += 1) {
 		const snapshot = testApi.getAgentStatusTreeSnapshot({
 			maxDepth: 4,
-			maxChildrenPerNode: 120,
+			maxChildrenPerNode: 35,
 			requiredLabels: ["Symphony / Workstreams", "Symphony / Run Attempts"],
 			requiredTaskId,
 		});
@@ -191,7 +191,7 @@ async function getProofTreeSnapshot(
 	}
 	return testApi.getAgentStatusTreeSnapshot({
 		maxDepth: 4,
-		maxChildrenPerNode: 120,
+		maxChildrenPerNode: 35,
 		requiredLabels: ["Symphony / Workstreams", "Symphony / Run Attempts"],
 		requiredTaskId,
 	});

@@ -413,6 +413,17 @@ function getAgentStatusTreeSnapshot(
 		const children =
 			depth < maxDepth ? provider.getChildren(element) : ([] as AgentNode[]);
 		const cappedChildren = children.slice(0, maxChildrenPerNode);
+		if (
+			options.requiredTaskId &&
+			!cappedChildren.some((child) =>
+				matchesRequiredTaskId(child, options.requiredTaskId as string),
+			)
+		) {
+			const requiredChild = children.find((child) =>
+				matchesRequiredTaskId(child, options.requiredTaskId as string),
+			);
+			if (requiredChild) cappedChildren.push(requiredChild);
+		}
 		const node: CommandCentralAgentStatusTreeNode = {
 			label,
 			description: treeItemDescriptionToString(item.description),
