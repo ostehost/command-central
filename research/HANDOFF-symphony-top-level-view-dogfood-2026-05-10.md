@@ -32,6 +32,13 @@ Boundary preserved:
 
 ## Proof Receipts
 
+Process correction:
+
+- The product proof below is useful as an installed-extension receipt, but the dogfood process is WIP because it created a slice-specific visible launcher/project identity.
+- The staged repo and launcher identity `command-central-symphony-top-view` were not authorized. Symphony dogfood must use the canonical MacBook node project launcher: `/Users/ostehost/projects/command-central` with `/Applications/Projects/command-central.app`.
+- Multiple implementation/proof lanes should appear as tabs, windows, sessions, task ids, roles, or session suffixes inside the canonical Command Central launcher. They must not become new project directories or app bundles.
+- If the canonical node checkout is stale or dirty, preserve and align that checkout or block with evidence. Do not create a new project identity to work around launcher validation.
+
 Hub validation:
 
 - `bun test test/integration/installed-vsix-proof-harness.test.ts test/package-json/manifest-contract.test.ts test/tree-view/openclaw-task-nodes.test.ts` -> `47 pass / 0 fail`
@@ -42,7 +49,7 @@ Hub validation:
 
 MacBook node validation:
 
-- Staged repo: `/Users/ostehost/projects/command-central-symphony-top-view`
+- WIP staged repo: `/Users/ostehost/projects/command-central-symphony-top-view`
 - VSIX: `/tmp/command-central-symphony-top-view.vsix`
 - VSIX SHA256: `2723ad98fcf053f40f6a91e2971a918e8a5d3e5e31829ca0e6a68ccf2b3a839f`
 - Normal profile consumption receipt: `/tmp/command-central-symphony-consumption.json`
@@ -64,17 +71,20 @@ Installed proof result:
 Visible implementation lane attempted:
 
 - task id: `cc-symphony-top-view-20260510-1245c`
-- staged repo: `/Users/ostehost/projects/command-central-symphony-top-view`
+- WIP staged repo: `/Users/ostehost/projects/command-central-symphony-top-view`
 - session: `agent-command-central-symphony-top-view`
 - result: killed after it became stuck and produced no edits
 
 Because the implementation lane did not produce code, the lead landed the patch directly on hub and used the MacBook staged repo for proof. That is the correct product outcome, but not a successful implementation-delegation outcome.
+
+Additional correction: the staged repo also produced an unauthorized visible launcher/project identity. Treat this run as product proof plus process failure evidence, not as a healthy launcher dogfood pattern.
 
 ## Process Hardening Findings
 
 The delegation path exposed several process gaps:
 
 - Hub-visible spawn was correctly blocked; visible Ghostty launcher lanes are node-only.
+- Visible launcher identity must stay canonical to the product. A slice-specific worktree name must not become `project_id`, tmux bundle identity, spawn lease identity, or `/Applications/Projects/*.app`.
 - The MacBook canonical checkout was stale/dirty, so a staged clone under `~/projects` was required.
 - Launcher validation rejected a temp clone outside `~/projects`.
 - The staged clone needed an origin URL whose repo basename matched the checkout directory before launcher validation accepted it.
@@ -87,6 +97,9 @@ The delegation path exposed several process gaps:
 
 Recommended follow-up hardening:
 
+- Enforce same-origin worktree canonicalization so `command-central-*` worktrees resolve to the `command-central` project launcher.
+- Keep visible launchers node-only and remove runtime hub-visible escape hatches.
+- Add raw `launcher --create-bundle` protection for canonical `/Applications/Projects/*.app` names.
 - Add a launcher preflight mode that validates node checkout cleanliness, origin basename, trust state, and owner routing before spawning.
 - Make visible lane status distinguish `waiting_for_trust`, `awaiting_prompt`, `running_model`, and `editing`.
 - Add a non-interrupting steering path for visible Claude lanes, or make `oste-steer.sh` detect and recover from the interruption prompt.
