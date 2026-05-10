@@ -42,7 +42,7 @@ interface ProofManifest {
 	expected_vsix_sha256?: string;
 	expected_vsix_identity_kind?: ExpectedVsixIdentityKind;
 	vsix_matches_expected_sha?: boolean;
-	published_release_match?: boolean;
+	published_release_match: boolean;
 	commit: string;
 	command_central_loaded_from_vsix: true;
 	is_extension_development_path_used_for_cc: false;
@@ -495,9 +495,8 @@ export async function run(): Promise<void> {
 		expected_vsix_identity_kind: expectedIdentityKind,
 		vsix_matches_expected_sha: matchesExpectedSha,
 		published_release_match:
-			expectedIdentityKind === "published-prerelease"
-				? matchesExpectedSha
-				: undefined,
+			expectedIdentityKind === "published-prerelease" &&
+			matchesExpectedSha === true,
 		commit: requireEnv("COMMAND_CENTRAL_PROOF_COMMIT"),
 		command_central_loaded_from_vsix: true,
 		is_extension_development_path_used_for_cc: false,

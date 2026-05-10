@@ -124,7 +124,7 @@ Before using this proof path as a release gate, pass the accepted prerelease SHA
 - Accept an expected SHA and an identity kind.
 - Emit `expected_vsix_sha256`, `vsix_matches_expected_sha`, `expected_vsix_identity_kind`, and `published_release_match`.
 - Set `expected_vsix_identity_kind` to `published-prerelease` only for an accepted prerelease artifact, and to `temporary-proof-artifact` for local proof packages.
-- Set `published_release_match` only when the identity kind is `published-prerelease`.
+- Set `published_release_match` to `true` only when the identity kind is `published-prerelease` and the VSIX SHA matches the expected accepted artifact; emit `false` for temporary proof artifacts.
 - Fail release-mode proof if the VSIX SHA does not match the expected published prerelease artifact.
 - Keep local proof mode available, but label it as a temporary proof artifact by commit SHA.
 
@@ -137,10 +137,10 @@ Expected-SHA proof for unshipped commit `0a28d99`:
 - Temporary artifact: `/tmp/command-central-proof-0a28d99.vsix`
 - SHA256: `67c820e5c73611359ac4627c21f8d8a6e6417027240ee6b6e3d2cc50baa17f8e`
 - Passive manifest: `/Users/ostehost/.openclaw/tmp/cc-proof-command-central-final3/logs/installed-vsix-agent-status-proof-1778375375340.json`
-- Passive result: `vsix_matches_expected_sha: true`, `expected_vsix_identity_kind: temporary-proof-artifact`, `published_release_match: null`, task count `306`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 29`, errors none
+- Passive result: `vsix_matches_expected_sha: true`, `expected_vsix_identity_kind: temporary-proof-artifact`, `published_release_match: false`, task count `306`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 29`, errors none
 - Live target: `cc-installed-vsix-proof-live8-20260509-2110`
 - Live manifest: `/Users/ostehost/.openclaw/tmp/cc-proof-command-central-final3/logs/installed-vsix-agent-status-proof-1778375393477.json`
-- Live result: `vsix_matches_expected_sha: true`, `expected_vsix_identity_kind: temporary-proof-artifact`, `published_release_match: null`, task count `306`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 29`, copy/open/focus passed, errors none
+- Live result: `vsix_matches_expected_sha: true`, `expected_vsix_identity_kind: temporary-proof-artifact`, `published_release_match: false`, task count `306`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 29`, copy/open/focus passed, errors none
 
 ## Process Finding
 

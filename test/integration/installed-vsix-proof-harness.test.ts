@@ -69,6 +69,19 @@ describe("installed VSIX Agent Status proof harness", () => {
 		).toThrow(/published-prerelease or temporary-proof-artifact/);
 	});
 
+	test("manifest identity fields distinguish expected SHA from published release identity", async () => {
+		const source = await Bun.file(
+			path.join(repoRoot, "test/integration/installed-vsix-proof-suite.ts"),
+		).text();
+
+		expect(source).toContain("expected_vsix_sha256");
+		expect(source).toContain("vsix_matches_expected_sha");
+		expect(source).toContain("expected_vsix_identity_kind");
+		expect(source).toContain("published_release_match");
+		expect(source).not.toContain("vsix_matches_published_release");
+		expect(source).toContain('expectedIdentityKind === "published-prerelease"');
+	});
+
 	test("rejects scheduler-owned commands under the Symphony surface", () => {
 		const snapshot: AgentStatusProofTreeSnapshot = {
 			rootChildrenCount: 1,
