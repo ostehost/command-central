@@ -47,6 +47,9 @@ interface ProofManifest {
 	command_central_loaded_from_vsix: true;
 	is_extension_development_path_used_for_cc: false;
 	task_registry_path: string;
+	command_central_views: Array<{ id?: string; name?: string; type?: string }>;
+	agent_status_tree_snapshot: AgentStatusProofTreeSnapshot;
+	symphony_tree_snapshot: AgentStatusProofTreeSnapshot;
 	tree_snapshot: AgentStatusProofTreeSnapshot;
 	selected_symphony_nodes: Array<{
 		path: string[];
@@ -206,7 +209,7 @@ function hasDetailLabel(
 
 async function getProofTreeSnapshot(
 	testApi: {
-		getAgentStatusTreeSnapshot(options?: {
+		getSymphonyTreeSnapshot(options?: {
 			maxDepth?: number;
 			maxChildrenPerNode?: number;
 			rootLabelPrefixes?: string[];
@@ -217,22 +220,20 @@ async function getProofTreeSnapshot(
 	requiredTaskId: string | undefined,
 ): Promise<AgentStatusProofTreeSnapshot> {
 	for (let attempt = 0; attempt < 10; attempt += 1) {
-		const snapshot = testApi.getAgentStatusTreeSnapshot({
+		const snapshot = testApi.getSymphonyTreeSnapshot({
 			maxDepth: 4,
 			maxChildrenPerNode: 35,
-			rootLabelPrefixes: ["Symphony"],
-			requiredLabels: ["Symphony", "Workstreams", "Run Attempts"],
+			requiredLabels: ["Operations Dashboard", "Workstreams", "Run Attempts"],
 			requiredTaskId,
 		});
 		if (hasRequiredSymphonyRoots(snapshot)) return snapshot;
 		await vscode.commands.executeCommand("commandCentral.refreshAgentStatus");
 		await sleep(500);
 	}
-	return testApi.getAgentStatusTreeSnapshot({
+	return testApi.getSymphonyTreeSnapshot({
 		maxDepth: 4,
 		maxChildrenPerNode: 35,
-		rootLabelPrefixes: ["Symphony"],
-		requiredLabels: ["Symphony", "Workstreams", "Run Attempts"],
+		requiredLabels: ["Operations Dashboard", "Workstreams", "Run Attempts"],
 		requiredTaskId,
 	});
 }
@@ -360,7 +361,8 @@ export async function run(): Promise<void> {
 	assert.ok(
 		testApi &&
 			typeof testApi === "object" &&
-			"getAgentStatusTreeSnapshot" in testApi,
+			"getAgentStatusTreeSnapshot" in testApi &&
+			"getSymphonyTreeSnapshot" in testApi,
 		"COMMAND_CENTRAL_TEST_MODE must expose the inspection API.",
 	);
 
@@ -368,7 +370,7 @@ export async function run(): Promise<void> {
 	await sleep(1000);
 	const snapshot = await getProofTreeSnapshot(
 		testApi as {
-			getAgentStatusTreeSnapshot(options?: {
+			getSymphonyTreeSnapshot(options?: {
 				maxDepth?: number;
 				maxChildrenPerNode?: number;
 				rootLabelPrefixes?: string[];
@@ -378,6 +380,27 @@ export async function run(): Promise<void> {
 		},
 		requiredTaskId,
 	);
+	const agentStatusSnapshot = (
+		testApi as {
+			getAgentStatusTreeSnapshot(options?: {
+				maxDepth?: number;
+				maxChildrenPerNode?: number;
+				rootLabelPrefixes?: string[];
+				requiredLabels?: string[];
+				requiredTaskId?: string;
+			}): AgentStatusProofTreeSnapshot;
+		}
+	).getAgentStatusTreeSnapshot({
+		maxDepth: 2,
+		maxChildrenPerNode: 35,
+		requiredLabels: ["Symphony"],
+	});
+	const commandCentralViews = (extension.packageJSON.contributes?.views
+		?.commandCentral ?? []) as Array<{
+		id?: string;
+		name?: string;
+		type?: string;
+	}>;
 
 	const errors: string[] = [];
 	const skips: string[] = [];
@@ -395,8 +418,21 @@ export async function run(): Promise<void> {
 	}
 	if (!hasRequiredSymphonyRoots(snapshot)) {
 		errors.push(
-			"Missing required Symphony root with Workstreams and Run Attempts children.",
+			"Missing required top-level Symphony view roots with Operations Dashboard, Workstreams, and Run Attempts.",
 		);
+	}
+	const symphonyViewIndex = commandCentralViews.findIndex(
+		(view) => view.id === "commandCentral.symphony",
+	);
+	const agentStatusViewIndex = commandCentralViews.findIndex(
+		(view) => view.id === "commandCentral.agentStatus",
+	);
+	if (symphonyViewIndex < 0 || agentStatusViewIndex < 0) {
+		errors.push(
+			"Command Central manifest must contribute both commandCentral.symphony and commandCentral.agentStatus.",
+		);
+	} else if (symphonyViewIndex === agentStatusViewIndex) {
+		errors.push("Symphony and Agent Status must be separate top-level views.");
 	}
 	errors.push(...findSpecBoundaryViolations(snapshot));
 
@@ -404,7 +440,9 @@ export async function run(): Promise<void> {
 		...findNodesByLabel(
 			snapshot.roots,
 			(label) =>
-				label.startsWith("Symphony") ||
+				label.startsWith("Operations Dashboard") ||
+				label.startsWith("Running Sessions") ||
+				label.startsWith("Retry Queue") ||
 				label.startsWith("Workstreams") ||
 				label.startsWith("Run Attempts"),
 		).map((node) => ({ path: [node.label], node })),
@@ -425,7 +463,7 @@ export async function run(): Promise<void> {
 			);
 		}
 		selectedRows.push({
-			path: ["Symphony", "Run Attempts", passiveRun.label],
+			path: ["Run Attempts", passiveRun.label],
 			node: passiveRun,
 		});
 	}
@@ -505,6 +543,9 @@ export async function run(): Promise<void> {
 		command_central_loaded_from_vsix: true,
 		is_extension_development_path_used_for_cc: false,
 		task_registry_path: requireEnv("COMMAND_CENTRAL_TASK_REGISTRY_PATH"),
+		command_central_views: commandCentralViews,
+		agent_status_tree_snapshot: agentStatusSnapshot,
+		symphony_tree_snapshot: snapshot,
 		tree_snapshot: snapshot,
 		selected_symphony_nodes: selectedRows.map(selectedNodeSummary),
 		source_authority_matrix: buildSourceAuthorityMatrix(selectedRows),

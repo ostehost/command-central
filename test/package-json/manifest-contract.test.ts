@@ -6,6 +6,10 @@ type PackageJsonShape = {
 	activationEvents?: string[];
 	contributes?: {
 		commands?: Array<{ command?: string }>;
+		views?: Record<
+			string,
+			Array<{ id?: string; name?: string; type?: string }>
+		>;
 	};
 	engines?: {
 		vscode?: string;
@@ -133,6 +137,26 @@ describe("package.json manifest contract", () => {
 		expect(packageJson.contributes?.commands).toBeDefined();
 		expect(packageJson.activationEvents).toBeDefined();
 		expect(packageJson.engines?.vscode).toBeDefined();
+	});
+
+	test("contributes Symphony as a sibling top-level Command Central view", () => {
+		const commandCentralViews =
+			readPackageJson().contributes?.views?.["commandCentral"] ?? [];
+		const agentStatusIndex = commandCentralViews.findIndex(
+			(view) => view.id === "commandCentral.agentStatus",
+		);
+		const symphonyIndex = commandCentralViews.findIndex(
+			(view) => view.id === "commandCentral.symphony",
+		);
+
+		expect(symphonyIndex).toBeGreaterThanOrEqual(0);
+		expect(agentStatusIndex).toBeGreaterThanOrEqual(0);
+		expect(commandCentralViews[symphonyIndex]).toMatchObject({
+			id: "commandCentral.symphony",
+			name: "Symphony",
+			type: "tree",
+		});
+		expect(symphonyIndex).toBeLessThan(agentStatusIndex);
 	});
 
 	test("every literal public command reference is contributed", () => {

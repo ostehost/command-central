@@ -290,9 +290,10 @@ describe("AgentStatusTreeProvider", () => {
 		const children = provider.getChildren();
 		expect(children).toHaveLength(2);
 		expect(children[0]).toEqual({
-			type: "symphony",
-			runs: [],
-			flows: [],
+			type: "summary",
+			label: "Symphony Status Surface: 0 run attempts · 0 workstreams",
+			tooltip:
+				"Open the top-level Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, Workstreams, and Run Attempts.",
 		});
 		expect(children[1]).toEqual({
 			type: "state",

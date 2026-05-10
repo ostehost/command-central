@@ -289,9 +289,7 @@ async function readManifestSummary(manifestPath: string): Promise<{
 	return {
 		installedVersion: manifest.installed_version,
 		taskCount: manifest.tree_snapshot.taskCount,
-		roots: manifest.tree_snapshot.roots
-			.map((root) => root.label)
-			.filter((label) => label.startsWith("Symphony")),
+		roots: manifest.tree_snapshot.roots.map((root) => root.label),
 		mode: manifest.mode,
 		actionsPassed: manifest.actions.filter(
 			(action) => action.status === "passed",
@@ -392,7 +390,7 @@ export async function runInstalledVsixAgentStatusProof(): Promise<void> {
 		console.log("installed-vsix-agent-status-proof-ok");
 		console.log(`version: ${summary.installedVersion}`);
 		console.log(`task count: ${summary.taskCount}`);
-		console.log(`symphony roots: ${summary.roots.join(" | ")}`);
+		console.log(`symphony view roots: ${summary.roots.join(" | ")}`);
 		console.log(`mode: ${summary.mode}`);
 		console.log(
 			`actions: ${summary.actionsPassed} passed / ${summary.actionsSkipped} skipped`,

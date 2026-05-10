@@ -137,12 +137,15 @@ describe("OpenClaw task nodes", () => {
 	async function createProvider(
 		openclawTasks: ReturnType<typeof createTask>[],
 		flows: ReturnType<typeof createFlow>[] = [],
+		viewMode: "agentStatus" | "symphony" = "symphony",
 	) {
 		setConfig({ groupByProject: false });
 		const { AgentStatusTreeProvider } = await import(
 			"../../src/providers/agent-status-tree-provider.js"
 		);
-		const provider = new AgentStatusTreeProvider();
+		const provider = new AgentStatusTreeProvider(undefined, undefined, {
+			viewMode,
+		});
 		(
 			provider as unknown as {
 				readRegistry: () => { version: number; tasks: Record<string, never> };
@@ -191,6 +194,13 @@ describe("OpenClaw task nodes", () => {
 		return provider;
 	}
 
+	async function createAgentStatusProvider(
+		openclawTasks: ReturnType<typeof createTask>[],
+		flows: ReturnType<typeof createFlow>[] = [],
+	) {
+		return createProvider(openclawTasks, flows, "agentStatus");
+	}
+
 	function getSingleTaskFlowChildren(provider: {
 		getChildren: (element?: AgentNode) => AgentNode[];
 	}): AgentNode[] {
@@ -206,10 +216,9 @@ describe("OpenClaw task nodes", () => {
 	function getTaskFlowsNode(provider: {
 		getChildren: (element?: AgentNode) => AgentNode[];
 	}): Extract<AgentNode, { type: "taskflows" }> {
-		const symphonyNode = getSymphonyNode(provider);
-		const flowsNode = provider
-			.getChildren(symphonyNode)
-			.find((node) => node.type === "taskflows");
+		const flowsNode = getSymphonyChildren(provider).find(
+			(node) => node.type === "taskflows",
+		);
 		if (!flowsNode || flowsNode.type !== "taskflows") {
 			throw new Error("No Symphony Workstreams node found");
 		}
@@ -219,25 +228,24 @@ describe("OpenClaw task nodes", () => {
 	function getCodexRunsNode(provider: {
 		getChildren: (element?: AgentNode) => AgentNode[];
 	}): Extract<AgentNode, { type: "codexRuns" }> {
-		const symphonyNode = getSymphonyNode(provider);
-		const runsNode = provider
-			.getChildren(symphonyNode)
-			.find((node) => node.type === "codexRuns");
+		const runsNode = getSymphonyChildren(provider).find(
+			(node) => node.type === "codexRuns",
+		);
 		if (!runsNode || runsNode.type !== "codexRuns") {
 			throw new Error("No Symphony Run Attempts node found");
 		}
 		return runsNode;
 	}
 
-	function getSymphonyNode(provider: {
+	function getSymphonyChildren(provider: {
 		getChildren: (element?: AgentNode) => AgentNode[];
-	}): Extract<AgentNode, { type: "symphony" }> {
+	}): AgentNode[] {
 		const root = provider.getChildren();
 		const symphonyNode = root.find((node) => node.type === "symphony");
-		if (!symphonyNode || symphonyNode.type !== "symphony") {
-			throw new Error("No Symphony root node found");
+		if (symphonyNode && symphonyNode.type === "symphony") {
+			return provider.getChildren(symphonyNode);
 		}
-		return symphonyNode;
+		return root;
 	}
 
 	function getCodexRunNodes(provider: {
@@ -255,12 +263,10 @@ describe("OpenClaw task nodes", () => {
 		provider: { getChildren: (element?: AgentNode) => AgentNode[] },
 		kind: "running" | "retryQueued" | "released",
 	): Extract<AgentNode, { type: "symphonyRunGroup" }> | undefined {
-		return provider
-			.getChildren(getSymphonyNode(provider))
-			.find(
-				(node): node is Extract<AgentNode, { type: "symphonyRunGroup" }> =>
-					node.type === "symphonyRunGroup" && node.kind === kind,
-			);
+		return getSymphonyChildren(provider).find(
+			(node): node is Extract<AgentNode, { type: "symphonyRunGroup" }> =>
+				node.type === "symphonyRunGroup" && node.kind === kind,
+		);
 	}
 
 	function findCodexRun(
@@ -336,26 +342,42 @@ describe("OpenClaw task nodes", () => {
 	}
 
 	test("OpenClaw tasks appear inline in flat mode", async () => {
-		const provider = await createProvider([createTask()]);
+		const provider = await createAgentStatusProvider([createTask()]);
 		const root = provider.getChildren();
 		expect(root.some((node) => node.type === "openclawTask")).toBe(true);
 	});
 
+	test("Agent Status keeps only a lightweight Symphony summary", async () => {
+		const provider = await createAgentStatusProvider([
+			createTask({
+				taskId: "running-openclaw",
+				task: "Running source-owned run attempt",
+				status: "running",
+			}),
+		]);
+
+		const root = provider.getChildren();
+		expect(root.some((node) => node.type === "symphony")).toBe(false);
+		expect(root).toContainEqual({
+			type: "summary",
+			label:
+				"Symphony Status Surface: 1 run attempt · 0 workstreams · 1 running",
+			tooltip:
+				"Open the top-level Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, Workstreams, and Run Attempts.",
+		});
+	});
+
 	test("Symphony Run Attempts container remains visible when empty", async () => {
 		const provider = await createProvider([]);
-		const symphonyNode = getSymphonyNode(provider);
-		const symphonyItem = provider.getTreeItem(symphonyNode);
-		expect(symphonyItem.label).toBe("Symphony");
-		expect(symphonyItem.description).toBe("0 run attempts · 0 workstreams");
-		expect(provider.getChildren(symphonyNode).map((node) => node.type)).toEqual(
-			[
-				"symphonyDashboard",
-				"symphonyRunGroup",
-				"symphonyRunGroup",
-				"taskflows",
-				"codexRuns",
-			],
-		);
+		const root = provider.getChildren();
+		expect(root.some((node) => node.type === "symphony")).toBe(false);
+		expect(root.map((node) => node.type)).toEqual([
+			"symphonyDashboard",
+			"symphonyRunGroup",
+			"symphonyRunGroup",
+			"taskflows",
+			"codexRuns",
+		]);
 
 		const runsNode = getCodexRunsNode(provider);
 
@@ -414,7 +436,7 @@ describe("OpenClaw task nodes", () => {
 			}),
 		]);
 
-		const symphonyChildren = provider.getChildren(getSymphonyNode(provider));
+		const symphonyChildren = getSymphonyChildren(provider);
 		const dashboard = symphonyChildren.find(
 			(node) => node.type === "symphonyDashboard",
 		);
@@ -524,7 +546,7 @@ describe("OpenClaw task nodes", () => {
 			}),
 		]);
 
-		const symphonyChildren = provider.getChildren(getSymphonyNode(provider));
+		const symphonyChildren = getSymphonyChildren(provider);
 		const dashboard = symphonyChildren.find(
 			(node) => node.type === "symphonyDashboard",
 		);
@@ -620,9 +642,9 @@ describe("OpenClaw task nodes", () => {
 				},
 			}),
 		]);
-		let dashboard = provider
-			.getChildren(getSymphonyNode(provider))
-			.find((node) => node.type === "symphonyDashboard");
+		let dashboard = getSymphonyChildren(provider).find(
+			(node) => node.type === "symphonyDashboard",
+		);
 		if (!dashboard || dashboard.type !== "symphonyDashboard") {
 			throw new Error("No Operations Dashboard node found");
 		}
@@ -650,9 +672,9 @@ describe("OpenClaw task nodes", () => {
 				},
 			}),
 		]);
-		dashboard = provider
-			.getChildren(getSymphonyNode(provider))
-			.find((node) => node.type === "symphonyDashboard");
+		dashboard = getSymphonyChildren(provider).find(
+			(node) => node.type === "symphonyDashboard",
+		);
 		if (!dashboard || dashboard.type !== "symphonyDashboard") {
 			throw new Error("No Operations Dashboard node found");
 		}
@@ -1071,7 +1093,8 @@ describe("OpenClaw task nodes", () => {
 	});
 
 	test("Symphony Run Attempts exclude non-Codex launcher-only rows from projection", async () => {
-		const provider = await createProvider([]);
+		const provider = await createAgentStatusProvider([]);
+		const symphonyProvider = await createProvider([]);
 		const launcherTask = createLauncherTask({
 			id: "codex-looking-claude-row",
 			agent_backend: "claude",
@@ -1079,6 +1102,7 @@ describe("OpenClaw task nodes", () => {
 			prompt_summary: "codex-looking prompt",
 		});
 		setLauncherTasks(provider, [launcherTask]);
+		setLauncherTasks(symphonyProvider, [launcherTask]);
 
 		const root = provider.getChildren();
 		expect(
@@ -1087,7 +1111,7 @@ describe("OpenClaw task nodes", () => {
 					node.type === "task" && node.task.id === "codex-looking-claude-row",
 			),
 		).toBe(true);
-		expect(getCodexRunNodes(provider)).toHaveLength(0);
+		expect(getCodexRunNodes(symphonyProvider)).toHaveLength(0);
 	});
 
 	test("Symphony Run Attempts idle tree matches the operator snapshot", async () => {
@@ -1171,7 +1195,7 @@ describe("OpenClaw task nodes", () => {
 	});
 
 	test("dedups OpenClaw tasks that match launcher session ids", async () => {
-		const provider = await createProvider([
+		const provider = await createAgentStatusProvider([
 			createTask({ childSessionKey: "session:agent-my-app" }),
 		]);
 		(
@@ -1229,7 +1253,7 @@ describe("OpenClaw task nodes", () => {
 		];
 
 		for (const { openclaw, launcher } of cases) {
-			const provider = await createProvider([openclaw]);
+			const provider = await createAgentStatusProvider([openclaw]);
 			setLauncherTasks(provider, [launcher]);
 
 			const root = provider.getChildren();
@@ -1244,7 +1268,7 @@ describe("OpenClaw task nodes", () => {
 	});
 
 	test("does not dedupe OpenClaw tasks by label-only launcher id matches", async () => {
-		const provider = await createProvider([
+		const provider = await createAgentStatusProvider([
 			createTask({
 				taskId: "bg-label",
 				label: "launcher-1",
@@ -1268,7 +1292,7 @@ describe("OpenClaw task nodes", () => {
 	});
 
 	test("does not dedupe OpenClaw tasks by substring session matches", async () => {
-		const provider = await createProvider([
+		const provider = await createAgentStatusProvider([
 			createTask({
 				taskId: "bg-session",
 				childSessionKey: "session:abc-extra",
@@ -1841,7 +1865,7 @@ describe("OpenClaw task nodes", () => {
 	});
 
 	test("summary includes background task count", async () => {
-		const provider = await createProvider([
+		const provider = await createAgentStatusProvider([
 			createTask({ taskId: "bg-1" }),
 			createTask({ taskId: "bg-2", status: "succeeded" }),
 		]);

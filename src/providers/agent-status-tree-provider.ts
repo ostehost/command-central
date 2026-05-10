@@ -225,6 +225,12 @@ export interface AgentTask {
 	symphony_runtime_snapshot?: unknown;
 }
 
+export type AgentStatusTreeViewMode = "agentStatus" | "symphony";
+
+export interface AgentStatusTreeProviderOptions {
+	viewMode?: AgentStatusTreeViewMode;
+}
+
 // ── Tree node types ──────────────────────────────────────────────────
 
 export type AgentNode =
@@ -1190,14 +1196,17 @@ export class AgentStatusTreeProvider
 	private _taskFlowService: TaskFlowService | null = null;
 	private _reviewTracker: ReviewTracker = new ReviewTracker();
 	private codexRunObserverService: CodexRunObserverService;
+	private readonly viewMode: AgentStatusTreeViewMode;
 
 	constructor(
 		projectIconManager?: ProjectIconManager,
 		codexRunObserverService?: CodexRunObserverService,
+		options: AgentStatusTreeProviderOptions = {},
 	) {
 		this.projectIconManager = projectIconManager ?? new ProjectIconManager();
 		this.codexRunObserverService =
 			codexRunObserverService ?? new CodexRunObserverService();
+		this.viewMode = options.viewMode ?? "agentStatus";
 		// Watch config changes for the tasks file path
 		this.disposables.push(
 			vscode.workspace.onDidChangeConfiguration((e) => {
@@ -3204,6 +3213,9 @@ export class AgentStatusTreeProvider
 				runs: codexRuns,
 				flows: taskFlows,
 			};
+			if (this.viewMode === "symphony") {
+				return this.getSymphonyChildren(symphonyNode);
+			}
 			const hasAnyAgents =
 				allTasks.length > 0 ||
 				discovered.length > 0 ||
@@ -3212,7 +3224,7 @@ export class AgentStatusTreeProvider
 			if (!hasAnyAgents) {
 				if (this._initialReadInProgress && this._filePath) {
 					return [
-						symphonyNode,
+						this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
 						{
 							type: "state",
 							label: "Scanning for agents...",
@@ -3223,7 +3235,7 @@ export class AgentStatusTreeProvider
 				}
 				if (this._registryLoadIssue) {
 					return [
-						symphonyNode,
+						this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
 						{
 							type: "state",
 							label: "Could not read tasks.json",
@@ -3233,7 +3245,7 @@ export class AgentStatusTreeProvider
 					];
 				}
 				return [
-					symphonyNode,
+					this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
 					{
 						type: "state",
 						label: "Waiting for agents...",
@@ -3320,7 +3332,7 @@ export class AgentStatusTreeProvider
 
 			return [
 				...summaryNodes,
-				symphonyNode,
+				this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
 				...(!showOpenClawInline && openclawTasks.length > 0
 					? [
 							{
@@ -3366,6 +3378,9 @@ export class AgentStatusTreeProvider
 		}
 
 		if (element.type === "symphony") {
+			if (this.viewMode !== "symphony") {
+				return [];
+			}
 			return this.getSymphonyChildren(element);
 		}
 
@@ -5407,6 +5422,20 @@ export class AgentStatusTreeProvider
 			{ type: "codexRuns", runs: node.runs },
 		);
 		return children;
+	}
+
+	private createSymphonyStatusSurfaceSummaryNode(
+		node: SymphonyRootNode,
+	): SummaryNode {
+		return {
+			type: "summary",
+			label: `Symphony Status Surface: ${this.formatSymphonyRootDescription(
+				node.runs,
+				node.flows,
+			)}`,
+			tooltip:
+				"Open the top-level Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, Workstreams, and Run Attempts.",
+		};
 	}
 
 	private getSymphonyRunningSessionRuns(runs: CodexRunView[]): CodexRunView[] {

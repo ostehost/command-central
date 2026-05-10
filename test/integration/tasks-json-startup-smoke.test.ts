@@ -35,9 +35,10 @@ function createTask(id: string) {
 function expectedEmptyAgentStatusChildren(): AgentNode[] {
 	return [
 		{
-			type: "symphony",
-			runs: [],
-			flows: [],
+			type: "summary",
+			label: "Symphony Status Surface: 0 run attempts · 0 workstreams",
+			tooltip:
+				"Open the top-level Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, Workstreams, and Run Attempts.",
 		},
 		{
 			type: "state",

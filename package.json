@@ -1083,6 +1083,12 @@
           "type": "tree"
         },
         {
+          "id": "commandCentral.symphony",
+          "name": "Symphony",
+          "type": "tree",
+          "when": ""
+        },
+        {
           "id": "commandCentral.agentStatus",
           "name": "Agent Status",
           "type": "tree",

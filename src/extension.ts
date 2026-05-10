@@ -98,6 +98,7 @@ let extensionFilterViewManager: ExtensionFilterViewManager | undefined;
 let groupingStateManager: GroupingStateManager | undefined;
 let groupingViewManager: GroupingViewManager | undefined;
 let agentStatusProvider: AgentStatusTreeProvider | undefined;
+let symphonyProvider: AgentStatusTreeProvider | undefined;
 let terminalManager: TerminalManager | undefined;
 let binaryManager: BinaryManager | undefined;
 let testCountStatusBar:
@@ -110,6 +111,7 @@ let integrationTestContext: vscode.ExtensionContext | undefined;
 export interface CommandCentralIntegrationSnapshot {
 	subscriptionCount: number;
 	hasAgentStatusProvider: boolean;
+	hasSymphonyProvider: boolean;
 	hasProjectViewManager: boolean;
 	hasProjectIconService: boolean;
 	hasExtensionFilterViewManager: boolean;
@@ -179,6 +181,9 @@ export interface CommandCentralIntegrationTestApi {
 	getAgentStatusTreeSnapshot(
 		options?: CommandCentralAgentStatusTreeSnapshotOptions,
 	): CommandCentralAgentStatusTreeSnapshot;
+	getSymphonyTreeSnapshot(
+		options?: CommandCentralAgentStatusTreeSnapshotOptions,
+	): CommandCentralAgentStatusTreeSnapshot;
 	deactivateForTest(): Promise<CommandCentralIntegrationDeactivationSnapshot>;
 }
 
@@ -190,6 +195,7 @@ function getIntegrationSnapshot(): CommandCentralIntegrationSnapshot {
 	return {
 		subscriptionCount: integrationTestContext?.subscriptions.length ?? 0,
 		hasAgentStatusProvider: agentStatusProvider !== undefined,
+		hasSymphonyProvider: symphonyProvider !== undefined,
 		hasProjectViewManager: projectViewManager !== undefined,
 		hasProjectIconService: projectIconService !== undefined,
 		hasExtensionFilterViewManager: extensionFilterViewManager !== undefined,
@@ -372,7 +378,19 @@ function matchesRequiredTaskId(
 function getAgentStatusTreeSnapshot(
 	options: CommandCentralAgentStatusTreeSnapshotOptions = {},
 ): CommandCentralAgentStatusTreeSnapshot {
-	const provider = agentStatusProvider;
+	return getTreeSnapshotForProvider(agentStatusProvider, options);
+}
+
+function getSymphonyTreeSnapshot(
+	options: CommandCentralAgentStatusTreeSnapshotOptions = {},
+): CommandCentralAgentStatusTreeSnapshot {
+	return getTreeSnapshotForProvider(symphonyProvider, options);
+}
+
+function getTreeSnapshotForProvider(
+	provider: AgentStatusTreeProvider | undefined,
+	options: CommandCentralAgentStatusTreeSnapshotOptions = {},
+): CommandCentralAgentStatusTreeSnapshot {
 	if (!provider) {
 		return {
 			rootChildrenCount: 0,
@@ -1204,18 +1222,34 @@ export async function activate(
 			projectIconManagerForAgents,
 			codexRunObserverService,
 		);
+		const symphonyTreeProvider = new AgentStatusTreeProvider(
+			projectIconManagerForAgents,
+			codexRunObserverService,
+			{ viewMode: "symphony" },
+		);
+		symphonyProvider = symphonyTreeProvider;
 		const agentStatusView = vscode.window.createTreeView(
 			"commandCentral.agentStatus",
 			{ treeDataProvider: agentStatusProvider, showCollapseAll: true },
 		);
+		const symphonyView = vscode.window.createTreeView(
+			"commandCentral.symphony",
+			{
+				treeDataProvider: symphonyTreeProvider,
+				showCollapseAll: true,
+			},
+		);
 		agentStatusProvider.setTreeView(agentStatusView);
+		symphonyTreeProvider.setTreeView(symphonyView);
 
 		// OpenClaw model policy visibility
 		const openclawConfigService = new OpenClawConfigService();
 		openclawConfigService.start(() => {
 			agentStatusProvider?.reload();
+			symphonyTreeProvider.reload();
 		});
 		agentStatusProvider.setOpenClawConfigService(openclawConfigService);
+		symphonyTreeProvider.setOpenClawConfigService(openclawConfigService);
 		context.subscriptions.push(openclawConfigService);
 
 		const { OpenClawTaskService } = await import(
@@ -1224,16 +1258,20 @@ export async function activate(
 		const openclawTaskService = new OpenClawTaskService();
 		openclawTaskService.start(() => {
 			agentStatusProvider?.reload();
+			symphonyTreeProvider.reload();
 		});
 		agentStatusProvider.setOpenClawTaskService(openclawTaskService);
+		symphonyTreeProvider.setOpenClawTaskService(openclawTaskService);
 		context.subscriptions.push(openclawTaskService);
 
 		const { TaskFlowService } = await import("./services/taskflow-service.js");
 		const taskFlowService = new TaskFlowService();
 		taskFlowService.start(() => {
 			agentStatusProvider?.reload();
+			symphonyTreeProvider.reload();
 		});
 		agentStatusProvider.setTaskFlowService(taskFlowService);
+		symphonyTreeProvider.setTaskFlowService(taskFlowService);
 		context.subscriptions.push(taskFlowService);
 
 		const syncAgentStatusViewContexts = async (): Promise<void> => {
@@ -1250,7 +1288,9 @@ export async function activate(
 		};
 		await syncAgentStatusViewContexts();
 		context.subscriptions.push(agentStatusView);
+		context.subscriptions.push(symphonyView);
 		context.subscriptions.push(agentStatusProvider);
+		context.subscriptions.push(symphonyTreeProvider);
 		context.subscriptions.push(
 			vscode.workspace.onDidChangeConfiguration((e) => {
 				if (
@@ -1264,6 +1304,7 @@ export async function activate(
 					e.affectsConfiguration("commandCentral.projects")
 				) {
 					void agentStatusProvider?.reload();
+					void symphonyTreeProvider.reload();
 				}
 			}),
 		);
@@ -3829,6 +3870,7 @@ export async function activate(
 				getAgentStatusSnapshot: () => getAgentStatusSnapshot(),
 				getAgentStatusTreeSnapshot: (options) =>
 					getAgentStatusTreeSnapshot(options),
+				getSymphonyTreeSnapshot: (options) => getSymphonyTreeSnapshot(options),
 				deactivateForTest: async () => {
 					const before = getIntegrationSnapshot();
 					await deactivate();
@@ -3896,6 +3938,7 @@ export async function deactivate(): Promise<void> {
 	}
 
 	agentStatusProvider = undefined;
+	symphonyProvider = undefined;
 	terminalManager = undefined;
 	binaryManager = undefined;
 	testCountStatusBar = undefined;

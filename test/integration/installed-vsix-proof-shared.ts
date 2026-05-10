@@ -116,8 +116,10 @@ export function findSpecBoundaryViolations(
 	const symphonyRoots = snapshot.roots.filter((node) =>
 		node.label.startsWith("Symphony"),
 	);
+	const rootsToInspect =
+		symphonyRoots.length > 0 ? symphonyRoots : snapshot.roots;
 	const violations: string[] = [];
-	for (const node of flattenProofTree(symphonyRoots)) {
+	for (const node of flattenProofTree(rootsToInspect)) {
 		const commandText = [node.command?.command, node.command?.title]
 			.filter(Boolean)
 			.join(" ");
@@ -136,7 +138,8 @@ export function hasRequiredSymphonyRoots(
 	snapshot: AgentStatusProofTreeSnapshot,
 ): boolean {
 	return Boolean(
-		snapshot.selected.requiredLabels["Symphony"]?.length &&
+		(snapshot.selected.requiredLabels["Symphony"]?.length ||
+			snapshot.selected.requiredLabels["Operations Dashboard"]?.length) &&
 			snapshot.selected.requiredLabels["Workstreams"]?.length &&
 			snapshot.selected.requiredLabels["Run Attempts"]?.length,
 	);
