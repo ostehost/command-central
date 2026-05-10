@@ -172,6 +172,7 @@ async function getProofTreeSnapshot(
 		getAgentStatusTreeSnapshot(options?: {
 			maxDepth?: number;
 			maxChildrenPerNode?: number;
+			rootLabelPrefixes?: string[];
 			requiredLabels?: string[];
 			requiredTaskId?: string;
 		}): AgentStatusProofTreeSnapshot;
@@ -182,6 +183,7 @@ async function getProofTreeSnapshot(
 		const snapshot = testApi.getAgentStatusTreeSnapshot({
 			maxDepth: 4,
 			maxChildrenPerNode: 35,
+			rootLabelPrefixes: ["Symphony /"],
 			requiredLabels: ["Symphony / Workstreams", "Symphony / Run Attempts"],
 			requiredTaskId,
 		});
@@ -192,6 +194,7 @@ async function getProofTreeSnapshot(
 	return testApi.getAgentStatusTreeSnapshot({
 		maxDepth: 4,
 		maxChildrenPerNode: 35,
+		rootLabelPrefixes: ["Symphony /"],
 		requiredLabels: ["Symphony / Workstreams", "Symphony / Run Attempts"],
 		requiredTaskId,
 	});

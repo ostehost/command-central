@@ -162,6 +162,7 @@ export interface CommandCentralAgentStatusTreeSnapshot {
 export interface CommandCentralAgentStatusTreeSnapshotOptions {
 	maxDepth?: number;
 	maxChildrenPerNode?: number;
+	rootLabelPrefixes?: string[];
 	requiredLabels?: string[];
 	requiredTaskId?: string;
 }
@@ -460,9 +461,15 @@ function getAgentStatusTreeSnapshot(
 		return node;
 	};
 
-	const roots = provider.getChildren();
+	const rootLabelPrefixes = options.rootLabelPrefixes ?? [];
+	const roots = provider.getChildren().filter((root) => {
+		if (rootLabelPrefixes.length === 0) return true;
+		const item = provider.getTreeItem(root);
+		const label = treeItemLabelToString(item.label);
+		return rootLabelPrefixes.some((prefix) => label.startsWith(prefix));
+	});
 	return {
-		rootChildrenCount: roots.length,
+		rootChildrenCount: provider.getChildren().length,
 		taskCount: provider.getTasks().length,
 		roots: roots
 			.slice(0, maxChildrenPerNode)
