@@ -142,6 +142,16 @@ Expected-SHA proof for unshipped commit `0a28d99`:
 - Live manifest: `/Users/ostehost/.openclaw/tmp/cc-proof-command-central-final3/logs/installed-vsix-agent-status-proof-1778375393477.json`
 - Live result: `vsix_matches_expected_sha: true`, `expected_vsix_identity_kind: temporary-proof-artifact`, `published_release_match: false`, task count `306`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 29`, copy/open/focus passed, errors none
 
+Explicit published-match proof for unshipped commit `fe9089a`:
+
+- Temporary artifact: `/tmp/command-central-proof-fe9089a.vsix`
+- SHA256: `7356d5d14229585127f14be8407babc5cb4aec1136b1c308f08575927fe69f12`
+- Passive manifest: `/Users/ostehost/.openclaw/tmp/cc-proof-command-central-final3/logs/installed-vsix-agent-status-proof-1778375756869.json`
+- Passive result: `vsix_matches_expected_sha: true`, `expected_vsix_identity_kind: temporary-proof-artifact`, `published_release_match: false`, task count `307`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 30`, errors none
+- Live target: `cc-installed-vsix-proof-live9-20260509-2122`
+- Live manifest: `/Users/ostehost/.openclaw/tmp/cc-proof-command-central-final3/logs/installed-vsix-agent-status-proof-1778375838784.json`
+- Live result: `vsix_matches_expected_sha: true`, `expected_vsix_identity_kind: temporary-proof-artifact`, `published_release_match: false`, task count `308`, roots `Symphony / Workstreams · 0` and `Symphony / Run Attempts · 31`, copy/open/focus passed, errors none
+
 ## Process Finding
 
 The live launcher lanes still reuse `session_id=agent-command-central` even when a session suffix is supplied. Command Central should continue to treat task/run IDs as the primary row identity until launcher session uniqueness is fixed. This matters more as Symphony-style work spreads across multiple nodes, because shared session identity weakens focus, steering, and provenance.

@@ -74,5 +74,6 @@ No public push, tag, GitHub release, Marketplace publish, or announcement belong
 
 Status: ready to continue dogfood, not yet a release request.
 
-The next action is to validate the identity-field cleanup and then decide whether to cut rc23 as a minimal internal prerelease candidate.
+The identity-field cleanup is validated against a temporary installed-VSIX proof artifact built from `fe9089a`. That proof keeps `published_release_match: false` for the temporary artifact while still proving `vsix_matches_expected_sha: true`.
 
+Next decision point: cut rc23 as a minimal internal prerelease candidate only if the product behavior slices above are intentionally accepted into the prerelease notes. Otherwise keep the harness and product changes unshipped for more dogfood.
