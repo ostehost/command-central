@@ -13,6 +13,9 @@ import {
 } from "./installed-vsix-proof-shared.js";
 
 type ProofMode = "passive" | "live";
+type ExpectedVsixIdentityKind =
+	| "published-prerelease"
+	| "temporary-proof-artifact";
 
 interface ProofAction {
 	name: string;
@@ -37,7 +40,9 @@ interface ProofManifest {
 	vsix_path: string;
 	vsix_sha256: string;
 	expected_vsix_sha256?: string;
-	vsix_matches_published_release?: boolean;
+	expected_vsix_identity_kind?: ExpectedVsixIdentityKind;
+	vsix_matches_expected_sha?: boolean;
+	published_release_match?: boolean;
 	commit: string;
 	command_central_loaded_from_vsix: true;
 	is_extension_development_path_used_for_cc: false;
@@ -325,6 +330,9 @@ export async function run(): Promise<void> {
 	const expectedVsixSha256 = process.env["COMMAND_CENTRAL_EXPECTED_VSIX_SHA256"]
 		?.trim()
 		.toLowerCase();
+	const expectedIdentityKind = process.env[
+		"COMMAND_CENTRAL_EXPECTED_VSIX_IDENTITY_KIND"
+	]?.trim() as ExpectedVsixIdentityKind | undefined;
 	const repoRoot = requireEnv("COMMAND_CENTRAL_REPO_ROOT");
 	const requiredTaskId = process.env["COMMAND_CENTRAL_REQUIRED_TASK_ID"];
 
@@ -377,6 +385,9 @@ export async function run(): Promise<void> {
 	const actualVsixSha256 = requireEnv(
 		"COMMAND_CENTRAL_VSIX_SHA256",
 	).toLowerCase();
+	const matchesExpectedSha = expectedVsixSha256
+		? actualVsixSha256 === expectedVsixSha256
+		: undefined;
 	if (expectedVsixSha256 && actualVsixSha256 !== expectedVsixSha256) {
 		errors.push(
 			`VSIX SHA256 mismatch: expected ${expectedVsixSha256}, got ${actualVsixSha256}.`,
@@ -481,9 +492,12 @@ export async function run(): Promise<void> {
 		vsix_path: requireEnv("COMMAND_CENTRAL_VSIX_PROOF_PATH"),
 		vsix_sha256: actualVsixSha256,
 		expected_vsix_sha256: expectedVsixSha256 || undefined,
-		vsix_matches_published_release: expectedVsixSha256
-			? actualVsixSha256 === expectedVsixSha256
-			: undefined,
+		expected_vsix_identity_kind: expectedIdentityKind,
+		vsix_matches_expected_sha: matchesExpectedSha,
+		published_release_match:
+			expectedIdentityKind === "published-prerelease"
+				? matchesExpectedSha
+				: undefined,
 		commit: requireEnv("COMMAND_CENTRAL_PROOF_COMMIT"),
 		command_central_loaded_from_vsix: true,
 		is_extension_development_path_used_for_cc: false,

@@ -47,12 +47,26 @@ describe("installed VSIX Agent Status proof harness", () => {
 				"x.vsix",
 				"--expected-sha",
 				"abc123",
+				"--identity-kind",
+				"temporary-proof-artifact",
 			]),
 		).toEqual({
 			mode: "live",
 			vsixPath: "x.vsix",
 			expectedSha256: "abc123",
+			expectedIdentityKind: "temporary-proof-artifact",
 		});
+	});
+
+	test("rejects invalid expected VSIX identity kinds", () => {
+		expect(() =>
+			parseInstalledProofArgs([
+				"--expected-sha",
+				"abc123",
+				"--identity-kind",
+				"rc22",
+			]),
+		).toThrow(/published-prerelease or temporary-proof-artifact/);
 	});
 
 	test("rejects scheduler-owned commands under the Symphony surface", () => {

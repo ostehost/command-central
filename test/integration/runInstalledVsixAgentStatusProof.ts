@@ -16,11 +16,15 @@ import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 import { assertNodeExecutionContext } from "../../scripts-v2/node-execution-guard.js";
 
 export type InstalledVsixProofMode = "passive" | "live";
+export type ExpectedVsixIdentityKind =
+	| "published-prerelease"
+	| "temporary-proof-artifact";
 
 export interface InstalledVsixProofArgs {
 	mode: InstalledVsixProofMode;
 	vsixPath?: string;
 	expectedSha256?: string;
+	expectedIdentityKind?: ExpectedVsixIdentityKind;
 }
 
 export interface VsixResolutionInput {
@@ -63,6 +67,20 @@ export function parseInstalledProofArgs(
 			const value = argv[index + 1];
 			if (!value) throw new Error("--expected-sha requires a SHA256 value.");
 			parsed.expectedSha256 = value;
+			index += 1;
+			continue;
+		}
+		if (arg === "--identity-kind") {
+			const value = argv[index + 1];
+			if (
+				value !== "published-prerelease" &&
+				value !== "temporary-proof-artifact"
+			) {
+				throw new Error(
+					"--identity-kind must be published-prerelease or temporary-proof-artifact.",
+				);
+			}
+			parsed.expectedIdentityKind = value;
 			index += 1;
 			continue;
 		}
@@ -305,6 +323,12 @@ export async function runInstalledVsixAgentStatusProof(): Promise<void> {
 		args.expectedSha256?.trim() ||
 		process.env["COMMAND_CENTRAL_EXPECTED_VSIX_SHA256"]?.trim() ||
 		"";
+	const expectedIdentityKind =
+		args.expectedIdentityKind ??
+		(process.env["COMMAND_CENTRAL_EXPECTED_VSIX_IDENTITY_KIND"] as
+			| ExpectedVsixIdentityKind
+			| undefined) ??
+		(expectedVsixSha256 ? "temporary-proof-artifact" : "");
 	const registryPath = taskRegistryPath();
 	const requestedVersion = process.env["VSCODE_VERSION"];
 	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "cc-installed-proof-"));
@@ -348,6 +372,7 @@ export async function runInstalledVsixAgentStatusProof(): Promise<void> {
 				CI: process.env["CI"] ?? "false",
 				COMMAND_CENTRAL_EXTENSION_ID: extensionId,
 				COMMAND_CENTRAL_EXPECTED_VERSION: manifestVersion,
+				COMMAND_CENTRAL_EXPECTED_VSIX_IDENTITY_KIND: expectedIdentityKind,
 				COMMAND_CENTRAL_EXPECTED_VSIX_SHA256: expectedVsixSha256,
 				COMMAND_CENTRAL_PROOF_COMMIT: gitCommit(repoRoot),
 				COMMAND_CENTRAL_PROOF_MANIFEST: manifestPath,
