@@ -1208,7 +1208,9 @@ export class CodexRunObserverService {
 					entry["identifier"] ??
 					entry["issueIdentifier"],
 			),
-			issueState: this.stringValue(entry["issue_state"] ?? entry["issueState"]),
+			issueState: this.stringValue(
+				entry["issue_state"] ?? entry["issueState"] ?? entry["state"],
+			),
 			runAttempt: this.stringValue(
 				entry["run_attempt"] ?? entry["runAttempt"] ?? entry["run_id"],
 			),

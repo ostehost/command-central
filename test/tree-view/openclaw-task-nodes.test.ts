@@ -488,13 +488,13 @@ describe("OpenClaw task nodes", () => {
 					running: [
 						{
 							issue_identifier: "SYM-101",
-							issue_state: "In Progress",
+							state: "In Progress",
 							run_attempt: "attempt-101",
 							workspace_path: "/tmp/symphony/SYM-101",
 							session_id: "thread-101-turn-1",
 							phase: "StreamingTurn",
-							last_codex_event: "agent_message_delta",
-							last_codex_message: "editing files",
+							last_event: "agent_message_delta",
+							last_message: "editing files",
 							turn_count: 3,
 							tokens: {
 								input_tokens: 1200,
