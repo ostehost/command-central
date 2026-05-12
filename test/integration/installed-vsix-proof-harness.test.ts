@@ -117,6 +117,7 @@ describe("installed VSIX Agent Status proof harness", () => {
 	test("keeps COMMAND_CENTRAL_TEST_MODE limited to inspection API exposure", async () => {
 		const sourceFiles = [
 			"src/extension.ts",
+			"src/services/integration-test-api.ts",
 			"src/providers/agent-status-tree-provider.ts",
 			"src/services/codex-run-observer-service.ts",
 			"src/commands/workflow-run-actions.ts",

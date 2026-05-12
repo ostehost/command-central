@@ -50,7 +50,6 @@ import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provide
 import { AgentDashboardPanel } from "./providers/agent-dashboard-panel.js";
 import { AgentDecorationProvider } from "./providers/agent-decoration-provider.js";
 import {
-	type AgentNode,
 	AgentStatusTreeProvider,
 	type AgentTask,
 	getTaskExecutionHostLabel,
@@ -68,6 +67,11 @@ import { AgentStatusBar } from "./services/agent-status-bar.js";
 import { CodexRunObserverService } from "./services/codex-run-observer-service.js";
 import { GroupingStateManager } from "./services/grouping-state-manager.js";
 import { InfrastructureHealthStatusBar } from "./services/infrastructure-health-status-bar.js";
+import {
+	type CommandCentralIntegrationTestApi,
+	createIntegrationTestApi,
+	type IntegrationTestApiDeps,
+} from "./services/integration-test-api.js";
 import { LoggerService, LogLevel } from "./services/logger-service.js";
 import { OpenClawConfigService } from "./services/openclaw-config-service.js";
 import { ProjectIconManager } from "./services/project-icon-manager.js";
@@ -108,392 +112,25 @@ let mainLogger: LoggerService;
 let gitSortLogger: LoggerService;
 let integrationTestContext: vscode.ExtensionContext | undefined;
 
-export interface CommandCentralIntegrationSnapshot {
-	subscriptionCount: number;
-	hasAgentStatusProvider: boolean;
-	hasSymphonyProvider: boolean;
-	hasProjectViewManager: boolean;
-	hasProjectIconService: boolean;
-	hasExtensionFilterViewManager: boolean;
-	hasGroupingStateManager: boolean;
-	hasGroupingViewManager: boolean;
-	hasTerminalManager: boolean;
-	hasBinaryManager: boolean;
-	hasTestCountStatusBar: boolean;
-	activeProjectSlots: string[];
-}
-
-export interface CommandCentralAgentStatusSnapshot {
-	rootChildrenCount: number;
-	taskCount: number;
-}
-
-export interface CommandCentralSerializedCommand {
-	command: string;
-	title: string;
-	arguments?: unknown[];
-}
-
-export interface CommandCentralAgentStatusTreeNode {
-	label: string;
-	description?: string;
-	contextValue?: string;
-	nodeKind: string;
-	collapsibleState?: number;
-	command?: CommandCentralSerializedCommand;
-	ownerFields?: Record<string, unknown>;
-	children?: CommandCentralAgentStatusTreeNode[];
-	truncatedChildCount?: number;
-}
-
-export interface CommandCentralAgentStatusTreeSelectedNode {
-	path: string[];
-	node: CommandCentralAgentStatusTreeNode;
-}
-
-export interface CommandCentralAgentStatusTreeSnapshot {
-	rootChildrenCount: number;
-	taskCount: number;
-	roots: CommandCentralAgentStatusTreeNode[];
-	selected: {
-		requiredLabels: Record<string, CommandCentralAgentStatusTreeSelectedNode[]>;
-		requiredTaskId?: CommandCentralAgentStatusTreeSelectedNode;
-	};
-}
-
-export interface CommandCentralAgentStatusTreeSnapshotOptions {
-	maxDepth?: number;
-	maxChildrenPerNode?: number;
-	rootLabelPrefixes?: string[];
-	requiredLabels?: string[];
-	requiredTaskId?: string;
-}
-
-export interface CommandCentralIntegrationDeactivationSnapshot {
-	before: CommandCentralIntegrationSnapshot;
-	after: CommandCentralIntegrationSnapshot;
-}
-
-export interface CommandCentralIntegrationTestApi {
-	kind: "command-central-test-api";
-	getSnapshot(): CommandCentralIntegrationSnapshot;
-	getAgentStatusSnapshot(): CommandCentralAgentStatusSnapshot;
-	getAgentStatusTreeSnapshot(
-		options?: CommandCentralAgentStatusTreeSnapshotOptions,
-	): CommandCentralAgentStatusTreeSnapshot;
-	getSymphonyTreeSnapshot(
-		options?: CommandCentralAgentStatusTreeSnapshotOptions,
-	): CommandCentralAgentStatusTreeSnapshot;
-	deactivateForTest(): Promise<CommandCentralIntegrationDeactivationSnapshot>;
-}
+/**
+ * Re-export the test API surface types so existing consumers that imported
+ * them from `./extension.js` keep compiling. The canonical home is now
+ * `./services/integration-test-api.js`.
+ */
+export type {
+	CommandCentralAgentStatusSnapshot,
+	CommandCentralAgentStatusTreeNode,
+	CommandCentralAgentStatusTreeSelectedNode,
+	CommandCentralAgentStatusTreeSnapshot,
+	CommandCentralAgentStatusTreeSnapshotOptions,
+	CommandCentralIntegrationDeactivationSnapshot,
+	CommandCentralIntegrationSnapshot,
+	CommandCentralIntegrationTestApi,
+	CommandCentralSerializedCommand,
+} from "./services/integration-test-api.js";
 
 function isIntegrationTestMode(): boolean {
 	return process.env["COMMAND_CENTRAL_TEST_MODE"] === "1";
-}
-
-function getIntegrationSnapshot(): CommandCentralIntegrationSnapshot {
-	return {
-		subscriptionCount: integrationTestContext?.subscriptions.length ?? 0,
-		hasAgentStatusProvider: agentStatusProvider !== undefined,
-		hasSymphonyProvider: symphonyProvider !== undefined,
-		hasProjectViewManager: projectViewManager !== undefined,
-		hasProjectIconService: projectIconService !== undefined,
-		hasExtensionFilterViewManager: extensionFilterViewManager !== undefined,
-		hasGroupingStateManager: groupingStateManager !== undefined,
-		hasGroupingViewManager: groupingViewManager !== undefined,
-		hasTerminalManager: terminalManager !== undefined,
-		hasBinaryManager: binaryManager !== undefined,
-		hasTestCountStatusBar: testCountStatusBar !== undefined,
-		activeProjectSlots: [
-			...(projectViewManager?.getAllWorkspaceDisplayNames().keys() ?? []),
-		],
-	};
-}
-
-function getAgentStatusSnapshot(): CommandCentralAgentStatusSnapshot {
-	const rootChildren = agentStatusProvider?.getChildren();
-	return {
-		rootChildrenCount: rootChildren?.length ?? 0,
-		taskCount: agentStatusProvider?.getTasks().length ?? 0,
-	};
-}
-
-function treeItemLabelToString(label: vscode.TreeItem["label"]): string {
-	if (typeof label === "string") return label;
-	if (label && typeof label === "object" && "label" in label) {
-		return String(label.label);
-	}
-	return "";
-}
-
-function treeItemDescriptionToString(
-	description: vscode.TreeItem["description"],
-): string | undefined {
-	if (typeof description === "string") return description;
-	if (description === true) return "true";
-	return undefined;
-}
-
-function serializeCommand(
-	command: vscode.Command | undefined,
-): CommandCentralSerializedCommand | undefined {
-	if (!command) return undefined;
-	return {
-		command: command.command,
-		title: command.title,
-		arguments: command.arguments?.map((argument) =>
-			serializeCommandArgument(argument),
-		),
-	};
-}
-
-function serializeCommandArgument(argument: unknown): unknown {
-	return serializeUnknown(argument, new WeakSet<object>(), 0);
-}
-
-function isVsCodeUriLike(value: object): value is vscode.Uri {
-	return "scheme" in value && "fsPath" in value && "path" in value;
-}
-
-function serializeUnknown(
-	value: unknown,
-	seen: WeakSet<object>,
-	depth: number,
-): unknown {
-	if (
-		value === null ||
-		typeof value === "string" ||
-		typeof value === "number"
-	) {
-		return value;
-	}
-	if (typeof value === "boolean") return value;
-	if (typeof value === "undefined") return undefined;
-	if (typeof value === "bigint") return value.toString();
-	if (typeof value !== "object") return String(value);
-	if (isVsCodeUriLike(value)) {
-		return {
-			__kind: "Uri",
-			scheme: value.scheme,
-			fsPath: value.fsPath,
-			path: value.path,
-			external: value.toString(),
-		};
-	}
-	if (seen.has(value)) return "[Circular]";
-	if (depth >= 5) return "[MaxDepth]";
-	seen.add(value);
-	if (Array.isArray(value)) {
-		return value
-			.slice(0, 25)
-			.map((item) => serializeUnknown(item, seen, depth + 1));
-	}
-	const result: Record<string, unknown> = {};
-	for (const [key, nested] of Object.entries(value)) {
-		if (typeof nested === "function") continue;
-		result[key] = serializeUnknown(nested, seen, depth + 1);
-		if (Object.keys(result).length >= 40) break;
-	}
-	return result;
-}
-
-function selectedAgentStatusOwnerFields(
-	element: AgentNode,
-): Record<string, unknown> | undefined {
-	if (element.type === "codexRun") {
-		const run = element.run;
-		return {
-			runId: run.runId,
-			taskId: run.taskId,
-			flowId: run.flowId,
-			source_owner: run.source.kind,
-			lifecycle_owner: run.ownerKind ?? run.source.kind,
-			source_authority: run.sourceAuthority ?? run.source.kind,
-			source_status: run.sourceStatus,
-			orchestration_mode: run.orchestrationMode,
-			available_owner_actions: [],
-		};
-	}
-	if (element.type === "task") {
-		const task = element.task;
-		return {
-			taskId: task.id,
-			source_owner: task.owner_kind ?? "launcher",
-			lifecycle_owner: task.owner_kind ?? "launcher",
-			source_authority: task.source_authority ?? "launcher",
-			source_status: task.status,
-			orchestration_mode: task.orchestration_mode ?? task.agent_mode,
-			available_owner_actions: task.owner_actions ?? [],
-		};
-	}
-	if (element.type === "taskFlowGroup") {
-		return {
-			flowId: element.flow.flowId,
-			source_owner: "taskflow",
-			lifecycle_owner: "taskflow",
-			source_authority: "taskflow",
-			source_status: element.flow.status,
-		};
-	}
-	if (element.type === "openclawTask") {
-		return {
-			taskId: element.task.taskId,
-			source_owner: "openclaw",
-			lifecycle_owner: element.task.ownerKey,
-			source_authority: "openclaw",
-			source_status: element.task.status,
-		};
-	}
-	if (element.type === "detail") {
-		return {
-			taskId: element.taskId,
-			field: element.label,
-			value: element.value,
-		};
-	}
-	return undefined;
-}
-
-function matchesRequiredTaskId(
-	element: AgentNode,
-	requiredTaskId: string,
-): boolean {
-	if (element.type === "codexRun") {
-		return (
-			element.run.runId === requiredTaskId ||
-			element.run.taskId === requiredTaskId ||
-			element.run.source.id === requiredTaskId ||
-			element.run.title.includes(requiredTaskId)
-		);
-	}
-	if (element.type === "task") {
-		return element.task.id === requiredTaskId;
-	}
-	if (element.type === "openclawTask") {
-		return element.task.taskId === requiredTaskId;
-	}
-	return false;
-}
-
-function getAgentStatusTreeSnapshot(
-	options: CommandCentralAgentStatusTreeSnapshotOptions = {},
-): CommandCentralAgentStatusTreeSnapshot {
-	return getTreeSnapshotForProvider(agentStatusProvider, options);
-}
-
-function getSymphonyTreeSnapshot(
-	options: CommandCentralAgentStatusTreeSnapshotOptions = {},
-): CommandCentralAgentStatusTreeSnapshot {
-	return getTreeSnapshotForProvider(symphonyProvider, options);
-}
-
-function getTreeSnapshotForProvider(
-	provider: AgentStatusTreeProvider | undefined,
-	options: CommandCentralAgentStatusTreeSnapshotOptions = {},
-): CommandCentralAgentStatusTreeSnapshot {
-	if (!provider) {
-		return {
-			rootChildrenCount: 0,
-			taskCount: 0,
-			roots: [],
-			selected: { requiredLabels: {} },
-		};
-	}
-
-	const maxDepth = Math.max(0, Math.min(options.maxDepth ?? 4, 8));
-	const maxChildrenPerNode = Math.max(
-		1,
-		Math.min(options.maxChildrenPerNode ?? 75, 250),
-	);
-	const requiredLabels = options.requiredLabels ?? [];
-	const selectedRequiredLabels = Object.fromEntries(
-		requiredLabels.map((label) => [label, []]),
-	) as Record<string, CommandCentralAgentStatusTreeSelectedNode[]>;
-	let selectedRequiredTaskId:
-		| CommandCentralAgentStatusTreeSelectedNode
-		| undefined;
-
-	const serializeNode = (
-		element: AgentNode,
-		depth: number,
-		pathParts: string[],
-	): CommandCentralAgentStatusTreeNode => {
-		const item = provider.getTreeItem(element);
-		const label = treeItemLabelToString(item.label);
-		const nodePath = [...pathParts, label || element.type];
-
-		const children =
-			depth < maxDepth ? provider.getChildren(element) : ([] as AgentNode[]);
-		const childLimit =
-			element.type === "codexRuns" || element.type === "symphonyRunGroup"
-				? Math.min(maxChildrenPerNode, 5)
-				: maxChildrenPerNode;
-		const cappedChildren = children.slice(0, childLimit);
-		if (
-			options.requiredTaskId &&
-			!cappedChildren.some((child) =>
-				matchesRequiredTaskId(child, options.requiredTaskId as string),
-			)
-		) {
-			const requiredChild = children.find((child) =>
-				matchesRequiredTaskId(child, options.requiredTaskId as string),
-			);
-			if (requiredChild) cappedChildren.push(requiredChild);
-		}
-		const node: CommandCentralAgentStatusTreeNode = {
-			label,
-			description: treeItemDescriptionToString(item.description),
-			contextValue:
-				typeof item.contextValue === "string" ? item.contextValue : undefined,
-			nodeKind: element.type,
-			collapsibleState: item.collapsibleState,
-			command: serializeCommand(item.command),
-			ownerFields: selectedAgentStatusOwnerFields(element),
-			children: cappedChildren.map((child) =>
-				serializeNode(child, depth + 1, nodePath),
-			),
-			truncatedChildCount:
-				children.length > cappedChildren.length
-					? children.length - cappedChildren.length
-					: undefined,
-		};
-		const selectedNode: CommandCentralAgentStatusTreeSelectedNode = {
-			path: nodePath,
-			node,
-		};
-		for (const requiredLabel of requiredLabels) {
-			if (label.includes(requiredLabel)) {
-				selectedRequiredLabels[requiredLabel]?.push(selectedNode);
-			}
-		}
-		if (
-			options.requiredTaskId &&
-			!selectedRequiredTaskId &&
-			matchesRequiredTaskId(element, options.requiredTaskId)
-		) {
-			selectedRequiredTaskId = selectedNode;
-		}
-		return node;
-	};
-
-	const rootLabelPrefixes = options.rootLabelPrefixes ?? [];
-	const roots = provider.getChildren().filter((root) => {
-		if (rootLabelPrefixes.length === 0) return true;
-		const item = provider.getTreeItem(root);
-		const label = treeItemLabelToString(item.label);
-		return rootLabelPrefixes.some((prefix) => label.startsWith(prefix));
-	});
-	return {
-		rootChildrenCount: provider.getChildren().length,
-		taskCount: provider.getTasks().length,
-		roots: roots
-			.slice(0, maxChildrenPerNode)
-			.map((child) => serializeNode(child, 0, [])),
-		selected: {
-			requiredLabels: selectedRequiredLabels,
-			requiredTaskId: selectedRequiredTaskId,
-		},
-	};
 }
 
 function clearIntegrationTestContextSubscriptions(): void {
@@ -3864,21 +3501,26 @@ export async function activate(
 		mainLogger.info("📝 Git Sort + Project Views ready");
 
 		if (isIntegrationTestMode()) {
-			return {
-				kind: "command-central-test-api",
-				getSnapshot: () => getIntegrationSnapshot(),
-				getAgentStatusSnapshot: () => getAgentStatusSnapshot(),
-				getAgentStatusTreeSnapshot: (options) =>
-					getAgentStatusTreeSnapshot(options),
-				getSymphonyTreeSnapshot: (options) => getSymphonyTreeSnapshot(options),
-				deactivateForTest: async () => {
-					const before = getIntegrationSnapshot();
-					await deactivate();
-					clearIntegrationTestContextSubscriptions();
-					const after = getIntegrationSnapshot();
-					return { before, after };
-				},
+			const deps: IntegrationTestApiDeps = {
+				getExtensionContext: () => integrationTestContext,
+				getAgentStatusProvider: () => agentStatusProvider,
+				getSymphonyProvider: () => symphonyProvider,
+				hasProjectViewManager: () => projectViewManager !== undefined,
+				hasProjectIconService: () => projectIconService !== undefined,
+				hasExtensionFilterViewManager: () =>
+					extensionFilterViewManager !== undefined,
+				hasGroupingStateManager: () => groupingStateManager !== undefined,
+				hasGroupingViewManager: () => groupingViewManager !== undefined,
+				hasTerminalManager: () => terminalManager !== undefined,
+				hasBinaryManager: () => binaryManager !== undefined,
+				hasTestCountStatusBar: () => testCountStatusBar !== undefined,
+				getActiveProjectSlots: () => [
+					...(projectViewManager?.getAllWorkspaceDisplayNames().keys() ?? []),
+				],
+				deactivate,
+				clearIntegrationTestContextSubscriptions,
 			};
+			return createIntegrationTestApi(deps);
 		}
 	} catch (error) {
 		mainLogger.error("Failed to activate", error as Error);
