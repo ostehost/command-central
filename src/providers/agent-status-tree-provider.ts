@@ -4961,6 +4961,7 @@ export class AgentStatusTreeProvider
 			: notProvided;
 		const snapshotCounts = snapshot?.counts;
 		const snapshotCodexTotals = snapshot?.codexTotals;
+		const snapshotDiagnostics = snapshot?.diagnostics;
 
 		const details: DetailNode[] = [
 			{
@@ -4986,6 +4987,39 @@ export class AgentStatusTreeProvider
 							value: snapshot.generatedAt,
 							taskId,
 							icon: "calendar",
+						},
+					]
+				: []),
+			...(snapshot?.lastCronTick
+				? [
+						{
+							type: "detail" as const,
+							label: "last_cron_tick",
+							value: snapshot.lastCronTick,
+							taskId,
+							icon: "clock",
+						},
+					]
+				: []),
+			...(snapshot?.workflowPath
+				? [
+						{
+							type: "detail" as const,
+							label: "workflow_path",
+							value: snapshot.workflowPath,
+							taskId,
+							icon: "book",
+						},
+					]
+				: []),
+			...(snapshot?.pollingCadenceMs != null
+				? [
+						{
+							type: "detail" as const,
+							label: "polling_cadence_ms",
+							value: `${snapshot.pollingCadenceMs}`,
+							taskId,
+							icon: "watch",
 						},
 					]
 				: []),
@@ -5023,6 +5057,39 @@ export class AgentStatusTreeProvider
 				taskId,
 				icon: "history",
 			},
+			...(snapshotCounts?.claimed != null
+				? [
+						{
+							type: "detail" as const,
+							label: "claimed",
+							value: `${snapshotCounts.claimed}`,
+							taskId,
+							icon: "tag",
+						},
+					]
+				: []),
+			...(snapshot?.completedCount != null
+				? [
+						{
+							type: "detail" as const,
+							label: "completed",
+							value: `${snapshot.completedCount}`,
+							taskId,
+							icon: "check-all",
+						},
+					]
+				: []),
+			...(snapshot?.completedLimit != null
+				? [
+						{
+							type: "detail" as const,
+							label: "completed_limit",
+							value: `${snapshot.completedLimit}`,
+							taskId,
+							icon: "list-tree",
+						},
+					]
+				: []),
 			{
 				type: "detail",
 				label: "codex_totals.input_tokens",
@@ -5070,6 +5137,96 @@ export class AgentStatusTreeProvider
 				taskId,
 				icon: "pulse",
 			},
+			...(snapshotDiagnostics?.lastCronTickStatus
+				? [
+						{
+							type: "detail" as const,
+							label: "diagnostics.last_cron_tick_status",
+							value: snapshotDiagnostics.lastCronTickStatus,
+							taskId,
+							icon: "symbol-event",
+						},
+					]
+				: []),
+			...(snapshotDiagnostics?.lastReconciliationDurationMs != null
+				? [
+						{
+							type: "detail" as const,
+							label: "diagnostics.last_reconciliation_duration_ms",
+							value: `${snapshotDiagnostics.lastReconciliationDurationMs}`,
+							taskId,
+							icon: "dashboard",
+						},
+					]
+				: []),
+			...(snapshotDiagnostics?.lastLinearErrorAt
+				? [
+						{
+							type: "detail" as const,
+							label: "diagnostics.last_linear_error_at",
+							value: snapshotDiagnostics.lastLinearErrorAt,
+							taskId,
+							icon: "error",
+						},
+					]
+				: []),
+			...(snapshotDiagnostics?.consecutiveLinearErrors != null
+				? [
+						{
+							type: "detail" as const,
+							label: "diagnostics.consecutive_linear_errors",
+							value: `${snapshotDiagnostics.consecutiveLinearErrors}`,
+							taskId,
+							icon: "warning",
+						},
+					]
+				: []),
+			...(snapshotDiagnostics?.lastCallbackStatus
+				? [
+						{
+							type: "detail" as const,
+							label: "diagnostics.last_callback_status",
+							value: snapshotDiagnostics.lastCallbackStatus,
+							taskId,
+							icon: "broadcast",
+						},
+					]
+				: []),
+			...(snapshotDiagnostics?.lastCallbackUrl
+				? [
+						{
+							type: "detail" as const,
+							label: "diagnostics.last_callback_url",
+							value: snapshotDiagnostics.lastCallbackUrl,
+							taskId,
+							icon: "link",
+						},
+					]
+				: []),
+			...(snapshotDiagnostics?.lastWakeAt
+				? [
+						{
+							type: "detail" as const,
+							label: "diagnostics.last_wake_at",
+							value: snapshotDiagnostics.lastWakeAt,
+							taskId,
+							icon: "bell",
+						},
+					]
+				: []),
+			...(snapshotDiagnostics?.nodeConnected != null
+				? [
+						{
+							type: "detail" as const,
+							label: "diagnostics.node_connected",
+							value: this.formatSymphonySnapshotValue(
+								snapshotDiagnostics.nodeConnected,
+							),
+							taskId,
+							icon: snapshotDiagnostics.nodeConnected ? "plug" : "debug-disconnect",
+						},
+					]
+				: []),
 		];
 
 		if (released.length > 0) {

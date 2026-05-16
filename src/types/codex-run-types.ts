@@ -70,6 +70,8 @@ export interface SymphonyRuntimeSnapshotError {
 export interface SymphonyRuntimeSnapshotCounts {
 	running?: number;
 	retrying?: number;
+	claimed?: number;
+	completed?: number;
 }
 
 export interface SymphonyCodexTotalsView {
@@ -107,15 +109,32 @@ export interface SymphonyRetryEntryView {
 	error?: string;
 }
 
+export interface SymphonyRuntimeSnapshotDiagnostics {
+	lastCronTickStatus?: string;
+	lastReconciliationDurationMs?: number;
+	lastLinearErrorAt?: string;
+	consecutiveLinearErrors?: number;
+	lastCallbackStatus?: string;
+	lastCallbackUrl?: string;
+	lastWakeAt?: string;
+	nodeConnected?: boolean;
+}
+
 export interface SymphonyRuntimeSnapshotView {
 	generatedAt?: string;
+	lastCronTick?: string;
+	workflowPath?: string;
+	pollingCadenceMs?: number;
 	status: SymphonyRuntimeSnapshotStatus;
 	error?: SymphonyRuntimeSnapshotError;
 	counts?: SymphonyRuntimeSnapshotCounts;
+	completedCount?: number;
+	completedLimit?: number;
 	running?: SymphonyRunningEntryView[];
 	retrying?: SymphonyRetryEntryView[];
 	codexTotals?: SymphonyCodexTotalsView;
 	rateLimits?: unknown;
+	diagnostics?: SymphonyRuntimeSnapshotDiagnostics;
 	source: SymphonyRuntimeSnapshotSource;
 	sourcePath?: string;
 }

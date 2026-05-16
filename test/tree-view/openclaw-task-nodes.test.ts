@@ -506,7 +506,11 @@ describe("OpenClaw task nodes", () => {
 				prompt_summary: "Elixir-shaped Symphony snapshot owner",
 				symphony_runtime_snapshot: {
 					generated_at: "2026-05-10T14:55:00Z",
-					counts: { running: 1, retrying: 1 },
+					last_cron_tick: "2026-05-10T14:50:00Z",
+					workflow_path: "/Users/ostemini/projects/demo/WORKFLOW.md",
+					polling_cadence_ms: 300000,
+					counts: { running: 1, retrying: 1, claimed: 3, completed: 42 },
+					completed_limit: 100,
 					running: [
 						{
 							issue_identifier: "SYM-101",
@@ -542,6 +546,16 @@ describe("OpenClaw task nodes", () => {
 						seconds_running: 245,
 					},
 					rate_limits: { remaining: 17, limit: 100 },
+					diagnostics: {
+						last_cron_tick_status: "ok",
+						last_reconciliation_duration_ms: 1834,
+						last_linear_error_at: "2026-05-10T14:30:00Z",
+						consecutive_linear_errors: 0,
+						last_callback_status: "404",
+						last_callback_url: "https://gateway.partnerai.dev/delegation/result",
+						last_wake_at: "2026-05-10T14:55:12Z",
+						node_connected: false,
+					},
 				},
 			}),
 		]);
@@ -561,8 +575,18 @@ describe("OpenClaw task nodes", () => {
 		);
 		expect(dashboardValues.get("Orchestrator Runtime State")).toBe("fresh");
 		expect(dashboardValues.get("generated_at")).toBe("2026-05-10T14:55:00Z");
+		expect(dashboardValues.get("last_cron_tick")).toBe(
+			"2026-05-10T14:50:00Z",
+		);
+		expect(dashboardValues.get("workflow_path")).toBe(
+			"/Users/ostemini/projects/demo/WORKFLOW.md",
+		);
+		expect(dashboardValues.get("polling_cadence_ms")).toBe("300000");
 		expect(dashboardValues.get("running")).toBe("1");
 		expect(dashboardValues.get("retrying")).toBe("1");
+		expect(dashboardValues.get("claimed")).toBe("3");
+		expect(dashboardValues.get("completed")).toBe("42");
+		expect(dashboardValues.get("completed_limit")).toBe("100");
 		expect(dashboardValues.get("codex_totals.input_tokens")).toBe("1200");
 		expect(dashboardValues.get("codex_totals.output_tokens")).toBe("400");
 		expect(dashboardValues.get("codex_totals.total_tokens")).toBe("1600");
@@ -570,6 +594,28 @@ describe("OpenClaw task nodes", () => {
 		expect(dashboardValues.get("rate_limits")).toBe(
 			'{"remaining":17,"limit":100}',
 		);
+		expect(dashboardValues.get("diagnostics.last_cron_tick_status")).toBe(
+			"ok",
+		);
+		expect(
+			dashboardValues.get("diagnostics.last_reconciliation_duration_ms"),
+		).toBe("1834");
+		expect(dashboardValues.get("diagnostics.last_linear_error_at")).toBe(
+			"2026-05-10T14:30:00Z",
+		);
+		expect(dashboardValues.get("diagnostics.consecutive_linear_errors")).toBe(
+			"0",
+		);
+		expect(dashboardValues.get("diagnostics.last_callback_status")).toBe(
+			"404",
+		);
+		expect(dashboardValues.get("diagnostics.last_callback_url")).toBe(
+			"https://gateway.partnerai.dev/delegation/result",
+		);
+		expect(dashboardValues.get("diagnostics.last_wake_at")).toBe(
+			"2026-05-10T14:55:12Z",
+		);
+		expect(dashboardValues.get("diagnostics.node_connected")).toBe("false");
 
 		const runningGroup = getSymphonyRunGroupNode(provider, "running");
 		const retryGroup = getSymphonyRunGroupNode(provider, "retryQueued");

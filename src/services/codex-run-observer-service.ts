@@ -1095,6 +1095,7 @@ export class CodexRunObserverService {
 		const codexTotals = this.objectValue(
 			raw["codex_totals"] ?? raw["codexTotals"],
 		);
+		const diagnostics = this.objectValue(raw["diagnostics"]);
 		const running = Array.isArray(raw["running"])
 			? raw["running"]
 					.map((entry) => this.normalizeSymphonyRunningEntry(entry))
@@ -1109,6 +1110,17 @@ export class CodexRunObserverService {
 			generatedAt: this.firstNonEmpty(
 				this.stringValue(raw["generated_at"]),
 				this.stringValue(raw["generatedAt"]),
+			),
+			lastCronTick: this.firstNonEmpty(
+				this.stringValue(raw["last_cron_tick"]),
+				this.stringValue(raw["lastCronTick"]),
+			),
+			workflowPath: this.firstNonEmpty(
+				this.stringValue(raw["workflow_path"]),
+				this.stringValue(raw["workflowPath"]),
+			),
+			pollingCadenceMs: this.numberValue(
+				raw["polling_cadence_ms"] ?? raw["pollingCadenceMs"],
 			),
 			status,
 			error: errorCode
@@ -1125,8 +1137,16 @@ export class CodexRunObserverService {
 				? {
 						running: this.numberValue(counts["running"]),
 						retrying: this.numberValue(counts["retrying"]),
+						claimed: this.numberValue(counts["claimed"]),
+						completed: this.numberValue(counts["completed"]),
 					}
 				: undefined,
+			completedCount: this.numberValue(
+				raw["completed_count"] ?? raw["completedCount"] ?? counts?.["completed"],
+			),
+			completedLimit: this.numberValue(
+				raw["completed_limit"] ?? raw["completedLimit"],
+			),
 			running,
 			retrying,
 			codexTotals: codexTotals
@@ -1146,6 +1166,40 @@ export class CodexRunObserverService {
 					}
 				: undefined,
 			rateLimits: raw["rate_limits"] ?? raw["rateLimits"],
+			diagnostics: diagnostics
+				? {
+						lastCronTickStatus: this.stringValue(
+							diagnostics["last_cron_tick_status"] ??
+								diagnostics["lastCronTickStatus"],
+						),
+						lastReconciliationDurationMs: this.numberValue(
+							diagnostics["last_reconciliation_duration_ms"] ??
+								diagnostics["lastReconciliationDurationMs"],
+						),
+						lastLinearErrorAt: this.stringValue(
+							diagnostics["last_linear_error_at"] ??
+								diagnostics["lastLinearErrorAt"],
+						),
+						consecutiveLinearErrors: this.numberValue(
+							diagnostics["consecutive_linear_errors"] ??
+								diagnostics["consecutiveLinearErrors"],
+						),
+						lastCallbackStatus: this.stringValue(
+							diagnostics["last_callback_status"] ??
+								diagnostics["lastCallbackStatus"],
+						),
+						lastCallbackUrl: this.stringValue(
+							diagnostics["last_callback_url"] ??
+								diagnostics["lastCallbackUrl"],
+						),
+						lastWakeAt: this.stringValue(
+							diagnostics["last_wake_at"] ?? diagnostics["lastWakeAt"],
+						),
+						nodeConnected: this.booleanValue(
+							diagnostics["node_connected"] ?? diagnostics["nodeConnected"],
+						),
+					}
+				: undefined,
 			source: this.symfonySnapshotSource(ref),
 			sourcePath: this.firstNonEmpty(
 				this.stringValue(raw["source_path"]),
@@ -1440,6 +1494,15 @@ export class CodexRunObserverService {
 		if (typeof value !== "string" || !value.trim()) return undefined;
 		const parsed = Number(value);
 		return Number.isFinite(parsed) ? parsed : undefined;
+	}
+
+	private booleanValue(value: unknown): boolean | undefined {
+		if (typeof value === "boolean") return value;
+		if (typeof value !== "string") return undefined;
+		const normalized = value.trim().toLowerCase();
+		if (normalized === "true") return true;
+		if (normalized === "false") return false;
+		return undefined;
 	}
 
 	private formatDueAtValue(value: unknown): string | undefined {
