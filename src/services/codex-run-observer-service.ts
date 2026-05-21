@@ -1142,7 +1142,9 @@ export class CodexRunObserverService {
 					}
 				: undefined,
 			completedCount: this.numberValue(
-				raw["completed_count"] ?? raw["completedCount"] ?? counts?.["completed"],
+				raw["completed_count"] ??
+					raw["completedCount"] ??
+					counts?.["completed"],
 			),
 			completedLimit: this.numberValue(
 				raw["completed_limit"] ?? raw["completedLimit"],

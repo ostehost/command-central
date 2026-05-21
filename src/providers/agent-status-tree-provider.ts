@@ -5223,7 +5223,9 @@ export class AgentStatusTreeProvider
 								snapshotDiagnostics.nodeConnected,
 							),
 							taskId,
-							icon: snapshotDiagnostics.nodeConnected ? "plug" : "debug-disconnect",
+							icon: snapshotDiagnostics.nodeConnected
+								? "plug"
+								: "debug-disconnect",
 						},
 					]
 				: []),

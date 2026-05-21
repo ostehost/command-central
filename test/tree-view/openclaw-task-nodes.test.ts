@@ -552,7 +552,8 @@ describe("OpenClaw task nodes", () => {
 						last_linear_error_at: "2026-05-10T14:30:00Z",
 						consecutive_linear_errors: 0,
 						last_callback_status: "404",
-						last_callback_url: "https://gateway.partnerai.dev/delegation/result",
+						last_callback_url:
+							"https://gateway.partnerai.dev/delegation/result",
 						last_wake_at: "2026-05-10T14:55:12Z",
 						node_connected: false,
 					},
@@ -575,9 +576,7 @@ describe("OpenClaw task nodes", () => {
 		);
 		expect(dashboardValues.get("Orchestrator Runtime State")).toBe("fresh");
 		expect(dashboardValues.get("generated_at")).toBe("2026-05-10T14:55:00Z");
-		expect(dashboardValues.get("last_cron_tick")).toBe(
-			"2026-05-10T14:50:00Z",
-		);
+		expect(dashboardValues.get("last_cron_tick")).toBe("2026-05-10T14:50:00Z");
 		expect(dashboardValues.get("workflow_path")).toBe(
 			"/Users/ostemini/projects/demo/WORKFLOW.md",
 		);
@@ -594,9 +593,7 @@ describe("OpenClaw task nodes", () => {
 		expect(dashboardValues.get("rate_limits")).toBe(
 			'{"remaining":17,"limit":100}',
 		);
-		expect(dashboardValues.get("diagnostics.last_cron_tick_status")).toBe(
-			"ok",
-		);
+		expect(dashboardValues.get("diagnostics.last_cron_tick_status")).toBe("ok");
 		expect(
 			dashboardValues.get("diagnostics.last_reconciliation_duration_ms"),
 		).toBe("1834");
@@ -606,9 +603,7 @@ describe("OpenClaw task nodes", () => {
 		expect(dashboardValues.get("diagnostics.consecutive_linear_errors")).toBe(
 			"0",
 		);
-		expect(dashboardValues.get("diagnostics.last_callback_status")).toBe(
-			"404",
-		);
+		expect(dashboardValues.get("diagnostics.last_callback_status")).toBe("404");
 		expect(dashboardValues.get("diagnostics.last_callback_url")).toBe(
 			"https://gateway.partnerai.dev/delegation/result",
 		);
