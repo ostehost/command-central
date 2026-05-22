@@ -22,9 +22,7 @@ import {
 	extractFlagsFromHelp,
 	extractSessionFlagsFromTerminalManager,
 	extractSteerInvocationArgBlocks,
-	extractSteerInvocationContract,
 	validateLauncherContract,
-	validateSteerContract,
 } from "../../scripts-v2/prerelease-gate.js";
 import { buildOsteSpawnCommand } from "../../src/utils/shell-command.js";
 
@@ -115,30 +113,27 @@ describe("smoke: spawn — oste-spawn.sh argument shapes", () => {
 });
 
 // ─── 2. Steer ───────────────────────────────────────────────
-describe("smoke: steer — oste-steer.sh invocation contract", () => {
-	test("TerminalManager uses positional session ID (not --session flag)", () => {
-		const contract = extractSteerInvocationContract(terminalManagerSource);
-		expect(contract.usesPositionalSession).toBe(true);
-		expect(contract.usesLegacySessionFlag).toBe(false);
+// Retired with rc.31: the extension no longer shells out to oste-steer.sh.
+// Steer dispatch lives entirely inside `launcher --send` (launcher 1.2.0+).
+// The new extension contract is asserted in
+// `test/ghostty/terminal-manager.test.ts` ("delegates send to `launcher
+// --send ...`"); the launcher-side contract (positional session, --raw flag,
+// zellij/tmux dispatch) is tested in ~/projects/ghostty-launcher.
+describe("smoke: steer — extension delegates to launcher --send", () => {
+	test("TerminalManager does NOT shell out to oste-steer.sh directly", () => {
+		// Asserts the inverse of the old contract: zero direct invocations.
+		// If a future commit re-introduces an oste-steer.sh execCommand call,
+		// this regex match goes from 0 → ≥1 and the test fires.
+		const directSteerCalls = extractSteerInvocationArgBlocks(
+			terminalManagerSource,
+		);
+		expect(directSteerCalls.length).toBe(0);
 	});
 
-	test("TerminalManager passes --raw flag to oste-steer.sh", () => {
-		const contract = extractSteerInvocationContract(terminalManagerSource);
-		expect(contract.usesRawMode).toBe(true);
-	});
-
-	test("source contains execCommand calls with correct shape", () => {
-		// Verify the actual invocation pattern: execCommand(steerPath, [sessionId, "--raw", command])
-		const steerCalls = extractSteerInvocationArgBlocks(terminalManagerSource);
-		expect(steerCalls.length).toBeGreaterThan(0);
-
-		for (const argsBlock of steerCalls) {
-			// First arg should NOT be a flag (it's the session ID variable)
-			const firstArg = argsBlock.split(",")[0]?.trim() ?? "";
-			expect(firstArg).not.toStartWith('"--');
-			// "--raw" must appear in the args
-			expect(argsBlock).toContain('"--raw"');
-		}
+	test("TerminalManager invokes `launcher --send` for command delivery", () => {
+		// Look for `--send` flag passed to a launcher exec — the new contract.
+		expect(terminalManagerSource).toContain('"--send"');
+		expect(terminalManagerSource).toContain('"--command"');
 	});
 });
 
@@ -356,13 +351,13 @@ describe.if(launcherAvailable)(
 			expect(issues).toEqual([]);
 		});
 
-		test("full steer contract validation passes", () => {
-			const issues = validateSteerContract(
-				terminalManagerSource,
-				steerHelpText,
-			);
-			expect(issues).toEqual([]);
-		});
+		// Retired with rc.31: validateSteerContract asserted the
+		// extension's direct oste-steer.sh invocation shape against
+		// the helper script's --help output. The extension no longer
+		// invokes the helper — the launcher's --send subcommand does.
+		// Cross-repo contract validation belongs in the launcher repo
+		// (tests on launcher --send) rather than reaching back into the
+		// extension's source.
 
 		test("launcher helper scripts exist in launcher repo", () => {
 			for (const script of ["oste-capture.sh", "oste-kill.sh"]) {

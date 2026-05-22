@@ -819,204 +819,11 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 		expect(calls.some((c) => c.file === "oste-steer.sh")).toBe(false);
 	});
 
-	test("creates then opens bundle before steering command when session is initially missing", async () => {
-		const events: string[] = [];
-		let tmuxLookupCount = 0;
-		const steerPath = path.join(
-			path.dirname("launcher"),
-			"scripts",
-			"oste-steer.sh",
-		);
-		const originalSetTimeout = globalThis.setTimeout;
-		globalThis.setTimeout = ((fn: () => void) => {
-			fn();
-			return 0 as unknown as NodeJS.Timeout;
-		}) as typeof globalThis.setTimeout;
-		fsExistsSyncMock.mockImplementation((p: string) => p === steerPath);
-
-		execFileMock.mockImplementation(
-			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
-				if (a.includes("--version")) {
-					cb(null, { stdout: "launcher version 1.0.0", stderr: "" });
-					return;
-				}
-				if (a.includes("--parse-name")) {
-					cb(null, { stdout: "my-project\n", stderr: "" });
-					return;
-				}
-				if (a.includes("--parse-icon")) {
-					cb(null, { stdout: "📦\n", stderr: "" });
-					return;
-				}
-				// Test asserts oste-steer.sh is called — pin multiplexer to tmux
-				// so dispatch routes through the tmux path. Without this mock
-				// the empty-stdout default would route to zellij.
-				if (a.includes("--parse-multiplexer")) {
-					cb(null, { stdout: "tmux\n", stderr: "" });
-					return;
-				}
-				if (a.includes("--session-id")) {
-					tmuxLookupCount++;
-					const session = tmuxLookupCount === 1 ? "\n" : "agent-my-project\n";
-					cb(null, { stdout: session, stderr: "" });
-					return;
-				}
-				if (a.includes("--create-bundle")) {
-					events.push("create-bundle");
-					cb(null, { stdout: "Bundle created", stderr: "" });
-					return;
-				}
-				if (
-					f === "launcher" &&
-					a.length === 1 &&
-					a[0] === "/Users/test/my-project"
-				) {
-					events.push("open-bundle");
-					cb(null, { stdout: "Bundle opened", stderr: "" });
-					return;
-				}
-				if (f === steerPath) {
-					events.push("steer");
-					cb(null, { stdout: "", stderr: "" });
-					return;
-				}
-				cb(null, { stdout: "", stderr: "" });
-			},
-		);
-
-		try {
-			const mgr = new TerminalManager(createMockLogger() as never);
-			await mgr.runInProjectTerminal("/Users/test/my-project", 'echo "hello"');
-		} finally {
-			globalThis.setTimeout = originalSetTimeout;
-		}
-
-		expect(events).toEqual(["create-bundle", "open-bundle", "steer"]);
-	});
-
-	test("throws when a command cannot be started after opening a new bundle", async () => {
-		const events: string[] = [];
-		const originalSetTimeout = globalThis.setTimeout;
-		globalThis.setTimeout = ((fn: () => void) => {
-			fn();
-			return 0 as unknown as NodeJS.Timeout;
-		}) as typeof globalThis.setTimeout;
-
-		execFileMock.mockImplementation(
-			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
-				if (a.includes("--version")) {
-					cb(null, { stdout: "launcher version 1.0.0", stderr: "" });
-					return;
-				}
-				if (a.includes("--parse-name")) {
-					cb(null, { stdout: "my-project\n", stderr: "" });
-					return;
-				}
-				if (a.includes("--parse-icon")) {
-					cb(null, { stdout: "📦\n", stderr: "" });
-					return;
-				}
-				if (a.includes("--session-id")) {
-					cb(null, { stdout: "\n", stderr: "" });
-					return;
-				}
-				if (a.includes("--create-bundle")) {
-					events.push("create-bundle");
-					cb(null, { stdout: "Bundle created", stderr: "" });
-					return;
-				}
-				if (
-					f === "launcher" &&
-					a.length === 1 &&
-					a[0] === "/Users/test/my-project"
-				) {
-					events.push("open-bundle");
-					cb(null, { stdout: "Bundle opened", stderr: "" });
-					return;
-				}
-				cb(null, { stdout: "", stderr: "" });
-			},
-		);
-
-		try {
-			const mgr = new TerminalManager(createMockLogger() as never);
-			await expect(
-				mgr.runInProjectTerminal("/Users/test/my-project", "claude --continue"),
-			).rejects.toThrow("no launcher session accepted the command");
-		} finally {
-			globalThis.setTimeout = originalSetTimeout;
-		}
-
-		expect(events).toEqual(["create-bundle", "open-bundle"]);
-	});
-
-	test("uses launcher --session-id contract for session lookup before steering", async () => {
-		const calls: Array<{ file: string; args: string[] }> = [];
-		const steerPath = path.join(
-			path.dirname("launcher"),
-			"scripts",
-			"oste-steer.sh",
-		);
-		fsExistsSyncMock.mockImplementation((p: string) => p === steerPath);
-
-		execFileMock.mockImplementation(
-			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
-				calls.push({ file: f, args: a });
-				if (a.includes("--version")) {
-					cb(null, { stdout: "launcher version 1.0.0", stderr: "" });
-					return;
-				}
-				if (a.includes("--parse-name")) {
-					cb(null, { stdout: "my-project\n", stderr: "" });
-					return;
-				}
-				if (a.includes("--parse-icon")) {
-					cb(null, { stdout: "📦\n", stderr: "" });
-					return;
-				}
-				// Pin to tmux: this contract test asserts oste-steer.sh is called.
-				if (a.includes("--parse-multiplexer")) {
-					cb(null, { stdout: "tmux\n", stderr: "" });
-					return;
-				}
-				if (a.includes("--session-id")) {
-					cb(null, { stdout: "agent-contract-session\n", stderr: "" });
-					return;
-				}
-				if (f === steerPath) {
-					cb(null, { stdout: "", stderr: "" });
-					return;
-				}
-				cb(null, { stdout: "", stderr: "" });
-			},
-		);
-
-		const mgr = new TerminalManager(createMockLogger() as never);
-		await mgr.runInProjectTerminal("/Users/test/my-project", "echo contract");
-
-		expect(
-			calls.some(
-				(c) => c.file === "launcher" && c.args.includes("--session-id"),
-			),
-		).toBe(true);
-		expect(
-			calls.some(
-				(c) => c.file === "launcher" && c.args.includes("--tmux-session"),
-			),
-		).toBe(false);
-		expect(
-			calls.some(
-				(c) =>
-					c.file === steerPath &&
-					c.args[0] === "agent-contract-session" &&
-					c.args[1] === "--raw" &&
-					c.args[2] === "echo contract",
-			),
-		).toBe(true);
-		expect(
-			calls.some((c) => c.file === steerPath && c.args.includes("--session")),
-		).toBe(false);
-	});
+	// Retired with rc.31: the create-bundle → open-bundle → steer sequence
+	// and the --session-id lookup-before-steer contract used to be enforced
+	// here. With launcher --send (rc.31 / launcher 1.2.0+), the launcher owns
+	// the entire flow internally; the extension just delegates. See the
+	// "delegates send to `launcher --send ...`" test for the new contract.
 });
 
 describe("TerminalManager.getTerminalInfo", () => {
@@ -1204,13 +1011,29 @@ describe("TerminalManager.runInProjectTerminal multiplexer dispatch", () => {
 		execFileMock.mockReset();
 	});
 
-	test("zellij project: dispatches to `zellij action write-chars` not oste-steer.sh", async () => {
+	// Retired with rc.31: previously this block had four tests asserting the
+	// extension shelled out directly to `zellij` (for zellij projects) or
+	// `oste-steer.sh` (for tmux projects). Those direct-dispatch paths are
+	// gone — the launcher's `--send` subcommand owns multiplexer-specific
+	// behavior internally. Coverage for those dispatch decisions lives in
+	// `~/projects/ghostty-launcher` (launcher 1.2.0+). The single remaining
+	// test below pins the new integration contract: extension delegates,
+	// nothing else.
+
+	// rc.31 contract: dispatchSteer delegates the entire "send command to
+	// project session" operation to `launcher --send <dir> --command <cmd>`.
+	// The launcher owns multiplexer dispatch, ZELLIJ_SOCKET_DIR, bundle open,
+	// and session-alive waiting. The extension MUST NOT shell out to `zellij`
+	// or `oste-steer.sh` directly anymore — that was the rc.29/rc.30 path that
+	// could not reach the bundle's isolated zellij socket and could not
+	// resurrect EXITED sessions. See rc.31 commit message.
+	test("delegates send to `launcher --send <dir> --command <cmd>`", async () => {
 		const calls: Array<{ file: string; args: string[] }> = [];
 		execFileMock.mockImplementation(
 			(file: string, a: string[], _o: object, cb: ExecFileCallback) => {
 				calls.push({ file, args: a });
 				if (a.includes("--version"))
-					return cb(null, { stdout: "launcher version 1.1.0\n", stderr: "" });
+					return cb(null, { stdout: "launcher version 1.2.0\n", stderr: "" });
 				if (a.includes("--help"))
 					return cb(null, { stdout: "launcher help\n", stderr: "" });
 				if (a.includes("--parse-name"))
@@ -1221,6 +1044,8 @@ describe("TerminalManager.runInProjectTerminal multiplexer dispatch", () => {
 					return cb(null, { stdout: "agent-config\n", stderr: "" });
 				if (a.includes("--parse-multiplexer"))
 					return cb(null, { stdout: "zellij\n", stderr: "" });
+				// --send succeeds (launcher handles everything).
+				if (a.includes("--send")) return cb(null, { stdout: "", stderr: "" });
 				cb(null, { stdout: "", stderr: "" });
 			},
 		);
@@ -1228,134 +1053,29 @@ describe("TerminalManager.runInProjectTerminal multiplexer dispatch", () => {
 		const mgr = new TerminalManager(createMockLogger() as never);
 		await mgr.runInProjectTerminal("/Users/test/config", "claude --continue");
 
-		const zellijCalls = calls.filter((c) => c.file === "zellij");
-		const steerCalls = calls.filter((c) => c.file.endsWith("/oste-steer.sh"));
-		expect(zellijCalls.length).toBeGreaterThan(0);
-		expect(steerCalls.length).toBe(0);
-		expect(zellijCalls[0]?.args).toEqual([
-			"--session",
-			"agent-config",
-			"action",
-			"write-chars",
-			"claude --continue",
-		]);
-		// Second zellij call is the Enter key
-		expect(zellijCalls[1]?.args).toEqual([
-			"--session",
-			"agent-config",
-			"action",
-			"write",
-			"13",
-		]);
-	});
-
-	test("tmux project: dispatches to oste-steer.sh not zellij", async () => {
-		const calls: Array<{ file: string; args: string[] }> = [];
-		execFileMock.mockImplementation(
-			(file: string, a: string[], _o: object, cb: ExecFileCallback) => {
-				calls.push({ file, args: a });
-				if (a.includes("--version"))
-					return cb(null, { stdout: "launcher version 1.1.0\n", stderr: "" });
-				if (a.includes("--help"))
-					return cb(null, { stdout: "launcher help\n", stderr: "" });
-				if (a.includes("--parse-name"))
-					return cb(null, { stdout: "TmuxProj\n", stderr: "" });
-				if (a.includes("--parse-icon"))
-					return cb(null, { stdout: "🐠\n", stderr: "" });
-				if (a.includes("--session-id"))
-					return cb(null, { stdout: "agent-tmuxproj\n", stderr: "" });
-				if (a.includes("--parse-multiplexer"))
-					return cb(null, { stdout: "tmux\n", stderr: "" });
-				cb(null, { stdout: "", stderr: "" });
-			},
+		const sendCalls = calls.filter((c) => c.args.includes("--send"));
+		const directZellijCalls = calls.filter((c) => c.file === "zellij");
+		const directSteerCalls = calls.filter((c) =>
+			c.file.endsWith("/oste-steer.sh"),
 		);
 
-		const mgr = new TerminalManager(createMockLogger() as never);
-		await mgr.runInProjectTerminal("/Users/test/tmuxproj", "echo hello");
+		// At least one --send call with the right shape.
+		expect(sendCalls.length).toBeGreaterThan(0);
+		const sendArgs = sendCalls[0]?.args ?? [];
+		expect(sendArgs).toContain("--send");
+		expect(sendArgs).toContain("/Users/test/config");
+		expect(sendArgs).toContain("--command");
+		expect(sendArgs).toContain("claude --continue");
 
-		const zellijCalls = calls.filter((c) => c.file === "zellij");
-		const steerCalls = calls.filter((c) => c.file.endsWith("/oste-steer.sh"));
-		expect(zellijCalls.length).toBe(0);
-		expect(steerCalls.length).toBeGreaterThan(0);
+		// Extension MUST NOT shell out to zellij or oste-steer.sh directly.
+		expect(directZellijCalls.length).toBe(0);
+		expect(directSteerCalls.length).toBe(0);
 	});
 
-	test("unknown multiplexer (old launcher): preserves tmux dispatch", async () => {
-		const calls: Array<{ file: string; args: string[] }> = [];
-		execFileMock.mockImplementation(
-			(file: string, a: string[], _o: object, cb: ExecFileCallback) => {
-				calls.push({ file, args: a });
-				if (a.includes("--version"))
-					return cb(null, { stdout: "launcher version 1.0.0\n", stderr: "" });
-				if (a.includes("--help"))
-					return cb(null, { stdout: "launcher help\n", stderr: "" });
-				if (a.includes("--parse-name"))
-					return cb(null, { stdout: "OldProj\n", stderr: "" });
-				if (a.includes("--parse-icon"))
-					return cb(null, { stdout: "🦴\n", stderr: "" });
-				if (a.includes("--session-id"))
-					return cb(null, { stdout: "agent-old\n", stderr: "" });
-				if (a.includes("--parse-multiplexer"))
-					return cb(new Error("unknown flag"), { stdout: "", stderr: "" });
-				cb(null, { stdout: "", stderr: "" });
-			},
-		);
-
-		const mgr = new TerminalManager(createMockLogger() as never);
-		await mgr.runInProjectTerminal("/Users/test/old", "echo bc");
-
-		const zellijCalls = calls.filter((c) => c.file === "zellij");
-		const steerCalls = calls.filter((c) => c.file.endsWith("/oste-steer.sh"));
-		expect(zellijCalls.length).toBe(0);
-		expect(steerCalls.length).toBeGreaterThan(0);
-	});
-
-	// Regression for rc.29 dogfood: projects without an explicit
-	// `commandCentral.terminal.multiplexer` setting in their .vscode/settings.json
-	// hit `--parse-multiplexer` returning empty stdout (the launcher exposes
-	// only the raw setting; it doesn't apply its own GHL_DEFAULT_MULTIPLEXER
-	// default to that flag). The launcher then creates a zellij bundle by
-	// internal default. The extension must mirror that default so dispatch
-	// matches the bundle the launcher actually built — otherwise oste-steer.sh
-	// is invoked against a non-existent tmux session and fails 5× over the
-	// retry loop. See the rc.29 dogfood log.
-	test("empty --parse-multiplexer dispatches to zellij (matches launcher default)", async () => {
-		const calls: Array<{ file: string; args: string[] }> = [];
-		execFileMock.mockImplementation(
-			(file: string, a: string[], _o: object, cb: ExecFileCallback) => {
-				calls.push({ file, args: a });
-				if (a.includes("--version"))
-					return cb(null, { stdout: "launcher version 1.1.0\n", stderr: "" });
-				if (a.includes("--help"))
-					return cb(null, { stdout: "launcher help\n", stderr: "" });
-				if (a.includes("--parse-name"))
-					return cb(null, { stdout: "Config\n", stderr: "" });
-				if (a.includes("--parse-icon"))
-					return cb(null, { stdout: "⚙️\n", stderr: "" });
-				if (a.includes("--session-id"))
-					return cb(null, { stdout: "agent-config\n", stderr: "" });
-				// Empty stdout — project has no explicit multiplexer setting.
-				if (a.includes("--parse-multiplexer"))
-					return cb(null, { stdout: "", stderr: "" });
-				cb(null, { stdout: "", stderr: "" });
-			},
-		);
-
-		const mgr = new TerminalManager(createMockLogger() as never);
-		await mgr.runInProjectTerminal("/Users/test/config", "claude --continue");
-
-		const zellijCalls = calls.filter((c) => c.file === "zellij");
-		const steerCalls = calls.filter((c) => c.file.endsWith("/oste-steer.sh"));
-		// MUST route to zellij even though parse-multiplexer returned empty.
-		expect(zellijCalls.length).toBeGreaterThan(0);
-		expect(steerCalls.length).toBe(0);
-		expect(zellijCalls[0]?.args).toEqual([
-			"--session",
-			"agent-config",
-			"action",
-			"write-chars",
-			"claude --continue",
-		]);
-	});
+	// Retired with rc.31: the empty-→-zellij default lives in the launcher's
+	// `--send` subcommand now (launcher.sh `parse_multiplexer` + the same
+	// GHL_DEFAULT_MULTIPLEXER:-zellij cascade). The extension delegates
+	// blindly; defaulting tests belong in the launcher repo.
 });
 
 // ══ NEW TESTS FOR FIXES ═══════════════════════════════════════════════

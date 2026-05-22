@@ -68,8 +68,6 @@ const LAUNCHER_FALLBACK_PATHS: string[] = [
 
 /** Timeout in milliseconds for launcher subprocess calls */
 const LAUNCHER_TIMEOUT_MS = 10_000;
-const SESSION_LOOKUP_RETRIES = 5;
-const SESSION_LOOKUP_RETRY_DELAY_MS = 750;
 const AUTO_DETECTED_LAUNCHER_PATH_KEY =
 	"commandCentral.ghostty.autoDetectedLauncherPath";
 
@@ -662,76 +660,30 @@ export class TerminalManager {
 				return;
 			}
 
-			// Try to find existing launcher session for the project
-			const info = await this.getTerminalInfo(projectDir);
-
-			const steerCommand = async (
-				sessionName: string,
-				multiplexer: LauncherMultiplexer,
-			): Promise<void> => {
-				await this.dispatchSteer(sessionName, multiplexer, command ?? "");
-				this.logger.info(
-					`Sent command to launcher session ${sessionName} (${multiplexer})`,
-					"TerminalManager",
-				);
-			};
-
-			if (info.tmuxSession && command) {
-				// Send command to existing launcher session via the multiplexer
-				// appropriate to the project (tmux → oste-steer.sh, zellij → zellij
-				// action write-chars).
-				try {
-					await steerCommand(info.tmuxSession, info.multiplexer);
-					return;
-				} catch (err) {
-					const message = err instanceof Error ? err.message : String(err);
-					this.logger.warn(
-						`Failed to steer launcher session: ${message} — creating new terminal`,
-						"TerminalManager",
-					);
-				}
-			}
-
-			if (info.tmuxSession && !command) {
-				// Existing session, no command: surface the project bundle terminal.
-				await this.openProjectTerminal(projectDir);
+			if (command) {
+				// Single-shot delegation: launcher --send <dir> --command <cmd>
+				// owns the whole flow (multiplexer dispatch, ZELLIJ_SOCKET_DIR,
+				// bundle open, session-alive wait, keystroke delivery). The
+				// extension no longer shells out to zellij or oste-steer.sh
+				// directly — that path could not reach the launcher's
+				// per-bundle isolated zellij socket. Requires launcher ≥ 1.2.0;
+				// older launchers exit with a non-zero status and surface via
+				// the LauncherExecutionError → prompt path in the catch below.
+				await this.sendCommandViaLauncher(projectDir, command);
 				return;
 			}
 
-			// No session: rebuild bundle identity, then open/activate launch surface.
+			// No command — just open the project's launch surface. Skip the
+			// bundle recreation step when the launcher already knows the
+			// project (--session-id succeeded); recreating is potentially
+			// expensive (codesign, fileicon, lsregister).
+			const info = await this.getTerminalInfo(projectDir);
+			if (info.tmuxSession) {
+				await this.openProjectTerminal(projectDir);
+				return;
+			}
 			await this.createProjectTerminal(projectDir);
 			await this.openProjectTerminal(projectDir);
-
-			// If we just created a terminal and have a command, wait briefly then steer
-			if (command) {
-				let lastStartError: unknown = null;
-				for (let attempt = 0; attempt < SESSION_LOOKUP_RETRIES; attempt++) {
-					await new Promise((resolve) =>
-						setTimeout(resolve, SESSION_LOOKUP_RETRY_DELAY_MS),
-					);
-					const newInfo = await this.getTerminalInfo(projectDir);
-					if (newInfo.tmuxSession) {
-						try {
-							await steerCommand(newInfo.tmuxSession, newInfo.multiplexer);
-							return;
-						} catch (err) {
-							lastStartError = err;
-							const message = err instanceof Error ? err.message : String(err);
-							this.logger.warn(
-								`Failed to send command to launcher session ${newInfo.tmuxSession}: ${message}`,
-								"TerminalManager",
-							);
-						}
-					}
-				}
-
-				const details =
-					lastStartError instanceof Error ? `: ${lastStartError.message}` : "";
-				throw new LauncherExecutionError(
-					`Project terminal opened but no launcher session accepted the command${details}.`,
-					this.getLauncherPath(),
-				);
-			}
 		} catch (error) {
 			if (
 				error instanceof LauncherNotFoundError ||
@@ -885,69 +837,32 @@ end tell
 	 * unreachable. Make the user choose explicitly.
 	 */
 	/**
-	 * Dispatches a steer command to the correct multiplexer.
+	 * Delegates the entire "send command to project terminal" flow to the
+	 * launcher's `--send` subcommand (launcher ≥ 1.2.0). The launcher owns
+	 * multiplexer dispatch, ZELLIJ_SOCKET_DIR, bundle open, session-alive
+	 * waiting, and keystroke delivery. This is the integrated-dependency
+	 * contract — the extension does not reach into zellij or tmux directly.
 	 *
-	 * - `tmux`: shells out to bundled `oste-steer.sh <session> --raw <command>`.
-	 *   That helper sends keys into the tmux pane (Enter included).
-	 * - `zellij`: invokes `zellij --session <session> action write-chars <command>`
-	 *   followed by `action write 13` to deliver the Enter keypress. Zellij must
-	 *   be on PATH; if not, surfaces an actionable error.
-	 * - `unknown`: falls through to the historical tmux path. Older launchers
-	 *   without `--parse-multiplexer` always used tmux, so this preserves
-	 *   backwards compatibility.
-	 *
-	 * Surfaces a focused error for the zellij-binary-missing case so we don't
-	 * leak a generic `ENOENT` to the user.
+	 * The legacy `dispatchSteer` / `steerZellijSession` / oste-steer.sh
+	 * branching is retained below for backward compatibility but is no longer
+	 * invoked from the main flow. Removing those internals is a follow-up
+	 * once we're confident no caller needs the lower-level dispatch.
 	 */
-	private async dispatchSteer(
-		sessionName: string,
-		multiplexer: LauncherMultiplexer,
+	private async sendCommandViaLauncher(
+		projectDir: string,
 		command: string,
 	): Promise<void> {
-		if (multiplexer === "zellij") {
-			await this.steerZellijSession(sessionName, command);
-			return;
-		}
-		// tmux + unknown share the historical oste-steer.sh path.
-		const steerPath =
-			await this.resolveLauncherHelperScriptPath("oste-steer.sh");
-		await this.execCommand(steerPath, [sessionName, "--raw", command]);
-	}
-
-	/**
-	 * Sends a command into an existing zellij session via the zellij CLI's
-	 * `action write-chars` interface. Splits the command from the trailing
-	 * Enter so zellij gets both the literal text and a keystroke event.
-	 */
-	private async steerZellijSession(
-		sessionName: string,
-		command: string,
-	): Promise<void> {
-		try {
-			await this.execCommand("zellij", [
-				"--session",
-				sessionName,
-				"action",
-				"write-chars",
-				command,
-			]);
-			await this.execCommand("zellij", [
-				"--session",
-				sessionName,
-				"action",
-				"write",
-				"13",
-			]);
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			if (message.toLowerCase().includes("enoent")) {
-				throw new LauncherExecutionError(
-					"zellij binary not found on PATH. Install zellij or switch the project's `commandCentral.terminal.multiplexer` to `tmux`.",
-					this.getLauncherPath(),
-				);
-			}
-			throw err;
-		}
+		const launcher = await this.resolvedLauncherPath();
+		await this.execCommand(launcher, [
+			"--send",
+			projectDir,
+			"--command",
+			command,
+		]);
+		this.logger.info(
+			`Sent command to project session via launcher --send: ${projectDir}`,
+			"TerminalManager",
+		);
 	}
 
 	private async promptIntegratedTerminalFallback(
