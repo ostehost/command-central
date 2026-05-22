@@ -1296,6 +1296,54 @@ describe("TerminalManager.runInProjectTerminal multiplexer dispatch", () => {
 		expect(zellijCalls.length).toBe(0);
 		expect(steerCalls.length).toBeGreaterThan(0);
 	});
+
+	// Regression for rc.29 dogfood: projects without an explicit
+	// `commandCentral.terminal.multiplexer` setting in their .vscode/settings.json
+	// hit `--parse-multiplexer` returning empty stdout (the launcher exposes
+	// only the raw setting; it doesn't apply its own GHL_DEFAULT_MULTIPLEXER
+	// default to that flag). The launcher then creates a zellij bundle by
+	// internal default. The extension must mirror that default so dispatch
+	// matches the bundle the launcher actually built — otherwise oste-steer.sh
+	// is invoked against a non-existent tmux session and fails 5× over the
+	// retry loop. See the rc.29 dogfood log.
+	test("empty --parse-multiplexer dispatches to zellij (matches launcher default)", async () => {
+		const calls: Array<{ file: string; args: string[] }> = [];
+		execFileMock.mockImplementation(
+			(file: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				calls.push({ file, args: a });
+				if (a.includes("--version"))
+					return cb(null, { stdout: "launcher version 1.1.0\n", stderr: "" });
+				if (a.includes("--help"))
+					return cb(null, { stdout: "launcher help\n", stderr: "" });
+				if (a.includes("--parse-name"))
+					return cb(null, { stdout: "Config\n", stderr: "" });
+				if (a.includes("--parse-icon"))
+					return cb(null, { stdout: "⚙️\n", stderr: "" });
+				if (a.includes("--session-id"))
+					return cb(null, { stdout: "agent-config\n", stderr: "" });
+				// Empty stdout — project has no explicit multiplexer setting.
+				if (a.includes("--parse-multiplexer"))
+					return cb(null, { stdout: "", stderr: "" });
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await mgr.runInProjectTerminal("/Users/test/config", "claude --continue");
+
+		const zellijCalls = calls.filter((c) => c.file === "zellij");
+		const steerCalls = calls.filter((c) => c.file.endsWith("/oste-steer.sh"));
+		// MUST route to zellij even though parse-multiplexer returned empty.
+		expect(zellijCalls.length).toBeGreaterThan(0);
+		expect(steerCalls.length).toBe(0);
+		expect(zellijCalls[0]?.args).toEqual([
+			"--session",
+			"agent-config",
+			"action",
+			"write-chars",
+			"claude --continue",
+		]);
+	});
 });
 
 // ══ NEW TESTS FOR FIXES ═══════════════════════════════════════════════

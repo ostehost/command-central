@@ -269,6 +269,25 @@ export class TerminalManager {
 		}
 		const value = result.value.stdout.trim().toLowerCase();
 		if (value === "tmux" || value === "zellij") return value;
+		// `--parse-multiplexer` is a raw setting reader: it returns whatever is
+		// in `.vscode/settings.json → commandCentral.terminal.multiplexer`, with
+		// no defaulting applied. When that setting is unset, stdout is empty —
+		// but the launcher itself proceeds to create a zellij bundle (its
+		// `GHL_DEFAULT_MULTIPLEXER:-zellij` fallback in `create_bundle`).
+		// Mirror that default here so our dispatch matches the bundle the
+		// launcher actually creates. Without this mirror, oste-steer.sh is
+		// invoked against a tmux session that was never created.
+		//
+		// Cross-repo follow-up: the launcher should expose
+		// `--effective-multiplexer` that applies its own defaulting, so we
+		// don't have to duplicate this fallback. See rc.30 commit message.
+		if (value === "") {
+			this.logger.debug(
+				"--parse-multiplexer returned empty; assuming launcher default (zellij)",
+				"TerminalManager",
+			);
+			return "zellij";
+		}
 		return "unknown";
 	}
 
