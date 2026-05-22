@@ -1092,6 +1092,210 @@ describe("TerminalManager.getTerminalInfo", () => {
 		expect(info.icon).toBe("");
 		expect(info.tmuxSession).toBe("");
 	});
+
+	test("surfaces multiplexer=tmux when --parse-multiplexer returns tmux", async () => {
+		execFileMock.mockImplementation(
+			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--version"))
+					return cb(null, { stdout: "launcher version 1.1.0\n", stderr: "" });
+				if (a.includes("--parse-name"))
+					return cb(null, { stdout: "Proj\n", stderr: "" });
+				if (a.includes("--parse-icon"))
+					return cb(null, { stdout: "📦\n", stderr: "" });
+				if (a.includes("--session-id"))
+					return cb(null, { stdout: "agent-proj\n", stderr: "" });
+				if (a.includes("--parse-multiplexer"))
+					return cb(null, { stdout: "tmux\n", stderr: "" });
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		const info = await mgr.getTerminalInfo(workspaceRoot);
+		expect(info.multiplexer).toBe("tmux");
+	});
+
+	test("surfaces multiplexer=zellij when --parse-multiplexer returns zellij", async () => {
+		execFileMock.mockImplementation(
+			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--version"))
+					return cb(null, { stdout: "launcher version 1.1.0\n", stderr: "" });
+				if (a.includes("--parse-name"))
+					return cb(null, { stdout: "Proj\n", stderr: "" });
+				if (a.includes("--parse-icon"))
+					return cb(null, { stdout: "📦\n", stderr: "" });
+				if (a.includes("--session-id"))
+					return cb(null, { stdout: "agent-proj\n", stderr: "" });
+				if (a.includes("--parse-multiplexer"))
+					return cb(null, { stdout: "zellij\n", stderr: "" });
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		const info = await mgr.getTerminalInfo(workspaceRoot);
+		expect(info.multiplexer).toBe("zellij");
+	});
+
+	test("falls back to multiplexer=unknown when --parse-multiplexer unsupported", async () => {
+		execFileMock.mockImplementation(
+			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--version"))
+					return cb(null, { stdout: "launcher version 1.0.0\n", stderr: "" });
+				if (a.includes("--parse-name"))
+					return cb(null, { stdout: "Proj\n", stderr: "" });
+				if (a.includes("--parse-icon"))
+					return cb(null, { stdout: "📦\n", stderr: "" });
+				if (a.includes("--session-id"))
+					return cb(null, { stdout: "agent-proj\n", stderr: "" });
+				if (a.includes("--parse-multiplexer"))
+					return cb(new Error("unknown flag --parse-multiplexer"), {
+						stdout: "",
+						stderr: "",
+					});
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		const info = await mgr.getTerminalInfo(workspaceRoot);
+		expect(info.multiplexer).toBe("unknown");
+	});
+});
+
+describe("TerminalManager.runInProjectTerminal multiplexer dispatch", () => {
+	beforeEach(() => {
+		mock.restore();
+		mock.module("vscode", () => ({
+			workspace: { getConfiguration: mockGetConfiguration },
+			window: {
+				createTerminal: mockCreateTerminal,
+				showWarningMessage: mockShowWarningMessage,
+			},
+			env: { openExternal: mockOpenExternal },
+			Uri: { parse: (s: string) => ({ toString: () => s }) },
+		}));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
+		}));
+		mockConfigGet.mockImplementation(() => undefined);
+		fsExistsSyncMock.mockImplementation(() => true); // launcher present
+		mockShowWarningMessage.mockReset();
+		mockCreateTerminal.mockClear();
+		execFileMock.mockReset();
+	});
+
+	test("zellij project: dispatches to `zellij action write-chars` not oste-steer.sh", async () => {
+		const calls: Array<{ file: string; args: string[] }> = [];
+		execFileMock.mockImplementation(
+			(file: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				calls.push({ file, args: a });
+				if (a.includes("--version"))
+					return cb(null, { stdout: "launcher version 1.1.0\n", stderr: "" });
+				if (a.includes("--help"))
+					return cb(null, { stdout: "launcher help\n", stderr: "" });
+				if (a.includes("--parse-name"))
+					return cb(null, { stdout: "Config\n", stderr: "" });
+				if (a.includes("--parse-icon"))
+					return cb(null, { stdout: "⚙️\n", stderr: "" });
+				if (a.includes("--session-id"))
+					return cb(null, { stdout: "agent-config\n", stderr: "" });
+				if (a.includes("--parse-multiplexer"))
+					return cb(null, { stdout: "zellij\n", stderr: "" });
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await mgr.runInProjectTerminal("/Users/test/config", "claude --continue");
+
+		const zellijCalls = calls.filter((c) => c.file === "zellij");
+		const steerCalls = calls.filter((c) => c.file.endsWith("/oste-steer.sh"));
+		expect(zellijCalls.length).toBeGreaterThan(0);
+		expect(steerCalls.length).toBe(0);
+		expect(zellijCalls[0]?.args).toEqual([
+			"--session",
+			"agent-config",
+			"action",
+			"write-chars",
+			"claude --continue",
+		]);
+		// Second zellij call is the Enter key
+		expect(zellijCalls[1]?.args).toEqual([
+			"--session",
+			"agent-config",
+			"action",
+			"write",
+			"13",
+		]);
+	});
+
+	test("tmux project: dispatches to oste-steer.sh not zellij", async () => {
+		const calls: Array<{ file: string; args: string[] }> = [];
+		execFileMock.mockImplementation(
+			(file: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				calls.push({ file, args: a });
+				if (a.includes("--version"))
+					return cb(null, { stdout: "launcher version 1.1.0\n", stderr: "" });
+				if (a.includes("--help"))
+					return cb(null, { stdout: "launcher help\n", stderr: "" });
+				if (a.includes("--parse-name"))
+					return cb(null, { stdout: "TmuxProj\n", stderr: "" });
+				if (a.includes("--parse-icon"))
+					return cb(null, { stdout: "🐠\n", stderr: "" });
+				if (a.includes("--session-id"))
+					return cb(null, { stdout: "agent-tmuxproj\n", stderr: "" });
+				if (a.includes("--parse-multiplexer"))
+					return cb(null, { stdout: "tmux\n", stderr: "" });
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await mgr.runInProjectTerminal("/Users/test/tmuxproj", "echo hello");
+
+		const zellijCalls = calls.filter((c) => c.file === "zellij");
+		const steerCalls = calls.filter((c) => c.file.endsWith("/oste-steer.sh"));
+		expect(zellijCalls.length).toBe(0);
+		expect(steerCalls.length).toBeGreaterThan(0);
+	});
+
+	test("unknown multiplexer (old launcher): preserves tmux dispatch", async () => {
+		const calls: Array<{ file: string; args: string[] }> = [];
+		execFileMock.mockImplementation(
+			(file: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				calls.push({ file, args: a });
+				if (a.includes("--version"))
+					return cb(null, { stdout: "launcher version 1.0.0\n", stderr: "" });
+				if (a.includes("--help"))
+					return cb(null, { stdout: "launcher help\n", stderr: "" });
+				if (a.includes("--parse-name"))
+					return cb(null, { stdout: "OldProj\n", stderr: "" });
+				if (a.includes("--parse-icon"))
+					return cb(null, { stdout: "🦴\n", stderr: "" });
+				if (a.includes("--session-id"))
+					return cb(null, { stdout: "agent-old\n", stderr: "" });
+				if (a.includes("--parse-multiplexer"))
+					return cb(new Error("unknown flag"), { stdout: "", stderr: "" });
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await mgr.runInProjectTerminal("/Users/test/old", "echo bc");
+
+		const zellijCalls = calls.filter((c) => c.file === "zellij");
+		const steerCalls = calls.filter((c) => c.file.endsWith("/oste-steer.sh"));
+		expect(zellijCalls.length).toBe(0);
+		expect(steerCalls.length).toBeGreaterThan(0);
+	});
 });
 
 // ══ NEW TESTS FOR FIXES ═══════════════════════════════════════════════

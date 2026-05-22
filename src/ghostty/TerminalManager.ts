@@ -73,10 +73,27 @@ const SESSION_LOOKUP_RETRY_DELAY_MS = 750;
 const AUTO_DETECTED_LAUNCHER_PATH_KEY =
 	"commandCentral.ghostty.autoDetectedLauncherPath";
 
+export type LauncherMultiplexer = "tmux" | "zellij" | "unknown";
+
 export interface TerminalInfo {
 	name: string;
 	icon: string;
+	/**
+	 * Session ID returned by `launcher --session-id <dir>`. The name says
+	 * "tmux" for historical reasons but the value is multiplexer-agnostic —
+	 * see `multiplexer` for the actual backend the launcher uses for this
+	 * project. For zellij projects this is the zellij session name; for tmux
+	 * projects it's the tmux session id.
+	 */
 	tmuxSession: string;
+	/**
+	 * Which multiplexer the launcher will use for this project, read from
+	 * `launcher --parse-multiplexer <dir>`. Sourced from
+	 * `.vscode/settings.json` → `commandCentral.terminal.multiplexer` →
+	 * env `GHL_DEFAULT_MULTIPLEXER` → default. `"unknown"` if the launcher
+	 * is too old to support the flag.
+	 */
+	multiplexer: LauncherMultiplexer;
 }
 
 export interface ProjectIconEnsurer {
@@ -203,11 +220,13 @@ export class TerminalManager {
 
 		const launcher = await this.resolvedLauncherPath();
 
-		const [nameResult, iconResult, tmuxResult] = await Promise.allSettled([
-			this.execLauncher(launcher, ["--parse-name", workspaceRoot]),
-			this.execLauncher(launcher, ["--parse-icon", workspaceRoot]),
-			this.execLauncher(launcher, ["--session-id", workspaceRoot]),
-		]);
+		const [nameResult, iconResult, tmuxResult, multiplexerResult] =
+			await Promise.allSettled([
+				this.execLauncher(launcher, ["--parse-name", workspaceRoot]),
+				this.execLauncher(launcher, ["--parse-icon", workspaceRoot]),
+				this.execLauncher(launcher, ["--session-id", workspaceRoot]),
+				this.execLauncher(launcher, ["--parse-multiplexer", workspaceRoot]),
+			]);
 
 		const name =
 			nameResult.status === "fulfilled"
@@ -233,8 +252,24 @@ export class TerminalManager {
 			const error = tmuxResult.reason;
 			this.logCommandFailure("--session-id", error);
 		}
+		// --parse-multiplexer was added in launcher 1.x; older launchers don't
+		// support the flag. Failure here is non-fatal — we degrade to "unknown"
+		// and the steer dispatch falls back to the historical tmux path.
+		const multiplexer = this.parseMultiplexerResult(multiplexerResult);
 
-		return { name, icon, tmuxSession };
+		return { name, icon, tmuxSession, multiplexer };
+	}
+
+	private parseMultiplexerResult(
+		result: PromiseSettledResult<{ stdout: string; stderr: string }>,
+	): LauncherMultiplexer {
+		if (result.status !== "fulfilled") {
+			this.logCommandFailure("--parse-multiplexer", result.reason);
+			return "unknown";
+		}
+		const value = result.value.stdout.trim().toLowerCase();
+		if (value === "tmux" || value === "zellij") return value;
+		return "unknown";
 	}
 
 	async resolveLauncherHelperScriptPath(scriptName: string): Promise<string> {
@@ -611,24 +646,23 @@ export class TerminalManager {
 			// Try to find existing launcher session for the project
 			const info = await this.getTerminalInfo(projectDir);
 
-			const steerCommand = async (tmuxSession: string): Promise<void> => {
-				const steerPath =
-					await this.resolveLauncherHelperScriptPath("oste-steer.sh");
-				await this.execCommand(steerPath, [
-					tmuxSession,
-					"--raw",
-					command ?? "",
-				]);
+			const steerCommand = async (
+				sessionName: string,
+				multiplexer: LauncherMultiplexer,
+			): Promise<void> => {
+				await this.dispatchSteer(sessionName, multiplexer, command ?? "");
 				this.logger.info(
-					`Sent command to launcher session ${tmuxSession}`,
+					`Sent command to launcher session ${sessionName} (${multiplexer})`,
 					"TerminalManager",
 				);
 			};
 
 			if (info.tmuxSession && command) {
-				// Send command to existing launcher session via oste-steer.sh
+				// Send command to existing launcher session via the multiplexer
+				// appropriate to the project (tmux → oste-steer.sh, zellij → zellij
+				// action write-chars).
 				try {
-					await steerCommand(info.tmuxSession);
+					await steerCommand(info.tmuxSession, info.multiplexer);
 					return;
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
@@ -659,7 +693,7 @@ export class TerminalManager {
 					const newInfo = await this.getTerminalInfo(projectDir);
 					if (newInfo.tmuxSession) {
 						try {
-							await steerCommand(newInfo.tmuxSession);
+							await steerCommand(newInfo.tmuxSession, newInfo.multiplexer);
 							return;
 						} catch (err) {
 							lastStartError = err;
@@ -831,6 +865,72 @@ end tell
 	 * users in a stale resume prompt with no signal that their project pane is
 	 * unreachable. Make the user choose explicitly.
 	 */
+	/**
+	 * Dispatches a steer command to the correct multiplexer.
+	 *
+	 * - `tmux`: shells out to bundled `oste-steer.sh <session> --raw <command>`.
+	 *   That helper sends keys into the tmux pane (Enter included).
+	 * - `zellij`: invokes `zellij --session <session> action write-chars <command>`
+	 *   followed by `action write 13` to deliver the Enter keypress. Zellij must
+	 *   be on PATH; if not, surfaces an actionable error.
+	 * - `unknown`: falls through to the historical tmux path. Older launchers
+	 *   without `--parse-multiplexer` always used tmux, so this preserves
+	 *   backwards compatibility.
+	 *
+	 * Surfaces a focused error for the zellij-binary-missing case so we don't
+	 * leak a generic `ENOENT` to the user.
+	 */
+	private async dispatchSteer(
+		sessionName: string,
+		multiplexer: LauncherMultiplexer,
+		command: string,
+	): Promise<void> {
+		if (multiplexer === "zellij") {
+			await this.steerZellijSession(sessionName, command);
+			return;
+		}
+		// tmux + unknown share the historical oste-steer.sh path.
+		const steerPath =
+			await this.resolveLauncherHelperScriptPath("oste-steer.sh");
+		await this.execCommand(steerPath, [sessionName, "--raw", command]);
+	}
+
+	/**
+	 * Sends a command into an existing zellij session via the zellij CLI's
+	 * `action write-chars` interface. Splits the command from the trailing
+	 * Enter so zellij gets both the literal text and a keystroke event.
+	 */
+	private async steerZellijSession(
+		sessionName: string,
+		command: string,
+	): Promise<void> {
+		try {
+			await this.execCommand("zellij", [
+				"--session",
+				sessionName,
+				"action",
+				"write-chars",
+				command,
+			]);
+			await this.execCommand("zellij", [
+				"--session",
+				sessionName,
+				"action",
+				"write",
+				"13",
+			]);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			if (message.toLowerCase().includes("enoent")) {
+				throw new LauncherExecutionError(
+					"zellij binary not found on PATH. Install zellij or switch the project's `commandCentral.terminal.multiplexer` to `tmux`.",
+					this.getLauncherPath(),
+				);
+			}
+			throw err;
+		}
+	}
+
 	private async promptIntegratedTerminalFallback(
 		reason: string,
 		projectDir: string,
