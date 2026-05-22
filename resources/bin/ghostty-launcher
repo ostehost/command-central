@@ -6,7 +6,7 @@
 #
 set -euo pipefail
 
-readonly VERSION="1.1.0"
+readonly VERSION="1.2.0"
 LAUNCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LAUNCHER_DIR
 # Ghostty binary lookup chain: explicit env var → stock Ghostty
@@ -1283,6 +1283,146 @@ main() {
 			safe=$(sanitize_for_bundle "$name")
 			echo "agent-${safe}"
 			;;
+		--send)
+			# launcher --send <dir> --command <cmd> [--timeout <s>]
+			#
+			# Single high-level integration entry point for callers that want to
+			# "send a command to this project's terminal" without knowing whether
+			# the project is tmux- or zellij-backed, where the socket lives, or
+			# whether the bundle needs opening first. Resolves multiplexer,
+			# ensures the session is active (opens bundle when not), then sends
+			# the command via the appropriate backend.
+			#
+			# Exit codes:
+			#   0   command delivered
+			#   2   missing args / project not eligible
+			#   3   bundle open failed
+			#   4   multiplexer session never became active
+			#   5   send failed
+			send_cmd=""
+			send_dir=""
+			send_timeout=8
+			shift
+			while [[ $# -gt 0 ]]; do
+				case "$1" in
+					--command)
+						send_cmd="${2:-}"
+						shift 2
+						;;
+					--command=*)
+						send_cmd="${1#--command=}"
+						shift
+						;;
+					--timeout)
+						send_timeout="${2:-8}"
+						shift 2
+						;;
+					--timeout=*)
+						send_timeout="${1#--timeout=}"
+						shift
+						;;
+					*)
+						if [[ -z "$send_dir" ]]; then
+							send_dir="$1"
+						fi
+						shift
+						;;
+				esac
+			done
+			if [[ -z "$send_dir" || -z "$send_cmd" ]]; then
+				echo "Error: --send requires <dir> and --command <cmd>" >&2
+				exit 2
+			fi
+			send_dir="$(cd "$send_dir" && pwd)"
+			send_name=$(parse_name "$send_dir")
+			send_safe=$(sanitize_for_bundle "$send_name")
+			send_session="agent-${send_safe}"
+			send_mux=$(parse_multiplexer "$send_dir")
+			send_mux="${MULTIPLEXER_OVERRIDE:-${send_mux:-${GHL_DEFAULT_MULTIPLEXER:-zellij}}}"
+			case "$send_mux" in
+				tmux | zellij) ;;
+				*)
+					echo "Error: unknown multiplexer '$send_mux'" >&2
+					exit 2
+					;;
+			esac
+			send_bundle="${PROJECTS_DIR}/${send_name}.app"
+			if [[ ! -d "$send_bundle" ]]; then
+				send_icon=$(parse_icon "$send_dir")
+				if ! create_bundle "$send_dir" "$send_name" "$send_icon" "$PROJECTS_DIR" >/dev/null; then
+					echo "Error: bundle creation failed" >&2
+					exit 3
+				fi
+			fi
+			if [[ "$send_mux" == "zellij" ]]; then
+				send_socket_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ghostty-launcher/zellij/${send_safe}"
+				mkdir -p "$send_socket_dir"
+				# Is the session currently alive (not EXITED)?
+				send_alive=0
+				if ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij list-sessions --no-formatting 2>/dev/null |
+					sed -E 's/[[:space:]]*[[(].*$//' | awk '{print $1}' |
+					grep -qx "$send_session"; then
+					if ! ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij list-sessions --no-formatting 2>/dev/null |
+						grep -E "^${send_session}([[:space:]]|$)" | grep -q "EXITED"; then
+						send_alive=1
+					fi
+				fi
+				if [[ "$send_alive" -ne 1 ]]; then
+					# Force a fresh bundle launch so launch-zellij.sh runs and
+					# the session goes from EXITED (or missing) to active.
+					if ! /usr/bin/open -n "$send_bundle" 2>/dev/null; then
+						echo "Error: failed to open $send_bundle" >&2
+						exit 3
+					fi
+					send_deadline=$(($(date +%s) + send_timeout))
+					while [[ $(date +%s) -lt $send_deadline ]]; do
+						if ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij list-sessions --no-formatting 2>/dev/null |
+							grep -E "^${send_session}([[:space:]]|$)" | grep -vq "EXITED"; then
+							send_alive=1
+							break
+						fi
+						sleep 0.4
+					done
+				fi
+				if [[ "$send_alive" -ne 1 ]]; then
+					echo "Error: zellij session '$send_session' did not become active within ${send_timeout}s" >&2
+					exit 4
+				fi
+				if ! ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij --session "$send_session" action write-chars "$send_cmd"; then
+					echo "Error: zellij write-chars failed" >&2
+					exit 5
+				fi
+				if ! ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij --session "$send_session" action write 13; then
+					echo "Error: zellij write Enter failed" >&2
+					exit 5
+				fi
+				exit 0
+			fi
+			# tmux path — open the bundle (idempotent), then delegate to oste-steer.sh
+			if ! /usr/bin/open "$send_bundle" 2>/dev/null; then
+				echo "Error: failed to open $send_bundle" >&2
+				exit 3
+			fi
+			# Brief wait for tmux session to appear (oste-steer.sh handles its own
+			# retries but a small grace period reduces false-negative starts).
+			send_deadline=$(($(date +%s) + send_timeout))
+			while [[ $(date +%s) -lt $send_deadline ]]; do
+				if tmux has-session -t "$send_session" 2>/dev/null; then
+					break
+				fi
+				sleep 0.4
+			done
+			send_steer="${LAUNCHER_DIR}/scripts/oste-steer.sh"
+			if [[ ! -x "$send_steer" ]]; then
+				echo "Error: oste-steer.sh not found at $send_steer" >&2
+				exit 5
+			fi
+			if ! "$send_steer" "$send_session" --raw "$send_cmd"; then
+				echo "Error: oste-steer.sh failed" >&2
+				exit 5
+			fi
+			exit 0
+			;;
 		--version | -v)
 			echo "ghostty-launcher v${VERSION}"
 			;;
@@ -1302,6 +1442,12 @@ main() {
 			echo "  --create-bundle DIR    Create .app bundle for DIR"
 			echo "                         Optional: --name NAME and --output DIR"
 			echo "  --session-id DIR       Print session ID for DIR"
+			echo "  --send DIR --command CMD"
+			echo "                         Send CMD to the project's terminal session."
+			echo "                         Opens the bundle if not running, waits for"
+			echo "                         the multiplexer session to be active, then"
+			echo "                         delivers via zellij action / oste-steer.sh."
+			echo "                         Optional: --timeout SECONDS (default 8)."
 			echo "  --version              Print version"
 			echo "  --help                 Show this help"
 			;;
