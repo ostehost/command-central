@@ -1138,22 +1138,67 @@ export async function activate(
 			}
 		};
 
+		// Surfaces a launcher unavailability to the user instead of silently
+		// spawning the VS Code integrated terminal. Mirrors the prompt inside
+		// TerminalManager but lives here because runCommandInProjectTerminalWithFallback
+		// can fail before reaching TerminalManager (terminalManager null) or with
+		// errors TerminalManager doesn't catch (LauncherExecutionError, tmux fails).
+		// See memory: feedback_no_silent_fallbacks.md.
+		const promptIntegratedTerminalFallbackInExtension = async (
+			reason: string,
+			terminalName: string,
+			cwd: string,
+			command?: string,
+		): Promise<boolean> => {
+			const openAnyway = "Open in VS Code Terminal";
+			const installLauncher = "Install Launcher…";
+			const choice = await vscode.window.showWarningMessage(
+				`Ghostty project terminal unavailable: ${reason}. Open in VS Code integrated terminal instead?`,
+				{ modal: false },
+				openAnyway,
+				installLauncher,
+			);
+			if (choice === installLauncher) {
+				await vscode.env.openExternal(
+					vscode.Uri.parse("https://github.com/ostehost/ghostty-launcher"),
+				);
+				return false;
+			}
+			if (choice === openAnyway) {
+				openIntegratedTerminal(terminalName, cwd, command);
+				return true;
+			}
+			return false;
+		};
+
 		const runCommandInProjectTerminalWithFallback = async (
 			projectDir: string,
 			command: string,
 			terminalName: string,
 			cwd?: string,
-		): Promise<"launcher" | "integrated"> => {
+		): Promise<"launcher" | "integrated" | "cancelled"> => {
+			const resolvedCwd = cwd ?? projectDir;
 			if (!terminalManager) {
-				openIntegratedTerminal(terminalName, cwd ?? projectDir, command);
-				return "integrated";
+				const opened = await promptIntegratedTerminalFallbackInExtension(
+					"terminal manager not initialised",
+					terminalName,
+					resolvedCwd,
+					command,
+				);
+				return opened ? "integrated" : "cancelled";
 			}
 			try {
 				await terminalManager.runInProjectTerminal(projectDir, command, cwd);
 				return "launcher";
-			} catch {
-				openIntegratedTerminal(terminalName, cwd ?? projectDir, command);
-				return "integrated";
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				const opened = await promptIntegratedTerminalFallbackInExtension(
+					message,
+					terminalName,
+					resolvedCwd,
+					command,
+				);
+				return opened ? "integrated" : "cancelled";
 			}
 		};
 
@@ -1456,6 +1501,12 @@ export async function activate(
 					command,
 					`Resume: ${task.id}`,
 				);
+				if (launchTarget === "cancelled") {
+					// User dismissed the fallback prompt — say nothing. They've already
+					// been told the launcher was unavailable; surfacing a second toast
+					// just adds noise.
+					return;
+				}
 				const startedTarget =
 					launchTarget === "launcher"
 						? terminalTarget
@@ -2559,9 +2610,24 @@ export async function activate(
 						: "project terminal";
 
 					type ResumeQuickPickItem = vscode.QuickPickItem & {
-						action: "resume" | "focus" | "transcript";
+						action: "rebuild" | "resume" | "focus" | "transcript";
 					};
 					const items: ResumeQuickPickItem[] = [];
+
+					// "Build/Open Ghostty Project Terminal" first when no live target
+					// exists (or no Ghostty surface known) — so non-running tasks with
+					// dead tmux panes get a path that lands in the project's Ghostty
+					// terminal instead of silently routing Resume to the VS Code
+					// integrated terminal. See feedback_no_silent_fallbacks.md.
+					const canBuildProjectTerminal =
+						!hasLiveTmuxSession && !hasGhosttyFocusTarget;
+					if (canBuildProjectTerminal) {
+						items.push({
+							label: "$(terminal-new) Build Ghostty Project Terminal",
+							description: "Create the project bundle + tmux pane",
+							action: "rebuild",
+						});
+					}
 					if (resumeCommand) {
 						const backendDetail =
 							backend === "codex"
@@ -2612,6 +2678,28 @@ export async function activate(
 					}
 
 					try {
+						if (selected.action === "rebuild") {
+							if (!terminalManager) {
+								vscode.window.showErrorMessage(
+									"Ghostty terminal manager unavailable — cannot build project terminal.",
+								);
+								return;
+							}
+							try {
+								await terminalManager.createProjectTerminal(projectDir);
+								await terminalManager.runInProjectTerminal(projectDir);
+								vscode.window.showInformationMessage(
+									`Built Ghostty project terminal for ${path.basename(projectDir)}.`,
+								);
+							} catch (err) {
+								const message =
+									err instanceof Error ? err.message : String(err);
+								vscode.window.showErrorMessage(
+									`Failed to build Ghostty project terminal: ${message}`,
+								);
+							}
+							return;
+						}
 						if (selected.action === "focus") {
 							await focusExistingTaskTerminal(task);
 							return;
