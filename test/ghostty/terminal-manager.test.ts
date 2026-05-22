@@ -848,6 +848,13 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 					cb(null, { stdout: "📦\n", stderr: "" });
 					return;
 				}
+				// Test asserts oste-steer.sh is called — pin multiplexer to tmux
+				// so dispatch routes through the tmux path. Without this mock
+				// the empty-stdout default would route to zellij.
+				if (a.includes("--parse-multiplexer")) {
+					cb(null, { stdout: "tmux\n", stderr: "" });
+					return;
+				}
 				if (a.includes("--session-id")) {
 					tmuxLookupCount++;
 					const session = tmuxLookupCount === 1 ? "\n" : "agent-my-project\n";
@@ -965,6 +972,11 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 				}
 				if (a.includes("--parse-icon")) {
 					cb(null, { stdout: "📦\n", stderr: "" });
+					return;
+				}
+				// Pin to tmux: this contract test asserts oste-steer.sh is called.
+				if (a.includes("--parse-multiplexer")) {
+					cb(null, { stdout: "tmux\n", stderr: "" });
 					return;
 				}
 				if (a.includes("--session-id")) {
