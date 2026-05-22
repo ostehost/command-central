@@ -66,9 +66,12 @@ this.execLauncher(launcher, ["--create-bundle", workspaceRoot]);
 this.execLauncher(launcher, ["--parse-name", workspaceRoot]);
 this.execLauncher(launcher, ["--parse-icon", workspaceRoot]);
 this.execLauncher(launcher, ["--session-id", workspaceRoot]);
-this.execCommand("oste-steer.sh", [
-	info.tmuxSession,
-	"--raw",
+// rc.31: extension delegates to launcher --send for all command delivery.
+// Direct oste-steer.sh invocation is forbidden — the gate enforces this.
+await this.execCommand(launcher, [
+	"--send",
+	projectDir,
+	"--command",
 	command,
 ]);
 async resolveLauncherHelperScriptPath(scriptName: string): Promise<string> {
@@ -351,11 +354,17 @@ this.execCommand("oste-steer.sh", [
 	});
 });
 
-describe("validateSteerContract", () => {
+describe("validateSteerContract (rc.31 contract: delegation)", () => {
+	// rc.31 inverted the contract: the extension MUST delegate to `launcher
+	// --send <dir> --command <cmd>` and MUST NOT shell out to oste-steer.sh
+	// directly. oste-steer.sh's own --help surface is still checked because
+	// the launcher's --send tmux dispatch invokes it internally.
 	const validTerminalManagerSource = `
-this.execCommand("oste-steer.sh", [
-	info.tmuxSession,
-	"--raw",
+const launcher = await this.resolvedLauncherPath();
+await this.execCommand(launcher, [
+	"--send",
+	projectDir,
+	"--command",
 	command,
 ]);
 `;
@@ -373,7 +382,7 @@ Options:
   --help
 `;
 
-	test("returns no issues when steer contract is aligned", () => {
+	test("returns no issues when extension delegates via launcher --send", () => {
 		expect(
 			validateSteerContract(validTerminalManagerSource, validSteerHelp),
 		).toEqual([]);
@@ -388,18 +397,29 @@ Options:
 		expect(issues.some((issue) => issue.includes("--by-task-id"))).toBe(true);
 	});
 
-	test("fails when Command Central regresses to unsupported --session", () => {
+	test("fails when Command Central source regresses to direct oste-steer.sh call", () => {
 		const regressedSource = `
 this.execCommand("oste-steer.sh", [
-	"--session",
 	info.tmuxSession,
 	"--raw",
 	command,
 ]);
+${validTerminalManagerSource}
 `;
 		const issues = validateSteerContract(regressedSource, validSteerHelp);
-		expect(issues.some((issue) => issue.includes("unsupported"))).toBe(true);
-		expect(issues.some((issue) => issue.includes("positionally"))).toBe(true);
+		// A direct oste-steer.sh call sets usesRawMode + usesPositionalSession
+		// to true; the new gate flags both as regressions.
+		expect(issues.some((issue) => issue.includes("--raw"))).toBe(true);
+		expect(issues.some((issue) => issue.includes("positional"))).toBe(true);
+	});
+
+	test("fails when launcher --send invocation is missing", () => {
+		const sourceWithoutSend = `
+this.execCommand(launcher, ["--parse-name", projectDir]);
+`;
+		const issues = validateSteerContract(sourceWithoutSend, validSteerHelp);
+		expect(issues.some((issue) => issue.includes("--send"))).toBe(true);
+		expect(issues.some((issue) => issue.includes("--command"))).toBe(true);
 	});
 });
 

@@ -325,6 +325,8 @@ function validateSteerContract(
 	const helpFlags = extractFlagsFromHelp(steerHelpText);
 	const steerContract = extractSteerInvocationContract(terminalManagerSource);
 
+	// oste-steer.sh is still part of the launcher's `--send` tmux dispatch,
+	// so verify the helper's own surface stays stable.
 	for (const flag of REQUIRED_STEER_FLAGS) {
 		if (!helpFlags.has(flag)) {
 			issues.push(`oste-steer help is missing required flag ${flag}`);
@@ -337,17 +339,38 @@ function validateSteerContract(
 		);
 	}
 
+	// rc.31 inverted the extension-side contract: the extension delegates the
+	// entire send-to-project-session flow to `launcher --send`, which calls
+	// oste-steer.sh internally. The extension MUST NOT shell out to the helper
+	// directly anymore. usesLegacySessionFlag / usesRawMode / usesPositionalSession
+	// describe the extension's call shape — they should all be false now (the
+	// extension makes no oste-steer.sh calls at all).
 	if (steerContract.usesLegacySessionFlag) {
-		issues.push("Command Central still references unsupported oste-steer.sh --session.");
-	}
-
-	if (!steerContract.usesRawMode) {
-		issues.push("Command Central does not pass --raw to oste-steer.sh.");
-	}
-
-	if (!steerContract.usesPositionalSession) {
 		issues.push(
-			"Command Central does not pass the launcher session ID positionally to oste-steer.sh.",
+			"Command Central source still references oste-steer.sh --session — should delegate via launcher --send.",
+		);
+	}
+	if (steerContract.usesRawMode) {
+		issues.push(
+			"Command Central source still passes --raw to oste-steer.sh directly — should delegate via launcher --send.",
+		);
+	}
+	if (steerContract.usesPositionalSession) {
+		issues.push(
+			"Command Central source still calls oste-steer.sh with a positional session — should delegate via launcher --send.",
+		);
+	}
+
+	// Positive contract: the extension's TerminalManager source must reference
+	// `--send` and `--command` (the new launcher invocation).
+	if (!/"--send"/.test(terminalManagerSource)) {
+		issues.push(
+			"Command Central TerminalManager.ts missing `--send` invocation — should call launcher --send <dir> --command <cmd>.",
+		);
+	}
+	if (!/"--command"/.test(terminalManagerSource)) {
+		issues.push(
+			"Command Central TerminalManager.ts missing `--command` flag in launcher invocation.",
 		);
 	}
 
