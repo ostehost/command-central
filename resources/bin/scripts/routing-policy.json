@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "visible_launcher_hosts": "Mike MacBook Pro,Mike’s MacBook Pro",
+  "default_node": "local",
+  "default_agent": "claude",
+  "routes": {
+    "coder": {
+      "node": "Mike MacBook Pro",
+      "agent": "claude"
+    },
+    "reviewer": {
+      "node": "local",
+      "agent": "codex"
+    }
+  },
+  "guards": {
+    "claude_opus": {
+      "require_node": "Mike MacBook Pro,Mike’s MacBook Pro"
+    },
+    "coder": {
+      "require_node": "Mike MacBook Pro,Mike’s MacBook Pro",
+      "require_visible_terminal": true,
+      "require_agent": "claude"
+    }
+  }
+}

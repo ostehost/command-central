@@ -1717,10 +1717,26 @@ export async function activate(
 						const hasBundlePath = projectDir && isProjectBundleAvailable(task);
 
 						type DeadSessionPickItem = vscode.QuickPickItem & {
-							action: "resume" | "transcript" | "launcher" | "diff";
+							action: "rebuild" | "resume" | "transcript" | "launcher" | "diff";
 						};
 						const deadItems: DeadSessionPickItem[] = [];
 
+						// "Rebuild" / "Open" first — recreates the Ghostty project bundle and
+						// tmux pane (build-if-missing) so subsequent actions land in the right
+						// surface. Shown whenever we know a project dir, regardless of whether
+						// a bundle currently exists (no bundle ⇒ we should build one).
+						if (projectDir) {
+							const bundlePath = resolveProjectBundlePath(task);
+							deadItems.push({
+								label: hasBundlePath
+									? "$(terminal) Open Ghostty Project Terminal"
+									: "$(terminal-new) Build Ghostty Project Terminal",
+								description: hasBundlePath
+									? (bundlePath ?? projectDir)
+									: "Create the project bundle + tmux pane",
+								action: hasBundlePath ? "launcher" : "rebuild",
+							});
+						}
 						if (isResumable && projectDir) {
 							deadItems.push({
 								label: "$(debug-start) Resume in Interactive Mode",
@@ -1734,13 +1750,6 @@ export async function activate(
 								label: "$(file) View Session Transcript",
 								description: path.basename(transcriptPath),
 								action: "transcript",
-							});
-						}
-						if (hasBundlePath && projectDir) {
-							deadItems.push({
-								label: "$(terminal) Open Project Launcher",
-								description: resolveProjectBundlePath(task) ?? projectDir,
-								action: "launcher",
 							});
 						}
 						deadItems.push({
@@ -1767,6 +1776,28 @@ export async function activate(
 							);
 						if (!deadPick) return;
 
+						if (deadPick.action === "rebuild" && projectDir) {
+							if (!terminalManager) {
+								vscode.window.showErrorMessage(
+									"Ghostty terminal manager unavailable — cannot build project terminal.",
+								);
+								return;
+							}
+							try {
+								await terminalManager.createProjectTerminal(projectDir);
+								await terminalManager.runInProjectTerminal(projectDir);
+								vscode.window.showInformationMessage(
+									`Built Ghostty project terminal for ${path.basename(projectDir)}.`,
+								);
+							} catch (err) {
+								const message =
+									err instanceof Error ? err.message : String(err);
+								vscode.window.showErrorMessage(
+									`Failed to build Ghostty project terminal: ${message}`,
+								);
+							}
+							return;
+						}
 						if (deadPick.action === "resume") {
 							const resumeCmd = await buildResumeCommand(task);
 							if (resumeCmd && projectDir) {

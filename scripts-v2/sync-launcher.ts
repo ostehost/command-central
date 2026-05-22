@@ -18,6 +18,72 @@ const SOURCE_SCRIPT = path.join(SOURCE_REPO, "launcher");
 const DEST_SCRIPT = "resources/bin/ghostty-launcher";
 const VERSION_FILE = "resources/bin/.launcher-version";
 
+// Helper scripts that the launcher and extension invoke at runtime.
+// Mirrored from upstream `scripts/` into `resources/bin/scripts/` so end-users
+// who don't have the ghostty-launcher source repo still get a working bundle.
+// `TerminalManager.resolveLauncherHelperScriptPath()` looks for these adjacent
+// to the launcher binary (`resources/bin/scripts/<name>`).
+const SOURCE_SCRIPTS_DIR = path.join(SOURCE_REPO, "scripts");
+const DEST_SCRIPTS_DIR = "resources/bin/scripts";
+const HELPER_TOP_LEVEL_FILES = ["oste-steer.sh", "routing-policy.json"];
+
+async function copyExecutable(src: string, dest: string): Promise<void> {
+	await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+	await fs.promises.copyFile(src, dest);
+	if (src.endsWith(".sh")) {
+		await fs.promises.chmod(dest, 0o755);
+	}
+}
+
+interface HelperSyncResult {
+	copied: string[];
+	skipped: string[];
+}
+
+async function syncHelpers(): Promise<HelperSyncResult> {
+	const copied: string[] = [];
+	const skipped: string[] = [];
+
+	if (!fs.existsSync(SOURCE_SCRIPTS_DIR)) {
+		return { copied, skipped };
+	}
+
+	for (const name of HELPER_TOP_LEVEL_FILES) {
+		const src = path.join(SOURCE_SCRIPTS_DIR, name);
+		const dest = path.join(DEST_SCRIPTS_DIR, name);
+		if (!fs.existsSync(src)) {
+			skipped.push(name);
+			continue;
+		}
+		await copyExecutable(src, dest);
+		copied.push(name);
+	}
+
+	const libSrc = path.join(SOURCE_SCRIPTS_DIR, "lib");
+	if (fs.existsSync(libSrc)) {
+		const libDest = path.join(DEST_SCRIPTS_DIR, "lib");
+		// Clean stale .sh files in destination lib (handles upstream removals)
+		// without nuking unrelated content the user may have added.
+		if (fs.existsSync(libDest)) {
+			for (const entry of await fs.promises.readdir(libDest)) {
+				if (entry.endsWith(".sh") || entry.endsWith(".py")) {
+					await fs.promises.unlink(path.join(libDest, entry));
+				}
+			}
+		}
+		for (const entry of await fs.promises.readdir(libSrc)) {
+			if (!entry.endsWith(".sh") && !entry.endsWith(".py")) continue;
+			await copyExecutable(
+				path.join(libSrc, entry),
+				path.join(libDest, entry),
+			);
+			copied.push(`lib/${entry}`);
+		}
+	}
+
+	return { copied, skipped };
+}
+
 async function getVersion(scriptPath: string): Promise<string> {
 	const content = await fs.promises.readFile(scriptPath, "utf-8");
 	const match = content.match(/VERSION="([^"]+)"/);
@@ -79,7 +145,13 @@ Examples:
 	const isInSync = Buffer.compare(sourceContent, destContent) === 0;
 
 	if (isInSync) {
-		console.log("\n✅ Already in sync");
+		console.log("\n✅ Launcher binary already in sync");
+		const helperResult = await syncHelpers();
+		if (helperResult.copied.length > 0) {
+			console.log(
+				`   Refreshed ${helperResult.copied.length} helper file${helperResult.copied.length === 1 ? "" : "s"} in ${DEST_SCRIPTS_DIR}/`,
+			);
+		}
 		return;
 	}
 
@@ -135,6 +207,20 @@ Examples:
 	console.log(`✅ Synced to version ${sourceVersion}`);
 	console.log(`   ${DEST_SCRIPT}`);
 	console.log(`   ${VERSION_FILE}`);
+
+	// Sync helper scripts so the bundled launcher works without the upstream repo.
+	const helperResult = await syncHelpers();
+	if (helperResult.copied.length > 0) {
+		console.log(
+			`   ${DEST_SCRIPTS_DIR}/ (${helperResult.copied.length} helper file${helperResult.copied.length === 1 ? "" : "s"})`,
+		);
+	}
+	if (helperResult.skipped.length > 0) {
+		console.log(
+			`   ⚠️  Skipped (not present upstream): ${helperResult.skipped.join(", ")}`,
+		);
+	}
+
 	console.log("\n💡 Run 'git diff' to review changes before committing.");
 }
 

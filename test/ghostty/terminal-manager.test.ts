@@ -31,12 +31,26 @@ const mockCreateTerminal = mock((_options?: unknown) => ({
 	dispose: mock(),
 }));
 
+// Used by `promptIntegratedTerminalFallback` — controls the user's choice
+// in the fallback warning toast. Tests override this per-case.
+const mockShowWarningMessage = mock(
+	async (..._args: unknown[]): Promise<string | undefined> => undefined,
+);
+const mockOpenExternal = mock(async (_uri: unknown) => true);
+
 mock.module("vscode", () => ({
 	workspace: {
 		getConfiguration: mockGetConfiguration,
 	},
 	window: {
 		createTerminal: mockCreateTerminal,
+		showWarningMessage: mockShowWarningMessage,
+	},
+	env: {
+		openExternal: mockOpenExternal,
+	},
+	Uri: {
+		parse: (s: string) => ({ toString: () => s }),
 	},
 }));
 
@@ -656,7 +670,12 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 		mock.restore();
 		mock.module("vscode", () => ({
 			workspace: { getConfiguration: mockGetConfiguration },
-			window: { createTerminal: mockCreateTerminal },
+			window: {
+				createTerminal: mockCreateTerminal,
+				showWarningMessage: mockShowWarningMessage,
+			},
+			env: { openExternal: mockOpenExternal },
+			Uri: { parse: (s: string) => ({ toString: () => s }) },
 		}));
 		mock.module("node:child_process", () => ({
 			...realChildProcess,
@@ -670,9 +689,16 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 		}));
 		mockConfigGet.mockImplementation(() => undefined);
 		fsExistsSyncMock.mockImplementation(() => false);
+		mockShowWarningMessage.mockReset();
+		mockShowWarningMessage.mockImplementation(
+			async () => undefined as string | undefined,
+		);
+		mockCreateTerminal.mockClear();
+		mockTerminalSendText.mockClear();
+		mockTerminalShow.mockClear();
 	});
 
-	test("falls back to VS Code integrated terminal when launcher is unavailable", async () => {
+	test("prompts before integrated terminal when launcher is unavailable; user opts in", async () => {
 		execFileMock.mockImplementation(
 			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
 				if (a.includes("--help")) {
@@ -684,10 +710,14 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 			},
 		);
 		fsExistsSyncMock.mockImplementation(() => false);
+		mockShowWarningMessage.mockImplementation(
+			async () => "Open in VS Code Terminal",
+		);
 
 		const mgr = new TerminalManager(createMockLogger() as never);
 		await mgr.runInProjectTerminal("/Users/test/my-project", "echo hi");
 
+		expect(mockShowWarningMessage).toHaveBeenCalledTimes(1);
 		expect(mockCreateTerminal).toHaveBeenCalledWith({
 			name: "Terminal: my-project",
 			cwd: "/Users/test/my-project",
@@ -696,7 +726,29 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 		expect(mockTerminalShow).toHaveBeenCalled();
 	});
 
-	test("falls back to VS Code integrated terminal when configured launcher is invalid", async () => {
+	test("does NOT open integrated terminal when user dismisses the fallback prompt", async () => {
+		execFileMock.mockImplementation(
+			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--help")) {
+					const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+					cb(err, { stdout: "", stderr: "" });
+					return;
+				}
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+		fsExistsSyncMock.mockImplementation(() => false);
+		mockShowWarningMessage.mockImplementation(async () => undefined);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await mgr.runInProjectTerminal("/Users/test/my-project", "echo hi");
+
+		expect(mockShowWarningMessage).toHaveBeenCalledTimes(1);
+		expect(mockCreateTerminal).not.toHaveBeenCalled();
+		expect(mockTerminalSendText).not.toHaveBeenCalled();
+	});
+
+	test("prompts before integrated terminal when configured launcher is invalid", async () => {
 		mockConfigGet.mockImplementation((_key: string, _def?: unknown) => {
 			if (_key === "ghostty.launcherPath") return "/usr/bin/wrong-tool";
 			return _def;
@@ -717,10 +769,14 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 				cb(null, { stdout: "", stderr: "" });
 			},
 		);
+		mockShowWarningMessage.mockImplementation(
+			async () => "Open in VS Code Terminal",
+		);
 
 		const mgr = new TerminalManager(createMockLogger() as never);
 		await mgr.runInProjectTerminal("/Users/test/my-project", "echo hi");
 
+		expect(mockShowWarningMessage).toHaveBeenCalledTimes(1);
 		expect(mockCreateTerminal).toHaveBeenCalledWith({
 			name: "Terminal: my-project",
 			cwd: "/Users/test/my-project",

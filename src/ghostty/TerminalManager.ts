@@ -578,7 +578,9 @@ export class TerminalManager {
 	 *
 	 * 1. If launcher is installed: gets launcher session ID, sends command via oste-steer.sh
 	 *    or creates a new project terminal if no session exists.
-	 * 2. If launcher is NOT installed: falls back to vscode.window.createTerminal().
+	 * 2. If launcher is NOT installed (or fails validation): prompts the user via
+	 *    `promptIntegratedTerminalFallback`. Never silently spawns an integrated
+	 *    terminal — see feedback_no_silent_fallbacks.md.
 	 *
 	 * @param projectDir - The project directory (used to look up the tmux session)
 	 * @param command - Optional shell command to execute in the terminal
@@ -594,10 +596,15 @@ export class TerminalManager {
 
 			if (!installed) {
 				this.logger.warn(
-					"Ghostty launcher not installed — falling back to integrated terminal",
+					"Ghostty launcher not installed — prompting user before any integrated-terminal fallback",
 					"TerminalManager",
 				);
-				this.openIntegratedTerminal(projectDir, command, cwd);
+				await this.promptIntegratedTerminalFallback(
+					"launcher binary not installed",
+					projectDir,
+					command,
+					cwd,
+				);
 				return;
 			}
 
@@ -678,10 +685,15 @@ export class TerminalManager {
 				error instanceof LauncherValidationError
 			) {
 				this.logger.warn(
-					`${error.message} Falling back to VS Code integrated terminal.`,
+					`${error.message} — prompting user before any integrated-terminal fallback`,
 					"TerminalManager",
 				);
-				this.openIntegratedTerminal(projectDir, command, cwd);
+				await this.promptIntegratedTerminalFallback(
+					error.message,
+					projectDir,
+					command,
+					cwd,
+				);
 				return;
 			}
 			throw error;
@@ -807,6 +819,44 @@ end tell
 			terminal.sendText(command);
 		}
 		terminal.show();
+	}
+
+	/**
+	 * Surfaces a launcher unavailability to the user instead of silently
+	 * spawning a VS Code integrated terminal. Returns true if the user opted
+	 * in to the integrated-terminal fallback (and one was opened); false if
+	 * the user cancelled or chose to install the launcher.
+	 *
+	 * Project terminals are the product's contract — silent fallback can land
+	 * users in a stale resume prompt with no signal that their project pane is
+	 * unreachable. Make the user choose explicitly.
+	 */
+	private async promptIntegratedTerminalFallback(
+		reason: string,
+		projectDir: string,
+		command?: string,
+		cwd?: string,
+	): Promise<boolean> {
+		const message = `Ghostty project terminal unavailable: ${reason}. Open in VS Code integrated terminal instead?`;
+		const openAnyway = "Open in VS Code Terminal";
+		const installLauncher = "Install Launcher…";
+		const choice = await vscode.window.showWarningMessage(
+			message,
+			{ modal: false },
+			openAnyway,
+			installLauncher,
+		);
+		if (choice === installLauncher) {
+			await vscode.env.openExternal(
+				vscode.Uri.parse("https://github.com/ostehost/ghostty-launcher"),
+			);
+			return false;
+		}
+		if (choice === openAnyway) {
+			this.openIntegratedTerminal(projectDir, command, cwd);
+			return true;
+		}
+		return false;
 	}
 
 	/**
