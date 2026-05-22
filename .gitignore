@@ -86,3 +86,6 @@ prompts/
 
 # Orchestrator report artifacts
 .oste-report.yaml
+
+# Local clawpatch tooling artifacts
+.clawpatch/
