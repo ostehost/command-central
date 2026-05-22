@@ -7,6 +7,8 @@
 set -euo pipefail
 
 readonly VERSION="1.1.0"
+LAUNCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly LAUNCHER_DIR
 # Ghostty binary lookup chain: explicit env var → stock Ghostty
 if [[ -n "${GHOSTTY_BINARY_PATH:-}" ]] && [[ -d "$GHOSTTY_BINARY_PATH" ]]; then
 	readonly GHOSTTY_APP="$GHOSTTY_BINARY_PATH"
@@ -33,6 +35,64 @@ unset _ghostty_plist
 
 readonly PROJECTS_DIR="/Applications/Projects"
 readonly ELIGIBLE_PROJECTS_ROOT="${GHL_ELIGIBLE_PROJECTS_ROOT:-${HOME}/projects}"
+
+local_visible_launcher_host() {
+	scutil --get ComputerName 2>/dev/null || hostname -s 2>/dev/null || hostname 2>/dev/null || echo "unknown"
+}
+
+visible_launcher_hosts() {
+	if [[ -n "${OSTE_VISIBLE_LAUNCHER_HOSTS:-}" ]]; then
+		printf '%s' "$OSTE_VISIBLE_LAUNCHER_HOSTS"
+		return 0
+	fi
+
+	local policy="${OSTE_ROUTE_POLICY_FILE:-${LAUNCHER_DIR}/scripts/routing-policy.json}"
+	[[ -f "$policy" ]] || return 1
+
+	if command -v jq >/dev/null 2>&1; then
+		jq -r '.visible_launcher_hosts // .guards.coder.require_node // empty' "$policy" 2>/dev/null
+	else
+		awk -F'"' '/"visible_launcher_hosts"/ {print $4; exit}' "$policy" 2>/dev/null
+	fi
+}
+
+csv_contains_host() {
+	local csv="$1"
+	local target="$2"
+	local candidate
+	local -a candidates
+
+	IFS=',' read -r -a candidates <<<"$csv"
+	for candidate in "${candidates[@]}"; do
+		candidate="${candidate#"${candidate%%[![:space:]]*}"}"
+		candidate="${candidate%"${candidate##*[![:space:]]}"}"
+		[[ -n "$candidate" ]] || continue
+		[[ "$candidate" == "$target" ]] && return 0
+	done
+
+	return 1
+}
+
+enforce_canonical_launcher_host() {
+	local output_dir="$1"
+	[[ "$(resolve_path "$output_dir" 2>/dev/null || printf '%s' "$output_dir")" == "$PROJECTS_DIR" ]] || return 0
+
+	local allowed_hosts local_host
+	allowed_hosts=$(visible_launcher_hosts || true)
+	local_host=$(local_visible_launcher_host)
+
+	if [[ -z "$allowed_hosts" ]]; then
+		echo "Error: Canonical Ghostty launcher bundles are node-only, but no visible_launcher_hosts policy was found; refusing on ${local_host}" >&2
+		return 1
+	fi
+
+	if csv_contains_host "$allowed_hosts" "$local_host"; then
+		return 0
+	fi
+
+	echo "Error: Canonical Ghostty launcher bundles are node-only; refusing on ${local_host}. Allowed hosts: ${allowed_hosts}" >&2
+	return 1
+}
 
 # ── Settings parsing ──────────────────────────────────────────────────
 
@@ -218,13 +278,46 @@ find_zellij_baseline_repo() {
 }
 
 # Parse commandCentral.project.name from .vscode/settings.json
-# Falls back to directory basename
+# Falls back to canonical GitHub repo name, then directory basename. The repo
+# fallback keeps temporary worktrees from minting new launcher identities such
+# as command-central-feature-x.app for the same underlying project.
+canonical_repo_name_from_origin() {
+	local dir="$1"
+	local origin_url repo_name top_level resolved_dir
+	top_level=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)
+	[[ -n "$top_level" ]] || return 1
+	resolved_dir=$(cd "$dir" 2>/dev/null && pwd -P) || return 1
+	[[ "$resolved_dir" == "$top_level" ]] || return 1
+	origin_url=$(git -C "$dir" remote get-url origin 2>/dev/null || true)
+	[[ -n "$origin_url" ]] || return 1
+	case "$origin_url" in
+		*github.com[:/]*/*) ;;
+		*) return 1 ;;
+	esac
+	repo_name="${origin_url##*/}"
+	repo_name="${repo_name%.git}"
+	[[ -n "$repo_name" ]] || return 1
+	echo "$repo_name"
+}
+
 parse_name() {
 	local dir="$1"
 	local settings="$dir/.vscode/settings.json"
-	local name=""
+	local name="" repo_name=""
+	repo_name=$(canonical_repo_name_from_origin "$dir" 2>/dev/null || true)
 	if [[ -f "$settings" ]]; then
 		name=$(jq -r '."commandCentral.project.name" // empty' "$settings" 2>/dev/null || true)
+	fi
+	if [[ -z "$name" ]]; then
+		name="$repo_name"
+	elif [[ -n "$repo_name" ]]; then
+		local dir_slug name_slug repo_slug
+		dir_slug=$(sanitize_for_bundle "$(basename "$dir")")
+		name_slug=$(sanitize_for_bundle "$name")
+		repo_slug=$(sanitize_for_bundle "$repo_name")
+		if [[ "$dir_slug" == "${repo_slug}-"* && "$name_slug" == "$dir_slug" ]]; then
+			name="$repo_name"
+		fi
 	fi
 	if [[ -z "$name" ]]; then
 		name=$(basename "$dir")
@@ -572,6 +665,9 @@ create_bundle() {
 	local _output_is_canonical=0
 	if is_projects_container_path "$output_dir"; then
 		_output_is_canonical=1
+		if ! enforce_canonical_launcher_host "$output_dir"; then
+			return 1
+		fi
 		if ! validate_launcher_eligible_project "$project_dir"; then
 			return 1
 		fi
