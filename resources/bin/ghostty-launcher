@@ -6,7 +6,7 @@
 #
 set -euo pipefail
 
-readonly VERSION="1.2.7"
+readonly VERSION="1.2.8"
 LAUNCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LAUNCHER_DIR
 # Ghostty binary lookup chain: explicit env var → stock Ghostty
