@@ -55,11 +55,30 @@ export async function buildResumeCommand(
 		case "gemini":
 			return "gemini -p --resume latest";
 		case "claude":
-		case "unknown":
-			// Claude's exact session-id resume is flaky even when the project
-			// transcript exists on disk; directory-scoped --continue is the more
-			// reliable interactive resume path here.
+		case "unknown": {
+			// Prefer task-specific session resume when we have a recorded
+			// claude_session_id. Without this, every task in the same
+			// project_dir resumes the SAME conversation (the most recent),
+			// because `claude --continue` is directory-scoped — not task-
+			// scoped. The user reported this as "all sessions seem to be
+			// going to the same."
+			//
+			// claude_session_id is a UUID matching the basename of a file in
+			// ~/.claude/projects/<dirhash>/<id>.jsonl. Spawn-time capture of
+			// this ID into tasks.json is a launcher-side follow-up; for
+			// pre-existing tasks (and any task where capture failed), we
+			// fall through to the historical --continue path.
+			const sessionId = task.claude_session_id?.trim();
+			if (
+				sessionId &&
+				/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+					sessionId,
+				)
+			) {
+				return `claude --resume ${sessionId}`;
+			}
 			return "claude --continue";
+		}
 	}
 }
 

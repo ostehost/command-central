@@ -82,19 +82,48 @@ describe("resume-session helpers", () => {
 		}
 	});
 
-	test("claude uses --continue even when a task-specific transcript exists", async () => {
+	test("claude uses --resume <uuid> when claude_session_id is a valid UUID", async () => {
 		const tmpDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "resume-session-test-"),
 		);
 		const projectDir = "/tmp/project";
 		const sessionsDir = path.join(tmpDir, "-tmp-project");
 		fs.mkdirSync(sessionsDir, { recursive: true });
-		fs.writeFileSync(path.join(sessionsDir, "claude-task-123.jsonl"), "{}\n");
+		// Claude writes one .jsonl per session at
+		// ~/.claude/projects/<dirhash>/<uuid>.jsonl; the basename is what
+		// `claude --resume <id>` accepts.
+		const uuid = "03d20365-3de4-466d-9363-3d163c6ee2a9";
+		fs.writeFileSync(path.join(sessionsDir, `${uuid}.jsonl`), "{}\n");
 
 		const task = createTask({
 			project_dir: projectDir,
 			agent_backend: "claude",
-			claude_session_id: "claude-task-123",
+			claude_session_id: uuid,
+		});
+		try {
+			// rc.34 behavior: route this task to ITS conversation, not the
+			// project's most-recent one. Without this, every task in the
+			// same project_dir resumes the same chat. See user feedback
+			// "all sessions seem to be going to the same."
+			expect(await buildResumeCommand(task, tmpDir)).toBe(
+				`claude --resume ${uuid}`,
+			);
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	test("claude uses --continue when claude_session_id is NOT a UUID (defensive)", async () => {
+		// Older tasks may have non-UUID values in claude_session_id
+		// (e.g. the launcher's tmux session name was previously stored
+		// here). Don't pass garbage to claude --resume; fall through.
+		const tmpDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "resume-session-test-"),
+		);
+		const task = createTask({
+			project_dir: "/tmp/project",
+			agent_backend: "claude",
+			claude_session_id: "agent-foo",
 		});
 		try {
 			expect(await buildResumeCommand(task, tmpDir)).toBe("claude --continue");
