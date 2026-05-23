@@ -119,6 +119,11 @@ build_agent_command() {
 	local interactive=""
 	local project_dir=""
 	local script_dir=""
+	# Pre-generated claude session UUID. When supplied for the claude backend
+	# (only), gets passed through as `--session-id <uuid>` so the conversation
+	# is created with a known identifier — the same one the task registry
+	# records — letting the IDE resume the exact conversation later.
+	local session_id=""
 
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -156,6 +161,10 @@ build_agent_command() {
 				;;
 			--script-dir)
 				script_dir="$2"
+				shift 2
+				;;
+			--session-id)
+				session_id="$2"
 				shift 2
 				;;
 			*)
@@ -206,6 +215,13 @@ build_agent_command() {
 	local thinking_budget_flag=""
 	if [[ -n "$thinking_budget" ]] && [[ "$backend" == "claude" ]]; then
 		thinking_budget_flag=" --thinking-budget ${thinking_budget}"
+	fi
+
+	# Wire the pre-generated session UUID through to claude. Only applies to
+	# the claude backend — codex and gemini don't have an equivalent flag.
+	local session_id_flag=""
+	if [[ -n "$session_id" ]] && [[ "$backend" == "claude" ]]; then
+		session_id_flag=" --session-id '${session_id}'"
 	fi
 
 	# Stream file prefix differs by backend
@@ -271,7 +287,7 @@ build_agent_command() {
 			;;
 		claude | *)
 			if [[ -n "$interactive" ]]; then
-				cmd="claude \"\$(cat '${prompt_file}')\" --dangerously-skip-permissions --allowedTools 'Bash(*)' 'Read(*)' 'Write(*)' 'Edit(*)'${model_flag}${max_turns_flag}${thinking_budget_flag}"
+				cmd="claude \"\$(cat '${prompt_file}')\" --dangerously-skip-permissions --allowedTools 'Bash(*)' 'Read(*)' 'Write(*)' 'Edit(*)'${session_id_flag}${model_flag}${max_turns_flag}${thinking_budget_flag}"
 			else
 				echo "build_agent_command: Claude launcher lanes require --interactive; refusing print mode" >&2
 				return 1
