@@ -340,6 +340,53 @@ describe.if(launcherAvailable)(
 		// visible window. The previous "skip open if session alive"
 		// optimization in --send caused `write-chars` to land in an
 		// invisible session.
+		// rc.33 regression lock: the bundle's launch-zellij.sh must propagate
+		// the user's interactive shell PATH so installed agent CLIs (claude
+		// in ~/.local/bin, codex via bun, etc.) are discoverable inside the
+		// zellij panes. Previously launch-zellij.sh hardcoded a minimal PATH
+		// and the user saw "fish: Unknown command: claude" when the resume
+		// command was steered in.
+		test("launcher's launch-zellij.sh template propagates user shell PATH", () => {
+			const launcherSource = fs.readFileSync(LAUNCHER_BIN, "utf-8");
+			// The launch script template lives between `cat >".../launch-zellij.sh" <<LAUNCH`
+			// and the next `LAUNCH` heredoc terminator. Inside the heredoc the
+			// `$`s are written as `\$` so they survive the outer bash; account
+			// for that in the patterns below.
+			const tmplMatch = launcherSource.match(
+				/cat\s+>"[^"]*launch-zellij\.sh"\s+<<LAUNCH\n([\s\S]*?)\nLAUNCH/,
+			);
+			expect(tmplMatch).not.toBeNull();
+			const tmpl = tmplMatch?.[1] ?? "";
+			// MUST reference the user's SHELL env var (heredoc-escaped).
+			expect(tmpl).toMatch(/\\\$SHELL|"\\\$__user_shell"/);
+			// MUST query the user's interactive shell for PATH via either the
+			// fish-style join or the POSIX-shell printf.
+			expect(tmpl).toMatch(/string join : \\\$PATH|printf %s "\\\$PATH"/);
+			// MUST include $HOME/.local/bin in the fallback (where claude
+			// typically installs).
+			expect(tmpl).toContain("\\$HOME/.local/bin");
+		});
+
+		// rc.33: --send must (re)create the bundle each call so a launcher
+		// upgrade (new launch-zellij.sh template) reaches users without
+		// requiring them to manually delete /Applications/Projects/X.app.
+		test("launcher --send block always recreates the bundle (no `if [[ ! -d`)", () => {
+			const launcherSource = fs.readFileSync(LAUNCHER_BIN, "utf-8");
+			// The --send case body — find from `--send)` to next `--version`
+			// case label (a known sibling).
+			const sendBody =
+				launcherSource.match(/--send\)([\s\S]*?)--version\s*\|\s*-v\)/)?.[1] ??
+				"";
+			expect(sendBody.length).toBeGreaterThan(0);
+			// Forbid the "only create if missing" gate that would freeze the
+			// bundle's launch script at first-install time.
+			expect(sendBody).not.toMatch(
+				/if\s+\[\[\s+!\s+-d\s+"?\$send_bundle"?\s+\]\]/,
+			);
+			// Positive contract: a create_bundle call happens.
+			expect(sendBody).toContain("create_bundle");
+		});
+
 		test("launcher source has unconditional `open $send_bundle` for the --send path", () => {
 			const launcherSource = fs.readFileSync(LAUNCHER_BIN, "utf-8");
 			// MUST contain at least one `/usr/bin/open "$send_bundle"`.
