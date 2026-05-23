@@ -821,7 +821,7 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 		describe("claude session UUID indicator (rc.37)", () => {
 			const VALID_UUID = "535200b6-2821-49dc-9f21-f78bcbd816a4";
 
-			test("description shows $(link) <8char> for claude task with valid UUID", () => {
+			test("description shows 🔗 <8char> for claude task with valid UUID", () => {
 				const task = createMockTask({
 					status: "completed",
 					agent_backend: "claude",
@@ -829,10 +829,10 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 				});
 				provider.getDiffSummary = () => null;
 				const item = provider.getTreeItem({ type: "task", task });
-				expect(item.description).toContain("$(link) 535200b6");
+				expect(item.description).toContain("🔗 535200b6");
 			});
 
-			test("description omits link suffix for claude task without UUID", () => {
+			test("description omits link emoji for claude task without UUID", () => {
 				const task = createMockTask({
 					status: "completed",
 					agent_backend: "claude",
@@ -840,10 +840,10 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 				});
 				provider.getDiffSummary = () => null;
 				const item = provider.getTreeItem({ type: "task", task });
-				expect(item.description).not.toContain("$(link)");
+				expect(item.description).not.toContain("🔗");
 			});
 
-			test("description omits link suffix for non-claude (codex) backend", () => {
+			test("description omits link emoji for non-claude (codex) backend", () => {
 				const task = createMockTask({
 					status: "completed",
 					agent_backend: "codex",
@@ -851,10 +851,10 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 				});
 				provider.getDiffSummary = () => null;
 				const item = provider.getTreeItem({ type: "task", task });
-				expect(item.description).not.toContain("$(link)");
+				expect(item.description).not.toContain("🔗");
 			});
 
-			test("description omits link suffix when claude_session_id is malformed", () => {
+			test("description omits link emoji when claude_session_id is malformed", () => {
 				const task = createMockTask({
 					status: "completed",
 					agent_backend: "claude",
@@ -862,7 +862,7 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 				});
 				provider.getDiffSummary = () => null;
 				const item = provider.getTreeItem({ type: "task", task });
-				expect(item.description).not.toContain("$(link)");
+				expect(item.description).not.toContain("🔗");
 			});
 
 			test("tooltip reflects resume target as `claude --resume <uuid>` when linked", () => {

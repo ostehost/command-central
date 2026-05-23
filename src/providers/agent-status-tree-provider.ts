@@ -15,7 +15,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
 import {
-	isValidClaudeSessionId,
+	getValidClaudeSessionId,
 	resolveResumeBackend,
 } from "../commands/resume-session.js";
 import { AgentRegistry } from "../discovery/agent-registry.js";
@@ -8316,18 +8316,24 @@ export class AgentStatusTreeProvider
 			descriptionParts.push(surfaceSummary.shortTag);
 		}
 		// At-a-glance "Resume will hit the exact conversation" indicator.
-		// Presence of the codicon-link + first 8 chars of the UUID = a
+		// Presence of the link emoji + first 8 chars of the UUID = a
 		// task-specific resume target exists; absence on a Claude row = the
 		// resume will fall through to `claude --continue` (project-scoped,
 		// shared across sibling tasks).
+		//
+		// Note: codicon `$(name)` shortcodes auto-expand in `TreeItem.label`
+		// and in `MarkdownString` (with `supportThemeIcons=true`), but NOT
+		// in `TreeItem.description` — the raw `$(link)` text leaks to the
+		// UI there. We use the unicode link emoji 🔗 instead so the glyph
+		// renders natively without VS Code-specific expansion machinery.
 		const claudeResumeBackend = resolveResumeBackend(task);
-		const hasClaudeUuidLink =
-			(claudeResumeBackend === "claude" || claudeResumeBackend === "unknown") &&
-			isValidClaudeSessionId(task.claude_session_id);
-		if (hasClaudeUuidLink) {
-			descriptionParts.push(
-				`$(link) ${task.claude_session_id!.trim().slice(0, 8)}`,
-			);
+		const claudeUuid =
+			claudeResumeBackend === "claude" || claudeResumeBackend === "unknown"
+				? getValidClaudeSessionId(task.claude_session_id)
+				: null;
+		const hasClaudeUuidLink = claudeUuid !== null;
+		if (claudeUuid) {
+			descriptionParts.push(`🔗 ${claudeUuid.slice(0, 8)}`);
 		}
 		const rawDescription = isStuck
 			? `${descriptionParts.join(" · ")} (possibly stuck)`
@@ -8350,8 +8356,8 @@ export class AgentStatusTreeProvider
 		const codexRunNote = this.formatCodexRunLegacyLauncherNote(task);
 		const resumeTargetLine =
 			claudeResumeBackend === "claude" || claudeResumeBackend === "unknown"
-				? hasClaudeUuidLink
-					? `**Resume target:** \`claude --resume ${task.claude_session_id!.trim()}\``
+				? claudeUuid
+					? `**Resume target:** \`claude --resume ${claudeUuid}\``
 					: `**Resume target:** \`claude --continue\` _(no session UUID captured — resumes the most-recent conversation in this directory; may collide with sibling tasks)_`
 				: null;
 		item.tooltip = new vscode.MarkdownString(

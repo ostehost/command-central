@@ -56,6 +56,18 @@ export function isValidClaudeSessionId(value?: string | null): boolean {
 	return Boolean(value?.trim() && CLAUDE_SESSION_ID_REGEX.test(value.trim()));
 }
 
+/**
+ * Returns the trimmed UUID if it's a valid claude session id; null otherwise.
+ * Use this instead of `isValidClaudeSessionId` + non-null assertion when you
+ * need to pass the UUID forward to another call — keeps the type-narrowing
+ * inside one expression and avoids the `noNonNullAssertion` lint.
+ */
+export function getValidClaudeSessionId(value?: string | null): string | null {
+	const trimmed = value?.trim();
+	if (trimmed && CLAUDE_SESSION_ID_REGEX.test(trimmed)) return trimmed;
+	return null;
+}
+
 export async function buildResumeCommand(
 	task: ResumeTask,
 	_claudeBaseDir?: string,
@@ -82,8 +94,9 @@ export async function buildResumeCommand(
 			// this ID into tasks.json is a launcher-side follow-up; for
 			// pre-existing tasks (and any task where capture failed), we
 			// fall through to the historical --continue path.
-			if (isValidClaudeSessionId(task.claude_session_id)) {
-				return `claude --resume ${task.claude_session_id!.trim()}`;
+			const claudeUuid = getValidClaudeSessionId(task.claude_session_id);
+			if (claudeUuid) {
+				return `claude --resume ${claudeUuid}`;
 			}
 			return "claude --continue";
 		}
