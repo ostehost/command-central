@@ -6,7 +6,7 @@
 #
 set -euo pipefail
 
-readonly VERSION="1.2.1"
+readonly VERSION="1.2.2"
 LAUNCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LAUNCHER_DIR
 # Ghostty binary lookup chain: explicit env var → stock Ghostty
@@ -948,7 +948,38 @@ ZELLIJ_FALLBACK
 		# Create zellij launch script inside the bundle
 		cat >"${config_dir}/launch-zellij.sh" <<LAUNCH
 #!/bin/bash
+# The bootstrap PATH covers tools the script itself needs (jq, codesign-not-
+# needed-here, zellij from brew). The user's interactive shell PATH is queried
+# below and prepended so installed agent CLIs (claude in ~/.local/bin,
+# codex via bun, etc.) are discoverable in the panes zellij spawns. Without
+# this, the GUI app launch environment is sparse and tools like \`claude\`
+# resolve to "command not found" even though they work fine in the user's
+# daily terminal.
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
+
+# Query the user's interactive shell PATH so installed tools propagate.
+# Per-shell because the syntax differs:
+#   - fish uses a list (string-joined here)
+#   - zsh/bash use a colon-separated string in \$PATH
+# Failures are silenced — the script falls back to a comprehensive fixed
+# list of common dev-tool dirs.
+__user_shell="\${SHELL:-/bin/zsh}"
+case "\$__user_shell" in
+  */fish)
+    __user_path=\$("\$__user_shell" -ic 'string join : \$PATH' 2>/dev/null || true)
+    ;;
+  *)
+    __user_path=\$("\$__user_shell" -lic 'printf %s "\$PATH"' 2>/dev/null || true)
+    ;;
+esac
+__fallback_path="\$HOME/.local/bin:\$HOME/.bun/bin:\$HOME/.cargo/bin:\$HOME/.openclaw/bin:\$HOME/.openclaw/tools/node/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+if [[ -n "\$__user_path" ]]; then
+  export PATH="\${__user_path}:\${__fallback_path}"
+else
+  export PATH="\$__fallback_path"
+fi
+unset __user_shell __user_path __fallback_path
+
 SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
 
 # Validate project directory exists
@@ -1347,12 +1378,16 @@ main() {
 					;;
 			esac
 			send_bundle="${PROJECTS_DIR}/${send_name}.app"
-			if [[ ! -d "$send_bundle" ]]; then
-				send_icon=$(parse_icon "$send_dir")
-				if ! create_bundle "$send_dir" "$send_name" "$send_icon" "$PROJECTS_DIR" >/dev/null; then
-					echo "Error: bundle creation failed" >&2
-					exit 3
-				fi
+			# Always (re)create — keeps the bundle's launch-zellij.sh in sync
+			# with the current launcher version. Without this, a fix to the
+			# launch script (e.g. PATH inheritance in 1.2.2) wouldn't reach
+			# users who already have a bundle on disk until they manually
+			# delete it. Matches the contract of the default `launcher <dir>`
+			# code path which also unconditionally recreates the bundle.
+			send_icon=$(parse_icon "$send_dir")
+			if ! create_bundle "$send_dir" "$send_name" "$send_icon" "$PROJECTS_DIR" >/dev/null; then
+				echo "Error: bundle creation failed" >&2
+				exit 3
 			fi
 			if [[ "$send_mux" == "zellij" ]]; then
 				send_socket_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ghostty-launcher/zellij/${send_safe}"
