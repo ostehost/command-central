@@ -417,6 +417,50 @@ describe.if(launcherAvailable)(
 			expect(launcherSource).toMatch(/\.pending-cmd/);
 		});
 
+		// rc.36 regression lock: spawn-time claude session UUID capture.
+		// Without this, every task in a project resumes the same conversation
+		// (claude --continue is dir-scoped, not task-scoped). The fix
+		// pre-generates a UUID at spawn, passes it to claude via --session-id,
+		// and writes it to tasks.json.claude_session_id so the IDE can later
+		// `claude --resume <uuid>` for the exact conversation per task.
+		test("launcher build_agent_command threads --session-id for claude backend", () => {
+			const backendCommands = fs.readFileSync(
+				path.join(LAUNCHER_REPO, "scripts", "lib", "backend-commands.sh"),
+				"utf-8",
+			);
+			// arg-parser case exists
+			expect(backendCommands).toMatch(/--session-id\)/);
+			// session_id_flag is built and gated on claude backend
+			expect(backendCommands).toMatch(
+				/session_id_flag=" --session-id '\$\{session_id\}'"/,
+			);
+			// session_id_flag is appended in the claude cmd build
+			expect(backendCommands).toMatch(/\$\{session_id_flag\}/);
+		});
+
+		test("launcher oste-spawn.sh pre-generates uuid + writes claude_session_id to tasks.json", () => {
+			const spawnScript = fs.readFileSync(
+				path.join(LAUNCHER_REPO, "scripts", "oste-spawn.sh"),
+				"utf-8",
+			);
+			// UUID generation is guarded on claude backend and only fires when
+			// caller didn't already export OSTE_CLAUDE_SESSION_ID
+			expect(spawnScript).toMatch(
+				/\[\[ "\$agent_backend" == "claude" \]\] && \[\[ -z "\$\{OSTE_CLAUDE_SESSION_ID:-\}" \]\]/,
+			);
+			expect(spawnScript).toMatch(
+				/uuidgen \| LC_ALL=C tr '\[:upper:\]' '\[:lower:\]'/,
+			);
+			// register_task call passes the UUID as the trailing positional arg
+			expect(spawnScript).toMatch(
+				/register_task[\s\S]{0,2000}"\$\{OSTE_CLAUDE_SESSION_ID:-\}"/,
+			);
+			// jq builds the task record with claude_session_id field
+			expect(spawnScript).toMatch(
+				/"claude_session_id":\s*\(if\s+\$claude_session_id\s+==\s+""\s+then\s+null\s+else\s+\$claude_session_id\s+end\)/,
+			);
+		});
+
 		test("launcher source has unconditional `open $send_bundle` for the --send path", () => {
 			const launcherSource = fs.readFileSync(LAUNCHER_BIN, "utf-8");
 			// MUST contain at least one `/usr/bin/open "$send_bundle"`.
