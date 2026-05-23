@@ -327,9 +327,35 @@ describe.if(launcherAvailable)(
 				"--parse-name",
 				"--parse-icon",
 				"--session-id",
+				"--send",
 			]) {
 				expect(flags.has(required)).toBe(true);
 			}
+		});
+
+		// rc.32 regression lock: when launcher --send runs against a project
+		// whose zellij session is daemon-alive but client-detached (no
+		// Ghostty window attached — typical after the user closes the
+		// window), the launcher MUST still `open` the bundle to bring up a
+		// visible window. The previous "skip open if session alive"
+		// optimization in --send caused `write-chars` to land in an
+		// invisible session.
+		test("launcher source has unconditional `open $send_bundle` for the --send path", () => {
+			const launcherSource = fs.readFileSync(LAUNCHER_BIN, "utf-8");
+			// MUST contain at least one `/usr/bin/open "$send_bundle"`.
+			// `$send_bundle` is the local var name only used inside --send,
+			// so any match means the --send code path opens the bundle.
+			const openOccurrences = launcherSource.match(
+				/\/usr\/bin\/open\s+(?:-n\s+)?"?\$send_bundle/g,
+			);
+			expect(openOccurrences).not.toBeNull();
+			expect((openOccurrences ?? []).length).toBeGreaterThanOrEqual(1);
+			// MUST NOT have the specific old pattern we just removed:
+			// `if [[ "$send_alive" -ne 1 ]]; then ... /usr/bin/open ... fi`
+			// inside ~300 chars (the optimization span).
+			const aliveGatedOpen =
+				/if\s+\[\[\s+"?\$send_alive"?\s+-ne\s+1\s+\]\][\s\S]{0,300}\/usr\/bin\/open/;
+			expect(launcherSource).not.toMatch(aliveGatedOpen);
 		});
 
 		test("oste-steer.sh exposes --raw and --by-task-id flags", () => {
