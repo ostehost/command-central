@@ -6,7 +6,7 @@
 #
 set -euo pipefail
 
-readonly VERSION="1.2.2"
+readonly VERSION="1.2.6"
 LAUNCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LAUNCHER_DIR
 # Ghostty binary lookup chain: explicit env var → stock Ghostty
@@ -906,8 +906,16 @@ layout {
     }
 
     tab name="main" focus=true {
-        pane command="${user_shell}" {
-            args "-l"
+        // Main pane runs the bundle's pane-launch wrapper, which:
+        //   1. Sources \${SCRIPT_DIR}/.pending-cmd if present (a one-shot
+        //      command written by \`launcher --send\` — e.g.
+        //      \`claude --continue\`). The file is deleted after read so
+        //      subsequent attaches start clean.
+        //   2. execs the user's shell. Injecting via fish --init-command or
+        //      shell-c is fragile because zellij's pane spawn doesn't always
+        //      pass through complex arg lists; a wrapper script is the
+        //      simplest reliable path.
+        pane command="${contents}/Resources/ghostty-config/ghostty/launch-main-pane.sh" {
         }
     }
 
@@ -948,37 +956,39 @@ ZELLIJ_FALLBACK
 		# Create zellij launch script inside the bundle
 		cat >"${config_dir}/launch-zellij.sh" <<LAUNCH
 #!/bin/bash
-# The bootstrap PATH covers tools the script itself needs (jq, codesign-not-
-# needed-here, zellij from brew). The user's interactive shell PATH is queried
-# below and prepended so installed agent CLIs (claude in ~/.local/bin,
-# codex via bun, etc.) are discoverable in the panes zellij spawns. Without
-# this, the GUI app launch environment is sparse and tools like \`claude\`
-# resolve to "command not found" even though they work fine in the user's
-# daily terminal.
+# The bootstrap PATH covers tools the script itself needs. The user's
+# interactive shell PATH is queried below and prepended so installed agent
+# CLIs (claude in ~/.local/bin, codex via bun, etc.) are discoverable in
+# the panes zellij spawns. Without this, the GUI-launch environment is
+# sparse and tools like \`claude\` resolve to "command not found" even
+# though they work fine in the user's daily terminal.
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
 
-# Query the user's interactive shell PATH so installed tools propagate.
-# Per-shell because the syntax differs:
-#   - fish uses a list (string-joined here)
-#   - zsh/bash use a colon-separated string in \$PATH
-# Failures are silenced — the script falls back to a comprehensive fixed
+# Query for the user's interactive PATH. Preference order:
+#   1. fish (if installed) — many users run fish as their daily shell
+#      even when their /etc/passwd login shell is still zsh/bash, so
+#      \$SHELL alone is unreliable. fish loads ~/.config/fish/config.fish
+#      reliably even under the sparse GUI-launch env.
+#   2. \$SHELL with -lic — covers users who actually use zsh/bash and
+#      set up PATH in their dotfiles.
+# Failures are silenced; the script falls back to a comprehensive fixed
 # list of common dev-tool dirs.
-__user_shell="\${SHELL:-/bin/zsh}"
-case "\$__user_shell" in
-  */fish)
-    __user_path=\$("\$__user_shell" -ic 'string join : \$PATH' 2>/dev/null || true)
-    ;;
-  *)
-    __user_path=\$("\$__user_shell" -lic 'printf %s "\$PATH"' 2>/dev/null || true)
-    ;;
-esac
+__user_path=""
+if command -v fish >/dev/null 2>&1; then
+  __user_path=\$(fish -ic 'string join : \$PATH' 2>/dev/null || true)
+fi
+if [[ -z "\$__user_path" ]]; then
+  __user_shell="\${SHELL:-/bin/zsh}"
+  __user_path=\$("\$__user_shell" -lic 'printf %s "\$PATH"' 2>/dev/null || true)
+  unset __user_shell
+fi
 __fallback_path="\$HOME/.local/bin:\$HOME/.bun/bin:\$HOME/.cargo/bin:\$HOME/.openclaw/bin:\$HOME/.openclaw/tools/node/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
 if [[ -n "\$__user_path" ]]; then
   export PATH="\${__user_path}:\${__fallback_path}"
 else
   export PATH="\$__fallback_path"
 fi
-unset __user_shell __user_path __fallback_path
+unset __user_path __fallback_path
 
 SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
 
@@ -1029,6 +1039,45 @@ cd "\$PROJECT_DIR" || exit 1
 exec zellij -n "\$LAYOUT_PATH" --session "\$SESSION_ID"
 LAUNCH
 		chmod +x "${config_dir}/launch-zellij.sh"
+
+		# Wrapper for the main tab's first pane. Reads .pending-cmd (written
+		# by `launcher --send`) and runs it BEFORE handing control to fish.
+		# This avoids in-flight zellij action write-chars (which races fish
+		# startup and silently drops chars). The pending file is consumed on
+		# first read so subsequent attaches don't replay the command.
+		cat >"${config_dir}/launch-main-pane.sh" <<MAIN_PANE
+#!/bin/bash
+SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
+PENDING_FILE="\$SCRIPT_DIR/.pending-cmd"
+PROJECT_DIR="${project_dir}"
+USER_SHELL="${user_shell}"
+
+cd "\$PROJECT_DIR" 2>/dev/null || true
+
+if [[ -r "\$PENDING_FILE" ]]; then
+  PENDING_CMD=\$(cat "\$PENDING_FILE")
+  rm -f "\$PENDING_FILE"
+  # The pending command typically references tools (claude, codex, …) that
+  # live in the user's interactive PATH. launch-zellij.sh has already
+  # populated PATH; we just exec the user's shell with -l -c so it loads
+  # config, then runs the command, then drops to interactive (-i).
+  if [[ -n "\$PENDING_CMD" ]]; then
+    case "\$USER_SHELL" in
+      */fish)
+        exec "\$USER_SHELL" -l -i -C "\$PENDING_CMD"
+        ;;
+      *)
+        # zsh/bash: -c executes then exits, so we wrap in a script that
+        # runs the command and then execs an interactive shell.
+        exec "\$USER_SHELL" -l -c "\$PENDING_CMD; exec \\"\$USER_SHELL\\" -l -i"
+        ;;
+    esac
+  fi
+fi
+
+exec "\$USER_SHELL" -l
+MAIN_PANE
+		chmod +x "${config_dir}/launch-main-pane.sh"
 	fi
 
 	# Append project-specific settings
@@ -1378,42 +1427,81 @@ main() {
 					;;
 			esac
 			send_bundle="${PROJECTS_DIR}/${send_name}.app"
-			# Always (re)create — keeps the bundle's launch-zellij.sh in sync
-			# with the current launcher version. Without this, a fix to the
-			# launch script (e.g. PATH inheritance in 1.2.2) wouldn't reach
-			# users who already have a bundle on disk until they manually
-			# delete it. Matches the contract of the default `launcher <dir>`
-			# code path which also unconditionally recreates the bundle.
-			send_icon=$(parse_icon "$send_dir")
-			if ! create_bundle "$send_dir" "$send_name" "$send_icon" "$PROJECTS_DIR" >/dev/null; then
-				echo "Error: bundle creation failed" >&2
-				exit 3
+			# Recreate only when missing. We used to always recreate so a
+			# launcher upgrade reached users without manual bundle deletion,
+			# but unconditional create_bundle adds ~3-4s (codesign, plist,
+			# fileicon, lsregister) and made the kill+open+settle window
+			# tight enough to race the new fish's startup. A separate
+			# `--rebuild-bundle` flow (or the default `launcher <dir>` path,
+			# which still always recreates) handles the upgrade case for
+			# users who notice an out-of-date launch script.
+			if [[ ! -d "$send_bundle" ]]; then
+				send_icon=$(parse_icon "$send_dir")
+				if ! create_bundle "$send_dir" "$send_name" "$send_icon" "$PROJECTS_DIR" >/dev/null; then
+					echo "Error: bundle creation failed" >&2
+					exit 3
+				fi
 			fi
 			if [[ "$send_mux" == "zellij" ]]; then
 				send_socket_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ghostty-launcher/zellij/${send_safe}"
 				mkdir -p "$send_socket_dir"
-				# ALWAYS `open` the bundle. The previous "skip open if session
-				# alive" optimization was wrong: zellij sessions can be
-				# daemon-alive but client-detached (no Ghostty window is
-				# displaying them — typical after the user closes the window
-				# manually). In that state, `write-chars` lands in the session
-				# but the user sees nothing.
-				#
-				# `open` (no -n) is idempotent on macOS:
-				#   - bundle process not running → spawns fresh Ghostty +
-				#     runs launch-zellij.sh which attaches a client
-				#   - bundle process running → activates the existing window
-				#     (focus); no duplicate process.
-				#
-				# Each bundle has a unique CFBundleIdentifier so this never
-				# conflicts with stock Ghostty or with other project bundles.
+				# rc.34: write the pending command to a file the bundle's
+				# launch-main-pane.sh reads on startup. This replaces
+				# `zellij action write-chars`, which had an unresolved race
+				# against fish's startup that silently dropped keystrokes
+				# during the first few seconds of the new session. File-based
+				# handoff is synchronous: fish cannot reach its prompt
+				# without first sourcing the pending command, so there's no
+				# race.
+				pending_dir="${send_bundle}/Contents/Resources/ghostty-config/ghostty"
+				if [[ ! -d "$pending_dir" ]]; then
+					echo "Error: bundle missing pane-launch resources at $pending_dir" >&2
+					exit 3
+				fi
+				printf '%s\n' "$send_cmd" >"${pending_dir}/.pending-cmd"
+				# Force a fresh bundle launch chain so the main pane's
+				# launch-main-pane.sh reads the .pending-cmd we just wrote:
+				#   1. Kill the zellij server (fish lives inside it).
+				#   2. Kill the bundle Ghostty client.
+				#   3. open the bundle — fresh Ghostty → launch-zellij.sh →
+				#      fresh zellij → main pane runs launch-main-pane.sh →
+				#      sources .pending-cmd → execs user shell with command
+				#      applied.
+				zellij_server_pid=$(pgrep -f "zellij --server ${send_socket_dir}" 2>/dev/null | head -1 || true)
+				if [[ -n "$zellij_server_pid" ]]; then
+					kill "$zellij_server_pid" 2>/dev/null || true
+					for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+						kill -0 "$zellij_server_pid" 2>/dev/null || break
+						sleep 0.1
+					done
+				fi
+				# Critical: delete the session entry from zellij's bookkeeping.
+				# Without this, an EXITED entry remains on the socket; the
+				# bundle's launch-zellij.sh then takes the `zellij attach`
+				# branch (resurrects existing session) instead of `zellij -n
+				# LAYOUT --session` (spawns fresh panes). attach reuses the
+				# old PTYs without re-running the layout's `command=`, so
+				# launch-main-pane.sh never executes and .pending-cmd is
+				# never consumed. delete-session --force is the only way to
+				# guarantee the next launch goes through the layout path.
+				ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij delete-session "$send_session" --force >/dev/null 2>&1 || true
+				bundle_exec="${send_bundle}/Contents/MacOS/ghostty"
+				existing_bundle_pid=$(pgrep -f "$bundle_exec" 2>/dev/null | head -1 || true)
+				if [[ -n "$existing_bundle_pid" ]]; then
+					kill "$existing_bundle_pid" 2>/dev/null || true
+					for _ in 1 2 3 4 5 6 7 8 9 10; do
+						kill -0 "$existing_bundle_pid" 2>/dev/null || break
+						sleep 0.1
+					done
+				fi
 				if ! /usr/bin/open "$send_bundle" 2>/dev/null; then
 					echo "Error: failed to open $send_bundle" >&2
 					exit 3
 				fi
-				# Wait for the session to be alive (non-EXITED) on the
-				# bundle's socket. If the bundle process was already running
-				# AND attached, this short-circuits immediately.
+				# Confirm the session became alive so we can report a clear
+				# success/failure. The actual command runs synchronously
+				# inside the main pane's wrapper script — we don't need to
+				# wait for command completion here.
 				send_alive=0
 				send_deadline=$(($(date +%s) + send_timeout))
 				while [[ $(date +%s) -lt $send_deadline ]]; do
@@ -1427,14 +1515,6 @@ main() {
 				if [[ "$send_alive" -ne 1 ]]; then
 					echo "Error: zellij session '$send_session' did not become active within ${send_timeout}s" >&2
 					exit 4
-				fi
-				if ! ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij --session "$send_session" action write-chars "$send_cmd"; then
-					echo "Error: zellij write-chars failed" >&2
-					exit 5
-				fi
-				if ! ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij --session "$send_session" action write 13; then
-					echo "Error: zellij write Enter failed" >&2
-					exit 5
 				fi
 				exit 0
 			fi
