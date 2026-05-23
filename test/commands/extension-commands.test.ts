@@ -11,7 +11,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as path from "node:path";
 import {
-	__setLocalHomeOverrideForTests,
+	__setCurrentMachineHostOverrideForTests,
 	type AgentTask,
 	getTaskExecutionHostLabel,
 	isRemoteNodeTaskForCurrentHost,
@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	__setLocalHomeOverrideForTests(null);
+	__setCurrentMachineHostOverrideForTests(null);
 });
 
 function createTask(overrides: Partial<AgentTask> = {}): AgentTask {
@@ -170,8 +170,11 @@ describe("focusAgentTerminal command", () => {
 		expect(strategy3Fires).toBeFalsy();
 	});
 
+	// rc.37: classification is host-based, not path-based. The test pins the
+	// "current machine" to a different name than the task's exec_host so the
+	// task is genuinely remote regardless of project_dir location.
 	test("node-hosted task is detected before hub-local focus strategies", () => {
-		__setLocalHomeOverrideForTests("/Users/hub-test-home");
+		__setCurrentMachineHostOverrideForTests("Some Other Mac");
 		const task = createTask({
 			terminal_backend: "tmux",
 			ghostty_bundle_id: "dev.partnerai.ghostty.command-central",
@@ -190,7 +193,7 @@ describe("focusAgentTerminal command", () => {
 	});
 
 	test("mirrored node task is detected even when launcher persisted exec_mode=hub", () => {
-		__setLocalHomeOverrideForTests("/Users/hub-test-home");
+		__setCurrentMachineHostOverrideForTests("Some Other Mac");
 		const task = createTask({
 			terminal_backend: "tmux",
 			ghostty_bundle_id: "dev.partnerai.ghostty.ghostty-launcher",
@@ -218,6 +221,64 @@ describe("focusAgentTerminal command", () => {
 			exec_cwd: path.join(process.env["HOME"] ?? "/Users/test", "project"),
 		});
 
+		expect(isRemoteNodeTaskForCurrentHost(task)).toBe(false);
+	});
+
+	// rc.37 regression locks for the host-equality classification.
+	// Originally caught when a probe spawned with project_dir=/tmp/... was
+	// misclassified as remote because the old path heuristic only considered
+	// $HOME-rooted paths local. The fix: classification compares exec_host
+	// to the current machine name with normalization (case, whitespace,
+	// .local stripping). Path of project_dir is irrelevant.
+	test("local task with project_dir outside $HOME is NOT classified as remote", () => {
+		__setCurrentMachineHostOverrideForTests("Mike's MacBook Pro");
+		const task = createTask({
+			terminal_backend: "tmux",
+			project_dir: "/tmp/cc-probe-12345",
+			exec_mode: "hub",
+			exec_host: "Mike's MacBook Pro",
+			exec_cwd: "/tmp/cc-probe-12345",
+		});
+		expect(isRemoteNodeTaskForCurrentHost(task)).toBe(false);
+	});
+
+	test("host comparison is case- and whitespace-insensitive", () => {
+		__setCurrentMachineHostOverrideForTests("mike's macbook pro");
+		const task = createTask({
+			exec_host: "  Mike's MacBook Pro  ",
+			exec_cwd: "/tmp/anywhere",
+			project_dir: "/tmp/anywhere",
+		});
+		expect(isRemoteNodeTaskForCurrentHost(task)).toBe(false);
+	});
+
+	test("`.local` suffix on either side is ignored for host comparison", () => {
+		__setCurrentMachineHostOverrideForTests("MacBookPro.local");
+		const task = createTask({
+			exec_host: "MacBookPro",
+			project_dir: "/Volumes/SomeExternalDrive/project",
+		});
+		expect(isRemoteNodeTaskForCurrentHost(task)).toBe(false);
+	});
+
+	test("task with exec_host that does NOT match current host is classified as remote", () => {
+		__setCurrentMachineHostOverrideForTests("Mike's MacBook Pro");
+		const task = createTask({
+			exec_host: "Mike's Mini",
+			exec_mode: "spoke",
+			project_dir: "/Users/ostemini/projects/something",
+		});
+		expect(isRemoteNodeTaskForCurrentHost(task)).toBe(true);
+	});
+
+	test("task with no exec_host metadata at all degrades to local (not remote)", () => {
+		__setCurrentMachineHostOverrideForTests("Mike's MacBook Pro");
+		const task = createTask({
+			exec_host: null,
+			exec_node: null,
+			exec_mode: null,
+			project_dir: "/opt/somewhere",
+		});
 		expect(isRemoteNodeTaskForCurrentHost(task)).toBe(false);
 	});
 

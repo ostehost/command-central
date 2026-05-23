@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as path from "node:path";
-import { __setLocalHomeOverrideForTests } from "../../src/providers/agent-status-tree-provider.js";
+import { __setCurrentMachineHostOverrideForTests } from "../../src/providers/agent-status-tree-provider.js";
 import { OpenClawConfigService } from "../../src/services/openclaw-config-service.js";
 import { ReviewTracker } from "../../src/services/review-tracker.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
@@ -377,6 +377,71 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 			expect(second).toBe("task.md");
 		});
 
+		// rc.37: defensive skip of write-prompt.sh role preambles AND
+		// preference for the `## User Prompt` marker the launcher now emits.
+		// The launcher (~/projects/ghostty-launcher/scripts/write-prompt.sh)
+		// wraps user prompts with harness boilerplate before claude sees
+		// them. The wrapped file is what gets registered as `prompt_file` in
+		// tasks.json, so without this skip every task row in the tree shows
+		// boilerplate instead of the user's actual prompt.
+		test("prefers `## User Prompt` section past role/contract preamble", () => {
+			const p = provider as unknown as { _promptCache: Map<string, string> };
+			p._promptCache.clear();
+			const promptFile = path.join(
+				"/tmp",
+				`agent-status-prompt-impl-agent-${Date.now()}.md`,
+			);
+			// Simulates the rc.37 launcher wrapper shape (write-prompt.sh).
+			fs.writeFileSync(
+				promptFile,
+				[
+					"## Role",
+					"",
+					"You are the implementation agent for task_id `render-probe-rc37`.",
+					"",
+					"## Harness contract",
+					"- The launcher has already registered task_id",
+					"- Do NOT call `TaskUpdate(status=completed)`",
+					"",
+					"## User Prompt",
+					"",
+					"render-probe",
+				].join("\n"),
+			);
+			try {
+				expect(provider.readPromptSummary(promptFile)).toBe("render-probe");
+			} finally {
+				if (fs.existsSync(promptFile)) fs.unlinkSync(promptFile);
+			}
+		});
+
+		test("skips role preamble even without `## User Prompt` marker (defensive)", () => {
+			// Backstop for tasks spawned before the rc.37 launcher upgrade —
+			// the wrapped file lacks the marker, but role lines must still
+			// be filtered as boilerplate so any subsequent user content wins.
+			const p = provider as unknown as { _promptCache: Map<string, string> };
+			p._promptCache.clear();
+			const promptFile = path.join(
+				"/tmp",
+				`agent-status-prompt-defensive-${Date.now()}.md`,
+			);
+			fs.writeFileSync(
+				promptFile,
+				[
+					"You are the implementation agent for task_id `legacy`.",
+					"",
+					"Coordinate the legacy work.",
+				].join("\n"),
+			);
+			try {
+				expect(provider.readPromptSummary(promptFile)).toBe(
+					"Coordinate the legacy work.",
+				);
+			} finally {
+				if (fs.existsSync(promptFile)) fs.unlinkSync(promptFile);
+			}
+		});
+
 		test("prefers the Task section over orchestration boilerplate", () => {
 			const p = provider as unknown as { _promptCache: Map<string, string> };
 			p._promptCache.clear();
@@ -675,15 +740,16 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 			);
 		});
 
-		// These tests pin host context explicitly: /Users/ostehost is remote
-		// from the hub, but local on the MacBook node.
+		// rc.37: classification is host-based. Tests pin "current machine" to
+		// a different name than the task's exec_host to simulate the task
+		// being remote, or the same name to simulate it being local.
 		describe("hub-mirror host context", () => {
 			beforeEach(() => {
-				__setLocalHomeOverrideForTests("/Users/hub-test-home");
+				__setCurrentMachineHostOverrideForTests("Some Other Mac");
 			});
 
 			afterEach(() => {
-				__setLocalHomeOverrideForTests(null);
+				__setCurrentMachineHostOverrideForTests(null);
 			});
 
 			test("node-hosted visible task: description and tooltip name the node surface", () => {
@@ -727,8 +793,11 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 				expect(tooltipText(item)).toContain("focus must execute on that node");
 			});
 
-			test("node-local context: same /Users/ostehost task is not classified as remote", () => {
-				__setLocalHomeOverrideForTests("/Users/ostehost");
+			test("node-local context: same task is not classified as remote when host matches", () => {
+				// Override the host so it MATCHES the task's exec_host — the
+				// same task that's "remote" from a different machine is "local"
+				// here.
+				__setCurrentMachineHostOverrideForTests("Mike's MacBook Pro");
 				const task = createMockTask({
 					status: "running",
 					terminal_backend: "tmux",
@@ -744,6 +813,116 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 				provider.getDiffSummary = () => null;
 				const item = provider.getTreeItem({ type: "task", task });
 				expect(item.description).not.toContain("node · visible");
+			});
+		});
+
+		// rc.37: at-a-glance UUID link indicator. Presence of $(link) <8char>
+		// in description signals "Resume will hit the exact conversation."
+		describe("claude session UUID indicator (rc.37)", () => {
+			const VALID_UUID = "535200b6-2821-49dc-9f21-f78bcbd816a4";
+
+			test("description shows $(link) <8char> for claude task with valid UUID", () => {
+				const task = createMockTask({
+					status: "completed",
+					agent_backend: "claude",
+					claude_session_id: VALID_UUID,
+				});
+				provider.getDiffSummary = () => null;
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(item.description).toContain("$(link) 535200b6");
+			});
+
+			test("description omits link suffix for claude task without UUID", () => {
+				const task = createMockTask({
+					status: "completed",
+					agent_backend: "claude",
+					claude_session_id: null,
+				});
+				provider.getDiffSummary = () => null;
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(item.description).not.toContain("$(link)");
+			});
+
+			test("description omits link suffix for non-claude (codex) backend", () => {
+				const task = createMockTask({
+					status: "completed",
+					agent_backend: "codex",
+					claude_session_id: VALID_UUID,
+				});
+				provider.getDiffSummary = () => null;
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(item.description).not.toContain("$(link)");
+			});
+
+			test("description omits link suffix when claude_session_id is malformed", () => {
+				const task = createMockTask({
+					status: "completed",
+					agent_backend: "claude",
+					claude_session_id: "not-a-uuid",
+				});
+				provider.getDiffSummary = () => null;
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(item.description).not.toContain("$(link)");
+			});
+
+			test("tooltip reflects resume target as `claude --resume <uuid>` when linked", () => {
+				const task = createMockTask({
+					status: "completed",
+					agent_backend: "claude",
+					claude_session_id: VALID_UUID,
+				});
+				provider.getDiffSummary = () => null;
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(tooltipText(item)).toContain(`claude --resume ${VALID_UUID}`);
+			});
+
+			test("tooltip reflects resume target as `claude --continue` when unlinked", () => {
+				const task = createMockTask({
+					status: "completed",
+					agent_backend: "claude",
+					claude_session_id: null,
+				});
+				provider.getDiffSummary = () => null;
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(tooltipText(item)).toContain("claude --continue");
+				expect(tooltipText(item)).toContain("most-recent conversation");
+			});
+
+			test("contextValue gets .linked suffix only when UUID is recorded", () => {
+				const linked = createMockTask({
+					id: "linked-task",
+					status: "completed",
+					agent_backend: "claude",
+					claude_session_id: VALID_UUID,
+				});
+				const unlinked = createMockTask({
+					id: "unlinked-task",
+					status: "completed",
+					agent_backend: "claude",
+					claude_session_id: null,
+				});
+				provider.getDiffSummary = () => null;
+				expect(
+					provider.getTreeItem({ type: "task", task: linked }).contextValue,
+				).toBe("agentTask.completed.linked");
+				// No suffix when not linked — absence carries the semantic.
+				// This keeps the contextValue stable for the 326 pre-existing
+				// tasks (all null claude_session_id) and lets future menu
+				// gates use `viewItem =~ /\.linked$/`.
+				expect(
+					provider.getTreeItem({ type: "task", task: unlinked }).contextValue,
+				).toBe("agentTask.completed");
+			});
+
+			test("contextValue stays plain for non-claude backends regardless of UUID", () => {
+				const task = createMockTask({
+					status: "completed",
+					agent_backend: "codex",
+					claude_session_id: VALID_UUID, // would be ignored
+				});
+				provider.getDiffSummary = () => null;
+				const item = provider.getTreeItem({ type: "task", task });
+				expect(item.contextValue).toBe("agentTask.completed");
 			});
 		});
 

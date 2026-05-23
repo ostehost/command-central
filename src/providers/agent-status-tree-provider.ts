@@ -14,6 +14,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
+import {
+	isValidClaudeSessionId,
+	resolveResumeBackend,
+} from "../commands/resume-session.js";
 import { AgentRegistry } from "../discovery/agent-registry.js";
 import type {
 	ProcessScanDiagnosticEntry,
@@ -656,50 +660,94 @@ export function getTaskExecutionHostLabel(task: AgentTask): string | null {
 
 function hasNodeExecutionMetadata(task: AgentTask): boolean {
 	const execMode = task.exec_mode?.trim().toLowerCase();
+	// rc.37: path heuristic removed — the old `exec_cwd?.startsWith("/Users/ostehost/")`
+	// branch (and the parallel isPathUnderLocalHome check below) misclassified
+	// any task with project_dir outside $HOME (/tmp, /Volumes, /opt, /private/var
+	// …) as remote. Classification is now host-based — see isLocalExecutionHost.
 	return Boolean(
 		firstNonEmptyTaskString(task.exec_node, task.exec_host) ||
 			execMode === "spoke" ||
 			execMode === "node" ||
-			execMode === "remote" ||
-			firstNonEmptyTaskString(task.exec_cwd)?.startsWith("/Users/ostehost/"),
+			execMode === "remote",
 	);
 }
 
 /**
- * Test seam: when set, isPathUnderLocalHome uses this value instead of
- * os.homedir() to decide if a task path belongs to the current host.
+ * Cache + test seam for the current machine's friendly name (used to compare
+ * against the launcher's `OSTE_EXEC_HOST` value when classifying tasks as
+ * local vs remote).
  *
- * Hub-vs-node classification asks whether exec_cwd is under the current
- * host's home. On the hub, /Users/ostehost/... is remote; on the MacBook node,
- * the same path is local. Tests that pin one host context need to simulate it
- * explicitly so the assertion is deterministic on both machines.
+ * The launcher writes `scutil --get ComputerName 2>/dev/null || hostname -s`
+ * (see oste-spawn.sh near line 2737), so we mirror that lookup chain here.
+ * Cached on first read; tests override via {@link __setCurrentMachineHostOverrideForTests}.
  */
-let __localHomeOverrideForTests: string | null = null;
+let __cachedCurrentMachineHost: string | null = null;
+let __currentMachineHostOverrideForTests: string | null = null;
 
-/** @internal Test-only seam. Pass null to restore the real local home. */
-export function __setLocalHomeOverrideForTests(home: string | null): void {
-	__localHomeOverrideForTests = home;
+/** @internal Test-only seam. Pass null to restore the real machine host. */
+export function __setCurrentMachineHostOverrideForTests(
+	host: string | null,
+): void {
+	__currentMachineHostOverrideForTests = host;
+	__cachedCurrentMachineHost = null;
 }
 
-function isPathUnderLocalHome(value?: string | null): boolean {
-	const trimmed = value?.trim();
-	if (!trimmed) return false;
-	const localHome = __localHomeOverrideForTests ?? os.homedir();
-	if (!localHome) return false;
-	const resolvedValue = path.resolve(trimmed);
-	const resolvedHome = path.resolve(localHome);
+function getCurrentMachineHost(): string {
+	if (__currentMachineHostOverrideForTests !== null) {
+		return __currentMachineHostOverrideForTests;
+	}
+	if (__cachedCurrentMachineHost !== null) return __cachedCurrentMachineHost;
+	const { spawnSync } =
+		require("node:child_process") as typeof import("node:child_process");
+	try {
+		const r = spawnSync("scutil", ["--get", "ComputerName"], {
+			encoding: "utf-8",
+			timeout: 1500,
+		});
+		if (r.status === 0 && r.stdout.trim()) {
+			__cachedCurrentMachineHost = r.stdout.trim();
+			return __cachedCurrentMachineHost;
+		}
+	} catch {
+		// fall through
+	}
+	try {
+		const r = spawnSync("hostname", ["-s"], {
+			encoding: "utf-8",
+			timeout: 1500,
+		});
+		if (r.status === 0 && r.stdout.trim()) {
+			__cachedCurrentMachineHost = r.stdout.trim();
+			return __cachedCurrentMachineHost;
+		}
+	} catch {
+		// fall through
+	}
+	__cachedCurrentMachineHost = os.hostname() || "unknown";
+	return __cachedCurrentMachineHost;
+}
+
+function normalizeHostName(host: string): string {
+	return host
+		.trim()
+		.toLowerCase()
+		.replace(/\.local$/, "")
+		.replace(/\s+/g, " ");
+}
+
+function isLocalExecutionHost(task: AgentTask): boolean {
+	const taskHost = task.exec_host?.trim();
+	// No host metadata recorded → degrade to "local" rather than surfacing a
+	// remote-only action menu the user can't follow.
+	if (!taskHost) return true;
 	return (
-		resolvedValue === resolvedHome ||
-		resolvedValue.startsWith(`${resolvedHome}${path.sep}`)
+		normalizeHostName(taskHost) === normalizeHostName(getCurrentMachineHost())
 	);
 }
 
 export function isRemoteNodeTaskForCurrentHost(task: AgentTask): boolean {
 	if (!hasNodeExecutionMetadata(task)) return false;
-	return !(
-		isPathUnderLocalHome(task.exec_cwd) ||
-		isPathUnderLocalHome(task.project_dir)
-	);
+	return !isLocalExecutionHost(task);
 }
 
 function getTaskDisplayProjectName(task: AgentTask): string {
@@ -6189,11 +6237,25 @@ export class AgentStatusTreeProvider
 			/^\d+\.\s+\*\*Completion is automatic/i,
 			/^You MUST write a completion report/i,
 			/^This file is checked by the orchestrator/i,
+			// rc.37: defensive skip of harness role preambles synthesized by
+			// `~/projects/ghostty-launcher/scripts/write-prompt.sh` (lines
+			// ~117-131). The launcher wraps user prompts with one of these
+			// role declarations before claude sees them, and `prompt_file` in
+			// tasks.json points at the WRAPPED file — so without this skip
+			// every task row in the tree shows the harness boilerplate
+			// instead of the user's actual prompt content.
+			/^You are the implementation agent for task_id/i,
+			/^You are the team lead for task_id/i,
+			/^You are the test agent for task_id/i,
 		].some((pattern) => pattern.test(line));
 	}
 
 	private getPromptSummaryFromPreferredSection(lines: string[]): string | null {
 		const preferredSectionPatterns = [
+			// rc.37: launcher (write-prompt.sh) emits `## User Prompt`
+			// immediately before the user's content. Highest priority so the
+			// summary always reflects user intent rather than wrapper boilerplate.
+			/^#{1,6}\s+User Prompt\b/i,
 			/^#{1,6}\s+Task\b/i,
 			/^#{1,6}\s+Goal\b/i,
 			/^#{1,6}\s+Objective\b/i,
@@ -8253,6 +8315,20 @@ export class AgentStatusTreeProvider
 		if (task.status === "running" && surfaceSummary.shortTag) {
 			descriptionParts.push(surfaceSummary.shortTag);
 		}
+		// At-a-glance "Resume will hit the exact conversation" indicator.
+		// Presence of the codicon-link + first 8 chars of the UUID = a
+		// task-specific resume target exists; absence on a Claude row = the
+		// resume will fall through to `claude --continue` (project-scoped,
+		// shared across sibling tasks).
+		const claudeResumeBackend = resolveResumeBackend(task);
+		const hasClaudeUuidLink =
+			(claudeResumeBackend === "claude" || claudeResumeBackend === "unknown") &&
+			isValidClaudeSessionId(task.claude_session_id);
+		if (hasClaudeUuidLink) {
+			descriptionParts.push(
+				`$(link) ${task.claude_session_id!.trim().slice(0, 8)}`,
+			);
+		}
 		const rawDescription = isStuck
 			? `${descriptionParts.join(" · ")} (possibly stuck)`
 			: interactiveAwaiting
@@ -8272,6 +8348,12 @@ export class AgentStatusTreeProvider
 		);
 		item.description = description;
 		const codexRunNote = this.formatCodexRunLegacyLauncherNote(task);
+		const resumeTargetLine =
+			claudeResumeBackend === "claude" || claudeResumeBackend === "unknown"
+				? hasClaudeUuidLink
+					? `**Resume target:** \`claude --resume ${task.claude_session_id!.trim()}\``
+					: `**Resume target:** \`claude --continue\` _(no session UUID captured — resumes the most-recent conversation in this directory; may collide with sibling tasks)_`
+				: null;
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${task.id}**`,
@@ -8287,6 +8369,7 @@ export class AgentStatusTreeProvider
 				duration ? `Duration: ${duration}` : null,
 				runtimeBreadcrumb ? `Runtime: ${runtimeBreadcrumb}` : null,
 				transcriptBreadcrumb ? `Transcript: ${transcriptBreadcrumb}` : null,
+				resumeTargetLine,
 				surfaceSummary.tooltipLine,
 				task.project_dir ? `Dir: \`${task.project_dir}\`` : null,
 			]
@@ -8302,9 +8385,17 @@ export class AgentStatusTreeProvider
 				: isReviewed
 					? new vscode.ThemeIcon("pass", new vscode.ThemeColor("charts.green"))
 					: getStatusThemeIcon(task.status);
+		// `.linked` contextValue suffix is added only when a Claude session
+		// UUID is recorded — mirrors the at-a-glance description indicator
+		// (presence = task-specific resume target; absence = `--continue`).
+		// Future `view/item/context` entries that should only appear when a
+		// UUID is captured can gate on `viewItem =~ /\.linked$/`. No
+		// `.unlinked` is emitted: absence carries the same semantic and
+		// keeps the contextValue space tighter for non-claude rows.
+		const claudeLinkSuffix = hasClaudeUuidLink ? ".linked" : "";
 		item.contextValue = isReviewed
-			? `agentTask.${task.status}.reviewed`
-			: `agentTask.${task.status}`;
+			? `agentTask.${task.status}.reviewed${claudeLinkSuffix}`
+			: `agentTask.${task.status}${claudeLinkSuffix}`;
 		item.resourceUri = vscode.Uri.parse(`agent-task:${task.id}`);
 		const isRunning = task.status === "running";
 		item.command = {

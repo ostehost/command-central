@@ -42,6 +42,20 @@ export function supportsInteractiveResume(task: ResumeTask): boolean {
 	);
 }
 
+/**
+ * Claude conversation transcripts live at
+ * `~/.claude/projects/<dirhash>/<uuid>.jsonl`. The basename is a lowercase
+ * v4 UUID and is the literal value accepted by `claude --resume <uuid>`.
+ * Sharing the regex between the resume builder and the tree's at-a-glance
+ * link indicator keeps the contract co-located.
+ */
+const CLAUDE_SESSION_ID_REGEX =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidClaudeSessionId(value?: string | null): boolean {
+	return Boolean(value?.trim() && CLAUDE_SESSION_ID_REGEX.test(value.trim()));
+}
+
 export async function buildResumeCommand(
 	task: ResumeTask,
 	_claudeBaseDir?: string,
@@ -68,14 +82,8 @@ export async function buildResumeCommand(
 			// this ID into tasks.json is a launcher-side follow-up; for
 			// pre-existing tasks (and any task where capture failed), we
 			// fall through to the historical --continue path.
-			const sessionId = task.claude_session_id?.trim();
-			if (
-				sessionId &&
-				/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-					sessionId,
-				)
-			) {
-				return `claude --resume ${sessionId}`;
+			if (isValidClaudeSessionId(task.claude_session_id)) {
+				return `claude --resume ${task.claude_session_id!.trim()}`;
 			}
 			return "claude --continue";
 		}

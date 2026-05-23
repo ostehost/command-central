@@ -14,7 +14,7 @@ const realChildProcess = (globalThis as Record<string, unknown>)[
 ] as typeof import("node:child_process");
 
 import * as path from "node:path";
-import { __setLocalHomeOverrideForTests } from "../../src/providers/agent-status-tree-provider.js";
+import { __setCurrentMachineHostOverrideForTests } from "../../src/providers/agent-status-tree-provider.js";
 import {
 	type AgentStatusTreeProvider,
 	createMockRegistry,
@@ -42,7 +42,7 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 	});
 
 	afterEach(() => {
-		__setLocalHomeOverrideForTests(null);
+		__setCurrentMachineHostOverrideForTests(null);
 		disposeHarness(h);
 	});
 
@@ -458,7 +458,11 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 		});
 
 		test("does not probe tmux for mirrored node tasks on the hub", () => {
-			__setLocalHomeOverrideForTests("/Users/hub-test-home");
+			// rc.37: classification is host-based. Simulate "this test runs on
+			// the hub, looking at a task that ran on the MacBook node" by
+			// pinning current host to a different name than the task's
+			// exec_host.
+			__setCurrentMachineHostOverrideForTests("Some Other Mac");
 			const task = createMockTask({
 				id: "node-mirror-running",
 				status: "running",
