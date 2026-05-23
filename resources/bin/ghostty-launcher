@@ -6,7 +6,7 @@
 #
 set -euo pipefail
 
-readonly VERSION="1.2.0"
+readonly VERSION="1.2.1"
 LAUNCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LAUNCHER_DIR
 # Ghostty binary lookup chain: explicit env var → stock Ghostty
@@ -1357,33 +1357,38 @@ main() {
 			if [[ "$send_mux" == "zellij" ]]; then
 				send_socket_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ghostty-launcher/zellij/${send_safe}"
 				mkdir -p "$send_socket_dir"
-				# Is the session currently alive (not EXITED)?
+				# ALWAYS `open` the bundle. The previous "skip open if session
+				# alive" optimization was wrong: zellij sessions can be
+				# daemon-alive but client-detached (no Ghostty window is
+				# displaying them — typical after the user closes the window
+				# manually). In that state, `write-chars` lands in the session
+				# but the user sees nothing.
+				#
+				# `open` (no -n) is idempotent on macOS:
+				#   - bundle process not running → spawns fresh Ghostty +
+				#     runs launch-zellij.sh which attaches a client
+				#   - bundle process running → activates the existing window
+				#     (focus); no duplicate process.
+				#
+				# Each bundle has a unique CFBundleIdentifier so this never
+				# conflicts with stock Ghostty or with other project bundles.
+				if ! /usr/bin/open "$send_bundle" 2>/dev/null; then
+					echo "Error: failed to open $send_bundle" >&2
+					exit 3
+				fi
+				# Wait for the session to be alive (non-EXITED) on the
+				# bundle's socket. If the bundle process was already running
+				# AND attached, this short-circuits immediately.
 				send_alive=0
-				if ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij list-sessions --no-formatting 2>/dev/null |
-					sed -E 's/[[:space:]]*[[(].*$//' | awk '{print $1}' |
-					grep -qx "$send_session"; then
-					if ! ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij list-sessions --no-formatting 2>/dev/null |
-						grep -E "^${send_session}([[:space:]]|$)" | grep -q "EXITED"; then
+				send_deadline=$(($(date +%s) + send_timeout))
+				while [[ $(date +%s) -lt $send_deadline ]]; do
+					if ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij list-sessions --no-formatting 2>/dev/null |
+						grep -E "^${send_session}([[:space:]]|$)" | grep -vq "EXITED"; then
 						send_alive=1
+						break
 					fi
-				fi
-				if [[ "$send_alive" -ne 1 ]]; then
-					# Force a fresh bundle launch so launch-zellij.sh runs and
-					# the session goes from EXITED (or missing) to active.
-					if ! /usr/bin/open -n "$send_bundle" 2>/dev/null; then
-						echo "Error: failed to open $send_bundle" >&2
-						exit 3
-					fi
-					send_deadline=$(($(date +%s) + send_timeout))
-					while [[ $(date +%s) -lt $send_deadline ]]; do
-						if ZELLIJ_SOCKET_DIR="$send_socket_dir" zellij list-sessions --no-formatting 2>/dev/null |
-							grep -E "^${send_session}([[:space:]]|$)" | grep -vq "EXITED"; then
-							send_alive=1
-							break
-						fi
-						sleep 0.4
-					done
-				fi
+					sleep 0.4
+				done
 				if [[ "$send_alive" -ne 1 ]]; then
 					echo "Error: zellij session '$send_session' did not become active within ${send_timeout}s" >&2
 					exit 4
