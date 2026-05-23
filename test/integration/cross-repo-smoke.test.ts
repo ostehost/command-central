@@ -367,41 +367,75 @@ describe.if(launcherAvailable)(
 			expect(tmpl).toContain("\\$HOME/.local/bin");
 		});
 
-		// rc.33: --send must (re)create the bundle each call so a launcher
-		// upgrade (new launch-zellij.sh template) reaches users without
-		// requiring them to manually delete /Applications/Projects/X.app.
-		test("launcher --send block always recreates the bundle (no `if [[ ! -d`)", () => {
+		// rc.34 (revising rc.33): --send creates the bundle only when
+		// missing. The rc.33 always-recreate behavior added 3-4s
+		// (codesign, fileicon, lsregister) to every send. With rc.34's
+		// `delete-session --force` + fresh `open`, the launch-zellij.sh
+		// template runs from scratch each send anyway, so re-codesigning
+		// the .app on every click is wasted work. Bundle freshness on a
+		// launcher upgrade comes via the default `launcher <dir>` path
+		// (which still always recreates) or an explicit user rebuild.
+		test("launcher --send block invokes create_bundle (only when missing)", () => {
 			const launcherSource = fs.readFileSync(LAUNCHER_BIN, "utf-8");
-			// The --send case body — find from `--send)` to next `--version`
-			// case label (a known sibling).
 			const sendBody =
 				launcherSource.match(/--send\)([\s\S]*?)--version\s*\|\s*-v\)/)?.[1] ??
 				"";
 			expect(sendBody.length).toBeGreaterThan(0);
-			// Forbid the "only create if missing" gate that would freeze the
-			// bundle's launch script at first-install time.
-			expect(sendBody).not.toMatch(
-				/if\s+\[\[\s+!\s+-d\s+"?\$send_bundle"?\s+\]\]/,
-			);
-			// Positive contract: a create_bundle call happens.
+			// create_bundle must be reachable (first-time / fresh-install).
 			expect(sendBody).toContain("create_bundle");
+		});
+
+		// rc.34 regression lock: --send must `zellij delete-session --force`
+		// the project's session before re-opening the bundle. Without this,
+		// the session stays as an EXITED entry, the bundle's launch-zellij.sh
+		// takes the `zellij attach` branch instead of `zellij -n LAYOUT
+		// --session`, and the pane's `command=` (launch-main-pane.sh) is
+		// never re-executed. That means the .pending-cmd file is never
+		// consumed and the resume command silently never runs.
+		test("launcher --send deletes the session before opening (forces fresh pane spawn)", () => {
+			const launcherSource = fs.readFileSync(LAUNCHER_BIN, "utf-8");
+			// Look for `zellij delete-session ... --force` inside the
+			// --send case body.
+			const sendBody =
+				launcherSource.match(/--send\)([\s\S]*?)--version\s*\|\s*-v\)/)?.[1] ??
+				"";
+			expect(sendBody.length).toBeGreaterThan(0);
+			expect(sendBody).toMatch(
+				/zellij\s+delete-session\s+"\$send_session"\s+--force/,
+			);
+		});
+
+		// rc.34 regression lock: the bundle's launch script template MUST
+		// invoke launch-main-pane.sh (not the user shell directly) in the
+		// main pane. That wrapper is what reads .pending-cmd and ensures
+		// the file-handoff command actually runs before the user sees a
+		// prompt. Without this, --send writes .pending-cmd but nothing
+		// consumes it.
+		test("launcher layout template wires main pane to launch-main-pane.sh", () => {
+			const launcherSource = fs.readFileSync(LAUNCHER_BIN, "utf-8");
+			expect(launcherSource).toContain("launch-main-pane.sh");
+			expect(launcherSource).toMatch(/\.pending-cmd/);
 		});
 
 		test("launcher source has unconditional `open $send_bundle` for the --send path", () => {
 			const launcherSource = fs.readFileSync(LAUNCHER_BIN, "utf-8");
 			// MUST contain at least one `/usr/bin/open "$send_bundle"`.
-			// `$send_bundle` is the local var name only used inside --send,
-			// so any match means the --send code path opens the bundle.
+			// `$send_bundle` is local to --send so any match proves the
+			// --send code path opens the bundle.
 			const openOccurrences = launcherSource.match(
 				/\/usr\/bin\/open\s+(?:-n\s+)?"?\$send_bundle/g,
 			);
 			expect(openOccurrences).not.toBeNull();
 			expect((openOccurrences ?? []).length).toBeGreaterThanOrEqual(1);
-			// MUST NOT have the specific old pattern we just removed:
-			// `if [[ "$send_alive" -ne 1 ]]; then ... /usr/bin/open ... fi`
-			// inside ~300 chars (the optimization span).
+			// The old rc.31 anti-pattern was:
+			//   if [[ "$send_alive" -ne 1 ]]; then ... /usr/bin/open ... fi
+			// where the `open` was gated INSIDE the alive-check block. The
+			// rc.34 architecture has `send_alive` only as a POST-open
+			// success check (an error/exit branch — no `open` follows).
+			// Match the gated-open pattern strictly: the `open` must
+			// appear inside the same `if` block, before the next `fi`.
 			const aliveGatedOpen =
-				/if\s+\[\[\s+"?\$send_alive"?\s+-ne\s+1\s+\]\][\s\S]{0,300}\/usr\/bin\/open/;
+				/if\s+\[\[\s+"?\$send_alive"?\s+-ne\s+1\s+\]\];?\s*then\s+(?:(?!\bfi\b)[\s\S])*?\/usr\/bin\/open/;
 			expect(launcherSource).not.toMatch(aliveGatedOpen);
 		});
 
