@@ -832,6 +832,70 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 				expect(item.description).toContain("🔗 535200b6");
 			});
 
+			test("completed launcher task suppresses lingering Claude session-file discovery by claude_session_id", () => {
+				setAgentStatusConfig(vscodeMock, {
+					groupByProject: false,
+					discoveryEnabled: true,
+				});
+				const task = createMockTask({
+					id: "completed-launcher-task",
+					status: "completed",
+					agent_backend: "claude",
+					session_id: "agent-command-central",
+					claude_session_id: VALID_UUID,
+				});
+				(
+					provider as unknown as {
+						_agentRegistry: {
+							getAllDiscovered: () => Array<{
+								pid: number;
+								projectDir: string;
+								command: string;
+								startTime: Date;
+								sessionId: string;
+								source: "session-file";
+							}>;
+							getDiscoveredAgents: (tasks: (typeof task)[]) => Array<unknown>;
+						};
+					}
+				)._agentRegistry = {
+					getAllDiscovered: () => [
+						{
+							pid: 424242,
+							projectDir: task.project_dir,
+							command: `claude --session-id ${VALID_UUID}`,
+							startTime: new Date(task.started_at),
+							sessionId: VALID_UUID,
+							source: "session-file",
+						},
+					],
+					getDiscoveredAgents: (tasks) =>
+						tasks.some(
+							(candidate) =>
+								candidate.claude_session_id === VALID_UUID &&
+								candidate.status === "completed",
+						)
+							? []
+							: [
+									{
+										pid: 424242,
+										projectDir: task.project_dir,
+										command: `claude --session-id ${VALID_UUID}`,
+										startTime: new Date(task.started_at),
+										sessionId: VALID_UUID,
+										source: "session-file",
+									},
+								],
+				};
+				provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+				provider.reload();
+
+				expect(provider.getTasks().map((candidate) => candidate.id)).toEqual([
+					task.id,
+				]);
+				expect(provider.getTasks()[0]?.status).toBe("completed");
+			});
+
 			test("description omits link emoji for claude task without UUID", () => {
 				const task = createMockTask({
 					status: "completed",

@@ -184,17 +184,10 @@ export class AgentRegistry implements vscode.Disposable {
 	 *   interactive Claude sessions honest-visible alongside launcher work.
 	 */
 	getDiscoveredAgents(launcherTasks: AgentTask[]): DiscoveredAgent[] {
-		const runningLauncherTasks = launcherTasks.filter(
-			(task) => task.status === "running",
-		);
-
 		const merged = this.mergeDiscoverySources();
 
 		return merged.filter(
-			(agent) =>
-				!runningLauncherTasks.some((task) =>
-					this.matchesLauncherTask(agent, task),
-				),
+			(agent) => !this.isSuppressedByLauncherTask(agent, launcherTasks),
 		);
 	}
 
@@ -385,7 +378,10 @@ export class AgentRegistry implements vscode.Disposable {
 	): boolean {
 		for (const task of launcherTasks) {
 			if (!this.matchesLauncherTask(agent, task)) continue;
-			if (TERMINAL_TASK_STATUSES.has(task.status)) {
+			if (
+				task.status === "running" ||
+				TERMINAL_TASK_STATUSES.has(task.status)
+			) {
 				return true;
 			}
 			if (agent.source === "session-file" && this.isTaskStreamIdle(task)) {
@@ -404,12 +400,22 @@ export class AgentRegistry implements vscode.Disposable {
 			if (taskPid === agent.pid) return true;
 		}
 
-		if (
-			task.session_id &&
-			agent.sessionId &&
-			task.session_id === agent.sessionId
-		) {
-			return true;
+		const taskClaudeSessionId = (
+			task as AgentTask & {
+				claude_session_id?: unknown;
+			}
+		).claude_session_id;
+		if (agent.sessionId) {
+			if (task.session_id && task.session_id === agent.sessionId) {
+				return true;
+			}
+			if (
+				typeof taskClaudeSessionId === "string" &&
+				taskClaudeSessionId.length > 0 &&
+				taskClaudeSessionId === agent.sessionId
+			) {
+				return true;
+			}
 		}
 
 		if (!task.project_dir || task.project_dir !== agent.projectDir) {
