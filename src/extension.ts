@@ -1583,7 +1583,14 @@ export async function activate(
 						await showRemoteNodeTaskSurfaceOptions(task);
 						return;
 					}
-					if (task && task.status !== "running") {
+					const hasTerminalFocusSurface =
+						task &&
+						task.status !== "running" &&
+						(task.session_id ||
+							(task.bundle_path &&
+								task.bundle_path !== "(test-mode)" &&
+								task.bundle_path !== "(tmux-mode)"));
+					if (task && task.status !== "running" && !hasTerminalFocusSurface) {
 						await vscode.commands.executeCommand(
 							"commandCentral.resumeAgentSession",
 							node,
