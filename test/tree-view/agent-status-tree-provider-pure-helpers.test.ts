@@ -14,6 +14,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	classifyCompletionRouting,
+	classifyLifecycleConflict,
 	detectAgentType,
 	formatElapsed,
 	getAgentTypeIcon,
@@ -216,5 +217,94 @@ describe("classifyCompletionRouting", () => {
 		});
 		const routing = classifyCompletionRouting(task);
 		expect(routing.kind).toBe("owner-bound");
+	});
+});
+
+describe("classifyLifecycleConflict", () => {
+	test("failed task with alive evidence returns live-process-conflict", () => {
+		const task = createMockTask({
+			status: "failed",
+			error_message: "dead_pid",
+		});
+		const conflict = classifyLifecycleConflict(task, "alive");
+		expect(conflict.kind).toBe("live-process-conflict");
+		expect(conflict.label).toBe("Lifecycle conflict");
+		expect(conflict.detail).toContain("failed");
+		expect(conflict.detail).toContain("dead_pid");
+		expect(conflict.detail).toContain("still alive");
+		expect(conflict.icon).toBe("warning");
+		expect(conflict.iconColor).toBe("charts.orange");
+	});
+
+	test("failed task with dead evidence returns none", () => {
+		const task = createMockTask({
+			status: "failed",
+			error_message: "dead_pid",
+		});
+		const conflict = classifyLifecycleConflict(task, "dead");
+		expect(conflict.kind).toBe("none");
+	});
+
+	test("failed task with unknown evidence returns none", () => {
+		const task = createMockTask({ status: "failed" });
+		const conflict = classifyLifecycleConflict(task, "unknown");
+		expect(conflict.kind).toBe("none");
+	});
+
+	test("failed task with not-checked evidence returns none", () => {
+		const task = createMockTask({ status: "failed" });
+		const conflict = classifyLifecycleConflict(task, "not-checked");
+		expect(conflict.kind).toBe("none");
+	});
+
+	test("stopped task with alive evidence returns conflict", () => {
+		const task = createMockTask({ status: "stopped" });
+		const conflict = classifyLifecycleConflict(task, "alive");
+		expect(conflict.kind).toBe("live-process-conflict");
+		expect(conflict.detail).toContain("stopped");
+	});
+
+	test("killed task with alive evidence returns conflict", () => {
+		const task = createMockTask({ status: "killed" });
+		const conflict = classifyLifecycleConflict(task, "alive");
+		expect(conflict.kind).toBe("live-process-conflict");
+	});
+
+	test("contract_failure with alive evidence returns conflict", () => {
+		const task = createMockTask({ status: "contract_failure" });
+		const conflict = classifyLifecycleConflict(task, "alive");
+		expect(conflict.kind).toBe("live-process-conflict");
+	});
+
+	test("running task with alive evidence returns none (not terminal)", () => {
+		const task = createMockTask({ status: "running" });
+		const conflict = classifyLifecycleConflict(task, "alive");
+		expect(conflict.kind).toBe("none");
+	});
+
+	test("completed task with alive evidence returns none (success status)", () => {
+		const task = createMockTask({ status: "completed" });
+		const conflict = classifyLifecycleConflict(task, "alive");
+		expect(conflict.kind).toBe("none");
+	});
+
+	test("completed_dirty with alive evidence returns none", () => {
+		const task = createMockTask({ status: "completed_dirty" });
+		const conflict = classifyLifecycleConflict(task, "alive");
+		expect(conflict.kind).toBe("none");
+	});
+
+	test("completed_stale with alive evidence returns none", () => {
+		const task = createMockTask({ status: "completed_stale" });
+		const conflict = classifyLifecycleConflict(task, "alive");
+		expect(conflict.kind).toBe("none");
+	});
+
+	test("failed task without error_message omits parenthetical", () => {
+		const task = createMockTask({ status: "failed", error_message: null });
+		const conflict = classifyLifecycleConflict(task, "alive");
+		expect(conflict.kind).toBe("live-process-conflict");
+		expect(conflict.detail).not.toContain("(");
+		expect(conflict.detail).toContain("failed");
 	});
 });

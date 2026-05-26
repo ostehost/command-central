@@ -898,6 +898,50 @@ export function classifyCompletionRouting(
 	};
 }
 
+// ── Lifecycle conflict classification ────────────────────────────────
+
+export type LifecycleConflictKind = "live-process-conflict" | "none";
+
+export interface LifecycleConflictInfo {
+	kind: LifecycleConflictKind;
+	label: string;
+	detail: string;
+	icon: string;
+	iconColor?: string;
+}
+
+const CONFLICT_ELIGIBLE_STATUSES = new Set<AgentTaskStatus>([
+	"failed",
+	"contract_failure",
+	"stopped",
+	"killed",
+]);
+
+export function classifyLifecycleConflict(
+	task: Pick<AgentTask, "status" | "error_message">,
+	livenessEvidence: "alive" | "dead" | "unknown" | "not-checked",
+): LifecycleConflictInfo {
+	if (
+		CONFLICT_ELIGIBLE_STATUSES.has(task.status) &&
+		livenessEvidence === "alive"
+	) {
+		const reason = task.error_message ? ` (${task.error_message})` : "";
+		return {
+			kind: "live-process-conflict",
+			label: "Lifecycle conflict",
+			detail: `Launcher marked ${task.status}${reason} but process is still alive in terminal`,
+			icon: "warning",
+			iconColor: "charts.orange",
+		};
+	}
+	return {
+		kind: "none",
+		label: "",
+		detail: "",
+		icon: "",
+	};
+}
+
 const ROLE_ICONS: Record<AgentRole, string> = {
 	planner: "🔬",
 	developer: "🔨",
@@ -1961,6 +2005,26 @@ export class AgentStatusTreeProvider
 		}
 		if (this.hasLiveDiscoveredSession(task)) return true;
 		return false;
+	}
+
+	/**
+	 * Probe tmux liveness for a task whose status is already terminal.
+	 * Returns the raw evidence tri-state or "not-checked" when the task
+	 * lacks tmux metadata or is remote. Used by rendering to detect
+	 * lifecycle conflicts (launcher says dead, but process is alive).
+	 */
+	private getTerminalTaskLivenessEvidence(
+		task: AgentTask,
+	): "alive" | "dead" | "unknown" | "not-checked" {
+		if (isRemoteNodeTaskForCurrentHost(task)) return "not-checked";
+		if (
+			(task.terminal_backend !== "tmux" &&
+				task.terminal_backend !== undefined) ||
+			!isValidSessionId(task.session_id)
+		) {
+			return "not-checked";
+		}
+		return this.getTmuxPaneAgentEvidence(task);
 	}
 
 	/**
@@ -4871,6 +4935,28 @@ export class AgentStatusTreeProvider
 				icon: routing.icon,
 				iconColor: routing.iconColor,
 			});
+		}
+
+		// ── 8. Lifecycle conflict — launcher vs live process ─────────────
+		const isDone =
+			t.status === "failed" ||
+			t.status === "contract_failure" ||
+			t.status === "stopped" ||
+			t.status === "killed";
+		if (isDone) {
+			const liveness = this.getTerminalTaskLivenessEvidence(t);
+			const conflict = classifyLifecycleConflict(t, liveness);
+			if (conflict.kind === "live-process-conflict") {
+				details.push({
+					type: "detail",
+					label: conflict.label,
+					value: "",
+					description: conflict.detail,
+					taskId: t.id,
+					icon: conflict.icon,
+					iconColor: conflict.iconColor,
+				});
+			}
 		}
 
 		return details;
@@ -8396,6 +8482,16 @@ export class AgentStatusTreeProvider
 		if (taskRouting.kind === "detached" && isDoneStatus) {
 			descriptionParts.push("⚠ detached");
 		}
+		const lifecycleLiveness = isDoneStatus
+			? this.getTerminalTaskLivenessEvidence(task)
+			: ("not-checked" as const);
+		const lifecycleConflict = classifyLifecycleConflict(
+			task,
+			lifecycleLiveness,
+		);
+		if (lifecycleConflict.kind === "live-process-conflict") {
+			descriptionParts.push("⚠ lifecycle conflict");
+		}
 		const surfaceSummary = classifyTaskSurface(task);
 		// Surface tags are the loudest signal for running tasks — a click
 		// routes to a different strategy depending on kind. Skip for done
@@ -8457,10 +8553,15 @@ export class AgentStatusTreeProvider
 				: routingInfo.kind === "detached"
 					? `**Routing:** $(debug-disconnect) Detached — ${routingInfo.detail}`
 					: null;
+		const lifecycleConflictLine =
+			lifecycleConflict.kind === "live-process-conflict"
+				? `**$(warning) Lifecycle conflict:** ${lifecycleConflict.detail}`
+				: null;
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${task.id}**`,
 				`Status: ${getStatusDisplayLabel(task.status)}`,
+				lifecycleConflictLine,
 				codexRunNote,
 				fallback
 					? `Model: ${fallback.actualFull} (fallback from ${fallback.requestedFull})`
@@ -8481,14 +8582,22 @@ export class AgentStatusTreeProvider
 				.join("\n\n"),
 		);
 		item.iconPath =
-			task.status === "completed_stale" || isStuck
+			lifecycleConflict.kind === "live-process-conflict"
 				? new vscode.ThemeIcon(
 						"warning",
-						new vscode.ThemeColor("charts.yellow"),
+						new vscode.ThemeColor("charts.orange"),
 					)
-				: isReviewed
-					? new vscode.ThemeIcon("pass", new vscode.ThemeColor("charts.green"))
-					: getStatusThemeIcon(task.status);
+				: task.status === "completed_stale" || isStuck
+					? new vscode.ThemeIcon(
+							"warning",
+							new vscode.ThemeColor("charts.yellow"),
+						)
+					: isReviewed
+						? new vscode.ThemeIcon(
+								"pass",
+								new vscode.ThemeColor("charts.green"),
+							)
+						: getStatusThemeIcon(task.status);
 		// `.linked` contextValue suffix is added only when a Claude session
 		// UUID is recorded — mirrors the at-a-glance description indicator
 		// (presence = task-specific resume target; absence = `--continue`).
