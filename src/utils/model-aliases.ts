@@ -1,8 +1,12 @@
 const EXACT_MODEL_ALIASES = new Map<string, string>([
+	["anthropic/claude-opus-4-7", "opus"],
 	["anthropic/claude-opus-4-6", "opus"],
 	["anthropic/claude-opus-4-5", "opus"],
+	["anthropic/claude-sonnet-4-6", "sonnet"],
 	["anthropic/claude-sonnet-4-5", "sonnet"],
 	["anthropic/claude-sonnet-4-0", "sonnet"],
+	["claude-opus-4-7", "opus"],
+	["claude-sonnet-4-6", "sonnet"],
 	["anthropic/claude-3.7-sonnet", "sonnet"],
 	["anthropic/claude-3.5-sonnet", "sonnet"],
 	["anthropic/claude-3.5-haiku", "haiku"],
