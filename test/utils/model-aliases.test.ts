@@ -3,8 +3,15 @@ import { getModelAlias } from "../../src/utils/model-aliases.js";
 
 describe("getModelAlias", () => {
 	test("maps common Anthropic models to short aliases", () => {
+		expect(getModelAlias("anthropic/claude-opus-4-7")).toBe("opus");
 		expect(getModelAlias("anthropic/claude-opus-4-6")).toBe("opus");
+		expect(getModelAlias("anthropic/claude-sonnet-4-6")).toBe("sonnet");
 		expect(getModelAlias("anthropic/claude-3.7-sonnet")).toBe("sonnet");
+	});
+
+	test("maps unprefixed launcher model strings", () => {
+		expect(getModelAlias("claude-opus-4-7")).toBe("opus");
+		expect(getModelAlias("claude-sonnet-4-6")).toBe("sonnet");
 	});
 
 	test("maps common OpenAI Codex and Gemini models to short aliases", () => {
