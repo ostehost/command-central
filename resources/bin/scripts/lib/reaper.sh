@@ -981,3 +981,147 @@ detect_orphaned_terminals() {
 
 	return "$orphan_count"
 }
+
+# ── Child Process Cleanup ────────────────────────────────────────────
+# Cleans up descendant processes left behind by a completed/failed agent.
+#
+# Two-phase approach:
+#   Phase 1: If agent PID is still alive, walk the process tree via recursive
+#            pgrep -P and collect descendants for termination.
+#   Phase 2: Scan for orphaned processes (reparented to launchd, PPID=1) that
+#            carry OSTE_TASK_ID=<task_id> in their inherited environment.
+#
+# Safety invariants:
+#   - Never kills the calling process (oste-complete.sh) or its parent shell
+#   - Never kills the terminal backend (tmux server, Ghostty, persist)
+#   - Only targets processes with provable task affinity (env marker OR
+#     direct descendant of the recorded agent PID)
+#   - Idempotent: safe to call multiple times for the same task_id
+
+_collect_descendant_pids() {
+	local parent_pid="$1"
+	shift
+	local exclude_list="$*"
+
+	local children
+	children=$(pgrep -P "$parent_pid" 2>/dev/null || true)
+	[[ -n "$children" ]] || return 0
+
+	local child
+	while IFS= read -r child; do
+		[[ -n "$child" ]] || continue
+		local skip=false
+		local ep
+		for ep in $exclude_list; do
+			[[ "$child" == "$ep" ]] && {
+				skip=true
+				break
+			}
+		done
+		[[ "$skip" == true ]] && continue
+		# Recurse into grandchildren first (bottom-up collection)
+		_collect_descendant_pids "$child" "$exclude_list"
+		echo "$child"
+	done <<<"$children"
+}
+
+_find_task_orphans_by_env() {
+	local task_id="$1"
+	shift
+	local exclude_list="$*"
+	local env_marker="OSTE_TASK_ID=${task_id}"
+
+	local pid ppid
+	while read -r pid ppid; do
+		# Only target processes reparented to launchd (PPID=1).
+		# Processes with a living parent are either the terminal shell
+		# itself or something the user started after the agent exited.
+		[[ "$ppid" == "1" ]] || continue
+		pid="${pid#"${pid%%[! ]*}"}"
+		[[ -n "$pid" ]] || continue
+		[[ "$pid" =~ ^[0-9]+$ ]] || continue
+
+		local skip=false
+		local ep
+		for ep in $exclude_list; do
+			[[ "$pid" == "$ep" ]] && {
+				skip=true
+				break
+			}
+		done
+		[[ "$skip" == true ]] && continue
+
+		# macOS: ps eww shows environment in the command column for same-user procs
+		if ps eww -p "$pid" -o command= 2>/dev/null | grep -qF "$env_marker"; then
+			echo "$pid"
+			# Also collect descendants of this orphan (they may not be PPID=1)
+			_collect_descendant_pids "$pid" "$exclude_list"
+		fi
+	done < <(ps -u "$(id -u)" -o pid=,ppid= 2>/dev/null || true)
+}
+
+_terminate_pid_list() {
+	local grace="$1"
+	shift
+	[[ $# -gt 0 ]] || return 0
+
+	local pid
+	for pid in "$@"; do
+		kill -TERM "$pid" 2>/dev/null || true
+	done
+
+	sleep "$grace"
+
+	for pid in "$@"; do
+		kill -0 "$pid" 2>/dev/null || continue
+		kill -KILL "$pid" 2>/dev/null || true
+	done
+}
+
+cleanup_task_descendants() {
+	local task_id="$1"
+	local grace="${OSTE_CLEANUP_GRACE_SECONDS:-2}"
+	local pid_file="/tmp/oste-pid-${task_id}"
+	local agent_pid=""
+	local -a target_pids=()
+
+	local my_pid=$$
+	local my_ppid=$PPID
+
+	# Phase 1: If agent PID is still alive, enumerate its full descendant tree
+	if [[ -f "$pid_file" ]]; then
+		agent_pid=$(cat "$pid_file" 2>/dev/null || true)
+		if [[ -n "$agent_pid" ]] && [[ "$agent_pid" =~ ^[0-9]+$ ]] && kill -0 "$agent_pid" 2>/dev/null; then
+			local desc
+			while IFS= read -r desc; do
+				[[ -n "$desc" ]] || continue
+				target_pids+=("$desc")
+			done < <(_collect_descendant_pids "$agent_pid" "$my_pid $my_ppid")
+		fi
+	fi
+
+	# Phase 2: Find orphaned processes via OSTE_TASK_ID env marker
+	local orphan
+	while IFS= read -r orphan; do
+		[[ -n "$orphan" ]] || continue
+		# De-duplicate against Phase 1 results
+		local already=false
+		local t
+		for t in "${target_pids[@]+"${target_pids[@]}"}"; do
+			[[ "$orphan" == "$t" ]] && {
+				already=true
+				break
+			}
+		done
+		[[ "$already" == true ]] && continue
+		target_pids+=("$orphan")
+	done < <(_find_task_orphans_by_env "$task_id" "$my_pid $my_ppid")
+
+	if [[ ${#target_pids[@]} -eq 0 ]]; then
+		return 0
+	fi
+
+	echo "Cleaning up ${#target_pids[@]} descendant process(es) for task ${task_id}: ${target_pids[*]}" >&2
+	_terminate_pid_list "$grace" "${target_pids[@]}"
+	return 0
+}
