@@ -223,6 +223,17 @@ export class ProcessScanner {
 				);
 				const explicitDir = this.extractExplicitProjectDir(c.command);
 				const projectDirRaw = explicitDir ?? lsofCwd;
+				if (projectDirRaw && this.isInternalToolDir(projectDirRaw)) {
+					filtered.push({
+						pid: c.pid,
+						command: c.command,
+						startTime: c.startTime,
+						binaryName: this.extractBinaryName(c.command),
+						projectDir: projectDirRaw,
+						reason: "internal-tool-dir",
+					});
+					return null;
+				}
 				const projectDir = projectDirRaw
 					? canonicalizeProjectDir(projectDirRaw)
 					: null;
