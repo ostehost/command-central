@@ -214,7 +214,7 @@ function selectedAgentStatusOwnerFields(
 			source_authority: run.sourceAuthority ?? run.source.kind,
 			source_status: run.sourceStatus,
 			orchestration_mode: run.orchestrationMode,
-			available_owner_actions: [],
+			available_owner_actions: run.ownerActions ?? [],
 		};
 	}
 	if (element.type === "task") {

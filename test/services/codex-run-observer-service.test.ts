@@ -892,4 +892,101 @@ describe("CodexRunObserverService", () => {
 		expect(source).not.toMatch(/from "node:fs"|fs\.watch|watch\(/);
 		expect(source).not.toMatch(/CodexRunObserverService.*refresh/s);
 	});
+
+	test("preserves owner_actions on standalone launcher-backed completed run", () => {
+		const service = new CodexRunObserverService();
+		const runs = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "cc-completed-task",
+					status: "completed",
+					source_authority: "launcher",
+					owner_kind: "launcher",
+					owner_actions: [{ action: "focusTerminal", ownerKind: "launcher" }],
+					session_id: "agent-command-central",
+					agent_backend: "claude-code",
+					completed_at: new Date(5_000).toISOString(),
+				}),
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		expect(runs).toHaveLength(1);
+		expect(runs[0]?.ownerActions).toEqual([
+			{ action: "focusTerminal", ownerKind: "launcher" },
+		]);
+		expect(runs[0]?.status).toBe("succeeded");
+		expect(runs[0]?.fieldSources.ownerActions).toEqual([
+			{ kind: "launcher", id: "cc-completed-task", path: "/tmp/project-a" },
+		]);
+	});
+
+	test("merges owner_actions when launcher joins an existing run", () => {
+		const service = new CodexRunObserverService();
+		const runs = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "cc-joined-task",
+					status: "completed",
+					source_authority: "launcher",
+					owner_kind: "launcher",
+					owner_actions: [{ action: "focusTerminal", ownerKind: "launcher" }],
+					session_id: "oc-1-session",
+					agent_backend: "claude-code",
+					completed_at: new Date(5_000).toISOString(),
+				}),
+			],
+			openClawTasks: [
+				openClawTask({
+					taskId: "cc-joined-task",
+					childSessionKey: "oc-1-session",
+					status: "succeeded",
+				}),
+			],
+			taskFlows: [],
+		});
+
+		expect(runs).toHaveLength(1);
+		expect(runs[0]?.ownerActions).toEqual([
+			{ action: "focusTerminal", ownerKind: "launcher" },
+		]);
+	});
+
+	test("omits ownerActions when launcher has empty or null owner_actions", () => {
+		const service = new CodexRunObserverService();
+		const runs = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "cc-no-actions",
+					status: "completed",
+					source_authority: "launcher",
+					owner_actions: [],
+					agent_backend: "claude-code",
+				}),
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		expect(runs).toHaveLength(1);
+		expect(runs[0]?.ownerActions).toBeUndefined();
+
+		const runsNull = service.project({
+			agentTasks: [
+				launcherTask({
+					id: "cc-null-actions",
+					status: "completed",
+					source_authority: "launcher",
+					owner_actions: null,
+					agent_backend: "claude-code",
+				}),
+			],
+			openClawTasks: [],
+			taskFlows: [],
+		});
+
+		expect(runsNull).toHaveLength(1);
+		expect(runsNull[0]?.ownerActions).toBeUndefined();
+	});
 });

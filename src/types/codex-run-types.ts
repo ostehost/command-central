@@ -194,6 +194,7 @@ export interface CodexRunView {
 	endedAt?: number;
 	artifactPaths?: string[];
 	evidence?: CodexRunEvidence[];
+	ownerActions?: unknown[];
 	provenance?: string[];
 	fieldSources: Partial<Record<CodexRunViewField, CodexRunSourceRef[]>>;
 }

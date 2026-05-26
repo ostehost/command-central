@@ -7946,7 +7946,10 @@ export class AgentStatusTreeProvider
 			(run.source.kind === "launcher" ? run.source.id : undefined);
 		if (!taskId) return undefined;
 		const task = this.getDisplayTaskById(taskId);
-		return task?.status === "running" ? task : undefined;
+		if (!task) return undefined;
+		if (task.status === "running") return task;
+		if (task.session_id) return task;
+		return undefined;
 	}
 
 	private createTaskFlowItem(flow: TaskFlow): vscode.TreeItem {

@@ -370,6 +370,7 @@ export class CodexRunObserverService {
 			endedAt: completedAt,
 			artifactPaths: artifacts.length > 0 ? artifacts : undefined,
 			evidence: evidence.length > 0 ? evidence : undefined,
+			ownerActions: this.normalizeOwnerActions(task.owner_actions),
 			provenance: [this.formatSourceRef(ref)],
 			fieldSources: {},
 		};
@@ -404,6 +405,7 @@ export class CodexRunObserverService {
 		if (run.endedAt != null) this.addFieldSource(run, "endedAt", ref);
 		if (artifacts.length > 0) this.addFieldSource(run, "artifactPaths", ref);
 		if (evidence.length > 0) this.addFieldSource(run, "evidence", ref);
+		if (run.ownerActions) this.addFieldSource(run, "ownerActions", ref);
 		return run;
 	}
 
@@ -585,6 +587,12 @@ export class CodexRunObserverService {
 				...evidence,
 			]);
 			this.addFieldSource(run, "evidence", ref);
+		}
+
+		const launcherOwnerActions = this.normalizeOwnerActions(task.owner_actions);
+		if (launcherOwnerActions && !run.ownerActions) {
+			run.ownerActions = launcherOwnerActions;
+			this.addFieldSource(run, "ownerActions", ref);
 		}
 	}
 
@@ -1554,6 +1562,13 @@ export class CodexRunObserverService {
 			if (trimmed) return trimmed;
 		}
 		return "";
+	}
+
+	private normalizeOwnerActions(
+		raw: unknown[] | null | undefined,
+	): unknown[] | undefined {
+		if (!Array.isArray(raw) || raw.length === 0) return undefined;
+		return raw;
 	}
 
 	private uniqueStrings(values: string[]): string[] {
