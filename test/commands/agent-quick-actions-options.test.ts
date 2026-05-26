@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { getAgentQuickActions } from "../../src/commands/agent-quick-actions.js";
 
 describe("agent quick action options", () => {
-	test("completed tasks include diff/output/focus/restart", () => {
+	test("completed tasks include transcript/diff/output/focus/restart", () => {
 		const labels = getAgentQuickActions("completed", false).map(
 			(action) => action.label,
 		);
 		expect(labels).toEqual([
+			"Open Prior Chat",
 			"View Diff",
 			"Show Output",
 			"Focus Terminal",
@@ -19,6 +20,7 @@ describe("agent quick action options", () => {
 			(action) => action.label,
 		);
 		expect(labels).toEqual([
+			"Open Prior Chat",
 			"View Diff",
 			"Show Output",
 			"Focus Terminal",
@@ -27,25 +29,43 @@ describe("agent quick action options", () => {
 		]);
 	});
 
-	test("failed tasks include output/diff/restart/remove", () => {
+	test("failed tasks include transcript/output/diff/restart/remove", () => {
 		const labels = getAgentQuickActions("failed", false).map(
 			(action) => action.label,
 		);
-		expect(labels).toEqual(["Show Output", "View Diff", "Restart", "Remove"]);
+		expect(labels).toEqual([
+			"Open Prior Chat",
+			"Show Output",
+			"View Diff",
+			"Restart",
+			"Remove",
+		]);
 	});
 
-	test("stopped tasks include output/diff/restart/remove", () => {
+	test("stopped tasks include transcript/output/diff/restart/remove", () => {
 		const labels = getAgentQuickActions("stopped", false).map(
 			(action) => action.label,
 		);
-		expect(labels).toEqual(["Show Output", "View Diff", "Restart", "Remove"]);
+		expect(labels).toEqual([
+			"Open Prior Chat",
+			"Show Output",
+			"View Diff",
+			"Restart",
+			"Remove",
+		]);
 	});
 
-	test("killed tasks include output/diff/restart/remove", () => {
+	test("killed tasks include transcript/output/diff/restart/remove", () => {
 		const labels = getAgentQuickActions("killed", false).map(
 			(action) => action.label,
 		);
-		expect(labels).toEqual(["Show Output", "View Diff", "Restart", "Remove"]);
+		expect(labels).toEqual([
+			"Open Prior Chat",
+			"Show Output",
+			"View Diff",
+			"Restart",
+			"Remove",
+		]);
 	});
 
 	test("resume session is prepended when a resumable session exists", () => {
@@ -54,6 +74,7 @@ describe("agent quick action options", () => {
 		);
 		expect(labels).toEqual([
 			"Resume Session",
+			"Open Prior Chat",
 			"Show Output",
 			"View Diff",
 			"Restart",

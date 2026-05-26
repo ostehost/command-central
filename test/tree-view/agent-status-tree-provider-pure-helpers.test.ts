@@ -13,11 +13,13 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+	classifyCompletionRouting,
 	detectAgentType,
 	formatElapsed,
 	getAgentTypeIcon,
 	getStatusThemeIcon,
 } from "../../src/providers/agent-status-tree-provider.js";
+import { createMockTask } from "./_helpers/agent-status-tree-provider-test-base.js";
 
 describe("formatElapsed", () => {
 	test("shows minutes for short durations", () => {
@@ -116,5 +118,103 @@ describe("status icon mapping", () => {
 			expect(icon.id).toBe(expectedIcon);
 			expect(icon.color?.id).toBe(expectedColor);
 		}
+	});
+});
+
+describe("classifyCompletionRouting", () => {
+	test("completed task with session_key + callback_url is owner-bound", () => {
+		const task = createMockTask({
+			status: "completed",
+			session_key: "agent:main:dashboard:fff3d5cc",
+			callback_url: "https://gateway.partnerai.dev/hooks/agent",
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("owner-bound");
+		expect(routing.label).toBe("Owner-bound completion");
+		expect(routing.icon).toBe("radio-tower");
+	});
+
+	test("completed task with callback_url only is owner-bound", () => {
+		const task = createMockTask({
+			status: "completed",
+			session_key: null,
+			callback_url: "https://gateway.partnerai.dev/hooks/agent",
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("owner-bound");
+	});
+
+	test("completed task with session_key only is owner-bound", () => {
+		const task = createMockTask({
+			status: "completed",
+			session_key: "agent:main:dashboard:fff3d5cc",
+			callback_url: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("owner-bound");
+	});
+
+	test("completed task with no session_key and no callback_url is detached", () => {
+		const task = createMockTask({
+			status: "completed",
+			session_key: null,
+			callback_url: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("detached");
+		expect(routing.label).toBe("Detached — manual observation required");
+		expect(routing.icon).toBe("debug-disconnect");
+		expect(routing.iconColor).toBe("charts.yellow");
+	});
+
+	test("failed task with no routing fields is detached", () => {
+		const task = createMockTask({
+			status: "failed",
+			session_key: null,
+			callback_url: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("detached");
+	});
+
+	test("running task with session_key is owner-bound", () => {
+		const task = createMockTask({
+			status: "running",
+			session_key: "agent:main:dashboard:fff3d5cc",
+			callback_url: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("owner-bound");
+		expect(routing.label).toBe("Owner-bound");
+	});
+
+	test("running task with no routing fields is detached", () => {
+		const task = createMockTask({
+			status: "running",
+			session_key: null,
+			callback_url: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("detached");
+		expect(routing.label).toBe("Detached");
+	});
+
+	test("empty-string session_key is treated as absent", () => {
+		const task = createMockTask({
+			status: "completed",
+			session_key: "  ",
+			callback_url: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("detached");
+	});
+
+	test("contract_failure with callback is owner-bound", () => {
+		const task = createMockTask({
+			status: "contract_failure",
+			callback_url: "https://example.com/hook",
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("owner-bound");
 	});
 });
