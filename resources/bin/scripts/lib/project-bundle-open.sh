@@ -15,6 +15,14 @@ _project_bundle_process_env() {
 	printf '%s' "$env_dump" | tr ' ' '\n' | awk -F= -v key="$key" '$1 == key {print substr($0, length(key) + 2); exit}'
 }
 
+_project_bundle_plist_value() {
+	local bundle_path="$1"
+	local key="$2"
+	local plist="${bundle_path}/Contents/Info.plist"
+	[[ -f "$plist" ]] || return 0
+	/usr/libexec/PlistBuddy -c "Print :${key}" "$plist" 2>/dev/null || true
+}
+
 _project_bundle_local_host() {
 	scutil --get ComputerName 2>/dev/null || hostname -s 2>/dev/null || hostname 2>/dev/null || echo "unknown"
 }
@@ -121,17 +129,54 @@ _reap_mislaunched_project_bundle() {
 	[[ "$killed_any" -eq 0 ]] || sleep 1
 }
 
-open_project_bundle() {
+_project_bundle_execution_policy_allows() {
 	local bundle_path="$1"
-	[[ -n "$bundle_path" ]] || {
-		echo "Error: bundle path is required" >&2
-		return 1
-	}
 
-	_project_bundle_refuse_test_mode_open "$bundle_path" || return 1
-	_project_bundle_enforce_visible_launcher_host "$bundle_path" || return 1
-	_reap_mislaunched_project_bundle "$bundle_path"
+	command -v spctl >/dev/null 2>&1 || return 0
+	spctl --assess --type execute "$bundle_path" >/dev/null 2>&1
+}
 
+_project_bundle_stock_ghostty_app() {
+	if [[ -n "${GHOSTTY_STOCK_APP:-}" ]]; then
+		printf '%s' "$GHOSTTY_STOCK_APP"
+		return 0
+	fi
+
+	printf '%s' "/Applications/Ghostty.app"
+}
+
+_project_bundle_env_args() {
+	local bundle_path="$1"
+	local key value
+	local bundle_id
+	local -a keys=(
+		XDG_CONFIG_HOME
+		GHOSTTY_APP_NAME
+		GHOSTTY_PROJECT_ID
+		GHOSTTY_PROJECT_PATH
+		GHOSTTY_SESSION_ID
+		GHOSTTY_TASK_ID
+		GHOSTTY_TMUX_CONF
+		GHOSTTY_TMUX_SOCKET
+		GHOSTTY_URL_SCHEME
+		GHOSTTY_USE_TERMINAL_NOTIFIER
+		GHL_MULTIPLEXER
+	)
+
+	for key in "${keys[@]}"; do
+		value=$(_project_bundle_plist_env "$bundle_path" "$key")
+		[[ -n "$value" ]] || continue
+		printf '%s=%s\0' "$key" "$value"
+	done
+
+	bundle_id=$(_project_bundle_plist_value "$bundle_path" CFBundleIdentifier)
+	if [[ -n "$bundle_id" ]]; then
+		printf 'GHOSTTY_BUNDLE_ID=%s\0' "$bundle_id"
+	fi
+}
+
+_open_project_bundle_direct() {
+	local bundle_path="$1"
 	(
 		# `open` inherits the caller environment. When one project terminal
 		# launches another, inherited Ghostty identity/config variables can win
@@ -169,4 +214,57 @@ open_project_bundle() {
 			-u GHL_MULTIPLEXER \
 			open -a "$bundle_path"
 	)
+}
+
+_open_project_bundle_via_stock_ghostty() {
+	local bundle_path="$1"
+	local stock_app config_file
+	stock_app=$(_project_bundle_stock_ghostty_app)
+	config_file="${bundle_path}/Contents/Resources/ghostty-config/ghostty/config"
+
+	if [[ ! -d "$stock_app" ]]; then
+		echo "Error: stock Ghostty app not found for execution-policy fallback: ${stock_app}" >&2
+		return 1
+	fi
+	if [[ ! -f "$config_file" ]]; then
+		echo "Error: project Ghostty config missing for execution-policy fallback: ${config_file}" >&2
+		return 1
+	fi
+
+	echo "Project bundle is rejected by macOS execution policy; opening signed Ghostty.app with project config instead: ${bundle_path}" >&2
+
+	(
+		local -a env_args
+		while IFS= read -r -d '' env_arg; do
+			env_args+=("$env_arg")
+		done < <(_project_bundle_env_args "$bundle_path")
+
+		exec env \
+			-u __CFBundleIdentifier \
+			-u GHOSTTY_PERSIST_SOCKET \
+			-u GHOSTTY_PROJECT_NAME \
+			"${env_args[@]}" \
+			open -na "$stock_app" --args \
+			--config-default-files=false \
+			--config-file="$config_file"
+	)
+}
+
+open_project_bundle() {
+	local bundle_path="$1"
+	[[ -n "$bundle_path" ]] || {
+		echo "Error: bundle path is required" >&2
+		return 1
+	}
+
+	_project_bundle_refuse_test_mode_open "$bundle_path" || return 1
+	_project_bundle_enforce_visible_launcher_host "$bundle_path" || return 1
+	_reap_mislaunched_project_bundle "$bundle_path"
+
+	if _project_bundle_execution_policy_allows "$bundle_path"; then
+		_open_project_bundle_direct "$bundle_path"
+		return $?
+	fi
+
+	_open_project_bundle_via_stock_ghostty "$bundle_path"
 }
