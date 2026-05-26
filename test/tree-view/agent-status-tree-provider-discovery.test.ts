@@ -1730,8 +1730,8 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		const root = provider.getChildren();
 		const firstTask = getFirstTask(root);
 		const details = provider.getChildren(firstTask);
-		// Should have: Prompt + Result (completed with exit_code, no git, no diff, no PR)
-		expect(details).toHaveLength(2);
+		// Should have: Prompt + Result + Routing (completed with exit_code, no git, no diff, no PR)
+		expect(details).toHaveLength(3);
 		expect(details.every((d) => d.type === "detail")).toBe(true);
 	});
 
@@ -1753,7 +1753,7 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		const root = provider.getChildren();
 		const firstTask = getFirstTask(root);
 		const details = provider.getChildren(firstTask);
-		expect(details).toHaveLength(3); // Prompt + Result + PR
+		expect(details).toHaveLength(4); // Prompt + Result + PR + Routing
 		const prDetail = details.find(
 			(d) => d.type === "detail" && d.label === "PR",
 		);
@@ -1993,6 +1993,7 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		const firstTask = getFirstTask(root);
 		const children = provider.getChildren(firstTask);
 		expect(children.map((c) => c.type)).toEqual([
+			"detail",
 			"detail",
 			"detail",
 			"fileChange",

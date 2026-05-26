@@ -202,6 +202,7 @@ export interface AgentTask {
 	exec_visible?: boolean | null;
 	exec_cwd?: string | null;
 	callback_url?: string | null;
+	session_key?: string | null;
 	pending_review_path?: string | null;
 	pending_fixup_path?: string | null;
 	artifact_paths?: string[] | null;
@@ -826,6 +827,77 @@ export function classifyTaskSurface(task: AgentTask): TaskSurfaceSummary {
 	};
 }
 
+// ── Completion routing classification ───────────────────────────────
+
+export type CompletionRoutingKind =
+	| "owner-bound"
+	| "detached"
+	| "not-applicable";
+
+export interface CompletionRoutingInfo {
+	kind: CompletionRoutingKind;
+	label: string;
+	detail: string;
+	icon: string;
+	iconColor?: string;
+}
+
+export function classifyCompletionRouting(
+	task: AgentTask,
+): CompletionRoutingInfo {
+	const isTerminal =
+		task.status === "completed" ||
+		task.status === "completed_dirty" ||
+		task.status === "completed_stale" ||
+		task.status === "failed" ||
+		task.status === "contract_failure" ||
+		task.status === "stopped" ||
+		task.status === "killed";
+	if (!isTerminal) {
+		const hasSessionKey = Boolean(task.session_key?.trim());
+		const hasCallback = Boolean(task.callback_url?.trim());
+		if (hasSessionKey || hasCallback) {
+			return {
+				kind: "owner-bound",
+				label: "Owner-bound",
+				detail: "Completion will route back to orchestrator",
+				icon: "radio-tower",
+				iconColor: "charts.green",
+			};
+		}
+		return {
+			kind: "detached",
+			label: "Detached",
+			detail:
+				"No session_key or callback_url — completion will not auto-report",
+			icon: "debug-disconnect",
+			iconColor: "charts.yellow",
+		};
+	}
+
+	const hasSessionKey = Boolean(task.session_key?.trim());
+	const hasCallback = Boolean(task.callback_url?.trim());
+	if (hasSessionKey || hasCallback) {
+		return {
+			kind: "owner-bound",
+			label: "Owner-bound completion",
+			detail: hasCallback
+				? `Routed via callback: ${task.callback_url}`
+				: `Routed via session_key: ${task.session_key}`,
+			icon: "radio-tower",
+			iconColor: "charts.green",
+		};
+	}
+	return {
+		kind: "detached",
+		label: "Detached — manual observation required",
+		detail:
+			"No session_key or callback_url at launch — completion was not auto-reported to orchestrator",
+		icon: "debug-disconnect",
+		iconColor: "charts.yellow",
+	};
+}
+
 const ROLE_ICONS: Record<AgentRole, string> = {
 	planner: "🔬",
 	developer: "🔨",
@@ -1077,6 +1149,7 @@ function normalizeTask(
 			typeof raw["exec_visible"] === "boolean" ? raw["exec_visible"] : null,
 		exec_cwd: asString(raw["exec_cwd"]) ?? null,
 		callback_url: asString(raw["callback_url"]) ?? null,
+		session_key: asString(raw["session_key"]) ?? null,
 		pending_review_path: asString(raw["pending_review_path"]) ?? null,
 		pending_fixup_path: asString(raw["pending_fixup_path"]) ?? null,
 		artifact_paths: Array.isArray(raw["artifact_paths"])
@@ -4783,8 +4856,21 @@ export class AgentStatusTreeProvider
 			} else if (!this._portDetecting.has(t.id)) {
 				this._portDetecting.add(t.id);
 				void this._detectPortsAsync(t);
-				// Suppress placeholder — row appears only after real ports are detected
 			}
+		}
+
+		// ── 7. Completion routing — owner-bound vs detached ─────────────
+		const routing = classifyCompletionRouting(t);
+		if (routing.kind !== "not-applicable") {
+			details.push({
+				type: "detail",
+				label: routing.label,
+				value: "",
+				description: routing.detail,
+				taskId: t.id,
+				icon: routing.icon,
+				iconColor: routing.iconColor,
+			});
 		}
 
 		return details;
@@ -8306,6 +8392,10 @@ export class AgentStatusTreeProvider
 		if (isReviewed) {
 			descriptionParts.push("✓");
 		}
+		const taskRouting = classifyCompletionRouting(task);
+		if (taskRouting.kind === "detached" && isDoneStatus) {
+			descriptionParts.push("⚠ detached");
+		}
 		const surfaceSummary = classifyTaskSurface(task);
 		// Surface tags are the loudest signal for running tasks — a click
 		// routes to a different strategy depending on kind. Skip for done
@@ -8360,6 +8450,13 @@ export class AgentStatusTreeProvider
 					? `**Resume target:** \`claude --resume ${claudeUuid}\``
 					: `**Resume target:** \`claude --continue\` _(no session UUID captured — resumes the most-recent conversation in this directory; may collide with sibling tasks)_`
 				: null;
+		const routingInfo = classifyCompletionRouting(task);
+		const routingLine =
+			routingInfo.kind === "owner-bound"
+				? `**Routing:** $(radio-tower) Owner-bound — ${routingInfo.detail}`
+				: routingInfo.kind === "detached"
+					? `**Routing:** $(debug-disconnect) Detached — ${routingInfo.detail}`
+					: null;
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${task.id}**`,
@@ -8376,6 +8473,7 @@ export class AgentStatusTreeProvider
 				runtimeBreadcrumb ? `Runtime: ${runtimeBreadcrumb}` : null,
 				transcriptBreadcrumb ? `Transcript: ${transcriptBreadcrumb}` : null,
 				resumeTargetLine,
+				routingLine,
 				surfaceSummary.tooltipLine,
 				task.project_dir ? `Dir: \`${task.project_dir}\`` : null,
 			]

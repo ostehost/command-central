@@ -13,6 +13,7 @@ import * as enableSortCommand from "./commands/enable-sort.js";
 import {
 	buildResumeCommand,
 	canShowResumeAction,
+	getValidClaudeSessionId,
 	isProjectBundleAvailable,
 	resolveProjectBundlePath,
 	resolveResumeBackend,
@@ -52,6 +53,7 @@ import { AgentDecorationProvider } from "./providers/agent-decoration-provider.j
 import {
 	AgentStatusTreeProvider,
 	type AgentTask,
+	classifyCompletionRouting,
 	getTaskExecutionHostLabel,
 	isRemoteNodeTaskForCurrentHost,
 	isValidSessionId,
@@ -1757,7 +1759,6 @@ export async function activate(
 					}
 
 					if (task.terminal_backend === "tmux" && !hasLiveTmuxSession) {
-						// Dead session: offer resume/transcript/launcher via QuickPick
 						const isResumable =
 							canShowResumeAction(task) &&
 							supportsInteractiveResume(task) &&
@@ -1766,51 +1767,91 @@ export async function activate(
 						const transcriptPath =
 							streamFile ?? (await resolveTaskTranscriptPath(task)) ?? null;
 						const hasBundlePath = projectDir && isProjectBundleAvailable(task);
+						const claudeUuid = getValidClaudeSessionId(task.claude_session_id);
+						const routing = classifyCompletionRouting(task);
 
+						type DeadSessionAction =
+							| "rebuild"
+							| "resume"
+							| "transcript"
+							| "launcher"
+							| "diff"
+							| "output"
+							| "info";
 						type DeadSessionPickItem = vscode.QuickPickItem & {
-							action: "rebuild" | "resume" | "transcript" | "launcher" | "diff";
+							action: DeadSessionAction;
 						};
 						const deadItems: DeadSessionPickItem[] = [];
 
-						// "Rebuild" / "Open" first — recreates the Ghostty project bundle and
-						// tmux pane (build-if-missing) so subsequent actions land in the right
-						// surface. Shown whenever we know a project dir, regardless of whether
-						// a bundle currently exists (no bundle ⇒ we should build one).
+						// ── Primary actions ──────────────────────────────
+						if (transcriptPath) {
+							const transcriptLabel = claudeUuid
+								? `$(file) Open Prior Chat  (${claudeUuid.slice(0, 8)}…)`
+								: "$(file) Open Prior Chat";
+							deadItems.push({
+								label: transcriptLabel,
+								description: claudeUuid
+									? `Exact session transcript · ${path.basename(transcriptPath)}`
+									: `Best-match transcript · ${path.basename(transcriptPath)}`,
+								action: "transcript",
+							});
+						}
+						if (isResumable && projectDir) {
+							const resumeLabel = claudeUuid
+								? `$(debug-start) Resume Exact Session  (${claudeUuid.slice(0, 8)}…)`
+								: "$(debug-start) Resume in Interactive Mode";
+							deadItems.push({
+								label: resumeLabel,
+								description: claudeUuid
+									? `claude --resume ${claudeUuid}`
+									: "claude --continue (project-scoped, may collide with sibling tasks)",
+								action: "resume",
+							});
+						}
 						if (projectDir) {
 							const bundlePath = resolveProjectBundlePath(task);
 							deadItems.push({
 								label: hasBundlePath
-									? "$(terminal) Open Ghostty Project Terminal"
-									: "$(terminal-new) Build Ghostty Project Terminal",
+									? "$(terminal) Focus Project Terminal"
+									: "$(terminal-new) Build Project Terminal",
 								description: hasBundlePath
 									? (bundlePath ?? projectDir)
 									: "Create the project bundle + tmux pane",
 								action: hasBundlePath ? "launcher" : "rebuild",
 							});
 						}
-						if (isResumable && projectDir) {
-							deadItems.push({
-								label: "$(debug-start) Resume in Interactive Mode",
-								description:
-									"Start a new interactive resume in the project terminal",
-								action: "resume",
-							});
-						}
-						if (transcriptPath) {
-							deadItems.push({
-								label: "$(file) View Session Transcript",
-								description: path.basename(transcriptPath),
-								action: "transcript",
-							});
-						}
+
+						// ── Review actions ───────────────────────────────
 						deadItems.push({
 							label: "$(diff) View Diff",
 							description: "Show the changes this task made",
 							action: "diff",
 						});
+						deadItems.push({
+							label: "$(output) Show Output",
+							description: "Show stream/output file for this task",
+							action: "output",
+						});
 
-						if (deadItems.length === 1) {
-							// Only diff available — just do it directly.
+						// ── Routing health (info-only separator) ────────
+						const routingIcon =
+							routing.kind === "owner-bound"
+								? "$(radio-tower)"
+								: "$(debug-disconnect)";
+						deadItems.push({
+							label: `${routingIcon} ${routing.label}`,
+							description: routing.detail,
+							action: "info",
+							kind: vscode.QuickPickItemKind.Default,
+						});
+
+						if (
+							deadItems.length === 1 ||
+							(deadItems.length === 2 &&
+								deadItems.every(
+									(i) => i.action === "diff" || i.action === "info",
+								))
+						) {
 							await vscode.commands.executeCommand(
 								"commandCentral.viewAgentDiff",
 								{ type: "task", task },
@@ -1818,14 +1859,18 @@ export async function activate(
 							return;
 						}
 
+						const placeholderSuffix =
+							routing.kind === "detached"
+								? " · detached (manual observation)"
+								: "";
 						const deadPick =
 							await vscode.window.showQuickPick<DeadSessionPickItem>(
 								deadItems,
 								{
-									placeHolder: `Session "${task.session_id}" is no longer live — choose an action`,
+									placeHolder: `${task.id} — session ended${placeholderSuffix}`,
 								},
 							);
-						if (!deadPick) return;
+						if (!deadPick || deadPick.action === "info") return;
 
 						if (deadPick.action === "rebuild" && projectDir) {
 							if (!terminalManager) {
@@ -1866,6 +1911,13 @@ export async function activate(
 						}
 						if (deadPick.action === "launcher" && projectDir) {
 							await terminalManager?.runInProjectTerminal(projectDir);
+							return;
+						}
+						if (deadPick.action === "output") {
+							await vscode.commands.executeCommand(
+								"commandCentral.showAgentOutput",
+								{ type: "task", task },
+							);
 							return;
 						}
 						if (deadPick.action === "diff") {
@@ -2609,52 +2661,74 @@ export async function activate(
 						? path.basename(bundlePath)
 						: "project terminal";
 
+					const claudeUuid = getValidClaudeSessionId(task.claude_session_id);
+					const routing = classifyCompletionRouting(task);
+
 					type ResumeQuickPickItem = vscode.QuickPickItem & {
-						action: "rebuild" | "resume" | "focus" | "transcript";
+						action: "rebuild" | "resume" | "focus" | "transcript" | "info";
 					};
 					const items: ResumeQuickPickItem[] = [];
 
-					// "Build/Open Ghostty Project Terminal" first when no live target
-					// exists (or no Ghostty surface known) — so non-running tasks with
-					// dead tmux panes get a path that lands in the project's Ghostty
-					// terminal instead of silently routing Resume to the VS Code
-					// integrated terminal. See feedback_no_silent_fallbacks.md.
-					const canBuildProjectTerminal =
-						!hasLiveTmuxSession && !hasGhosttyFocusTarget;
-					if (canBuildProjectTerminal) {
+					// ── Primary actions ──────────────────────────────
+					if (transcriptPath) {
+						const transcriptLabel = claudeUuid
+							? `$(file) Open Prior Chat  (${claudeUuid.slice(0, 8)}…)`
+							: "$(file) Open Prior Chat";
 						items.push({
-							label: "$(terminal-new) Build Ghostty Project Terminal",
-							description: "Create the project bundle + tmux pane",
-							action: "rebuild",
+							label: transcriptLabel,
+							description: claudeUuid
+								? `Exact session transcript · ${path.basename(transcriptPath)}`
+								: `Best-match transcript · ${path.basename(transcriptPath)}`,
+							action: "transcript",
 						});
 					}
 					if (resumeCommand) {
+						const resumeLabel = claudeUuid
+							? `$(debug-start) Resume Exact Session  (${claudeUuid.slice(0, 8)}…)`
+							: "$(debug-start) Resume in Interactive Mode";
 						const backendDetail =
 							backend === "codex"
 								? `Run \`codex resume --last\` in ${terminalTarget}`
 								: backend === "gemini"
 									? `Run \`gemini -p --resume latest\` in ${terminalTarget}`
-									: hasLiveTmuxSession
-										? "Steer the resume command into the existing session"
-										: `Run \`claude --resume\` in ${terminalTarget}`;
+									: claudeUuid
+										? `claude --resume ${claudeUuid}`
+										: hasLiveTmuxSession
+											? "claude --continue (project-scoped)"
+											: `claude --continue in ${terminalTarget}`;
 						items.push({
-							label: "$(debug-start) Resume in Interactive Mode",
+							label: resumeLabel,
 							description: backendDetail,
 							action: "resume",
 						});
 					}
 					if (hasLiveTmuxSession || hasGhosttyFocusTarget) {
 						items.push({
-							label: "Focus Existing Terminal",
+							label: "$(terminal) Focus Existing Terminal",
 							description: "Bring the project terminal to the front",
 							action: "focus",
 						});
 					}
-					if (transcriptPath) {
+					const canBuildProjectTerminal =
+						!hasLiveTmuxSession && !hasGhosttyFocusTarget;
+					if (canBuildProjectTerminal) {
 						items.push({
-							label: "View Session Transcript",
-							description: path.basename(transcriptPath),
-							action: "transcript",
+							label: "$(terminal-new) Build Project Terminal",
+							description: "Create the project bundle + tmux pane",
+							action: "rebuild",
+						});
+					}
+
+					// ── Routing health (info-only) ──────────────────
+					if (routing.kind !== "not-applicable") {
+						const routingIcon =
+							routing.kind === "owner-bound"
+								? "$(radio-tower)"
+								: "$(debug-disconnect)";
+						items.push({
+							label: `${routingIcon} ${routing.label}`,
+							description: routing.detail,
+							action: "info",
 						});
 					}
 
@@ -2673,7 +2747,7 @@ export async function activate(
 						await vscode.window.showQuickPick<ResumeQuickPickItem>(items, {
 							placeHolder: `Resume options for ${task.id}`,
 						});
-					if (!selected) {
+					if (!selected || selected.action === "info") {
 						return;
 					}
 

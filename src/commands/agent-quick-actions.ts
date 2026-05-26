@@ -3,6 +3,7 @@ import type { OpenClawTaskStatus } from "../types/openclaw-task-types.js";
 
 export type AgentQuickActionId =
 	| "resumeSession"
+	| "viewTranscript"
 	| "viewDiff"
 	| "showOutput"
 	| "focusTerminal"
@@ -23,6 +24,11 @@ const QUICK_ACTIONS: Record<AgentQuickActionId, AgentQuickActionDefinition> = {
 		id: "resumeSession",
 		label: "Resume Session",
 		command: "commandCentral.resumeAgentSession",
+	},
+	viewTranscript: {
+		id: "viewTranscript",
+		label: "Open Prior Chat",
+		command: "commandCentral.focusAgentTerminal",
 	},
 	viewDiff: {
 		id: "viewDiff",
@@ -57,19 +63,38 @@ const QUICK_ACTIONS: Record<AgentQuickActionId, AgentQuickActionDefinition> = {
 };
 
 const STATUS_ACTIONS: Partial<Record<AgentTaskStatus, AgentQuickActionId[]>> = {
-	completed: ["viewDiff", "showOutput", "focusTerminal", "restart"],
-	completed_dirty: ["viewDiff", "showOutput", "focusTerminal", "restart"],
+	completed: [
+		"viewTranscript",
+		"viewDiff",
+		"showOutput",
+		"focusTerminal",
+		"restart",
+	],
+	completed_dirty: [
+		"viewTranscript",
+		"viewDiff",
+		"showOutput",
+		"focusTerminal",
+		"restart",
+	],
 	completed_stale: [
+		"viewTranscript",
 		"viewDiff",
 		"showOutput",
 		"focusTerminal",
 		"markFailed",
 		"restart",
 	],
-	failed: ["showOutput", "viewDiff", "restart", "remove"],
-	contract_failure: ["showOutput", "viewDiff", "restart", "remove"],
-	stopped: ["showOutput", "viewDiff", "restart", "remove"],
-	killed: ["showOutput", "viewDiff", "restart", "remove"],
+	failed: ["viewTranscript", "showOutput", "viewDiff", "restart", "remove"],
+	contract_failure: [
+		"viewTranscript",
+		"showOutput",
+		"viewDiff",
+		"restart",
+		"remove",
+	],
+	stopped: ["viewTranscript", "showOutput", "viewDiff", "restart", "remove"],
+	killed: ["viewTranscript", "showOutput", "viewDiff", "restart", "remove"],
 };
 
 const OPENCLAW_QUICK_ACTIONS: Record<
