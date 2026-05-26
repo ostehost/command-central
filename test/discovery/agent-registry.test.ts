@@ -175,8 +175,6 @@ afterAll(() => {
 
 import { AgentRegistry } from "../../src/discovery/agent-registry.js";
 
-// TODO(oste): add completed_stale launcher PID masking regression test.
-
 // Helper to create a mock AgentTask (launcher source)
 function createMockTask(overrides: Record<string, unknown> = {}) {
 	return {
@@ -263,10 +261,10 @@ describe("AgentRegistry", () => {
 			expect(discovered).toHaveLength(0);
 		});
 
-		test("does not filter discovered agent when launcher task is non-running", () => {
+		test("filters discovered agent when completed launcher task has matching claude_session_id", () => {
 			sessionFiles["601.json"] = JSON.stringify({
 				pid: 601,
-				sessionId: "shared-sess-stopped",
+				sessionId: "claude-completed-session",
 				cwd: "/shared-project-stopped",
 				startedAt: 1704067200000,
 			});
@@ -277,17 +275,17 @@ describe("AgentRegistry", () => {
 
 			const launcherTasks = [
 				createMockTask({
-					session_id: "shared-sess-stopped",
-					status: "completed_stale",
+					session_id: "agent-command-central",
+					claude_session_id: "claude-completed-session",
+					status: "completed",
 				}),
 			];
 			const discovered = registry.getDiscoveredAgents(launcherTasks);
 
-			expect(discovered).toHaveLength(1);
-			expect(discovered[0]?.pid).toBe(601);
+			expect(discovered).toHaveLength(0);
 		});
 
-		test("does not filter discovered agent when launcher PID is non-running", () => {
+		test("filters discovered agent when completed launcher task has matching PID", () => {
 			sessionFiles["602.json"] = JSON.stringify({
 				pid: 602,
 				sessionId: "pid-shared-stopped",
@@ -302,14 +300,13 @@ describe("AgentRegistry", () => {
 			const launcherTasks = [
 				createMockTask({
 					session_id: "pid-shared-stopped",
-					status: "completed_stale",
+					status: "completed",
 					pid: 602,
 				}),
 			];
 			const discovered = registry.getDiscoveredAgents(launcherTasks);
 
-			expect(discovered).toHaveLength(1);
-			expect(discovered[0]?.pid).toBe(602);
+			expect(discovered).toHaveLength(0);
 		});
 
 		test("filters discovered agent when launcher PID is running", () => {
