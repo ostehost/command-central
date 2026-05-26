@@ -132,6 +132,13 @@ _reap_mislaunched_project_bundle() {
 _project_bundle_execution_policy_allows() {
 	local bundle_path="$1"
 
+	# Locally-created bundles have no quarantine attribute; macOS launches
+	# them without Gatekeeper assessment regardless of signing identity.
+	# Only downloaded (quarantined) bundles need the spctl check.
+	if ! xattr -p com.apple.quarantine "$bundle_path" >/dev/null 2>&1; then
+		return 0
+	fi
+
 	command -v spctl >/dev/null 2>&1 || return 0
 	spctl --assess --type execute "$bundle_path" >/dev/null 2>&1
 }
