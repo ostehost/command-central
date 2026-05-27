@@ -616,7 +616,7 @@ _preview-preflight:
     @echo ""
     @echo "🔎 Preflight..."
     @set -eu; \
-    ALLOW='^.. (resources/bin/ghostty-launcher|resources/bin/\.launcher-version|resources/bin/scripts/|resources/app/\.terminal-version|package\.json|releases/|research/prerelease-gate/)'; \
+    ALLOW='^.. (resources/bin/ghostty-launcher|resources/bin/\.launcher-version|resources/bin/scripts/|resources/app/\.terminal-version|package\.json|releases/|research/)'; \
     CC_UNEXPECTED="$(git status --porcelain | grep -vE "$ALLOW" || true)"; \
     if [ -n "$CC_UNEXPECTED" ]; then \
         echo "❌ command-central has uncommitted changes outside the release-churn allowlist:"; \
