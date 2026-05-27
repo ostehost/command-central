@@ -1569,6 +1569,62 @@ export async function activate(
 			return updatedCount;
 		};
 
+		// Default single-click action for agent tree items.
+		// Running → focus terminal; completed with live session → focus
+		// terminal; otherwise → view diff. The old QuickPick remains
+		// available via context menu "Resume Session" / agentQuickActions.
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				"commandCentral.defaultAgentAction",
+				async (node?: {
+					type: string;
+					task?: AgentTask;
+					agent?: { projectDir: string; sessionId?: string };
+				}) => {
+					const task = node?.task;
+					if (!task) {
+						if (node?.agent) {
+							await vscode.commands.executeCommand(
+								"commandCentral.focusAgentTerminal",
+								node,
+							);
+						}
+						return;
+					}
+
+					if (task.status === "running") {
+						await vscode.commands.executeCommand(
+							"commandCentral.focusAgentTerminal",
+							node,
+						);
+						return;
+					}
+
+					// Non-running: if a live tmux session exists, focus it directly.
+					if (
+						task.terminal_backend === "tmux" &&
+						task.session_id &&
+						isValidSessionId(task.session_id)
+					) {
+						const alive = await isTaskTmuxSessionAlive(task);
+						if (alive) {
+							await vscode.commands.executeCommand(
+								"commandCentral.focusAgentTerminal",
+								node,
+							);
+							return;
+						}
+					}
+
+					// No live terminal: show the diff — the most useful "what happened?" action.
+					await vscode.commands.executeCommand(
+						"commandCentral.viewAgentDiff",
+						node,
+					);
+				},
+			),
+		);
+
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
 				"commandCentral.focusAgentTerminal",
@@ -1792,26 +1848,21 @@ export async function activate(
 
 						// ── Primary actions ──────────────────────────────
 						if (transcriptPath) {
-							const transcriptLabel = claudeUuid
-								? `$(file) Open Prior Chat  (${claudeUuid.slice(0, 8)}…)`
-								: "$(file) Open Prior Chat";
 							deadItems.push({
-								label: transcriptLabel,
+								label: "$(file) View Conversation Transcript",
 								description: claudeUuid
-									? `Exact session transcript · ${path.basename(transcriptPath)}`
-									: `Best-match transcript · ${path.basename(transcriptPath)}`,
+									? `Session ${claudeUuid.slice(0, 8)}… · ${path.basename(transcriptPath)}`
+									: path.basename(transcriptPath),
 								action: "transcript",
 							});
 						}
 						if (isResumable && projectDir) {
-							const resumeLabel = claudeUuid
-								? `$(debug-start) Resume Exact Session  (${claudeUuid.slice(0, 8)}…)`
-								: "$(debug-start) Resume in Interactive Mode";
+							const backendHint = claudeUuid
+								? `Runs claude --resume ${claudeUuid.slice(0, 8)}…`
+								: "Runs claude --continue (project-scoped)";
 							deadItems.push({
-								label: resumeLabel,
-								description: claudeUuid
-									? `claude --resume ${claudeUuid}`
-									: "claude --continue (project-scoped, may collide with sibling tasks)",
+								label: "$(debug-start) Resume Claude Session",
+								description: `Starts a shell command · ${backendHint}`,
 								action: "resume",
 							});
 						}
@@ -1819,11 +1870,11 @@ export async function activate(
 							const bundlePath = resolveProjectBundlePath(task);
 							deadItems.push({
 								label: hasBundlePath
-									? "$(terminal) Focus Project Terminal"
+									? "$(terminal) Focus Terminal"
 									: "$(terminal-new) Build Project Terminal",
 								description: hasBundlePath
 									? (bundlePath ?? projectDir)
-									: "Create the project bundle + tmux pane",
+									: "Create a new project terminal + tmux pane",
 								action: hasBundlePath ? "launcher" : "rebuild",
 							});
 						}
@@ -1840,16 +1891,11 @@ export async function activate(
 							action: "output",
 						});
 
-						// ── Routing health (info-only separator) ────────
-						const routingIcon =
-							routing.kind === "owner-bound"
-								? "$(radio-tower)"
-								: "$(debug-disconnect)";
+						// ── Routing health (non-actionable separator) ────
 						deadItems.push({
-							label: `${routingIcon} ${routing.label}`,
-							description: routing.detail,
+							label: routing.label,
 							action: "info",
-							kind: vscode.QuickPickItemKind.Default,
+							kind: vscode.QuickPickItemKind.Separator,
 						});
 
 						if (
@@ -2678,40 +2724,32 @@ export async function activate(
 
 					// ── Primary actions ──────────────────────────────
 					if (transcriptPath) {
-						const transcriptLabel = claudeUuid
-							? `$(file) Open Prior Chat  (${claudeUuid.slice(0, 8)}…)`
-							: "$(file) Open Prior Chat";
 						items.push({
-							label: transcriptLabel,
+							label: "$(file) View Conversation Transcript",
 							description: claudeUuid
-								? `Exact session transcript · ${path.basename(transcriptPath)}`
-								: `Best-match transcript · ${path.basename(transcriptPath)}`,
+								? `Session ${claudeUuid.slice(0, 8)}… · ${path.basename(transcriptPath)}`
+								: path.basename(transcriptPath),
 							action: "transcript",
 						});
 					}
 					if (resumeCommand) {
-						const resumeLabel = claudeUuid
-							? `$(debug-start) Resume Exact Session  (${claudeUuid.slice(0, 8)}…)`
-							: "$(debug-start) Resume in Interactive Mode";
 						const backendDetail =
 							backend === "codex"
-								? `Run \`codex resume --last\` in ${terminalTarget}`
+								? `Runs codex resume in ${terminalTarget}`
 								: backend === "gemini"
-									? `Run \`gemini -p --resume latest\` in ${terminalTarget}`
+									? `Runs gemini resume in ${terminalTarget}`
 									: claudeUuid
-										? `claude --resume ${claudeUuid}`
-										: hasLiveTmuxSession
-											? "claude --continue (project-scoped)"
-											: `claude --continue in ${terminalTarget}`;
+										? `Runs claude --resume ${claudeUuid.slice(0, 8)}…`
+										: `Runs claude --continue in ${terminalTarget}`;
 						items.push({
-							label: resumeLabel,
-							description: backendDetail,
+							label: "$(debug-start) Resume Claude Session",
+							description: `Starts a shell command · ${backendDetail}`,
 							action: "resume",
 						});
 					}
 					if (hasLiveTmuxSession || hasGhosttyFocusTarget) {
 						items.push({
-							label: "$(terminal) Focus Existing Terminal",
+							label: "$(terminal) Focus Terminal",
 							description: "Bring the project terminal to the front",
 							action: "focus",
 						});
@@ -2721,20 +2759,16 @@ export async function activate(
 					if (canBuildProjectTerminal) {
 						items.push({
 							label: "$(terminal-new) Build Project Terminal",
-							description: "Create the project bundle + tmux pane",
+							description: "Create a new project terminal + tmux pane",
 							action: "rebuild",
 						});
 					}
 
-					// ── Routing health (info-only) ──────────────────
+					// ── Routing health (non-actionable separator) ───
 					if (routing.kind !== "not-applicable") {
-						const routingIcon =
-							routing.kind === "owner-bound"
-								? "$(radio-tower)"
-								: "$(debug-disconnect)";
 						items.push({
-							label: `${routingIcon} ${routing.label}`,
-							description: routing.detail,
+							label: routing.label,
+							kind: vscode.QuickPickItemKind.Separator,
 							action: "info",
 						});
 					}
@@ -2752,7 +2786,7 @@ export async function activate(
 
 					const selected =
 						await vscode.window.showQuickPick<ResumeQuickPickItem>(items, {
-							placeHolder: `Resume options for ${task.id}`,
+							placeHolder: `Actions for ${task.id}`,
 						});
 					if (!selected || selected.action === "info") {
 						return;

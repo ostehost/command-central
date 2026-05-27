@@ -147,12 +147,14 @@ function findCopyNode(
 function findFocusNode(
 	selected: AgentStatusProofSelectedNode,
 ): AgentStatusProofTreeNode | undefined {
-	if (selected.node.command?.command === "commandCentral.focusAgentTerminal") {
+	const isFocusCommand = (cmd?: string) =>
+		cmd === "commandCentral.focusAgentTerminal" ||
+		cmd === "commandCentral.defaultAgentAction";
+	if (isFocusCommand(selected.node.command?.command)) {
 		return selected.node;
 	}
-	return findFirstCommandNode(
-		selected.node,
-		(node) => node.command?.command === "commandCentral.focusAgentTerminal",
+	return findFirstCommandNode(selected.node, (node) =>
+		isFocusCommand(node.command?.command),
 	);
 }
 

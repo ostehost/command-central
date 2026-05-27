@@ -84,7 +84,7 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			expect(icon.id).toBe("warning");
 			expect(icon.color?.id).toBe("charts.yellow");
 			expect(taskItem.command?.command).toBe(
-				"commandCentral.resumeAgentSession",
+				"commandCentral.defaultAgentAction",
 			);
 		});
 

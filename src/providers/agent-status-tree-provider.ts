@@ -8615,10 +8615,8 @@ export class AgentStatusTreeProvider
 		item.resourceUri = vscode.Uri.parse(`agent-task:${task.id}`);
 		const isRunning = task.status === "running";
 		item.command = {
-			command: isRunning
-				? "commandCentral.focusAgentTerminal"
-				: "commandCentral.resumeAgentSession",
-			title: isRunning ? "Focus Terminal" : "Resume Session",
+			command: "commandCentral.defaultAgentAction",
+			title: isRunning ? "Focus Terminal" : "View Changes",
 			arguments: [{ type: "task" as const, task }],
 		};
 		return item;

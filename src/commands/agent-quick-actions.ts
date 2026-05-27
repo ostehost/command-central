@@ -22,12 +22,12 @@ export type OpenClawQuickActionId = "cancel" | "showDetails";
 const QUICK_ACTIONS: Record<AgentQuickActionId, AgentQuickActionDefinition> = {
 	resumeSession: {
 		id: "resumeSession",
-		label: "Resume Session",
+		label: "Resume Claude Session…",
 		command: "commandCentral.resumeAgentSession",
 	},
 	viewTranscript: {
 		id: "viewTranscript",
-		label: "Open Prior Chat",
+		label: "View Conversation Transcript",
 		command: "commandCentral.focusAgentTerminal",
 	},
 	viewDiff: {

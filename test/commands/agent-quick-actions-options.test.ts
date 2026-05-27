@@ -7,7 +7,7 @@ describe("agent quick action options", () => {
 			(action) => action.label,
 		);
 		expect(labels).toEqual([
-			"Open Prior Chat",
+			"View Conversation Transcript",
 			"View Diff",
 			"Show Output",
 			"Focus Terminal",
@@ -20,7 +20,7 @@ describe("agent quick action options", () => {
 			(action) => action.label,
 		);
 		expect(labels).toEqual([
-			"Open Prior Chat",
+			"View Conversation Transcript",
 			"View Diff",
 			"Show Output",
 			"Focus Terminal",
@@ -34,7 +34,7 @@ describe("agent quick action options", () => {
 			(action) => action.label,
 		);
 		expect(labels).toEqual([
-			"Open Prior Chat",
+			"View Conversation Transcript",
 			"Show Output",
 			"View Diff",
 			"Restart",
@@ -47,7 +47,7 @@ describe("agent quick action options", () => {
 			(action) => action.label,
 		);
 		expect(labels).toEqual([
-			"Open Prior Chat",
+			"View Conversation Transcript",
 			"Show Output",
 			"View Diff",
 			"Restart",
@@ -60,7 +60,7 @@ describe("agent quick action options", () => {
 			(action) => action.label,
 		);
 		expect(labels).toEqual([
-			"Open Prior Chat",
+			"View Conversation Transcript",
 			"Show Output",
 			"View Diff",
 			"Restart",
@@ -73,8 +73,8 @@ describe("agent quick action options", () => {
 			(action) => action.label,
 		);
 		expect(labels).toEqual([
-			"Resume Session",
-			"Open Prior Chat",
+			"Resume Claude Session…",
+			"View Conversation Transcript",
 			"Show Output",
 			"View Diff",
 			"Restart",
