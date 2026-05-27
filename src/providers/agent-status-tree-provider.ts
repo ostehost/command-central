@@ -3496,13 +3496,17 @@ export class AgentStatusTreeProvider
 				.join(" · ");
 			const summaryTooltip = this.getSummaryTooltip(agentCounts, stuckCount);
 
-			// When grouped by project, replace summary node with view badge
-			// (each project header already shows its own counts)
 			if (groupedByProject && this._agentStatusView) {
-				this._agentStatusView.badge = {
-					value: agentCounts.total,
-					tooltip: `${agentCounts.total} agents · ${counts.working} working`,
-				};
+				this._agentStatusView.badge =
+					agentCounts.working > 0
+						? {
+								value: agentCounts.working,
+								tooltip:
+									agentCounts.working === 1
+										? "1 working agent"
+										: `${agentCounts.working} working agents`,
+							}
+						: undefined;
 			}
 
 			const summaryNodes: AgentNode[] = groupedByProject

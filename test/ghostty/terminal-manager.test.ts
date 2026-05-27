@@ -819,6 +819,82 @@ describe("TerminalManager.runInProjectTerminal launch surface", () => {
 		expect(calls.some((c) => c.file === "oste-steer.sh")).toBe(false);
 	});
 
+	test("shows friendly message when launcher --send fails with app-bundle open error", async () => {
+		execFileMock.mockImplementation(
+			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--help")) {
+					cb(null, { stdout: "launcher help text\n", stderr: "" });
+					return;
+				}
+				if (a.includes("--version")) {
+					cb(null, {
+						stdout: "launcher build abcdef version 1.2.0\n",
+						stderr: "",
+					});
+					return;
+				}
+				if (a.includes("--send")) {
+					const err = Object.assign(new Error("Command failed"), {
+						code: 1,
+						stderr: "Error: failed to open /Applications/Projects/config.app",
+					});
+					cb(err, { stdout: "", stderr: err.stderr });
+					return;
+				}
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+		fsExistsSyncMock.mockImplementation(() => false);
+		mockShowWarningMessage.mockImplementation(
+			async () => "Open in VS Code Terminal",
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await mgr.runInProjectTerminal("/Users/test/config", "claude --resume abc");
+
+		expect(mockShowWarningMessage).toHaveBeenCalledTimes(1);
+		const warningMsg = mockShowWarningMessage.mock.calls[0]?.[0] as string;
+		expect(warningMsg).toContain("app bundle could not open");
+		expect(warningMsg).toContain("tmux session is still running");
+		expect(mockCreateTerminal).toHaveBeenCalled();
+	});
+
+	test("shows raw error message when launcher --send fails with non-app-bundle error", async () => {
+		execFileMock.mockImplementation(
+			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--help")) {
+					cb(null, { stdout: "launcher help text\n", stderr: "" });
+					return;
+				}
+				if (a.includes("--version")) {
+					cb(null, {
+						stdout: "launcher build abcdef version 1.2.0\n",
+						stderr: "",
+					});
+					return;
+				}
+				if (a.includes("--send")) {
+					const err = Object.assign(new Error("Command failed"), {
+						code: 1,
+						stderr: "Error: tmux server not running",
+					});
+					cb(err, { stdout: "", stderr: err.stderr });
+					return;
+				}
+				cb(null, { stdout: "", stderr: "" });
+			},
+		);
+		fsExistsSyncMock.mockImplementation(() => false);
+		mockShowWarningMessage.mockImplementation(async () => undefined);
+
+		const mgr = new TerminalManager(createMockLogger() as never);
+		await mgr.runInProjectTerminal("/Users/test/config", "claude --resume abc");
+
+		expect(mockShowWarningMessage).toHaveBeenCalledTimes(1);
+		const warningMsg = mockShowWarningMessage.mock.calls[0]?.[0] as string;
+		expect(warningMsg).not.toContain("app bundle could not open");
+	});
+
 	// Retired with rc.31: the create-bundle → open-bundle → steer sequence
 	// and the --session-id lookup-before-steer contract used to be enforced
 	// here. With launcher --send (rc.31 / launcher 1.2.0+), the launcher owns
