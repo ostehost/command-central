@@ -360,8 +360,7 @@ describe("OpenClaw task nodes", () => {
 		expect(root.some((node) => node.type === "symphony")).toBe(false);
 		expect(root).toContainEqual({
 			type: "summary",
-			label:
-				"Symphony Status Surface: 1 run attempt · 0 workstreams · 1 running",
+			label: "Symphony Status Surface: 1 standalone run attempt · 1 running",
 			tooltip:
 				"Open the top-level Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, Workstreams, and Run Attempts.",
 		});
