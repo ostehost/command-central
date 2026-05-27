@@ -60,11 +60,13 @@ import {
 	countAgentStatuses,
 	formatCountSummary,
 } from "../utils/agent-counts.js";
-import { CLEARABLE_AGENT_TASK_STATUSES, STALE_AGENT_STATUS_DESCRIPTION } from "../utils/agent-task-registry.js";
+import {
+	CLEARABLE_AGENT_TASK_STATUSES,
+	STALE_AGENT_STATUS_DESCRIPTION,
+} from "../utils/agent-task-registry.js";
 import {
 	extractSourceTaskId,
 	isAutoReviewLane,
-	partitionAutoReviewLanes,
 } from "../utils/auto-review-lane.js";
 import {
 	checkDeclaredHandoff,

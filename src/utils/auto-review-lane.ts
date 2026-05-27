@@ -5,22 +5,20 @@ const TMP_REVIEW_DIR_PATTERN = /^\/tmp\/.*-review$/;
 
 /**
  * Detects automatic review lanes spawned in temporary worktrees.
- * Uses multiple heuristics so the logic is robust even when launcher
- * metadata is incomplete (e.g. missing role or bogus project_id).
  *
- * Returns true when at least two of the four signals match:
- *   1. task id starts with "review-"
- *   2. role is "reviewer"
- *   3. project_dir is a /tmp/*-review path
- *   4. handoff_file contains "/REVIEW-"
+ * Requires the project_dir to be a /tmp/*-review path (the defining
+ * characteristic of launcher-spawned review worktrees) plus at least
+ * one corroborating signal. Reviewer lanes in real project dirs are
+ * never filtered — they are legitimate manual work.
  */
 export function isAutoReviewLane(task: AgentTask): boolean {
-	let signals = 0;
-	if (task.id.startsWith(AUTO_REVIEW_ID_PREFIX)) signals++;
-	if (task.role === "reviewer") signals++;
-	if (TMP_REVIEW_DIR_PATTERN.test(task.project_dir)) signals++;
-	if (task.handoff_file?.includes("/REVIEW-")) signals++;
-	return signals >= 2;
+	if (!TMP_REVIEW_DIR_PATTERN.test(task.project_dir)) return false;
+
+	const hasReviewIdPrefix = task.id.startsWith(AUTO_REVIEW_ID_PREFIX);
+	const isReviewerRole = task.role === "reviewer";
+	const hasReviewHandoff = task.handoff_file?.includes("/REVIEW-") ?? false;
+
+	return hasReviewIdPrefix || isReviewerRole || hasReviewHandoff;
 }
 
 /**
