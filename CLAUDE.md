@@ -151,6 +151,20 @@ Before submitting changes:
 - [ ] `external: ['vscode']` preserved in build config
 - [ ] Bundle size reasonable (VSIX should be < 100KB)
 
+## Skills
+
+Repo-specific skills live in `.claude/skills/`. See `.claude/skills/CONVENTIONS.md` for creation and distribution rules.
+
+| Skill | Purpose |
+|-------|---------|
+| `cut-preview` | Cut preview VSIX releases |
+| `command-central-vscode-extension` | Agent Status tree, data sources, testing, operational scripts |
+
+**Update workflow:** edit the canonical copy in `.claude/skills/<name>/`, commit, then propagate to OpenClaw:
+```bash
+openclaw skills install .claude/skills/<name> --as <name> --force
+```
+
 ## Troubleshooting
 
 | Problem | Check |
