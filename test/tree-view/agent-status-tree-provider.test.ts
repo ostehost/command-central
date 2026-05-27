@@ -387,6 +387,33 @@ describe("AgentStatusTreeProvider", () => {
 		expect(item.command?.title).toBe("View Changes");
 	});
 
+	for (const status of [
+		"failed",
+		"stopped",
+		"killed",
+		"contract_failure",
+	] as const) {
+		test(`${status} task click views changes (not terminal focus)`, () => {
+			const task = createMockTask({
+				status,
+				terminal_backend: "tmux",
+				session_id: "agent-my-project",
+			});
+			provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+			provider.reload();
+
+			const children = provider.getChildren();
+			const taskNode = getTaskNodes(children)[0];
+			expect(taskNode).toBeDefined();
+			if (!taskNode) {
+				throw new Error(`Expected ${status} task node`);
+			}
+			const item = provider.getTreeItem(taskNode);
+			expect(item.command?.command).toBe("commandCentral.defaultAgentAction");
+			expect(item.command?.title).toBe("View Changes");
+		});
+	}
+
 	test("summary node TreeItem has info icon and correct contextValue", () => {
 		const task = createMockTask();
 		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });

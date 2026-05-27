@@ -1388,3 +1388,84 @@ describe("shouldTrustBundleSurface (launcher-truth gate)", () => {
 		expect(shouldTrustBundleSurface(task, null)).toBe(true);
 	});
 });
+
+describe("defaultAgentAction routing (single-click behavior matrix)", () => {
+	async function simulateDefaultAction(
+		task: AgentTask | undefined,
+		agent?: { projectDir: string; sessionId?: string },
+	): Promise<string> {
+		const node = task
+			? { type: "task" as const, task }
+			: agent
+				? { type: "discovered" as const, agent }
+				: undefined;
+
+		if (!node?.task) {
+			if ((node as { agent?: unknown })?.agent) {
+				await vscodeMock.commands.executeCommand(
+					"commandCentral.focusAgentTerminal",
+					node,
+				);
+				return "focusAgentTerminal";
+			}
+			return "noop";
+		}
+
+		if (node.task.status === "running") {
+			await vscodeMock.commands.executeCommand(
+				"commandCentral.focusAgentTerminal",
+				node,
+			);
+			return "focusAgentTerminal";
+		}
+
+		await vscodeMock.commands.executeCommand(
+			"commandCentral.viewAgentDiff",
+			node,
+		);
+		return "viewAgentDiff";
+	}
+
+	test("running task → focusAgentTerminal", async () => {
+		const task = createTask({ status: "running" });
+		const action = await simulateDefaultAction(task);
+		expect(action).toBe("focusAgentTerminal");
+	});
+
+	for (const status of [
+		"failed",
+		"stopped",
+		"killed",
+		"contract_failure",
+	] as const) {
+		test(`${status} task with live tmux metadata → viewAgentDiff (not terminal)`, async () => {
+			const task = createTask({
+				status,
+				terminal_backend: "tmux",
+				session_id: "agent-my-project",
+			});
+			const action = await simulateDefaultAction(task);
+			expect(action).toBe("viewAgentDiff");
+		});
+	}
+
+	for (const status of [
+		"completed",
+		"completed_dirty",
+		"completed_stale",
+	] as const) {
+		test(`${status} task → viewAgentDiff`, async () => {
+			const task = createTask({ status });
+			const action = await simulateDefaultAction(task);
+			expect(action).toBe("viewAgentDiff");
+		});
+	}
+
+	test("discovered agent (no task) → focusAgentTerminal", async () => {
+		const action = await simulateDefaultAction(undefined, {
+			projectDir: "/tmp/project",
+			sessionId: "sess-1",
+		});
+		expect(action).toBe("focusAgentTerminal");
+	});
+});
