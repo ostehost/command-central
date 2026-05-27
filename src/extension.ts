@@ -1570,9 +1570,8 @@ export async function activate(
 		};
 
 		// Default single-click action for agent tree items.
-		// Running → focus terminal; completed with live session → focus
-		// terminal; otherwise → view diff. The old QuickPick remains
-		// available via context menu "Resume Session" / agentQuickActions.
+		// Running → focus terminal; non-running → view diff/review.
+		// Terminal focus for non-running tasks is in the context menu.
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
 				"commandCentral.defaultAgentAction",
@@ -1600,23 +1599,9 @@ export async function activate(
 						return;
 					}
 
-					// Non-running: if a live tmux session exists, focus it directly.
-					if (
-						task.terminal_backend === "tmux" &&
-						task.session_id &&
-						isValidSessionId(task.session_id)
-					) {
-						const alive = await isTaskTmuxSessionAlive(task);
-						if (alive) {
-							await vscode.commands.executeCommand(
-								"commandCentral.focusAgentTerminal",
-								node,
-							);
-							return;
-						}
-					}
-
-					// No live terminal: show the diff — the most useful "what happened?" action.
+					// Non-running: always show the diff/review regardless of whether
+					// a tmux session is still alive. Terminal focus for finished
+					// tasks is available via context menu / More Actions.
 					await vscode.commands.executeCommand(
 						"commandCentral.viewAgentDiff",
 						node,
