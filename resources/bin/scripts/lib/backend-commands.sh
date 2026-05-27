@@ -287,7 +287,7 @@ build_agent_command() {
 			;;
 		claude | *)
 			if [[ -n "$interactive" ]]; then
-				cmd="claude \"\$(cat '${prompt_file}')\" --dangerously-skip-permissions --allowedTools 'Bash(*)' 'Read(*)' 'Write(*)' 'Edit(*)'${session_id_flag}${model_flag}${max_turns_flag}${thinking_budget_flag}"
+				cmd="claude \"\$(cat '${prompt_file}')\" --dangerously-skip-permissions --chrome${session_id_flag}${model_flag}${max_turns_flag}${thinking_budget_flag}"
 			else
 				echo "build_agent_command: Claude launcher lanes require --interactive; refusing print mode" >&2
 				return 1

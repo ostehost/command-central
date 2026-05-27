@@ -446,6 +446,34 @@ pending_review_mark_review_started() {
 	fi
 }
 
+pending_review_revert_review_started() {
+	local task_id="$1"
+	local reason="${2:-}"
+	local detail="${3:-}"
+	local file="${PENDING_REVIEW_DIR}/${task_id}.json"
+
+	[[ -f "$file" ]] || return 1
+
+	local now tmp
+	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+	tmp=$(mktemp)
+	if jq \
+		--arg reason "$reason" \
+		--arg detail "$detail" \
+		--arg now "$now" \
+		'.review_state = "pending" |
+		.review_dispatch_failed = true |
+		.review_dispatch_failed_at = $now |
+		.review_dispatch_failed_reason = (if $reason == "" then null else $reason end) |
+		.review_dispatch_failed_detail = (if $detail == "" then null else $detail end)' \
+		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+		mv "$tmp" "$file"
+	else
+		rm -f "$tmp"
+		return 1
+	fi
+}
+
 pending_review_mark_retry_disabled() {
 	local task_id="$1"
 	local reason="${2:-}"
@@ -682,7 +710,7 @@ pending_review_quarantine() {
 		review_state=$(jq -r '.review_state // "pending"' "$f" 2>/dev/null || echo "pending")
 
 		case "$review_state" in
-			reviewed | blocked) continue ;;
+			reviewed | blocked | reviewing) continue ;;
 		esac
 
 		local completed_at_str file_age_seconds

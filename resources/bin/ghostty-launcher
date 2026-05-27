@@ -408,8 +408,9 @@ EOF
 # ── PATH detection ──────────────────────────────────────────────────
 # (Removed: detect_homebrew_path / build_tool_path)
 # PATH is no longer baked at bundle creation time. The generated
-# launch-tmux.sh starts $SHELL -l inside tmux, which rebuilds PATH from
-# /etc/paths, /etc/paths.d/*, and user init files at launch time.
+# launch-tmux.sh resolves the shared tmux shell entry command at launch time.
+# On managed OpenClaw nodes that command lives at ~/.config/shell/tmux-login.sh
+# and sources ~/.config/shell/env.sh before opening the tmux pane shell.
 
 # ── Validation ───────────────────────────────────────────────────────
 
@@ -837,6 +838,12 @@ if (( \${#runtime_slug} > 32 )); then
 fi
 TMUX_SOCKET="\${GHOSTTY_TMUX_SOCKET:-\${SOCKET_DIR}/\${runtime_slug}.sock}"
 TMUX_CONF="\${GHOSTTY_TMUX_CONF:-\${SCRIPT_DIR}/tmux.conf}"
+USER_CONFIG_HOME="\${OPENCLAW_CONFIG_HOME:-\$HOME/.config}"
+TMUX_LOGIN_COMMAND="\${GHL_TMUX_LOGIN_SHELL:-\$USER_CONFIG_HOME/shell/tmux-login.sh}"
+if [[ ! -x "\$TMUX_LOGIN_COMMAND" ]]; then
+  TMUX_LOGIN_COMMAND="/bin/bash -l"
+fi
+export XDG_CONFIG_HOME="\$USER_CONFIG_HOME"
 
 if ! command -v tmux >/dev/null 2>&1; then
   echo "Error: tmux is required. Install with: brew install tmux" >&2
@@ -856,9 +863,9 @@ if "\${tmux_cmd[@]}" has-session -t "\$SESSION_ID" 2>/dev/null; then
   exec "\${tmux_cmd[@]}" attach-session -t "\$SESSION_ID"
 fi
 
-# Create new session in project dir with login shell, then attach.
+# Create new session in project dir with the shared tmux shell environment, then attach.
 # If another launcher instance wins the race, fall back to attach.
-if ! "\${tmux_cmd[@]}" new-session -d -s "\$SESSION_ID" -c "\$PROJECT_DIR" /bin/bash -l 2>/dev/null; then
+if ! "\${tmux_cmd[@]}" new-session -d -s "\$SESSION_ID" -c "\$PROJECT_DIR" "\$TMUX_LOGIN_COMMAND" 2>/dev/null; then
   if "\${tmux_cmd[@]}" has-session -t "\$SESSION_ID" 2>/dev/null; then
     exec "\${tmux_cmd[@]}" attach-session -t "\$SESSION_ID"
   fi
@@ -907,9 +914,10 @@ layout {
 
     tab name="main" focus=true {
         // Main pane runs the bundle's pane-launch wrapper, which:
-        //   1. Sources \${SCRIPT_DIR}/.pending-cmd if present (a one-shot
-        //      command written by \`launcher --send\` — e.g.
-        //      \`claude --continue\`). The file is deleted after read so
+        //   1. Sources .pending-cmd from external state dir if present (a
+        //      one-shot command written by \`launcher --send\` — e.g.
+        //      \`claude --continue\`). Stored outside the bundle to avoid
+        //      breaking the code signature seal. Deleted after read so
         //      subsequent attaches start clean.
         //   2. execs the user's shell. Injecting via fish --init-command or
         //      shell-c is fragile because zellij's pane spawn doesn't always
@@ -1045,34 +1053,37 @@ LAUNCH
 		# This avoids in-flight zellij action write-chars (which races fish
 		# startup and silently drops chars). The pending file is consumed on
 		# first read so subsequent attaches don't replay the command.
+		# The pending file lives OUTSIDE the signed bundle to avoid breaking
+		# the code signature seal (which causes Launch Constraint Violations).
+		local pending_state_dir="${XDG_STATE_HOME:-${HOME}/.local/state}/ghostty-launcher/pending/${safe_name}"
+		mkdir -p "$pending_state_dir"
 		cat >"${config_dir}/launch-main-pane.sh" <<MAIN_PANE
 #!/bin/bash
-SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
-PENDING_FILE="\$SCRIPT_DIR/.pending-cmd"
+PENDING_FILE="${pending_state_dir}/.pending-cmd"
+PENDING_FILE_LEGACY="\$(cd "\$(dirname "\$0")" && pwd)/.pending-cmd"
 PROJECT_DIR="${project_dir}"
 USER_SHELL="${user_shell}"
 
 cd "\$PROJECT_DIR" 2>/dev/null || true
 
+PENDING_CMD=""
 if [[ -r "\$PENDING_FILE" ]]; then
   PENDING_CMD=\$(cat "\$PENDING_FILE")
   rm -f "\$PENDING_FILE"
-  # The pending command typically references tools (claude, codex, …) that
-  # live in the user's interactive PATH. launch-zellij.sh has already
-  # populated PATH; we just exec the user's shell with -l -c so it loads
-  # config, then runs the command, then drops to interactive (-i).
-  if [[ -n "\$PENDING_CMD" ]]; then
-    case "\$USER_SHELL" in
-      */fish)
-        exec "\$USER_SHELL" -l -i -C "\$PENDING_CMD"
-        ;;
-      *)
-        # zsh/bash: -c executes then exits, so we wrap in a script that
-        # runs the command and then execs an interactive shell.
-        exec "\$USER_SHELL" -l -c "\$PENDING_CMD; exec \\"\$USER_SHELL\\" -l -i"
-        ;;
-    esac
-  fi
+elif [[ -r "\$PENDING_FILE_LEGACY" ]]; then
+  PENDING_CMD=\$(cat "\$PENDING_FILE_LEGACY")
+  rm -f "\$PENDING_FILE_LEGACY"
+fi
+
+if [[ -n "\$PENDING_CMD" ]]; then
+  case "\$USER_SHELL" in
+    */fish)
+      exec "\$USER_SHELL" -l -i -C "\$PENDING_CMD"
+      ;;
+    *)
+      exec "\$USER_SHELL" -l -c "\$PENDING_CMD; exec \\"\$USER_SHELL\\" -l -i"
+      ;;
+  esac
 fi
 
 exec "\$USER_SHELL" -l
@@ -1132,8 +1143,8 @@ BG_CONF
 	/usr/libexec/PlistBuddy -c "Set :CFBundleIconFile icon.icns" "$plist"
 	# Remove CFBundleIconName — prevents Asset Catalog from overriding our .icns
 	/usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$plist" 2>/dev/null || true
-	# Add env vars via LSEnvironment (inherited by Ghostty's shell)
-	# XDG_CONFIG_HOME points to per-project config to isolate each instance
+	# Add env vars via LSEnvironment. Ghostty uses XDG_CONFIG_HOME to read the
+	# bundled config; launch-tmux.sh restores shell children to ~/.config.
 	/usr/libexec/PlistBuddy -c "Add :LSEnvironment dict" "$plist" 2>/dev/null || true
 	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_PROJECT_ID string ${safe_name}" "$plist" 2>/dev/null ||
 		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_PROJECT_ID ${safe_name}" "$plist"
@@ -1183,10 +1194,36 @@ BG_CONF
 	/usr/libexec/PlistBuddy -c "Add :SUSendProfileInfo bool false" "$plist" 2>/dev/null ||
 		/usr/libexec/PlistBuddy -c "Set :SUSendProfileInfo false" "$plist"
 
-	# Ad-hoc code sign the bundle BEFORE fileicon (order matters)
-	if ! codesign --force --deep --sign - "$temp_app_path" 2>/dev/null; then
+	# Ad-hoc code sign the bundle BEFORE fileicon (order matters).
+	# Preserve hardened runtime (--options runtime) and entitlements from the
+	# source Ghostty binary. Without these, macOS 15+ kills the cloned binary
+	# with a Launch Constraint Violation (SIGKILL, CODESIGNING namespace code 4)
+	# because the ad-hoc signature lacks the runtime flag and entitlements that
+	# the original Developer ID signature carried.
+	local _ent_file
+	_ent_file=$(mktemp)
+	codesign -d --entitlements :- "${GHOSTTY_APP}/Contents/MacOS/ghostty" >"$_ent_file" 2>/dev/null || true
+	if [[ ! -s "$_ent_file" ]]; then
+		cat >"$_ent_file" <<-'EOF'
+			<?xml version="1.0" encoding="UTF-8"?>
+			<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+			<plist version="1.0"><dict></dict></plist>
+		EOF
+	fi
+	# Ad-hoc project bundles have no Team ID. Hardened runtime library
+	# validation otherwise rejects embedded frameworks such as Sparkle at dyld
+	# load time ("mapping process and mapped file have different Team IDs").
+	/usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.disable-library-validation bool true" "$_ent_file" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :com.apple.security.cs.disable-library-validation true" "$_ent_file"
+
+	local -a _sign_args=(--force --deep --sign - --options runtime)
+	if [[ -s "$_ent_file" ]]; then
+		_sign_args+=(--entitlements "$_ent_file")
+	fi
+	if ! codesign "${_sign_args[@]}" "$temp_app_path" 2>/dev/null; then
 		echo "Warning: Code signing failed" >&2
 	fi
+	rm -f "$_ent_file"
 
 	# Verify codesign worked
 	if ! codesign --verify "$temp_app_path" 2>/dev/null; then
@@ -1445,28 +1482,23 @@ main() {
 			if [[ "$send_mux" == "zellij" ]]; then
 				send_socket_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ghostty-launcher/zellij/${send_safe}"
 				mkdir -p "$send_socket_dir"
-				# rc.34: write the pending command to a file the bundle's
-				# launch-main-pane.sh reads on startup. This replaces
-				# `zellij action write-chars`, which had an unresolved race
-				# against fish's startup that silently dropped keystrokes
-				# during the first few seconds of the new session. File-based
-				# handoff is synchronous: fish cannot reach its prompt
-				# without first sourcing the pending command, so there's no
-				# race.
-				pending_dir="${send_bundle}/Contents/Resources/ghostty-config/ghostty"
-				if [[ ! -d "$pending_dir" ]]; then
-					echo "Error: bundle missing pane-launch resources at $pending_dir" >&2
-					exit 3
-				fi
+				# rc.34: write the pending command to a file that the bundle's
+				# launch-main-pane.sh reads on startup. Stored OUTSIDE the
+				# signed bundle to avoid breaking the code signature seal
+				# (which causes macOS Launch Constraint Violations). This
+				# replaces `zellij action write-chars`, which had a race
+				# against fish's startup that silently dropped keystrokes.
+				pending_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ghostty-launcher/pending/${send_safe}"
+				mkdir -p "$pending_dir"
 				printf '%s\n' "$send_cmd" >"${pending_dir}/.pending-cmd"
 				# Force a fresh bundle launch chain so the main pane's
-				# launch-main-pane.sh reads the .pending-cmd we just wrote:
+				# launch-main-pane.sh reads the .pending-cmd from the state dir:
 				#   1. Kill the zellij server (fish lives inside it).
 				#   2. Kill the bundle Ghostty client.
 				#   3. open the bundle — fresh Ghostty → launch-zellij.sh →
 				#      fresh zellij → main pane runs launch-main-pane.sh →
-				#      sources .pending-cmd → execs user shell with command
-				#      applied.
+				#      reads .pending-cmd from state dir → execs user shell
+				#      with command applied.
 				zellij_server_pid=$(pgrep -f "zellij --server ${send_socket_dir}" 2>/dev/null | head -1 || true)
 				if [[ -n "$zellij_server_pid" ]]; then
 					kill "$zellij_server_pid" 2>/dev/null || true
