@@ -1,0 +1,4 @@
+interface:
+  display_name: "Command Central VS Code"
+  short_description: "Command Central extension workflows"
+  default_prompt: "Use $command-central-vscode-extension to plan and validate a Command Central Agent Status change."
