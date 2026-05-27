@@ -316,6 +316,68 @@ describe("AgentStatusTreeProvider", () => {
 		expect(taskNodes[0]?.type).toBe("task");
 	});
 
+	test("hides tmp auto-review lanes from root and nests them under their source task", () => {
+		const source = createMockTask({
+			id: "cc-review-lane-source",
+			status: "completed",
+			project_dir: "/Users/test/projects/command-central",
+			project_name: "Command Central",
+			role: "developer",
+		});
+		const autoReview = createMockTask({
+			id: "review-cc-review-lane-source",
+			status: "completed",
+			project_dir: "/tmp/command-central-cc-review-lane-source-review",
+			project_name: "Command Central Review",
+			role: "reviewer",
+			handoff_file:
+				"/tmp/command-central-cc-review-lane-source-review/research/REVIEW-cc-review-lane-source.md",
+		});
+		const manualReview = createMockTask({
+			id: "review-manual-real-dir",
+			status: "running",
+			project_dir: "/Users/test/projects/command-central",
+			project_name: "Command Central",
+			role: "reviewer",
+		});
+
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[source.id]: source,
+				[autoReview.id]: autoReview,
+				[manualReview.id]: manualReview,
+			});
+		provider.reload();
+
+		const roots = provider.getChildren();
+		const rootTaskIds = roots
+			.filter(
+				(node): node is Extract<AgentNode, { type: "task" }> =>
+					node.type === "task",
+			)
+			.map((node) => node.task.id);
+
+		expect(rootTaskIds).toContain(source.id);
+		expect(rootTaskIds).toContain(manualReview.id);
+		expect(rootTaskIds).not.toContain(autoReview.id);
+
+		const sourceNode = roots.find(
+			(node): node is Extract<AgentNode, { type: "task" }> =>
+				node.type === "task" && node.task.id === source.id,
+		);
+		expect(sourceNode).toBeTruthy();
+
+		const childItems = provider
+			.getChildren(sourceNode)
+			.map((node) => provider.getTreeItem(node));
+		expect(
+			childItems.some(
+				(item) =>
+					item.label === "Review: review-cc-review-lane-source: completed",
+			),
+		).toBe(true);
+	});
+
 	test("preserves tmux window metadata from launcher tasks", () => {
 		const task = createMockTask({
 			tmux_conf: "/tmp/project.tmux.conf",
