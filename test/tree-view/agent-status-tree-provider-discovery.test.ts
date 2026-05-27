@@ -2349,7 +2349,7 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		const node: AgentNode = { type: "task", task };
 		const item = provider.getTreeItem(node);
 		expect(item.command).toBeDefined();
-		expect(item.command?.command).toBe("commandCentral.focusAgentTerminal");
+		expect(item.command?.command).toBe("commandCentral.defaultAgentAction");
 	});
 
 	describe("readDiscoveredPrompt", () => {

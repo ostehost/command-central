@@ -367,11 +367,11 @@ describe("AgentStatusTreeProvider", () => {
 			throw new Error("Expected running task node");
 		}
 		const item = provider.getTreeItem(taskNode);
-		expect(item.command?.command).toBe("commandCentral.focusAgentTerminal");
+		expect(item.command?.command).toBe("commandCentral.defaultAgentAction");
 		expect(item.command?.title).toBe("Focus Terminal");
 	});
 
-	test("completed task click resumes the session", () => {
+	test("completed task click views changes", () => {
 		const task = createMockTask({ status: "completed" });
 		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
 		provider.reload();
@@ -383,8 +383,8 @@ describe("AgentStatusTreeProvider", () => {
 			throw new Error("Expected completed task node");
 		}
 		const item = provider.getTreeItem(taskNode);
-		expect(item.command?.command).toBe("commandCentral.resumeAgentSession");
-		expect(item.command?.title).toBe("Resume Session");
+		expect(item.command?.command).toBe("commandCentral.defaultAgentAction");
+		expect(item.command?.title).toBe("View Changes");
 	});
 
 	test("summary node TreeItem has info icon and correct contextValue", () => {
