@@ -95,6 +95,7 @@ import {
 import { defaultTimingRecorder } from "../utils/timing-recorder.js";
 import {
 	inspectTmuxPaneAgent,
+	inspectTmuxPaneById,
 	type TmuxPaneAgentEvidence,
 } from "../utils/tmux-pane-health.js";
 
@@ -915,6 +916,9 @@ export interface LifecycleConflictInfo {
 }
 
 const CONFLICT_ELIGIBLE_STATUSES = new Set<AgentTaskStatus>([
+	"completed",
+	"completed_dirty",
+	"completed_stale",
 	"failed",
 	"contract_failure",
 	"stopped",
@@ -1815,13 +1819,19 @@ export class AgentStatusTreeProvider
 
 	private getTmuxPaneAgentEvidence(task: AgentTask): TmuxPaneAgentEvidence {
 		const cacheTtlMs = 5_000;
-		const cacheKey = `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
+		const usePaneSpecific = !!task.tmux_pane_id;
+		const cacheKey = usePaneSpecific
+			? `${task.tmux_socket ?? "__default__"}::pane::${task.tmux_pane_id}`
+			: `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
 		const now = Date.now();
 		const cached = this._tmuxPaneAgentEvidenceCache.get(cacheKey);
 		if (cached && now - cached.checkedAt < cacheTtlMs) {
 			return cached.evidence;
 		}
-		const evidence = inspectTmuxPaneAgent(task.session_id, task.tmux_socket);
+		const evidence =
+			usePaneSpecific && task.tmux_pane_id
+				? inspectTmuxPaneById(task.tmux_pane_id, task.tmux_socket)
+				: inspectTmuxPaneAgent(task.session_id, task.tmux_socket);
 		this._tmuxPaneAgentEvidenceCache.set(cacheKey, {
 			evidence,
 			checkedAt: now,
@@ -2029,6 +2039,36 @@ export class AgentStatusTreeProvider
 			return "not-checked";
 		}
 		return this.getTmuxPaneAgentEvidence(task);
+	}
+
+	/**
+	 * Cache-only variant of `getTerminalTaskLivenessEvidence`. Returns warm
+	 * cached evidence when available, "not-checked" otherwise. Safe to call
+	 * on the hot path (e.g. `getNodeStatusGroup`) because it never triggers
+	 * subprocess calls. The evidence cache is warmed by `getTreeItem`
+	 * rendering; subsequent refresh cycles will have correct grouping.
+	 */
+	private getCachedTerminalTaskLivenessEvidence(
+		task: AgentTask,
+	): "alive" | "dead" | "unknown" | "not-checked" {
+		if (isRemoteNodeTaskForCurrentHost(task)) return "not-checked";
+		if (
+			(task.terminal_backend !== "tmux" &&
+				task.terminal_backend !== undefined) ||
+			!isValidSessionId(task.session_id)
+		) {
+			return "not-checked";
+		}
+		const cacheTtlMs = 5_000;
+		const usePaneSpecific = !!task.tmux_pane_id;
+		const cacheKey = usePaneSpecific
+			? `${task.tmux_socket ?? "__default__"}::pane::${task.tmux_pane_id}`
+			: `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
+		const cached = this._tmuxPaneAgentEvidenceCache.get(cacheKey);
+		if (cached && Date.now() - cached.checkedAt < cacheTtlMs) {
+			return cached.evidence;
+		}
+		return "not-checked";
 	}
 
 	/**
@@ -4033,6 +4073,27 @@ export class AgentStatusTreeProvider
 	private getNodeStatusGroup(node: SortableAgentNode): AgentStatusGroup {
 		const status = this.getNodeStatus(node);
 		if (status === "running") return "running";
+
+		// Lifecycle conflict: launcher says completed but pane still has a live
+		// agent process. Surface in attention so the user sees the mismatch.
+		// Uses cache-only lookup to avoid triggering tmux subprocess calls on the
+		// hot path — the evidence cache is warmed by getTreeItem rendering;
+		// subsequent refresh cycles will have correct grouping.
+		if (
+			node.type === "task" &&
+			(status === "completed" ||
+				status === "completed_dirty" ||
+				status === "completed_stale")
+		) {
+			const liveness = this.getCachedTerminalTaskLivenessEvidence(node.task);
+			if (
+				classifyLifecycleConflict(node.task, liveness).kind ===
+				"live-process-conflict"
+			) {
+				return "attention";
+			}
+		}
+
 		if (status === "completed") {
 			if (
 				node.type === "task" &&
@@ -4951,12 +5012,8 @@ export class AgentStatusTreeProvider
 		}
 
 		// ── 8. Lifecycle conflict — launcher vs live process ─────────────
-		const isDone =
-			t.status === "failed" ||
-			t.status === "contract_failure" ||
-			t.status === "stopped" ||
-			t.status === "killed";
-		if (isDone) {
+		const isTerminalStatus = t.status !== "running";
+		if (isTerminalStatus) {
 			const liveness = this.getTerminalTaskLivenessEvidence(t);
 			const conflict = classifyLifecycleConflict(t, liveness);
 			if (conflict.kind === "live-process-conflict") {

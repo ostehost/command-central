@@ -25,8 +25,13 @@ mock.module("node:child_process", () => ({
 	execFileSync: execFileSyncMock,
 }));
 
-const { isTmuxPaneAgentAlive, inspectTmuxPaneAgent, AGENT_PROCESS_NAMES } =
-	await import("../../src/utils/tmux-pane-health.js");
+const {
+	isTmuxPaneAgentAlive,
+	inspectTmuxPaneAgent,
+	inspectTmuxPaneById,
+	AGENT_PROCESS_NAMES,
+	PANE_ID_RE,
+} = await import("../../src/utils/tmux-pane-health.js");
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -356,5 +361,118 @@ describe("inspectTmuxPaneAgent (tri-state evidence)", () => {
 			}),
 		);
 		expect(isTmuxPaneAgentAlive("cc-dead-lane")).toBe(false);
+	});
+});
+
+describe("inspectTmuxPaneById (pane-specific evidence)", () => {
+	beforeEach(() => {
+		execFileSyncMock.mockReset();
+	});
+
+	test("PANE_ID_RE matches valid tmux pane ids", () => {
+		expect(PANE_ID_RE.test("%0")).toBe(true);
+		expect(PANE_ID_RE.test("%26")).toBe(true);
+		expect(PANE_ID_RE.test("%999")).toBe(true);
+		expect(PANE_ID_RE.test("26")).toBe(false);
+		expect(PANE_ID_RE.test("@42")).toBe(false);
+		expect(PANE_ID_RE.test("%")).toBe(false);
+		expect(PANE_ID_RE.test("")).toBe(false);
+		expect(PANE_ID_RE.test("%26; rm -rf")).toBe(false);
+	});
+
+	test("returns 'unknown' for invalid pane id", () => {
+		expect(inspectTmuxPaneById("bad-pane")).toBe("unknown");
+		expect(inspectTmuxPaneById("")).toBe("unknown");
+		expect(inspectTmuxPaneById("26")).toBe("unknown");
+		expect(execFileSyncMock).not.toHaveBeenCalled();
+	});
+
+	test("returns 'alive' when pane command is an agent", () => {
+		execFileSyncMock.mockImplementation((cmd: unknown) => {
+			if (cmd === "tmux") return "claude|12345\n";
+			return "";
+		});
+		expect(inspectTmuxPaneById("%26")).toBe("alive");
+	});
+
+	test("returns 'alive' when descendant is an agent", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: "bash|1234\n",
+				pgrep: "5678\n",
+				ps: "claude\n",
+			}),
+		);
+		expect(inspectTmuxPaneById("%7")).toBe("alive");
+	});
+
+	test("returns 'dead' when pane has no agent process or descendants", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: "bash|1234\n",
+				pgrep: () => {
+					throw Object.assign(new Error("no children"), { status: 1 });
+				},
+			}),
+		);
+		expect(inspectTmuxPaneById("%0")).toBe("dead");
+	});
+
+	test("returns 'dead' when descendants exist but none are agents", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: "bash|1234\n",
+				pgrep: "5678\n",
+				ps: "node\nbash\n",
+			}),
+		);
+		expect(inspectTmuxPaneById("%3")).toBe("dead");
+	});
+
+	test("returns 'unknown' when tmux display-message throws", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: () => {
+					throw new Error("can't find pane %99");
+				},
+			}),
+		);
+		expect(inspectTmuxPaneById("%99")).toBe("unknown");
+	});
+
+	test("returns 'unknown' when tmux output is empty", () => {
+		execFileSyncMock.mockImplementation(makeExecImpl({ tmux: "" }));
+		expect(inspectTmuxPaneById("%1")).toBe("unknown");
+	});
+
+	test("tmuxSocket is forwarded as -S flag", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({ tmux: "claude|7777\n" }),
+		);
+		expect(inspectTmuxPaneById("%26", "/tmp/my.sock")).toBe("alive");
+		const [, tmuxArgs] = execFileSyncMock.mock.calls[0] as [string, string[]];
+		expect(tmuxArgs[0]).toBe("-S");
+		expect(tmuxArgs[1]).toBe("/tmp/my.sock");
+	});
+
+	test("null tmuxSocket omits -S flag", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({ tmux: "claude|7777\n" }),
+		);
+		expect(inspectTmuxPaneById("%26", null)).toBe("alive");
+		const [, tmuxArgs] = execFileSyncMock.mock.calls[0] as [string, string[]];
+		expect(tmuxArgs[0]).not.toBe("-S");
+	});
+
+	test("uses display-message -t <paneId> -p format (not list-panes)", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({ tmux: "claude|7777\n" }),
+		);
+		inspectTmuxPaneById("%26");
+		const [, tmuxArgs] = execFileSyncMock.mock.calls[0] as [string, string[]];
+		expect(tmuxArgs).toContain("display-message");
+		expect(tmuxArgs).toContain("-t");
+		expect(tmuxArgs).toContain("%26");
+		expect(tmuxArgs).not.toContain("list-panes");
 	});
 });
