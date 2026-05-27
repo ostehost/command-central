@@ -282,22 +282,38 @@ describe("classifyLifecycleConflict", () => {
 		expect(conflict.kind).toBe("none");
 	});
 
-	test("completed task with alive evidence returns none (success status)", () => {
+	test("completed task with alive evidence returns live-process-conflict", () => {
 		const task = createMockTask({ status: "completed" });
 		const conflict = classifyLifecycleConflict(task, "alive");
+		expect(conflict.kind).toBe("live-process-conflict");
+		expect(conflict.detail).toContain("completed");
+		expect(conflict.detail).toContain("still alive");
+	});
+
+	test("completed task with dead evidence returns none", () => {
+		const task = createMockTask({ status: "completed" });
+		const conflict = classifyLifecycleConflict(task, "dead");
 		expect(conflict.kind).toBe("none");
 	});
 
-	test("completed_dirty with alive evidence returns none", () => {
+	test("completed task with unknown evidence returns none", () => {
+		const task = createMockTask({ status: "completed" });
+		const conflict = classifyLifecycleConflict(task, "unknown");
+		expect(conflict.kind).toBe("none");
+	});
+
+	test("completed_dirty with alive evidence returns live-process-conflict", () => {
 		const task = createMockTask({ status: "completed_dirty" });
 		const conflict = classifyLifecycleConflict(task, "alive");
-		expect(conflict.kind).toBe("none");
+		expect(conflict.kind).toBe("live-process-conflict");
+		expect(conflict.detail).toContain("completed_dirty");
 	});
 
-	test("completed_stale with alive evidence returns none", () => {
+	test("completed_stale with alive evidence returns live-process-conflict", () => {
 		const task = createMockTask({ status: "completed_stale" });
 		const conflict = classifyLifecycleConflict(task, "alive");
-		expect(conflict.kind).toBe("none");
+		expect(conflict.kind).toBe("live-process-conflict");
+		expect(conflict.detail).toContain("completed_stale");
 	});
 
 	test("failed task without error_message omits parenthetical", () => {

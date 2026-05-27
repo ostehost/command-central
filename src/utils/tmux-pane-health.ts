@@ -38,6 +38,7 @@ export const AGENT_PROCESS_NAMES = [
 export type TmuxPaneAgentEvidence = "alive" | "dead" | "unknown";
 
 const SESSION_ID_RE = /^[a-zA-Z0-9._-]+$/;
+export const PANE_ID_RE = /^%\d+$/;
 const MAX_PIDS = 64;
 const MAX_DEPTH = 4;
 const TIMEOUT_MS = 500;
@@ -119,7 +120,64 @@ export function inspectTmuxPaneAgent(
 	// positive or negative evidence in that case.
 	if (panePids.length === 0) return "unknown";
 
-	// ── Step 3: BFS over descendant pids (max depth 4, cap 64) ──────────────
+	return walkDescendants(panePids);
+}
+
+/**
+ * Pane-specific inspector. When the launcher records a `tmux_pane_id` (e.g.
+ * `%26`), this targets that exact pane via `tmux display-message -t <paneId>`
+ * instead of scanning all panes in a session. This prevents unrelated live
+ * panes in a shared session from producing false-positive "alive" evidence
+ * for a different task.
+ */
+export function inspectTmuxPaneById(
+	paneId: string,
+	tmuxSocket?: string | null,
+): TmuxPaneAgentEvidence {
+	if (!PANE_ID_RE.test(paneId)) return "unknown";
+
+	let rawOutput: string;
+	try {
+		const args: string[] = [];
+		if (tmuxSocket) {
+			args.push("-S", tmuxSocket);
+		}
+		args.push(
+			"display-message",
+			"-t",
+			paneId,
+			"-p",
+			"#{pane_current_command}|#{pane_pid}",
+		);
+		rawOutput = execFileSync("tmux", args, {
+			timeout: TIMEOUT_MS,
+			encoding: "utf8",
+		});
+	} catch {
+		return "unknown";
+	}
+
+	const trimmed = rawOutput.trim();
+	if (!trimmed) return "unknown";
+	const sep = trimmed.indexOf("|");
+	if (sep === -1) return "unknown";
+
+	const cmd = trimmed.slice(0, sep).trim();
+	const pidStr = trimmed.slice(sep + 1).trim();
+
+	if ((AGENT_PROCESS_NAMES as readonly string[]).includes(cmd)) {
+		return "alive";
+	}
+
+	const pid = Number.parseInt(pidStr, 10);
+	if (Number.isNaN(pid) || pid <= 0) return "unknown";
+
+	return walkDescendants([pid]);
+}
+
+// ── Shared descendant walk (steps 3–4) ─────────────────────────────────
+
+function walkDescendants(panePids: number[]): TmuxPaneAgentEvidence {
 	const visited = new Set<number>(panePids);
 	let frontier = [...panePids];
 
@@ -134,7 +192,6 @@ export function inspectTmuxPaneAgent(
 					encoding: "utf8",
 				});
 			} catch {
-				// pgrep exits non-zero when no children found — not an error worth failing open.
 				continue;
 			}
 			for (const part of childOutput.split("\n")) {
@@ -149,14 +206,11 @@ export function inspectTmuxPaneAgent(
 		frontier = nextFrontier;
 	}
 
-	// Remove the seed pane pids (already checked via pane_current_command).
 	const descendantPids = [...visited].filter((p) => !panePids.includes(p));
 	if (descendantPids.length === 0) return "dead";
 
-	// ── Step 4: batch-check comm for all discovered descendant pids ─────────
 	try {
 		const pidArgs = descendantPids.map(String);
-		// ps -p pid1,pid2,... -o comm= (no header)
 		const psOutput = execFileSync(
 			"ps",
 			["-p", pidArgs.join(","), "-o", "comm="],
@@ -169,7 +223,6 @@ export function inspectTmuxPaneAgent(
 			}
 		}
 	} catch {
-		// fail-open: ps unavailable or all pids already gone
 		return "unknown";
 	}
 
