@@ -40,6 +40,16 @@ _tmux_cmd() {
 	fi
 }
 
+_tmux_login_shell_command() {
+	local config_home="${OPENCLAW_CONFIG_HOME:-$HOME/.config}"
+	local entrypoint="${GHL_TMUX_LOGIN_SHELL:-$config_home/shell/tmux-login.sh}"
+	if [[ -x "$entrypoint" ]]; then
+		printf '%s\n' "$entrypoint"
+	else
+		printf '%s\n' "/bin/bash -l"
+	fi
+}
+
 _tmux_target_exists() {
 	local target="$1"
 	_tmux_cmd
@@ -59,8 +69,10 @@ terminal_create() {
 		return 1
 	fi
 
+	local shell_command
+	shell_command="$(_tmux_login_shell_command)"
 	_tmux_cmd
-	"${TMUX_CMD[@]}" new-session -d -s "$session" -c "$cwd" /bin/bash -l
+	"${TMUX_CMD[@]}" new-session -d -s "$session" -c "$cwd" "$shell_command"
 }
 
 # Send text or control sequences to a tmux session.
@@ -216,9 +228,11 @@ tmux_new_window() {
 	local session="$1"
 	local cwd="$2"
 	local window_name="$3"
+	local shell_command
+	shell_command="$(_tmux_login_shell_command)"
 	_tmux_cmd
 	"${TMUX_CMD[@]}" new-window -P -F '#{window_id}|#{pane_id}' \
-		-t "${session}:" -c "$cwd" -n "$window_name" /bin/bash -l
+		-t "${session}:" -c "$cwd" -n "$window_name" "$shell_command"
 }
 
 # ── Session Identity (multiflow detection) ─────────────────────────
