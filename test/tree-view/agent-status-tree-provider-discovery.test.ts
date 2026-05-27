@@ -1032,6 +1032,56 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		expect(children.every((node) => node.type === "task")).toBe(true);
 	});
 
+	test("grouped view badge reflects working count, not total inventory", () => {
+		setAgentStatusConfig(vscodeMock, { groupByProject: true });
+
+		const mockTreeView = {
+			badge: undefined as unknown,
+		} as unknown as import("vscode").TreeView<AgentNode>;
+		provider.setTreeView(mockTreeView);
+
+		const running = createMockTask({ id: "running-1", status: "running" });
+		const completed = createMockTask({
+			id: "completed-1",
+			status: "completed",
+		});
+		const failed = createMockTask({ id: "failed-1", status: "failed" });
+		provider.readRegistry = () =>
+			createMockRegistry({
+				[running.id]: running,
+				[completed.id]: completed,
+				[failed.id]: failed,
+			});
+		provider.reload();
+		provider.getChildren();
+
+		const viewBadge = (
+			mockTreeView as { badge?: { value: number; tooltip: string } }
+		).badge;
+		expect(viewBadge?.value).toBe(1);
+		expect(viewBadge?.tooltip).toBe("1 working agent");
+	});
+
+	test("grouped view badge clears when no agents are working", () => {
+		setAgentStatusConfig(vscodeMock, { groupByProject: true });
+
+		const mockTreeView = {
+			badge: undefined as unknown,
+		} as unknown as import("vscode").TreeView<AgentNode>;
+		provider.setTreeView(mockTreeView);
+
+		const completed = createMockTask({
+			id: "completed-1",
+			status: "completed",
+		});
+		provider.readRegistry = () =>
+			createMockRegistry({ [completed.id]: completed });
+		provider.reload();
+		provider.getChildren();
+
+		expect((mockTreeView as { badge?: unknown }).badge).toBeUndefined();
+	});
+
 	test("done groups show a flat list of tasks sorted by recency (no time sub-groups)", () => {
 		setAgentStatusConfig(vscodeMock, { groupByProject: true });
 		const now = Date.now();

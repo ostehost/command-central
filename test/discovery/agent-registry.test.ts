@@ -447,6 +447,59 @@ describe("AgentRegistry", () => {
 			expect(registry.getAllDiscovered()).toHaveLength(0);
 			realFs.rmSync(streamFile, { force: true });
 		});
+
+		test("suppresses discovered agent when running launcher task has pid:null and same project dir", () => {
+			sessionFiles["610.json"] = JSON.stringify({
+				pid: 610,
+				sessionId: "claude-session-pid-null",
+				cwd: "/project-pid-null",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["610.json"];
+			alivePids.add(610);
+
+			registry.start();
+
+			const launcherTasks = [
+				createMockTask({
+					status: "running",
+					pid: null,
+					project_dir: "/project-pid-null",
+					session_id: "agent-pid-null",
+					started_at: new Date(1704060000000).toISOString(),
+				}),
+			];
+			const discovered = registry.getDiscoveredAgents(launcherTasks);
+
+			expect(discovered).toHaveLength(0);
+		});
+
+		test("does NOT suppress discovered agent when completed launcher task has pid:null and same project dir", () => {
+			sessionFiles["611.json"] = JSON.stringify({
+				pid: 611,
+				sessionId: "claude-session-pid-null-completed",
+				cwd: "/project-pid-null-done",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["611.json"];
+			alivePids.add(611);
+
+			registry.start();
+
+			const launcherTasks = [
+				createMockTask({
+					status: "completed",
+					pid: null,
+					project_dir: "/project-pid-null-done",
+					session_id: "agent-pid-null-done",
+					started_at: new Date(1704060000000).toISOString(),
+				}),
+			];
+			const discovered = registry.getDiscoveredAgents(launcherTasks);
+
+			expect(discovered).toHaveLength(1);
+			expect(discovered[0]?.pid).toBe(611);
+		});
 	});
 
 	// ── Dedup: same PID from session + process → one entry ───────────

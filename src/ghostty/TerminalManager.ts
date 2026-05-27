@@ -701,6 +701,20 @@ export class TerminalManager {
 				);
 				return;
 			}
+			if (error instanceof LauncherExecutionError) {
+				const reason = this.humanizeLauncherError(error);
+				this.logger.warn(
+					`${error.message} — prompting user before integrated-terminal fallback`,
+					"TerminalManager",
+				);
+				await this.promptIntegratedTerminalFallback(
+					reason,
+					projectDir,
+					command,
+					cwd,
+				);
+				return;
+			}
 			throw error;
 		}
 	}
@@ -853,7 +867,7 @@ end tell
 		command: string,
 	): Promise<void> {
 		const launcher = await this.resolvedLauncherPath();
-		await this.execCommand(launcher, [
+		await this.execLauncher(launcher, [
 			"--send",
 			projectDir,
 			"--command",
@@ -891,6 +905,17 @@ end tell
 			return true;
 		}
 		return false;
+	}
+
+	private humanizeLauncherError(error: LauncherExecutionError): string {
+		const text = `${error.stderr ?? ""} ${error.message}`;
+		if (
+			/failed to open.*\.app\b/i.test(text) ||
+			/launch.constraint/i.test(text)
+		) {
+			return "Ghostty app bundle could not open; tmux session is still running";
+		}
+		return error.message;
 	}
 
 	/**

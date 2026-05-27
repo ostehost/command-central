@@ -431,6 +431,11 @@ export class AgentRegistry implements vscode.Disposable {
 			return false;
 		}
 
+		const hasPid = typeof taskPid === "number" && Number.isFinite(taskPid);
+		if (!hasPid && task.status === "running") {
+			return true;
+		}
+
 		const taskStartedAtMs = new Date(task.started_at).getTime();
 		const agentStartedAtMs = agent.startTime.getTime();
 		if (
