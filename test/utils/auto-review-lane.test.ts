@@ -6,9 +6,7 @@ import {
 	partitionAutoReviewLanes,
 } from "../../src/utils/auto-review-lane.js";
 
-function makeTask(
-	overrides: Partial<AgentTask> & { id: string },
-): AgentTask {
+function makeTask(overrides: Partial<AgentTask> & { id: string }): AgentTask {
 	return {
 		status: "completed",
 		project_dir: "/tmp/project",
@@ -41,8 +39,7 @@ const reviewConfigLinear = makeTask({
 	status: "completed",
 	role: "reviewer",
 	project_id: "config",
-	project_dir:
-		"/tmp/config-config-linear-conductor-snapshot-20260526-review",
+	project_dir: "/tmp/config-config-linear-conductor-snapshot-20260526-review",
 	handoff_file:
 		"/tmp/config-config-linear-conductor-snapshot-20260526-review/research/REVIEW-config-linear-conductor-snapshot-20260526.md",
 });
@@ -62,8 +59,7 @@ const reviewCcBadgeLauncher = makeTask({
 	status: "completed",
 	role: "reviewer",
 	project_id: "config",
-	project_dir:
-		"/tmp/command-central-cc-badge-launcher-polish-20260526-review",
+	project_dir: "/tmp/command-central-cc-badge-launcher-polish-20260526-review",
 	handoff_file:
 		"/tmp/command-central-cc-badge-launcher-polish-20260526-review/research/REVIEW-cc-badge-launcher-polish-20260526.md",
 });
@@ -108,7 +104,26 @@ describe("isAutoReviewLane", () => {
 		expect(isAutoReviewLane(manualReviewerTask)).toBe(false);
 	});
 
-	test("requires at least two signals — review- id alone is not enough", () => {
+	test("review- id + reviewer role in a real dir is NOT filtered", () => {
+		const realDirReviewer = makeTask({
+			id: "review-something",
+			project_dir: "/Users/ostehost/projects/real-project",
+			role: "reviewer",
+		});
+		expect(isAutoReviewLane(realDirReviewer)).toBe(false);
+	});
+
+	test("all three non-dir signals in a real dir are NOT filtered", () => {
+		const allThree = makeTask({
+			id: "review-something",
+			project_dir: "/Users/ostehost/projects/real-project",
+			role: "reviewer",
+			handoff_file: "/some/path/REVIEW-something.md",
+		});
+		expect(isAutoReviewLane(allThree)).toBe(false);
+	});
+
+	test("review- id alone (no /tmp dir) is not enough", () => {
 		const singleSignal = makeTask({
 			id: "review-something",
 			project_dir: "/Users/ostehost/projects/real-project",
@@ -117,21 +132,39 @@ describe("isAutoReviewLane", () => {
 		expect(isAutoReviewLane(singleSignal)).toBe(false);
 	});
 
-	test("two signals suffice: review- id + reviewer role", () => {
-		const twoSignals = makeTask({
-			id: "review-something",
-			project_dir: "/Users/ostehost/projects/real-project",
-			role: "reviewer",
-		});
-		expect(isAutoReviewLane(twoSignals)).toBe(true);
-	});
-
-	test("two signals suffice: review- id + /tmp/-review dir", () => {
-		const twoSignals = makeTask({
+	test("/tmp/-review dir + review- id suffices", () => {
+		const tmpWithId = makeTask({
 			id: "review-something",
 			project_dir: "/tmp/proj-something-review",
 		});
-		expect(isAutoReviewLane(twoSignals)).toBe(true);
+		expect(isAutoReviewLane(tmpWithId)).toBe(true);
+	});
+
+	test("/tmp/-review dir + reviewer role suffices", () => {
+		const tmpWithRole = makeTask({
+			id: "some-other-task",
+			project_dir: "/tmp/proj-something-review",
+			role: "reviewer",
+		});
+		expect(isAutoReviewLane(tmpWithRole)).toBe(true);
+	});
+
+	test("/tmp/-review dir + REVIEW- handoff suffices", () => {
+		const tmpWithHandoff = makeTask({
+			id: "some-other-task",
+			project_dir: "/tmp/proj-something-review",
+			handoff_file: "/tmp/proj-something-review/research/REVIEW-foo.md",
+		});
+		expect(isAutoReviewLane(tmpWithHandoff)).toBe(true);
+	});
+
+	test("/tmp/-review dir alone (no corroborating signal) is not enough", () => {
+		const tmpDirOnly = makeTask({
+			id: "some-other-task",
+			project_dir: "/tmp/proj-something-review",
+			role: "developer",
+		});
+		expect(isAutoReviewLane(tmpDirOnly)).toBe(false);
 	});
 });
 
