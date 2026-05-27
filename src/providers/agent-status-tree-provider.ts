@@ -60,10 +60,12 @@ import {
 	countAgentStatuses,
 	formatCountSummary,
 } from "../utils/agent-counts.js";
+import { CLEARABLE_AGENT_TASK_STATUSES, STALE_AGENT_STATUS_DESCRIPTION } from "../utils/agent-task-registry.js";
 import {
-	CLEARABLE_AGENT_TASK_STATUSES,
-	STALE_AGENT_STATUS_DESCRIPTION,
-} from "../utils/agent-task-registry.js";
+	extractSourceTaskId,
+	isAutoReviewLane,
+	partitionAutoReviewLanes,
+} from "../utils/auto-review-lane.js";
 import {
 	checkDeclaredHandoff,
 	type DeclaredHandoffState,
@@ -2464,7 +2466,7 @@ export class AgentStatusTreeProvider
 	private getScopedLauncherTasks(
 		tasks = this.getDisplayLauncherTasks(),
 	): AgentTask[] {
-		return tasks;
+		return tasks.filter((t) => !isAutoReviewLane(t));
 	}
 
 	private getScopedDiscoveredAgents(
@@ -3559,7 +3561,12 @@ export class AgentStatusTreeProvider
 			const detailChildren = compact
 				? this.getCompactChildren(element.task)
 				: this.getDetailChildren(element.task);
-			return [...detailChildren, ...this.getFileChangeChildren(element.task)];
+			const reviewChildren = this.getAutoReviewLaneChildren(element.task);
+			return [
+				...detailChildren,
+				...reviewChildren,
+				...this.getFileChangeChildren(element.task),
+			];
 		}
 
 		if (element.type === "openclawTask") {
@@ -4964,6 +4971,29 @@ export class AgentStatusTreeProvider
 		}
 
 		return details;
+	}
+
+	private getAutoReviewLaneChildren(task: AgentTask): DetailNode[] {
+		const allTasks = this.getDisplayLauncherTasks();
+		const reviewLanes = allTasks.filter((t) => {
+			if (!isAutoReviewLane(t)) return false;
+			return extractSourceTaskId(t) === task.id;
+		});
+		return reviewLanes.map((lane) => ({
+			type: "detail" as const,
+			label: `Review: ${lane.id}`,
+			value: lane.status,
+			taskId: task.id,
+			icon: "eye",
+			iconColor: lane.status === "completed" ? "charts.green" : "charts.yellow",
+			command: lane.handoff_file
+				? {
+						command: "vscode.open",
+						title: "Open review handoff",
+						arguments: [vscode.Uri.file(lane.handoff_file)],
+					}
+				: undefined,
+		}));
 	}
 
 	/**
@@ -7090,7 +7120,9 @@ export class AgentStatusTreeProvider
 	 * launcher tasks.
 	 */
 	getTasks(): AgentTask[] {
-		const launcherTasks = this.getDisplayLauncherTasks();
+		const launcherTasks = this.getDisplayLauncherTasks().filter(
+			(t) => !isAutoReviewLane(t),
+		);
 		const syntheticDiscovered: AgentTask[] = this._discoveredAgents.map(
 			(agent) => ({
 				id: `discovered-${agent.pid}`,
