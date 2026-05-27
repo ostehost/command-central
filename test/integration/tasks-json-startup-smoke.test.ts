@@ -36,7 +36,7 @@ function expectedEmptyAgentStatusChildren(): AgentNode[] {
 	return [
 		{
 			type: "summary",
-			label: "Symphony Status Surface: 0 run attempts · 0 workstreams",
+			label: "Symphony Status Surface: no projected runs",
 			tooltip:
 				"Open the top-level Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, Workstreams, and Run Attempts.",
 		},

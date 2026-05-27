@@ -168,6 +168,44 @@ describe("classifyCompletionRouting", () => {
 		expect(routing.iconColor).toBe("charts.yellow");
 	});
 
+	test("completed reviewer task with no routing uses calmer detached copy", () => {
+		const task = createMockTask({
+			status: "completed",
+			role: "reviewer",
+			session_key: null,
+			callback_url: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("detached");
+		expect(routing.label).toBe("Detached — no action needed");
+		expect(routing.iconColor).toBe("disabledForeground");
+		expect(routing.detail).toContain("Standalone reviewer lane");
+	});
+
+	test("failed reviewer task with no routing uses calmer detached copy", () => {
+		const task = createMockTask({
+			status: "failed",
+			role: "reviewer",
+			session_key: null,
+			callback_url: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("detached");
+		expect(routing.label).toBe("Detached — no action needed");
+	});
+
+	test("running reviewer task without routing uses standard detached copy", () => {
+		const task = createMockTask({
+			status: "running",
+			role: "reviewer",
+			session_key: null,
+			callback_url: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("detached");
+		expect(routing.label).toBe("Detached");
+	});
+
 	test("failed task with no routing fields is detached", () => {
 		const task = createMockTask({
 			status: "failed",

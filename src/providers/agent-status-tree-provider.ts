@@ -893,6 +893,16 @@ export function classifyCompletionRouting(
 			iconColor: "charts.green",
 		};
 	}
+	if (task.role === "reviewer") {
+		return {
+			kind: "detached",
+			label: "Detached — no action needed",
+			detail:
+				"Standalone reviewer lane — launched without orchestrator callback; completion was local",
+			icon: "debug-disconnect",
+			iconColor: "disabledForeground",
+		};
+	}
 	return {
 		kind: "detached",
 		label: "Detached — manual observation required",
@@ -6020,9 +6030,17 @@ export class AgentStatusTreeProvider
 	): string {
 		const running = this.getSymphonyRunningSessionRuns(runs).length;
 		const retryQueued = this.getSymphonyRetryQueuedRuns(runs).length;
+		const runLabel =
+			runs.length === 0
+				? "no projected runs"
+				: flows.length === 0
+					? `${runs.length} standalone ${runs.length === 1 ? "run attempt" : "run attempts"}`
+					: `${runs.length} ${runs.length === 1 ? "run attempt" : "run attempts"}`;
 		const parts = [
-			`${runs.length} ${runs.length === 1 ? "run attempt" : "run attempts"}`,
-			`${flows.length} ${flows.length === 1 ? "workstream" : "workstreams"}`,
+			runLabel,
+			flows.length > 0
+				? `${flows.length} ${flows.length === 1 ? "workstream" : "workstreams"}`
+				: null,
 			running > 0 ? `${running} running` : null,
 			retryQueued > 0 ? `${retryQueued} RetryQueued` : null,
 		].filter((part): part is string => part !== null);
@@ -8577,7 +8595,11 @@ export class AgentStatusTreeProvider
 			descriptionParts.push("✓");
 		}
 		const taskRouting = classifyCompletionRouting(task);
-		if (taskRouting.kind === "detached" && isDoneStatus) {
+		if (
+			taskRouting.kind === "detached" &&
+			isDoneStatus &&
+			task.role !== "reviewer"
+		) {
 			descriptionParts.push("⚠ detached");
 		}
 		const lifecycleLiveness = isDoneStatus
