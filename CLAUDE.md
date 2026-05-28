@@ -59,6 +59,21 @@ These are **non-negotiable** for this project:
 5. **NEVER skip type checking** — `tsc --noEmit` runs before every build
 6. **NEVER use `--no-verify`** on git commit or push — hooks are quality gates, not suggestions. If hooks fail, fix the issue.
 
+## Cross-Repo Release Dependency: Ghostty Launcher
+
+Command Central preview/release work directly depends on `~/projects/ghostty-launcher` for lane orchestration and the bundled launcher resources under `resources/bin/`.
+
+If `just cut-preview`, `just prerelease-gate`, `just sync-launcher`, or a release-prep lane is blocked by a Ghostty Launcher defect or dirty launcher dependency work, do **not** stop at “launcher dirty.” Treat it as owned release-path work:
+
+1. Inspect `~/projects/ghostty-launcher` directly.
+2. Make the smallest safe launcher fix needed to unblock Command Central.
+3. Run launcher validation (`just check`, plus targeted tests when relevant).
+4. Write a launcher handoff under `~/projects/ghostty-launcher/research/`.
+5. Commit the focused launcher fix if gates are acceptable.
+6. Return here, rerun the Command Central preview gate/cut, and commit the resulting release metadata/artifacts.
+
+Do not push, tag, publish, or use `--no-verify` without explicit approval.
+
 ## Commands Reference
 
 This project follows the cross-project five-recipe standard documented in
