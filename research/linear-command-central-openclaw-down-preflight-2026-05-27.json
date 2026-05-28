@@ -1,0 +1,107 @@
+{
+  "createdAt": "2026-05-27T23:58:19.863333+00:00",
+  "destination": {
+    "cycle": null,
+    "cycleId": null,
+    "cycleRef": null,
+    "noProject": false,
+    "project": {
+      "id": "7c6fdd4e-fde5-4ae9-8a02-cebc0a52095c",
+      "name": "Command Central",
+      "teams": {
+        "nodes": [
+          {
+            "id": "91a65666-45bf-4f57-af0c-11ebca7e8f67",
+            "key": "PAR",
+            "name": "PartnerAI"
+          }
+        ]
+      }
+    },
+    "projectId": "7c6fdd4e-fde5-4ae9-8a02-cebc0a52095c",
+    "projectRef": "Command Central",
+    "team": {
+      "id": "91a65666-45bf-4f57-af0c-11ebca7e8f67",
+      "key": "PAR",
+      "name": "PartnerAI"
+    },
+    "teamId": "91a65666-45bf-4f57-af0c-11ebca7e8f67",
+    "teamRef": "PartnerAI"
+  },
+  "destinationResolved": {
+    "cycleId": null,
+    "cycleRef": null,
+    "noProject": false,
+    "projectId": "7c6fdd4e-fde5-4ae9-8a02-cebc0a52095c",
+    "projectRef": "Command Central",
+    "teamId": "91a65666-45bf-4f57-af0c-11ebca7e8f67",
+    "teamRef": "PartnerAI"
+  },
+  "issueBodyHashes": {
+    "CC-001": "9a6c7f5516dc18f68d13df4cdb7662046de13025390dc36dac66377283c7e305"
+  },
+  "issues": [
+    {
+      "bodyHash": "9a6c7f5516dc18f68d13df4cdb7662046de13025390dc36dac66377283c7e305",
+      "existing": null,
+      "key": "CC-001",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "Bug",
+        "runtime-hygiene"
+      ],
+      "plannedAction": "create",
+      "title": "[CC-001] Fix false or stale OpenClaw DOWN indicator in Command Central"
+    }
+  ],
+  "labels": [
+    {
+      "id": "78933aa8-f74c-423f-bdfa-83ec96b8cd59",
+      "name": "Bug"
+    },
+    {
+      "id": "66f78182-b078-408d-a6db-c610f6e584b2",
+      "name": "openclaw"
+    },
+    {
+      "id": "18b6d0b3-0c6f-4356-9c8f-5042efbde4de",
+      "name": "product-gap"
+    },
+    {
+      "id": "080a022b-d6db-4696-b49a-63c094dd2551",
+      "name": "reliability"
+    },
+    {
+      "id": "b2a7742a-d3be-49ff-9351-9c9cfcf18f24",
+      "name": "runtime-hygiene"
+    },
+    {
+      "id": "87ba1923-bac1-4863-a798-fec396ed1a0c",
+      "name": "symphony"
+    }
+  ],
+  "mcpPolicy": "read_only_optional",
+  "mode": "preflight",
+  "planHash": "2aba57920dfde7fc18c082740c04ddae6e1b2adb55959316ad8cbaff338ad032",
+  "relationHashes": [],
+  "relations": [],
+  "source": {
+    "generatedAt": "2026-05-27T23:58:17.238779+00:00",
+    "hash": "08caf5cfd8f65c9f0fc542f9c445c268d60b2f3bb6809fcf792de85b9dd351d7",
+    "head": "080b7bc4",
+    "path": "/Users/ostehost/projects/command-central/research/HANDOFF-linear-command-central-openclaw-down-2026-05-27.html",
+    "repo": "/Users/ostehost/projects/command-central",
+    "timezone": "America/New_York",
+    "updatedAt": null
+  },
+  "summary": {
+    "create": 1,
+    "existingRelations": 0,
+    "relations": 0,
+    "update": 0
+  },
+  "usedLinearApi": true
+}

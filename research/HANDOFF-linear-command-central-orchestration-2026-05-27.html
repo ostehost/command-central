@@ -1,0 +1,205 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Command Central Linear Intake - OpenClaw Health + Symphony Orchestration</title></head>
+<body>
+<h1>Command Central Linear Intake: OpenClaw Health + Symphony Orchestration</h1>
+<p>Machine-readable payload is embedded in <code>script#linear-work-items-json</code>.</p>
+<script id="linear-work-items-json" type="application/json">
+{
+  "schema": "linear_import_work_units_v1",
+  "generatedAt": "2026-05-27T23:32:58.613222+00:00",
+  "timezone": "America/New_York",
+  "sourceRepo": "/Users/ostehost/projects/command-central",
+  "currentHead": "257aadc4",
+  "linearIntake": {
+    "targetTeam": "PartnerAI",
+    "targetProject": "Command Central",
+    "priorityMap": {
+      "P0": "Urgent",
+      "P1": "High",
+      "P2": "Medium",
+      "P3": "Low"
+    },
+    "defaultLabels": [
+      "openclaw",
+      "symphony",
+      "reliability",
+      "product-gap"
+    ],
+    "laneLabels": {
+      "Program": [
+        "architecture"
+      ],
+      "Health": [
+        "Bug",
+        "runtime-hygiene"
+      ],
+      "Architecture": [
+        "architecture"
+      ],
+      "Symphony": [
+        "Feature"
+      ],
+      "Linear": [
+        "linear-integration"
+      ],
+      "Conductor": [
+        "Feature"
+      ],
+      "Dogfood": [
+        "validation"
+      ]
+    },
+    "parentBuckets": {
+      "command-central-orchestration": {
+        "parent": "CC-000",
+        "children": [
+          "CC-001",
+          "CC-002",
+          "CC-003",
+          "CC-004",
+          "CC-005",
+          "CC-006"
+        ]
+      }
+    },
+    "importPolicy": {
+      "requiredWorkItemCount": 7,
+      "importPolishItems": false,
+      "importSupersededFindings": false,
+      "polishItemCount": 0
+    },
+    "optionalNotImportedByDefault": []
+  },
+  "verifiedCommands": [
+    {
+      "command": "memory_search: Command Central Symphony spec Linear project orchestration across projects OpenClaw Down status bar",
+      "result": "Found Symphony adoption path: CC projects OpenClaw/TaskFlow/Launcher records into Symphony/Codex Runs; OpenClaw remains lifecycle authority."
+    },
+    {
+      "command": "Linear read-only list teams/projects",
+      "result": "Workspace has team PartnerAI (PAR), existing projects Config and Local Directory Sites; no Command Central project detected."
+    },
+    {
+      "command": "git rev-parse --short HEAD",
+      "result": "257aadc4"
+    }
+  ],
+  "workItems": [
+    {
+      "key": "CC-000",
+      "title": "Command Central project: OpenClaw health + Symphony orchestration",
+      "priority": "P1",
+      "lane": "Program",
+      "description": "Create a dedicated Command Central Linear project/workstream for issues like the false-looking OpenClaw DOWN indicator and for orchestration work that spans OpenClaw, TaskFlow, Launcher, Linear, and the Symphony-shaped Command Central surface. Command Central remains the visibility/control plane; OpenClaw/TaskFlow/Launcher remain lifecycle authority.",
+      "acceptanceCriteria": [
+        "Command Central has a dedicated Linear project for health/orchestration issues instead of mixing them into Config.",
+        "Imported issues preserve bracketed CC-* keys for idempotent updates.",
+        "The project explicitly uses Symphony vocabulary as a projection shape, not a replacement scheduler.",
+        "Cross-project issues can be grouped, reviewed, and advanced from this tracker without losing source authority boundaries."
+      ],
+      "dependencies": []
+    },
+    {
+      "key": "CC-001",
+      "title": "Fix false or stale OpenClaw DOWN indicator in Command Central",
+      "priority": "P0",
+      "lane": "Health",
+      "description": "The Command Central status bar can show a red 'OpenClaw DOWN' state while other evidence indicates OpenClaw still has active task state ('1 working \u00b7 3 done'). This looks like a broken feature or stale/partial health calculation. Diagnose the source of truth and make the UI truthful.",
+      "acceptanceCriteria": [
+        "Reproduce or explain the OpenClaw DOWN + active-task-count state from a real Command Central session.",
+        "Identify whether the failing source is gateway reachability, channel health, ACP/task service, node host, cached state, or status-bar composition.",
+        "Update the health model so degraded/partial states are not collapsed into a misleading all-down label.",
+        "Add tests covering down, degraded, stale-cache, and task-service-alive combinations.",
+        "Verify in VS Code or an equivalent extension host that the status bar renders the corrected label/state."
+      ],
+      "dependencies": []
+    },
+    {
+      "key": "CC-002",
+      "title": "Define OpenClaw health truth contract for Command Central",
+      "priority": "P1",
+      "lane": "Architecture",
+      "description": "Document and implement a health contract that separates gateway process status, API reachability, channel health, TaskFlow/task availability, node connectivity, and launcher execution health. The UI should show precise degraded states instead of one ambiguous DOWN banner.",
+      "acceptanceCriteria": [
+        "Health dimensions and precedence are documented in Command Central research or source docs.",
+        "The status provider distinguishes unreachable, auth failed, stale, degraded, and healthy states.",
+        "Task counts are explicitly tied to the task source that supplied them and do not imply gateway health by accident.",
+        "Tests assert precedence and labels for mixed-health states."
+      ],
+      "dependencies": [
+        "CC-001 informs the concrete failure mode and reproduction evidence."
+      ]
+    },
+    {
+      "key": "CC-003",
+      "title": "Project TaskFlow/Launcher/Linear workstreams into Symphony-shaped Command Central groups",
+      "priority": "P1",
+      "lane": "Symphony",
+      "description": "Extend the Command Central Symphony/Codex Runs projection so workstreams can group records from TaskFlow, launcher tasks, and Linear issue keys without becoming a competing scheduler. This is the tracker/visibility layer for cross-project orchestration.",
+      "acceptanceCriteria": [
+        "Codex/Symphony run views can display a parent workstream/group with child task attempts and source refs.",
+        "Field provenance remains visible: Linear issue, TaskFlow flow, launcher task, OpenClaw task, and workspace evidence are not merged by fuzzy title alone.",
+        "The projection preserves the rule that OpenClaw/TaskFlow/Launcher own lifecycle state.",
+        "Tests cover explicit-key joins and prevent broad display-title/path-only joins."
+      ],
+      "dependencies": [
+        "CC-002 establishes health/source truth vocabulary used by the projection."
+      ]
+    },
+    {
+      "key": "CC-004",
+      "title": "Add Linear intake/mirror receipts for Command Central orchestration issues",
+      "priority": "P1",
+      "lane": "Linear",
+      "description": "Use deterministic Linear intake artifacts and receipts for Command Central issue creation/update, then design the mirror path for status comments, task receipts, and review evidence. Linear is the tracker boundary, not the scheduler.",
+      "acceptanceCriteria": [
+        "Command Central handoff artifacts can be converted to import plans with the openclaw-linear-intake skill.",
+        "Dry-run receipts are saved and safe to approve before any live mutation.",
+        "Live applies require explicit project/team destination and approved receipt.",
+        "Mirror updates/comment behavior are specified separately from task dispatch."
+      ],
+      "dependencies": [
+        "CC-000 creates the destination project/workstream."
+      ]
+    },
+    {
+      "key": "CC-005",
+      "title": "Design conductor daemon slice using Symphony vocabulary on OpenClaw authority",
+      "priority": "P1",
+      "lane": "Conductor",
+      "description": "Define the missing conductor loop that reads eligible Linear/TaskFlow work, launches visible Claude lanes through Ghostty/launcher, reviews completions, retries when safe, and updates mirrors. The daemon should use Symphony run-attempt vocabulary but keep OpenClaw/TaskFlow/Launcher as lifecycle owners.",
+      "acceptanceCriteria": [
+        "A repo-owned WORKFLOW.md or equivalent config defines tracker, eligible states, workspace root, concurrency, retry, hooks, and prompt template.",
+        "The conductor loop is specified as poll/select/launch/review/retry/update with crash-safe receipts.",
+        "No code path bypasses visible launcher lanes for implementation work.",
+        "The design names the Command Central projection artifacts needed to monitor the loop."
+      ],
+      "dependencies": [
+        "CC-003 provides the visibility projection shape.",
+        "CC-004 provides tracker intake/mirror boundaries."
+      ]
+    },
+    {
+      "key": "CC-006",
+      "title": "Dogfood Command Central cross-project orchestration with real OpenClaw issues",
+      "priority": "P2",
+      "lane": "Dogfood",
+      "description": "Use the new Command Central project to run real issues like the OpenClaw DOWN indicator through the intended loop: Linear issue, TaskFlow/workstream, visible launcher lane, completion review, receipts, and Command Central/Symphony projection.",
+      "acceptanceCriteria": [
+        "At least one issue is run from Linear/project intake through visible launcher execution and reviewed completion.",
+        "Command Central shows the workstream, attempt state, health state, and evidence links accurately during the run.",
+        "Failures or stale states become follow-up issues in the same project, not ad-hoc chat memory.",
+        "A short dogfood report records what was fixed and what remained blocked."
+      ],
+      "dependencies": [
+        "CC-001 must be triaged/fixed or captured as the first dogfood target.",
+        "CC-003 must expose the grouped view.",
+        "CC-005 must define the conductor behavior to test."
+      ]
+    }
+  ],
+  "polishItems": [],
+  "superseded": []
+}
+</script>
+</body></html>

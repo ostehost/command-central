@@ -1,0 +1,66 @@
+{
+  "activationHold": {},
+  "createdAt": "2026-05-27T23:58:17.358136+00:00",
+  "destination": {
+    "cycle": "Backlog or TODO",
+    "targetProject": "Command Central",
+    "targetTeam": "PartnerAI"
+  },
+  "importPolicy": {
+    "excludedOptionalKeys": [],
+    "excludedPolishCount": 0,
+    "excludedSupersededCount": 0,
+    "includeOptional": [],
+    "includePolish": false
+  },
+  "items": [
+    {
+      "acceptanceCriteria": [
+        "Reproduce or explain the OpenClaw DOWN plus active-task-count state from a real Command Central session.",
+        "Identify whether the failing source is gateway reachability, channel health, ACP/task service, node host, cached state, or status-bar composition.",
+        "Update the health model so degraded or partial states are not collapsed into a misleading all-down label.",
+        "Add tests covering down, degraded, stale-cache, and task-service-alive combinations.",
+        "Verify in VS Code or an equivalent extension host that the status bar renders the corrected label/state."
+      ],
+      "body": "## Problem\nThe Command Central status bar can show a red 'OpenClaw DOWN' state while other evidence indicates OpenClaw still has active task state such as '1 working \u00b7 3 done'. This looks like a broken feature or stale/partial health calculation. Diagnose the source of truth and make the UI truthful.\n\n## Evidence\n- Source repo: `/Users/ostehost/projects/command-central`\n- Source HEAD: `080b7bc4`\n- Handoff key: `CC-001`\n\n## Scope\n- Lane: `Health`\n\n## Acceptance Criteria\n- Reproduce or explain the OpenClaw DOWN plus active-task-count state from a real Command Central session.\n- Identify whether the failing source is gateway reachability, channel health, ACP/task service, node host, cached state, or status-bar composition.\n- Update the health model so degraded or partial states are not collapsed into a misleading all-down label.\n- Add tests covering down, degraded, stale-cache, and task-service-alive combinations.\n- Verify in VS Code or an equivalent extension host that the status bar renders the corrected label/state.\n\n## Verification\n- `User created Linear project Command Central and approved adding the OpenClaw DOWN issue`: Proceed with deterministic Linear intake.\n- `git rev-parse --short HEAD`: 080b7bc4\n\n## Dependencies / Blocks\n- None\n\n## Out Of Scope\n- Superseded findings are context only and must not be re-opened by this issue.\n\n<!-- openclaw-linear-intake:v1 -->",
+      "bodyHash": "9a6c7f5516dc18f68d13df4cdb7662046de13025390dc36dac66377283c7e305",
+      "dependencies": [],
+      "externalDependencies": [],
+      "idempotencyKey": "CC-001",
+      "key": "CC-001",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "Bug",
+        "runtime-hygiene"
+      ],
+      "lane": "Health",
+      "linearPriority": 1,
+      "parentKey": null,
+      "priority": "P0",
+      "priorityLabel": "Urgent",
+      "sourceTitle": "Fix false or stale OpenClaw DOWN indicator in Command Central",
+      "title": "[CC-001] Fix false or stale OpenClaw DOWN indicator in Command Central"
+    }
+  ],
+  "mcpPolicy": "read_only_optional",
+  "planHash": "2aba57920dfde7fc18c082740c04ddae6e1b2adb55959316ad8cbaff338ad032",
+  "relations": [],
+  "schema": "linear_issue_import_plan_v1",
+  "source": {
+    "generatedAt": "2026-05-27T23:58:17.238779+00:00",
+    "hash": "08caf5cfd8f65c9f0fc542f9c445c268d60b2f3bb6809fcf792de85b9dd351d7",
+    "head": "080b7bc4",
+    "path": "/Users/ostehost/projects/command-central/research/HANDOFF-linear-command-central-openclaw-down-2026-05-27.html",
+    "repo": "/Users/ostehost/projects/command-central",
+    "timezone": "America/New_York",
+    "updatedAt": null
+  },
+  "validation": {
+    "errors": [],
+    "ok": true,
+    "warnings": []
+  }
+}

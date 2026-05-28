@@ -1,0 +1,68 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Command Central OpenClaw DOWN Linear Intake</title></head><body><h1>Command Central OpenClaw DOWN Linear Intake</h1><script id="linear-work-items-json" type="application/json">
+{
+  "schema": "linear_import_work_units_v1",
+  "generatedAt": "2026-05-27T23:58:17.238779+00:00",
+  "timezone": "America/New_York",
+  "sourceRepo": "/Users/ostehost/projects/command-central",
+  "currentHead": "080b7bc4",
+  "linearIntake": {
+    "targetTeam": "PartnerAI",
+    "targetProject": "Command Central",
+    "priorityMap": {
+      "P0": "Urgent",
+      "P1": "High",
+      "P2": "Medium",
+      "P3": "Low"
+    },
+    "defaultLabels": [
+      "openclaw",
+      "symphony",
+      "reliability",
+      "product-gap"
+    ],
+    "laneLabels": {
+      "Health": [
+        "Bug",
+        "runtime-hygiene"
+      ]
+    },
+    "parentBuckets": {},
+    "importPolicy": {
+      "requiredWorkItemCount": 1,
+      "importPolishItems": false,
+      "importSupersededFindings": false,
+      "polishItemCount": 0
+    },
+    "optionalNotImportedByDefault": []
+  },
+  "verifiedCommands": [
+    {
+      "command": "User created Linear project Command Central and approved adding the OpenClaw DOWN issue",
+      "result": "Proceed with deterministic Linear intake."
+    },
+    {
+      "command": "git rev-parse --short HEAD",
+      "result": "080b7bc4"
+    }
+  ],
+  "workItems": [
+    {
+      "key": "CC-001",
+      "title": "Fix false or stale OpenClaw DOWN indicator in Command Central",
+      "priority": "P0",
+      "lane": "Health",
+      "description": "The Command Central status bar can show a red 'OpenClaw DOWN' state while other evidence indicates OpenClaw still has active task state such as '1 working \u00b7 3 done'. This looks like a broken feature or stale/partial health calculation. Diagnose the source of truth and make the UI truthful.",
+      "acceptanceCriteria": [
+        "Reproduce or explain the OpenClaw DOWN plus active-task-count state from a real Command Central session.",
+        "Identify whether the failing source is gateway reachability, channel health, ACP/task service, node host, cached state, or status-bar composition.",
+        "Update the health model so degraded or partial states are not collapsed into a misleading all-down label.",
+        "Add tests covering down, degraded, stale-cache, and task-service-alive combinations.",
+        "Verify in VS Code or an equivalent extension host that the status bar renders the corrected label/state."
+      ],
+      "dependencies": []
+    }
+  ],
+  "polishItems": [],
+  "superseded": []
+}
+</script></body></html>
