@@ -8712,12 +8712,22 @@ export class AgentStatusTreeProvider
 							"warning",
 							new vscode.ThemeColor("charts.yellow"),
 						)
-					: isReviewed
-						? new vscode.ThemeIcon(
-								"pass",
-								new vscode.ThemeColor("charts.green"),
+					: interactiveAwaiting
+						? // Idle interactive REPL: positive pane evidence proves the
+							// lane is alive, but the stream has been silent past the
+							// stuck threshold — so it's awaiting input, not churning.
+							// Swap the animated sync~spin for a static "chat awaiting
+							// reply" icon so the row stops implying ongoing work.
+							new vscode.ThemeIcon(
+								"comment-discussion",
+								new vscode.ThemeColor("charts.yellow"),
 							)
-						: getStatusThemeIcon(task.status);
+						: isReviewed
+							? new vscode.ThemeIcon(
+									"pass",
+									new vscode.ThemeColor("charts.green"),
+								)
+							: getStatusThemeIcon(task.status);
 		// `.linked` contextValue suffix is added only when a Claude session
 		// UUID is recorded — mirrors the at-a-glance description indicator
 		// (presence = task-specific resume target; absence = `--continue`).
