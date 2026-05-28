@@ -11,6 +11,11 @@ export type WorkflowRunAction =
 	| "dispatchFixup";
 
 export type WorkflowRunOwnerKind = "openclaw" | "launcher";
+export type WorkflowRunActionSurface = "agentStatus" | "symphony";
+
+export interface WorkflowRunActionOptions {
+	surface?: WorkflowRunActionSurface;
+}
 
 export interface WorkflowRunActionEnvelope {
 	sourceRef: WorkflowRunSourceRef;
@@ -26,6 +31,10 @@ export interface WorkflowRunActionEnvelope {
 }
 
 const OWNER_KINDS = new Set<WorkflowRunOwnerKind>(["openclaw", "launcher"]);
+const READ_ONLY_ACTIONS = new Set<WorkflowRunAction>([
+	"focusTerminal",
+	"showDetail",
+]);
 
 const ACTION_OWNER_ALLOWLIST: Record<
 	WorkflowRunAction,
@@ -33,9 +42,9 @@ const ACTION_OWNER_ALLOWLIST: Record<
 > = {
 	focusTerminal: ["launcher"],
 	showDetail: ["openclaw", "launcher"],
-	cancel: ["openclaw", "launcher"],
-	requestReview: ["openclaw", "launcher"],
-	dispatchFixup: ["openclaw", "launcher"],
+	cancel: ["openclaw"],
+	requestReview: ["openclaw"],
+	dispatchFixup: ["openclaw"],
 };
 
 export function isWorkflowRunOwnerKind(
@@ -47,6 +56,7 @@ export function isWorkflowRunOwnerKind(
 export function buildWorkflowRunActionEnvelope(
 	run: WorkflowRunView,
 	action: WorkflowRunAction,
+	options: WorkflowRunActionOptions = {},
 ): WorkflowRunActionEnvelope {
 	if (!isWorkflowRunOwnerKind(run.ownerKind)) {
 		throw new Error(
@@ -54,6 +64,7 @@ export function buildWorkflowRunActionEnvelope(
 		);
 	}
 
+	assertSurfaceCanHandleAction(action, run.runId, options);
 	assertOwnerCanHandleAction(run.ownerKind, action, run.runId);
 
 	return omitUndefined({
@@ -82,9 +93,23 @@ export function assertOwnerCanHandleAction(
 	}
 }
 
+export function assertSurfaceCanHandleAction(
+	action: WorkflowRunAction,
+	runId = "workflow run",
+	options: WorkflowRunActionOptions = {},
+): void {
+	if (options.surface === "symphony" && !READ_ONLY_ACTIONS.has(action)) {
+		throw new Error(
+			`Workflow run ${runId} cannot route ${action}: read-only Symphony surface only allows focusTerminal/showDetail`,
+		);
+	}
+}
+
 export function getWorkflowRunActionOwner(
 	envelope: WorkflowRunActionEnvelope,
+	options: WorkflowRunActionOptions = {},
 ): WorkflowRunOwnerKind {
+	assertSurfaceCanHandleAction(envelope.action, envelope.runId, options);
 	assertOwnerCanHandleAction(
 		envelope.ownerKind,
 		envelope.action,
