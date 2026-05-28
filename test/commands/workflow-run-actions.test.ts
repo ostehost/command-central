@@ -78,6 +78,25 @@ describe("workflow run action envelopes", () => {
 		expect(JSON.stringify(envelope)).not.toContain("tasks.json");
 	});
 
+	test("rejects lifecycle actions for Symphony read-model rows", () => {
+		expect(() =>
+			buildWorkflowRunActionEnvelope(
+				workflowRun({
+					sourceAuthority: "launcher",
+					ownerKind: "launcher",
+				}),
+				"cancel",
+				{ surface: "symphony" },
+			),
+		).toThrow(/read-only Symphony/i);
+	});
+
+	test("rejects launcher-owned lifecycle actions in the projection router", () => {
+		expect(() =>
+			buildWorkflowRunActionEnvelope(workflowRun(), "requestReview"),
+		).toThrow(/requestReview/);
+	});
+
 	test("rejects ownerless projected rows", () => {
 		expect(() =>
 			buildWorkflowRunActionEnvelope(
