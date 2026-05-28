@@ -633,7 +633,7 @@ cut-preview *args="--prerelease":
 # the OpenClaw/node-invoke-timeout case where the cut may have finished
 # without the invoker noticing.
 preview-status *args="":
-    @bun run scripts-v2/preview-status.ts show {{args}}
+    @bun run scripts-v2/preview-status.ts {{args}}
 
 # Preflight: refuse dirty trees (both repos), warn off-hub.
 _preview-preflight:

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -9,8 +10,40 @@ import {
 	PreviewStatusError,
 	type PreviewStatusRecord,
 	PreviewStatusStore,
+	parseCli,
 	parseRecord,
 } from "../../scripts-v2/preview-status.ts";
+
+const CLI_PATH = path.resolve(
+	import.meta.dir,
+	"..",
+	"..",
+	"scripts-v2",
+	"preview-status.ts",
+);
+
+type CliResult = { status: number; stdout: string; stderr: string };
+
+function runCliSync(args: string[]): CliResult {
+	try {
+		const stdout = execFileSync("bun", ["run", CLI_PATH, ...args], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		return { status: 0, stdout, stderr: "" };
+	} catch (err) {
+		const e = err as {
+			status?: number | null;
+			stdout?: string | Buffer;
+			stderr?: string | Buffer;
+		};
+		return {
+			status: typeof e.status === "number" ? e.status : 1,
+			stdout: e.stdout ? e.stdout.toString() : "",
+			stderr: e.stderr ? e.stderr.toString() : "",
+		};
+	}
+}
 
 function recordFixture(
 	overrides: Partial<PreviewStatusRecord> = {},
@@ -291,5 +324,188 @@ describe("formatRecord", () => {
 		const out = formatRecord(r, "succeeded");
 		expect(out).toContain("state:          succeeded");
 		expect(out).not.toContain("stored as");
+	});
+});
+
+describe("parseCli", () => {
+	test("empty argv defaults to show", () => {
+		expect(parseCli([])).toEqual({
+			kind: "command",
+			stateDir: undefined,
+			subcommand: "show",
+			subArgs: [],
+		});
+	});
+
+	test("a bare --json defaults to show with the flag forwarded", () => {
+		expect(parseCli(["--json"])).toEqual({
+			kind: "command",
+			stateDir: undefined,
+			subcommand: "show",
+			subArgs: ["--json"],
+		});
+	});
+
+	test("explicit clear dispatches the clear subcommand", () => {
+		expect(parseCli(["clear"])).toEqual({
+			kind: "command",
+			stateDir: undefined,
+			subcommand: "clear",
+			subArgs: [],
+		});
+	});
+
+	test("show --json continues to work", () => {
+		expect(parseCli(["show", "--json"])).toEqual({
+			kind: "command",
+			stateDir: undefined,
+			subcommand: "show",
+			subArgs: ["--json"],
+		});
+	});
+
+	test("--state-dir <dir> before the subcommand is hoisted as global", () => {
+		expect(parseCli(["--state-dir", "/tmp/x", "show", "--json"])).toEqual({
+			kind: "command",
+			stateDir: "/tmp/x",
+			subcommand: "show",
+			subArgs: ["--json"],
+		});
+	});
+
+	test("--state-dir=<dir> form is supported", () => {
+		expect(parseCli(["--state-dir=/tmp/y", "clear"])).toEqual({
+			kind: "command",
+			stateDir: "/tmp/y",
+			subcommand: "clear",
+			subArgs: [],
+		});
+	});
+
+	test("--state-dir after the subcommand still works", () => {
+		expect(parseCli(["show", "--state-dir", "/tmp/z", "--json"])).toEqual({
+			kind: "command",
+			stateDir: "/tmp/z",
+			subcommand: "show",
+			subArgs: ["--json"],
+		});
+	});
+
+	test("--state-dir without a value is rejected", () => {
+		expect(parseCli(["--state-dir"])).toEqual({
+			kind: "error",
+			message: "preview-status: --state-dir requires a value",
+		});
+	});
+
+	test("--state-dir followed by a flag is rejected", () => {
+		expect(parseCli(["--state-dir", "--json"])).toEqual({
+			kind: "error",
+			message: "preview-status: --state-dir requires a value",
+		});
+	});
+
+	test("an unknown positional is an error, not a silent show", () => {
+		expect(parseCli(["clearr"])).toEqual({
+			kind: "error",
+			message: 'preview-status: unknown subcommand "clearr"',
+		});
+	});
+
+	test("--help short-circuits as a help request", () => {
+		expect(parseCli(["--help"])).toEqual({ kind: "help", stateDir: undefined });
+	});
+
+	test("-h short-circuits as a help request even with --state-dir", () => {
+		expect(parseCli(["--state-dir=/tmp/h", "-h"])).toEqual({
+			kind: "help",
+			stateDir: "/tmp/h",
+		});
+	});
+});
+
+describe("preview-status CLI (subprocess smoke)", () => {
+	let stateDir: string;
+	beforeEach(async () => {
+		stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "preview-status-cli-"));
+	});
+	afterEach(async () => {
+		if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
+	});
+
+	test("bare CLI defaults to show and reports no record", () => {
+		const r = runCliSync(["--state-dir", stateDir]);
+		expect(r.status).toBe(0);
+		expect(r.stdout).toContain("no record (state: none)");
+	});
+
+	test('--json defaults to show --json and emits {"state":"none"}', () => {
+		const r = runCliSync(["--state-dir", stateDir, "--json"]);
+		expect(r.status).toBe(0);
+		expect(JSON.parse(r.stdout)).toEqual({ state: "none" });
+	});
+
+	test("explicit clear subcommand actually clears (state file removed)", async () => {
+		// Seed state.json so we can prove clear deletes it (and isn't show).
+		await fs.writeFile(
+			path.join(stateDir, "state.json"),
+			JSON.stringify({
+				version: PREVIEW_STATUS_SCHEMA_VERSION,
+				state: "succeeded",
+				exitCode: 0,
+			}),
+			"utf8",
+		);
+		const r = runCliSync(["--state-dir", stateDir, "clear"]);
+		expect(r.status).toBe(0);
+		expect(r.stdout).toContain("preview-status: cleared");
+		expect(
+			await fs
+				.stat(path.join(stateDir, "state.json"))
+				.then(() => true)
+				.catch(() => false),
+		).toBe(false);
+	});
+
+	test("global --state-dir BEFORE subcommand: show --json (handoff-recommended shape)", async () => {
+		await fs.writeFile(
+			path.join(stateDir, "state.json"),
+			JSON.stringify({
+				version: PREVIEW_STATUS_SCHEMA_VERSION,
+				state: "succeeded",
+				exitCode: 0,
+				packageVersion: "0.6.0-rc.47",
+			}),
+			"utf8",
+		);
+		const r = runCliSync(["--state-dir", stateDir, "show", "--json"]);
+		expect(r.status).toBe(0);
+		const obj = JSON.parse(r.stdout);
+		expect(obj.state).toBe("succeeded");
+		expect(obj.liveState).toBe("succeeded");
+		expect(obj.packageVersion).toBe("0.6.0-rc.47");
+	});
+
+	test("show --state-dir <dir> --json (state-dir AFTER subcommand) still works", async () => {
+		await fs.writeFile(
+			path.join(stateDir, "state.json"),
+			JSON.stringify({
+				version: PREVIEW_STATUS_SCHEMA_VERSION,
+				state: "failed",
+				exitCode: 7,
+			}),
+			"utf8",
+		);
+		const r = runCliSync(["show", "--state-dir", stateDir, "--json"]);
+		expect(r.status).toBe(0);
+		const obj = JSON.parse(r.stdout);
+		expect(obj.state).toBe("failed");
+		expect(obj.exitCode).toBe(7);
+	});
+
+	test("unknown subcommand exits 64 with a helpful error", () => {
+		const r = runCliSync(["--state-dir", stateDir, "clearr"]);
+		expect(r.status).toBe(64);
+		expect(r.stderr).toContain('unknown subcommand "clearr"');
 	});
 });

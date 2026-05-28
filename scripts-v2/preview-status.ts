@@ -356,28 +356,131 @@ function hasFlag(args: string[], name: string): boolean {
 	return args.includes(`--${name}`);
 }
 
+export const PREVIEW_STATUS_SUBCOMMANDS = [
+	"start",
+	"finish",
+	"show",
+	"clear",
+] as const;
+
+export type PreviewStatusSubcommand =
+	(typeof PREVIEW_STATUS_SUBCOMMANDS)[number];
+
+export type ParsedCli =
+	| {
+			kind: "command";
+			stateDir: string | undefined;
+			subcommand: PreviewStatusSubcommand;
+			subArgs: string[];
+	  }
+	| { kind: "help"; stateDir: string | undefined }
+	| { kind: "error"; message: string };
+
+/**
+ * Parse argv into a normalised {global flags, subcommand, subargs} shape.
+ *
+ * Global flags (`--state-dir <dir>`, `--state-dir=<dir>`, `--help`, `-h`)
+ * may appear anywhere — before or after the subcommand — so callers like
+ * `bun run scripts-v2/preview-status.ts --state-dir <dir> show --json`
+ * work the same as `show --state-dir <dir> --json`.
+ *
+ * The first remaining positional is treated as the subcommand. If no
+ * positional is present (e.g. `--json` only, or nothing at all), the
+ * subcommand defaults to `show` — that's what makes `just preview-status`
+ * and `just preview-status --json` shorthand. An unknown positional
+ * still errors so typos don't silently degrade into `show`.
+ */
+export function parseCli(argv: string[]): ParsedCli {
+	const positional: string[] = [];
+	let stateDir: string | undefined;
+	let help = false;
+
+	for (let i = 0; i < argv.length; i++) {
+		const tok = argv[i];
+		if (tok === undefined) continue;
+		if (tok === "--state-dir") {
+			const value = argv[i + 1];
+			if (value === undefined || value.startsWith("--")) {
+				return {
+					kind: "error",
+					message: "preview-status: --state-dir requires a value",
+				};
+			}
+			stateDir = value;
+			i++;
+			continue;
+		}
+		if (tok.startsWith("--state-dir=")) {
+			stateDir = tok.slice("--state-dir=".length);
+			continue;
+		}
+		if (tok === "--help" || tok === "-h") {
+			help = true;
+			continue;
+		}
+		positional.push(tok);
+	}
+
+	if (help) return { kind: "help", stateDir };
+
+	const first = positional[0];
+	if (first === undefined || first.startsWith("--") || first.startsWith("-")) {
+		return {
+			kind: "command",
+			stateDir,
+			subcommand: "show",
+			subArgs: positional,
+		};
+	}
+
+	if (!(PREVIEW_STATUS_SUBCOMMANDS as readonly string[]).includes(first)) {
+		return {
+			kind: "error",
+			message: `preview-status: unknown subcommand "${first}"`,
+		};
+	}
+
+	return {
+		kind: "command",
+		stateDir,
+		subcommand: first as PreviewStatusSubcommand,
+		subArgs: positional.slice(1),
+	};
+}
+
 async function runCli(argv: string[]): Promise<number> {
-	const [sub, ...rest] = argv;
+	const parsed = parseCli(argv);
+
+	if (parsed.kind === "error") {
+		console.error(parsed.message);
+		return 64;
+	}
+
 	const stateDir =
-		getFlag(argv, "state-dir") ?? path.join(process.cwd(), ".preview-status");
+		parsed.stateDir ?? path.join(process.cwd(), ".preview-status");
 	const store = new PreviewStatusStore(stateDir);
 
-	if (!sub || sub === "--help" || sub === "-h") {
+	if (parsed.kind === "help") {
 		console.log(
 			[
 				"preview-status — track durable lifecycle of `just cut-preview` runs",
 				"",
 				"Usage:",
+				"  preview-status [--state-dir <dir>] [subcommand] [args...]",
+				"",
 				"  preview-status start    --command=... --cwd=... [--log-path=...] [--version=...] [--force]",
 				"  preview-status finish   --exit-code=N [--version=...] [--artifact=...] [--artifact-sha=...]",
-				"  preview-status show     [--json]",
+				"  preview-status show     [--json]   (default subcommand)",
 				"  preview-status clear",
 				"",
+				"Global flags may appear before or after the subcommand.",
 				"State file: .preview-status/state.json (gitignored).",
 			].join("\n"),
 		);
 		return 0;
 	}
+
+	const { subcommand: sub, subArgs: rest } = parsed;
 
 	if (sub === "start") {
 		const command = getFlag(rest, "command");
@@ -468,8 +571,8 @@ async function runCli(argv: string[]): Promise<number> {
 		return 0;
 	}
 
-	console.error(`preview-status: unknown subcommand "${sub}"`);
-	return 64;
+	const _exhaustive: never = sub;
+	throw new Error(`preview-status: unreachable subcommand ${String(_exhaustive)}`);
 }
 
 function parsePidFlag(raw: string | undefined): number | undefined {
