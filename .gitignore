@@ -92,3 +92,6 @@ prompts/
 
 # preview-status — durable lifecycle bookmark for `just cut-preview`
 .preview-status/
+
+# Claude Code scheduled-task lock — runtime, owned by the live session
+.claude/scheduled_tasks.lock
