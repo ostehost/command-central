@@ -279,10 +279,13 @@ spawn_guards_preflight_automation() {
 	fi
 
 	if [[ $rc -eq 124 ]]; then
-		spawn_guards_fail "automation_timeout" "AppleScript automation probe timed out.
-  The launcher cannot confirm that terminal control is responsive before creating a visible Ghostty window.
-  Check that the user session is logged in and that System Events is not blocked.
-  To bypass (not recommended), set OSTE_SKIP_AUTOMATION_PREFLIGHT=1."
+		echo "[spawn-guards] WARNING: AppleScript automation probe timed out after ${timeout_sec}s." >&2
+		echo "  Visible Ghostty terminal cannot be confirmed responsive." >&2
+		echo "  Downgrading to tmux mode so work is not blocked." >&2
+		echo "  To diagnose: check that the user session is logged in and System Events is not blocked." >&2
+		spawn_guards_emit_openclaw_event "automation_timeout" "probe timed out; downgrading to tmux" || true
+		export OSTE_VISIBLE_DOWNGRADED_TO_TMUX=1
+		return 0
 	fi
 
 	echo "[spawn-guards] WARNING: automation probe exited ${rc} but without a known permission signature: ${probe_output}" >&2
