@@ -89,3 +89,6 @@ prompts/
 
 # Local clawpatch tooling artifacts
 .clawpatch/
+
+# preview-status — durable lifecycle bookmark for `just cut-preview`
+.preview-status/

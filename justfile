@@ -39,6 +39,7 @@ default:
     @echo "  just dist        Build distribution (smart version-aware builds)"
     @echo "  just prerelease  Run prerelease gate + build prerelease artifact"
     @echo "  just cut-preview One-command preview RC: preflight + sync + gate + dist"
+    @echo "  just preview-status  Show the latest cut-preview lifecycle record"
     @echo ""
     @echo "Testing (Enterprise-Grade):"
     @echo "  just test                Run all tests (~5s)"
@@ -593,23 +594,46 @@ prerelease *args="--prerelease":
 #                           commit). No auto-commit (read-only git policy).
 
 cut-preview *args="--prerelease":
-    @echo "╭──────────────────────────────────────────────────╮"
-    @echo "│  Cut Preview — command-central                   │"
-    @echo "╰──────────────────────────────────────────────────╯"
-    @just _preview-preflight
-    @just sync-launcher
-    @just _preview-rehearsal
-    @just prerelease "{{args}}"
-    @echo ""
-    @echo "╭──────────────────────────────────────────────────╮"
-    @echo "│  Next steps (manual)                             │"
-    @echo "├──────────────────────────────────────────────────┤"
-    @echo "│  1. Cmd+Shift+P → 'Developer: Reload Window'     │"
-    @echo "│  2. Run just verify-vscode-consumption           │"
-    @echo "│  3. Smoke test the extension in VS Code          │"
-    @echo "│  4. Review git status, stage + commit the churn  │"
-    @echo "│  5. Do NOT push/tag — user drives git            │"
-    @echo "╰──────────────────────────────────────────────────╯"
+    #!/usr/bin/env bash
+    # Cut a preview RC with durable lifecycle tracking. The body is unchanged
+    # from the original recipe — the wrapper only adds preview-status
+    # start/finish bookkeeping (so a node-invoke timeout no longer makes the
+    # state ambiguous) and tees stdout/stderr into .preview-status/cut-preview-*.log.
+    set -euo pipefail
+    LOG_DIR=".preview-status"
+    mkdir -p "$LOG_DIR"
+    LOG_FILE="$LOG_DIR/cut-preview-$(date -u +%Y%m%dT%H%M%SZ).log"
+    bun run scripts-v2/preview-status.ts start \
+        --command "just cut-preview {{args}}" \
+        --cwd "$(pwd)" \
+        --log-path "$LOG_FILE"
+    trap 'rc=$?; bun run scripts-v2/preview-status.ts finish --exit-code="$rc" >/dev/null 2>&1 || true' EXIT
+    exec > >(tee "$LOG_FILE") 2>&1
+    printf '╭──────────────────────────────────────────────────╮\n'
+    printf '│  Cut Preview — command-central                   │\n'
+    printf '╰──────────────────────────────────────────────────╯\n'
+    just _preview-preflight
+    just sync-launcher
+    just _preview-rehearsal
+    just prerelease {{args}}
+    printf '\n'
+    printf '╭──────────────────────────────────────────────────╮\n'
+    printf '│  Next steps (manual)                             │\n'
+    printf '├──────────────────────────────────────────────────┤\n'
+    printf '│  1. Cmd+Shift+P → '"'"'Developer: Reload Window'"'"'     │\n'
+    printf '│  2. Run just verify-vscode-consumption           │\n'
+    printf '│  3. Smoke test the extension in VS Code          │\n'
+    printf '│  4. Review git status, stage + commit the churn  │\n'
+    printf '│  5. Do NOT push/tag — user drives git            │\n'
+    printf '│  6. just preview-status — confirm SUCCEEDED      │\n'
+    printf '╰──────────────────────────────────────────────────╯\n'
+
+# Show the latest preview-cut lifecycle record (state, pid, log, artifact).
+# A running record whose pid is gone is reclassified as `unknown` — that's
+# the OpenClaw/node-invoke-timeout case where the cut may have finished
+# without the invoker noticing.
+preview-status *args="":
+    @bun run scripts-v2/preview-status.ts show {{args}}
 
 # Preflight: refuse dirty trees (both repos), warn off-hub.
 _preview-preflight:
