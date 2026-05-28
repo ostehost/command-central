@@ -1,0 +1,346 @@
+{
+  "activationHold": {},
+  "createdAt": "2026-05-27T23:32:58.813466+00:00",
+  "destination": {
+    "cycle": "Backlog or TODO",
+    "targetProject": "Command Central",
+    "targetTeam": "PartnerAI"
+  },
+  "importPolicy": {
+    "excludedOptionalKeys": [],
+    "excludedPolishCount": 0,
+    "excludedSupersededCount": 0,
+    "includeOptional": [],
+    "includePolish": false
+  },
+  "items": [
+    {
+      "acceptanceCriteria": [
+        "Command Central has a dedicated Linear project for health/orchestration issues instead of mixing them into Config.",
+        "Imported issues preserve bracketed CC-* keys for idempotent updates.",
+        "The project explicitly uses Symphony vocabulary as a projection shape, not a replacement scheduler.",
+        "Cross-project issues can be grouped, reviewed, and advanced from this tracker without losing source authority boundaries."
+      ],
+      "body": "## Problem\nCreate a dedicated Command Central Linear project/workstream for issues like the false-looking OpenClaw DOWN indicator and for orchestration work that spans OpenClaw, TaskFlow, Launcher, Linear, and the Symphony-shaped Command Central surface. Command Central remains the visibility/control plane; OpenClaw/TaskFlow/Launcher remain lifecycle authority.\n\n## Evidence\n- Source repo: `/Users/ostehost/projects/command-central`\n- Source HEAD: `257aadc4`\n- Handoff key: `CC-000`\n\n## Scope\n- Lane: `Program`\n\n## Acceptance Criteria\n- Command Central has a dedicated Linear project for health/orchestration issues instead of mixing them into Config.\n- Imported issues preserve bracketed CC-* keys for idempotent updates.\n- The project explicitly uses Symphony vocabulary as a projection shape, not a replacement scheduler.\n- Cross-project issues can be grouped, reviewed, and advanced from this tracker without losing source authority boundaries.\n\n## Verification\n- `memory_search: Command Central Symphony spec Linear project orchestration across projects OpenClaw Down status bar`: Found Symphony adoption path: CC projects OpenClaw/TaskFlow/Launcher records into Symphony/Codex Runs; OpenClaw remains lifecycle authority.\n- `Linear read-only list teams/projects`: Workspace has team PartnerAI (PAR), existing projects Config and Local Directory Sites; no Command Central project detected.\n- `git rev-parse --short HEAD`: 257aadc4\n\n## Dependencies / Blocks\n- None\n\n## Out Of Scope\n- Superseded findings are context only and must not be re-opened by this issue.\n\n<!-- openclaw-linear-intake:v1 -->",
+      "bodyHash": "dba1c7d00ee3e35b6aeb0cd4f9342df6d4b67642f7626e0bd68d4836913e2105",
+      "dependencies": [],
+      "externalDependencies": [],
+      "idempotencyKey": "CC-000",
+      "key": "CC-000",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "architecture"
+      ],
+      "lane": "Program",
+      "linearPriority": 2,
+      "parentKey": null,
+      "priority": "P1",
+      "priorityLabel": "High",
+      "sourceTitle": "Command Central project: OpenClaw health + Symphony orchestration",
+      "title": "[CC-000] Command Central project: OpenClaw health + Symphony orchestration"
+    },
+    {
+      "acceptanceCriteria": [
+        "Reproduce or explain the OpenClaw DOWN + active-task-count state from a real Command Central session.",
+        "Identify whether the failing source is gateway reachability, channel health, ACP/task service, node host, cached state, or status-bar composition.",
+        "Update the health model so degraded/partial states are not collapsed into a misleading all-down label.",
+        "Add tests covering down, degraded, stale-cache, and task-service-alive combinations.",
+        "Verify in VS Code or an equivalent extension host that the status bar renders the corrected label/state."
+      ],
+      "body": "## Problem\nThe Command Central status bar can show a red 'OpenClaw DOWN' state while other evidence indicates OpenClaw still has active task state ('1 working \u00b7 3 done'). This looks like a broken feature or stale/partial health calculation. Diagnose the source of truth and make the UI truthful.\n\n## Evidence\n- Source repo: `/Users/ostehost/projects/command-central`\n- Source HEAD: `257aadc4`\n- Handoff key: `CC-001`\n\n## Scope\n- Lane: `Health`\n\n## Acceptance Criteria\n- Reproduce or explain the OpenClaw DOWN + active-task-count state from a real Command Central session.\n- Identify whether the failing source is gateway reachability, channel health, ACP/task service, node host, cached state, or status-bar composition.\n- Update the health model so degraded/partial states are not collapsed into a misleading all-down label.\n- Add tests covering down, degraded, stale-cache, and task-service-alive combinations.\n- Verify in VS Code or an equivalent extension host that the status bar renders the corrected label/state.\n\n## Verification\n- `memory_search: Command Central Symphony spec Linear project orchestration across projects OpenClaw Down status bar`: Found Symphony adoption path: CC projects OpenClaw/TaskFlow/Launcher records into Symphony/Codex Runs; OpenClaw remains lifecycle authority.\n- `Linear read-only list teams/projects`: Workspace has team PartnerAI (PAR), existing projects Config and Local Directory Sites; no Command Central project detected.\n- `git rev-parse --short HEAD`: 257aadc4\n\n## Dependencies / Blocks\n- None\n\n## Out Of Scope\n- Superseded findings are context only and must not be re-opened by this issue.\n\n<!-- openclaw-linear-intake:v1 -->",
+      "bodyHash": "c359dac22a4700d51eef18748ef089b647f686acbb44c8981efe89915ed1041e",
+      "dependencies": [],
+      "externalDependencies": [],
+      "idempotencyKey": "CC-001",
+      "key": "CC-001",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "Bug",
+        "runtime-hygiene"
+      ],
+      "lane": "Health",
+      "linearPriority": 1,
+      "parentKey": "CC-000",
+      "priority": "P0",
+      "priorityLabel": "Urgent",
+      "sourceTitle": "Fix false or stale OpenClaw DOWN indicator in Command Central",
+      "title": "[CC-001] Fix false or stale OpenClaw DOWN indicator in Command Central"
+    },
+    {
+      "acceptanceCriteria": [
+        "Health dimensions and precedence are documented in Command Central research or source docs.",
+        "The status provider distinguishes unreachable, auth failed, stale, degraded, and healthy states.",
+        "Task counts are explicitly tied to the task source that supplied them and do not imply gateway health by accident.",
+        "Tests assert precedence and labels for mixed-health states."
+      ],
+      "body": "## Problem\nDocument and implement a health contract that separates gateway process status, API reachability, channel health, TaskFlow/task availability, node connectivity, and launcher execution health. The UI should show precise degraded states instead of one ambiguous DOWN banner.\n\n## Evidence\n- Source repo: `/Users/ostehost/projects/command-central`\n- Source HEAD: `257aadc4`\n- Handoff key: `CC-002`\n\n## Scope\n- Lane: `Architecture`\n\n## Acceptance Criteria\n- Health dimensions and precedence are documented in Command Central research or source docs.\n- The status provider distinguishes unreachable, auth failed, stale, degraded, and healthy states.\n- Task counts are explicitly tied to the task source that supplied them and do not imply gateway health by accident.\n- Tests assert precedence and labels for mixed-health states.\n\n## Verification\n- `memory_search: Command Central Symphony spec Linear project orchestration across projects OpenClaw Down status bar`: Found Symphony adoption path: CC projects OpenClaw/TaskFlow/Launcher records into Symphony/Codex Runs; OpenClaw remains lifecycle authority.\n- `Linear read-only list teams/projects`: Workspace has team PartnerAI (PAR), existing projects Config and Local Directory Sites; no Command Central project detected.\n- `git rev-parse --short HEAD`: 257aadc4\n\n## Dependencies / Blocks\n- CC-001 informs the concrete failure mode and reproduction evidence.\n\n## Out Of Scope\n- Superseded findings are context only and must not be re-opened by this issue.\n\n<!-- openclaw-linear-intake:v1 -->",
+      "bodyHash": "e977e1b0f2eed09c82c2ff3f042b7ca05c53ddbecf21f1f145d5c6a5bc9904fd",
+      "dependencies": [
+        "CC-001 informs the concrete failure mode and reproduction evidence."
+      ],
+      "externalDependencies": [],
+      "idempotencyKey": "CC-002",
+      "key": "CC-002",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "architecture"
+      ],
+      "lane": "Architecture",
+      "linearPriority": 2,
+      "parentKey": "CC-000",
+      "priority": "P1",
+      "priorityLabel": "High",
+      "sourceTitle": "Define OpenClaw health truth contract for Command Central",
+      "title": "[CC-002] Define OpenClaw health truth contract for Command Central"
+    },
+    {
+      "acceptanceCriteria": [
+        "Codex/Symphony run views can display a parent workstream/group with child task attempts and source refs.",
+        "Field provenance remains visible: Linear issue, TaskFlow flow, launcher task, OpenClaw task, and workspace evidence are not merged by fuzzy title alone.",
+        "The projection preserves the rule that OpenClaw/TaskFlow/Launcher own lifecycle state.",
+        "Tests cover explicit-key joins and prevent broad display-title/path-only joins."
+      ],
+      "body": "## Problem\nExtend the Command Central Symphony/Codex Runs projection so workstreams can group records from TaskFlow, launcher tasks, and Linear issue keys without becoming a competing scheduler. This is the tracker/visibility layer for cross-project orchestration.\n\n## Evidence\n- Source repo: `/Users/ostehost/projects/command-central`\n- Source HEAD: `257aadc4`\n- Handoff key: `CC-003`\n\n## Scope\n- Lane: `Symphony`\n\n## Acceptance Criteria\n- Codex/Symphony run views can display a parent workstream/group with child task attempts and source refs.\n- Field provenance remains visible: Linear issue, TaskFlow flow, launcher task, OpenClaw task, and workspace evidence are not merged by fuzzy title alone.\n- The projection preserves the rule that OpenClaw/TaskFlow/Launcher own lifecycle state.\n- Tests cover explicit-key joins and prevent broad display-title/path-only joins.\n\n## Verification\n- `memory_search: Command Central Symphony spec Linear project orchestration across projects OpenClaw Down status bar`: Found Symphony adoption path: CC projects OpenClaw/TaskFlow/Launcher records into Symphony/Codex Runs; OpenClaw remains lifecycle authority.\n- `Linear read-only list teams/projects`: Workspace has team PartnerAI (PAR), existing projects Config and Local Directory Sites; no Command Central project detected.\n- `git rev-parse --short HEAD`: 257aadc4\n\n## Dependencies / Blocks\n- CC-002 establishes health/source truth vocabulary used by the projection.\n\n## Out Of Scope\n- Superseded findings are context only and must not be re-opened by this issue.\n\n<!-- openclaw-linear-intake:v1 -->",
+      "bodyHash": "95a9cc0951b0cdbcbe95884e3dd7f5b634cb5c275c317bc580dd839a364ce781",
+      "dependencies": [
+        "CC-002 establishes health/source truth vocabulary used by the projection."
+      ],
+      "externalDependencies": [],
+      "idempotencyKey": "CC-003",
+      "key": "CC-003",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "Feature"
+      ],
+      "lane": "Symphony",
+      "linearPriority": 2,
+      "parentKey": "CC-000",
+      "priority": "P1",
+      "priorityLabel": "High",
+      "sourceTitle": "Project TaskFlow/Launcher/Linear workstreams into Symphony-shaped Command Central groups",
+      "title": "[CC-003] Project TaskFlow/Launcher/Linear workstreams into Symphony-shaped Command Central groups"
+    },
+    {
+      "acceptanceCriteria": [
+        "Command Central handoff artifacts can be converted to import plans with the openclaw-linear-intake skill.",
+        "Dry-run receipts are saved and safe to approve before any live mutation.",
+        "Live applies require explicit project/team destination and approved receipt.",
+        "Mirror updates/comment behavior are specified separately from task dispatch."
+      ],
+      "body": "## Problem\nUse deterministic Linear intake artifacts and receipts for Command Central issue creation/update, then design the mirror path for status comments, task receipts, and review evidence. Linear is the tracker boundary, not the scheduler.\n\n## Evidence\n- Source repo: `/Users/ostehost/projects/command-central`\n- Source HEAD: `257aadc4`\n- Handoff key: `CC-004`\n\n## Scope\n- Lane: `Linear`\n\n## Acceptance Criteria\n- Command Central handoff artifacts can be converted to import plans with the openclaw-linear-intake skill.\n- Dry-run receipts are saved and safe to approve before any live mutation.\n- Live applies require explicit project/team destination and approved receipt.\n- Mirror updates/comment behavior are specified separately from task dispatch.\n\n## Verification\n- `memory_search: Command Central Symphony spec Linear project orchestration across projects OpenClaw Down status bar`: Found Symphony adoption path: CC projects OpenClaw/TaskFlow/Launcher records into Symphony/Codex Runs; OpenClaw remains lifecycle authority.\n- `Linear read-only list teams/projects`: Workspace has team PartnerAI (PAR), existing projects Config and Local Directory Sites; no Command Central project detected.\n- `git rev-parse --short HEAD`: 257aadc4\n\n## Dependencies / Blocks\n- CC-000 creates the destination project/workstream.\n\n## Out Of Scope\n- Superseded findings are context only and must not be re-opened by this issue.\n\n<!-- openclaw-linear-intake:v1 -->",
+      "bodyHash": "81d4d42337e859220b9c4eb01550adb08d8c319d2d11220386473282f80d26c5",
+      "dependencies": [
+        "CC-000 creates the destination project/workstream."
+      ],
+      "externalDependencies": [],
+      "idempotencyKey": "CC-004",
+      "key": "CC-004",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "linear-integration"
+      ],
+      "lane": "Linear",
+      "linearPriority": 2,
+      "parentKey": "CC-000",
+      "priority": "P1",
+      "priorityLabel": "High",
+      "sourceTitle": "Add Linear intake/mirror receipts for Command Central orchestration issues",
+      "title": "[CC-004] Add Linear intake/mirror receipts for Command Central orchestration issues"
+    },
+    {
+      "acceptanceCriteria": [
+        "A repo-owned WORKFLOW.md or equivalent config defines tracker, eligible states, workspace root, concurrency, retry, hooks, and prompt template.",
+        "The conductor loop is specified as poll/select/launch/review/retry/update with crash-safe receipts.",
+        "No code path bypasses visible launcher lanes for implementation work.",
+        "The design names the Command Central projection artifacts needed to monitor the loop."
+      ],
+      "body": "## Problem\nDefine the missing conductor loop that reads eligible Linear/TaskFlow work, launches visible Claude lanes through Ghostty/launcher, reviews completions, retries when safe, and updates mirrors. The daemon should use Symphony run-attempt vocabulary but keep OpenClaw/TaskFlow/Launcher as lifecycle owners.\n\n## Evidence\n- Source repo: `/Users/ostehost/projects/command-central`\n- Source HEAD: `257aadc4`\n- Handoff key: `CC-005`\n\n## Scope\n- Lane: `Conductor`\n\n## Acceptance Criteria\n- A repo-owned WORKFLOW.md or equivalent config defines tracker, eligible states, workspace root, concurrency, retry, hooks, and prompt template.\n- The conductor loop is specified as poll/select/launch/review/retry/update with crash-safe receipts.\n- No code path bypasses visible launcher lanes for implementation work.\n- The design names the Command Central projection artifacts needed to monitor the loop.\n\n## Verification\n- `memory_search: Command Central Symphony spec Linear project orchestration across projects OpenClaw Down status bar`: Found Symphony adoption path: CC projects OpenClaw/TaskFlow/Launcher records into Symphony/Codex Runs; OpenClaw remains lifecycle authority.\n- `Linear read-only list teams/projects`: Workspace has team PartnerAI (PAR), existing projects Config and Local Directory Sites; no Command Central project detected.\n- `git rev-parse --short HEAD`: 257aadc4\n\n## Dependencies / Blocks\n- CC-003 provides the visibility projection shape.\n- CC-004 provides tracker intake/mirror boundaries.\n\n## Out Of Scope\n- Superseded findings are context only and must not be re-opened by this issue.\n\n<!-- openclaw-linear-intake:v1 -->",
+      "bodyHash": "4b273309d054037f0b5293ae2234d5053e5470506ad3e5f2edb4fb52e4d583b6",
+      "dependencies": [
+        "CC-003 provides the visibility projection shape.",
+        "CC-004 provides tracker intake/mirror boundaries."
+      ],
+      "externalDependencies": [],
+      "idempotencyKey": "CC-005",
+      "key": "CC-005",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "Feature"
+      ],
+      "lane": "Conductor",
+      "linearPriority": 2,
+      "parentKey": "CC-000",
+      "priority": "P1",
+      "priorityLabel": "High",
+      "sourceTitle": "Design conductor daemon slice using Symphony vocabulary on OpenClaw authority",
+      "title": "[CC-005] Design conductor daemon slice using Symphony vocabulary on OpenClaw authority"
+    },
+    {
+      "acceptanceCriteria": [
+        "At least one issue is run from Linear/project intake through visible launcher execution and reviewed completion.",
+        "Command Central shows the workstream, attempt state, health state, and evidence links accurately during the run.",
+        "Failures or stale states become follow-up issues in the same project, not ad-hoc chat memory.",
+        "A short dogfood report records what was fixed and what remained blocked."
+      ],
+      "body": "## Problem\nUse the new Command Central project to run real issues like the OpenClaw DOWN indicator through the intended loop: Linear issue, TaskFlow/workstream, visible launcher lane, completion review, receipts, and Command Central/Symphony projection.\n\n## Evidence\n- Source repo: `/Users/ostehost/projects/command-central`\n- Source HEAD: `257aadc4`\n- Handoff key: `CC-006`\n\n## Scope\n- Lane: `Dogfood`\n\n## Acceptance Criteria\n- At least one issue is run from Linear/project intake through visible launcher execution and reviewed completion.\n- Command Central shows the workstream, attempt state, health state, and evidence links accurately during the run.\n- Failures or stale states become follow-up issues in the same project, not ad-hoc chat memory.\n- A short dogfood report records what was fixed and what remained blocked.\n\n## Verification\n- `memory_search: Command Central Symphony spec Linear project orchestration across projects OpenClaw Down status bar`: Found Symphony adoption path: CC projects OpenClaw/TaskFlow/Launcher records into Symphony/Codex Runs; OpenClaw remains lifecycle authority.\n- `Linear read-only list teams/projects`: Workspace has team PartnerAI (PAR), existing projects Config and Local Directory Sites; no Command Central project detected.\n- `git rev-parse --short HEAD`: 257aadc4\n\n## Dependencies / Blocks\n- CC-001 must be triaged/fixed or captured as the first dogfood target.\n- CC-003 must expose the grouped view.\n- CC-005 must define the conductor behavior to test.\n\n## Out Of Scope\n- Superseded findings are context only and must not be re-opened by this issue.\n\n<!-- openclaw-linear-intake:v1 -->",
+      "bodyHash": "813c33440a947259641d2b6c3c2c60e4adaef7403379525a2b1ac9d8083d70f1",
+      "dependencies": [
+        "CC-001 must be triaged/fixed or captured as the first dogfood target.",
+        "CC-003 must expose the grouped view.",
+        "CC-005 must define the conductor behavior to test."
+      ],
+      "externalDependencies": [],
+      "idempotencyKey": "CC-006",
+      "key": "CC-006",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "validation"
+      ],
+      "lane": "Dogfood",
+      "linearPriority": 3,
+      "parentKey": "CC-000",
+      "priority": "P2",
+      "priorityLabel": "Medium",
+      "sourceTitle": "Dogfood Command Central cross-project orchestration with real OpenClaw issues",
+      "title": "[CC-006] Dogfood Command Central cross-project orchestration with real OpenClaw issues"
+    }
+  ],
+  "mcpPolicy": "read_only_optional",
+  "planHash": "3dd9332a4546e573839d391fd6e522a48f1a77bb52c0e69928881c3099a2c516",
+  "relations": [
+    {
+      "reason": "command-central-orchestration",
+      "relationHash": "05c8dcd12217b101d0ff9909fa9b91ed868b6a3d221aa9f1490a32893ab2a169",
+      "sourceKey": "CC-000",
+      "targetKey": "CC-001",
+      "type": "parent_child"
+    },
+    {
+      "reason": "command-central-orchestration",
+      "relationHash": "eb54a3678c9dd3234961a10baaaa9e3314ec423b4d42c976e07819ecb0d95daa",
+      "sourceKey": "CC-000",
+      "targetKey": "CC-002",
+      "type": "parent_child"
+    },
+    {
+      "reason": "command-central-orchestration",
+      "relationHash": "bf3ba94dc8a3b1795e2713dd899ec593b1ff072e2daecdc0bf666d4aac92f84c",
+      "sourceKey": "CC-000",
+      "targetKey": "CC-003",
+      "type": "parent_child"
+    },
+    {
+      "reason": "command-central-orchestration",
+      "relationHash": "a54f53d1c336c3cac03db7e98d1ee5052ff002e7925709eb54154547c2fa7942",
+      "sourceKey": "CC-000",
+      "targetKey": "CC-004",
+      "type": "parent_child"
+    },
+    {
+      "reason": "command-central-orchestration",
+      "relationHash": "384a3efb276f1e637fcd01f95519b272ea927ebc52c58e2df4f85f022bc63967",
+      "sourceKey": "CC-000",
+      "targetKey": "CC-005",
+      "type": "parent_child"
+    },
+    {
+      "reason": "command-central-orchestration",
+      "relationHash": "64809a1dec1ac05f4503beb702fa25a4471e50c8477bb6e4bc8a4c3e738b8177",
+      "sourceKey": "CC-000",
+      "targetKey": "CC-006",
+      "type": "parent_child"
+    },
+    {
+      "reason": "dependency",
+      "relationHash": "dc3b562b00cb5b7477753d7c017f4e7083428cefdced6b21af9513db54d6c879",
+      "sourceKey": "CC-001",
+      "targetKey": "CC-002",
+      "type": "blocks"
+    },
+    {
+      "reason": "dependency",
+      "relationHash": "fbb84353e1163d555c21b4433aa0ac5274cae757c666dd58d3b6d319ce9fb3bd",
+      "sourceKey": "CC-002",
+      "targetKey": "CC-003",
+      "type": "blocks"
+    },
+    {
+      "reason": "dependency",
+      "relationHash": "ff06127d40841460e98130fbe566279676a32fece04e8fadde29ed418c3cde2d",
+      "sourceKey": "CC-000",
+      "targetKey": "CC-004",
+      "type": "blocks"
+    },
+    {
+      "reason": "dependency",
+      "relationHash": "4fa81366d8f5cc3c43261bafdcb1f0b58fbe33490ddb21ee13c29304220ebcdd",
+      "sourceKey": "CC-003",
+      "targetKey": "CC-005",
+      "type": "blocks"
+    },
+    {
+      "reason": "dependency",
+      "relationHash": "033050f145bb90047f1a36cde6a563e16187386f4fc81ed294934571000ffcd8",
+      "sourceKey": "CC-004",
+      "targetKey": "CC-005",
+      "type": "blocks"
+    },
+    {
+      "reason": "dependency",
+      "relationHash": "83e03511d39684063fd3be9a042f27c6b7416253561409189eaa0ac222cd5a35",
+      "sourceKey": "CC-001",
+      "targetKey": "CC-006",
+      "type": "blocks"
+    },
+    {
+      "reason": "dependency",
+      "relationHash": "bf7da6475d6a6c747946f2e1856faa141a92ed423b754c1be2160450dbdda1b5",
+      "sourceKey": "CC-003",
+      "targetKey": "CC-006",
+      "type": "blocks"
+    },
+    {
+      "reason": "dependency",
+      "relationHash": "52b405ee7b1846fd7b2175b54da3251447e05a668920cff4429980a75c806fd3",
+      "sourceKey": "CC-005",
+      "targetKey": "CC-006",
+      "type": "blocks"
+    }
+  ],
+  "schema": "linear_issue_import_plan_v1",
+  "source": {
+    "generatedAt": "2026-05-27T23:32:58.613222+00:00",
+    "hash": "87dcbb634934691e140be2326f7adf29df5210bf23614eeab4d7f58521a8e9cd",
+    "head": "257aadc4",
+    "path": "/Users/ostehost/projects/command-central/research/HANDOFF-linear-command-central-orchestration-2026-05-27.html",
+    "repo": "/Users/ostehost/projects/command-central",
+    "timezone": "America/New_York",
+    "updatedAt": null
+  },
+  "validation": {
+    "errors": [],
+    "ok": true,
+    "warnings": []
+  }
+}
