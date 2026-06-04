@@ -168,11 +168,15 @@ describe("isTmuxPaneAgentAlive", () => {
 		expect(isTmuxPaneAgentAlive("cc-dead-lane-2")).toBe(false);
 	});
 
-	// ── pgrep throws specifically (test #7) ───────────────────────────────────
+	// ── pgrep transient failure must fail-open ───────────────────────────────
 
-	test("pgrep -P throws → no descendants collected → dead (false)", () => {
-		// Per implementer's code: pgrep throwing is caught with `continue` (NOT
-		// fail-open). Only pane pids end up in visited; descendantPids=[]; → false.
+	test("pgrep -P throws without status=1 → fail-open (true)", () => {
+		// Regression: a transient pgrep error (timeout, signal kill, fatal exit)
+		// was previously treated identically to "exit code 1 / no children" and
+		// the pane was classified dead. That flipped a live tmux pane's Agent
+		// Status to "Agent process ended" on a probe race and back to running
+		// on the next refresh. Only pgrep exit status === 1 is proof of "no
+		// children"; everything else is ambiguous and must fail-open.
 		execFileSyncMock.mockImplementation(
 			makeExecImpl({
 				tmux: "bash|1234\n",
@@ -181,7 +185,21 @@ describe("isTmuxPaneAgentAlive", () => {
 				},
 			}),
 		);
-		expect(isTmuxPaneAgentAlive("cc-dead-lane-pgrep")).toBe(false);
+		expect(isTmuxPaneAgentAlive("cc-pgrep-transient")).toBe(true);
+	});
+
+	test("pgrep -P killed by signal (status null) → fail-open (true)", () => {
+		// `execFileSync` with the `timeout` option SIGTERMs the child and the
+		// thrown error has `status: null`. Must be treated as ambiguous.
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: "bash|1234\n",
+				pgrep: () => {
+					throw Object.assign(new Error("ETIMEDOUT"), { status: null });
+				},
+			}),
+		);
+		expect(isTmuxPaneAgentAlive("cc-pgrep-timeout")).toBe(true);
 	});
 
 	// ── ps throws (fail-open) ─────────────────────────────────────────────────
@@ -362,6 +380,54 @@ describe("inspectTmuxPaneAgent (tri-state evidence)", () => {
 		);
 		expect(isTmuxPaneAgentAlive("cc-dead-lane")).toBe(false);
 	});
+
+	test("returns 'dead' only when pgrep exits cleanly with status=1", () => {
+		// pgrep exit code 1 == "no matches" is the only proof of absence we
+		// accept. Other exits/throws must be 'unknown', not 'dead'.
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: "bash|1234\n",
+				pgrep: () => {
+					throw Object.assign(new Error("no children"), { status: 1 });
+				},
+			}),
+		);
+		expect(inspectTmuxPaneAgent("cc-clean-dead")).toBe("dead");
+	});
+
+	test("returns 'unknown' when pgrep throws a non-status-1 error", () => {
+		// Transient pgrep failure (timeout, signal, fatal) must fail-open as
+		// 'unknown' so the launcher lane is not flipped to 'Agent process ended'
+		// on a probe race.
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: "bash|1234\n",
+				pgrep: () => {
+					throw new Error("pgrep error");
+				},
+			}),
+		);
+		expect(inspectTmuxPaneAgent("cc-pgrep-flaky")).toBe("unknown");
+	});
+
+	test("returns 'unknown' when probe partially succeeds with non-agent comm", () => {
+		// First pgrep call (depth 1) succeeds; the depth-2 call throws a
+		// non-status-1 error. ps would say "bash" (no agent). We cannot conclude
+		// 'dead' because the unreadable subtree could contain a live agent.
+		let pgrepCall = 0;
+		execFileSyncMock.mockImplementation((cmd: unknown, args: unknown) => {
+			const a = args as string[];
+			if (cmd === "tmux") return "bash|1234\n";
+			if (cmd === "pgrep") {
+				pgrepCall++;
+				if (pgrepCall === 1 && a[1] === "1234") return "5678\n";
+				throw new Error("pgrep transient failure");
+			}
+			if (cmd === "ps") return "bash\n";
+			return "";
+		});
+		expect(inspectTmuxPaneAgent("cc-partial-probe")).toBe("unknown");
+	});
 });
 
 describe("inspectTmuxPaneById (pane-specific evidence)", () => {
@@ -416,6 +482,24 @@ describe("inspectTmuxPaneById (pane-specific evidence)", () => {
 			}),
 		);
 		expect(inspectTmuxPaneById("%0")).toBe("dead");
+	});
+
+	test("returns 'unknown' when descendant probe fails transiently (regression: pane liveness flap)", () => {
+		// Repro for cc-agent-status-fresh-lane-20260527-2111: tmux pane is alive
+		// with a known pid (the bash login of the launcher lane), but pgrep -P
+		// times out or otherwise fails. Previously this returned 'dead', causing
+		// the Agent Status pane to render "Agent process ended" for a live lane
+		// and then flip back to running on the next 5s probe. The pane-specific
+		// inspector must fail-open as 'unknown' in this case.
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: "bash|35441\n",
+				pgrep: () => {
+					throw Object.assign(new Error("ETIMEDOUT"), { status: null });
+				},
+			}),
+		);
+		expect(inspectTmuxPaneById("%35")).toBe("unknown");
 	});
 
 	test("returns 'dead' when descendants exist but none are agents", () => {

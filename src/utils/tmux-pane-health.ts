@@ -177,9 +177,31 @@ export function inspectTmuxPaneById(
 
 // ── Shared descendant walk (steps 3–4) ─────────────────────────────────
 
+/**
+ * Walks the descendant pid tree of the given pane pids and classifies it.
+ *
+ * Liveness invariant: `"dead"` MUST mean "the walk completed and proved no
+ * agent process exists." A transient `pgrep`/`ps` failure (timeout, signal,
+ * fatal error) is NOT proof of absence — it must fail-open as `"unknown"`,
+ * otherwise the Agent Status pane flips a live launcher lane to
+ * "Agent process ended" on a probe race and back to running on the next tick.
+ *
+ * pgrep exit codes (per `man pgrep`):
+ *   0 — one or more processes matched
+ *   1 — no processes matched (legitimate "no children" — proof of absence)
+ *   2 — syntax error in command line
+ *   3 — fatal error
+ * Node's `execFileSync` throws with `err.status` set to the exit code when
+ * the process exited normally, or `null` when killed by a signal (e.g. the
+ * `timeout` option). Only status === 1 is treated as a clean "no children".
+ */
 function walkDescendants(panePids: number[]): TmuxPaneAgentEvidence {
 	const visited = new Set<number>(panePids);
 	let frontier = [...panePids];
+	// Tracks whether any descendant probe failed for reasons other than
+	// pgrep's clean "no matches" exit. When true, we cannot return "dead"
+	// because we may have missed a live agent under an unreadable subtree.
+	let probeFailure = false;
 
 	for (let depth = 0; depth < MAX_DEPTH && frontier.length > 0; depth++) {
 		const nextFrontier: number[] = [];
@@ -191,7 +213,9 @@ function walkDescendants(panePids: number[]): TmuxPaneAgentEvidence {
 					timeout: TIMEOUT_MS,
 					encoding: "utf8",
 				});
-			} catch {
+			} catch (err) {
+				const status = (err as { status?: number | null } | null)?.status;
+				if (status !== 1) probeFailure = true;
 				continue;
 			}
 			for (const part of childOutput.split("\n")) {
@@ -207,7 +231,9 @@ function walkDescendants(panePids: number[]): TmuxPaneAgentEvidence {
 	}
 
 	const descendantPids = [...visited].filter((p) => !panePids.includes(p));
-	if (descendantPids.length === 0) return "dead";
+	if (descendantPids.length === 0) {
+		return probeFailure ? "unknown" : "dead";
+	}
 
 	try {
 		const pidArgs = descendantPids.map(String);
@@ -226,5 +252,7 @@ function walkDescendants(panePids: number[]): TmuxPaneAgentEvidence {
 		return "unknown";
 	}
 
-	return "dead";
+	// ps succeeded and saw no agent comm. If we had upstream probe failures
+	// we may have missed a deeper agent descendant — fail-open as unknown.
+	return probeFailure ? "unknown" : "dead";
 }

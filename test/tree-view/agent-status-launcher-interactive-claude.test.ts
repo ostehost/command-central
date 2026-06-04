@@ -246,6 +246,42 @@ describe("launcher-managed interactive Claude visibility (regression guard)", ()
 		const description = String(item.description ?? "");
 		expect(description).toContain("(interactive)");
 		expect(description).not.toContain("(possibly stuck)");
+
+		// Icon contract: an idle interactive REPL must NOT render the animated
+		// sync~spin spinner — that implies active work to the user when the
+		// lane is actually parked at a Claude prompt waiting for input.
+		const icon = item.iconPath as { id?: string } | undefined;
+		expect(icon?.id).toBe("comment-discussion");
+		expect(icon?.id).not.toBe("sync~spin");
+	});
+
+	test("unknown pane evidence on a fresh running task → keeps spinner (idle vs active indistinguishable)", () => {
+		// Backend-neutral / unknown-evidence path: when we cannot positively
+		// confirm the lane is interactive-idle (no pane evidence, fresh start),
+		// we must NOT misrepresent the row as idle. Keep the standard running
+		// status icon (sync~spin) so the UI does not overclaim certainty.
+		const task = makeLauncherTask({
+			id: "interactive-claude-unknown-fresh",
+			started_at: new Date(Date.now() - 2 * 60_000).toISOString(),
+			stream_file: "/nonexistent/path/to/stream.jsonl",
+			agent_backend: undefined,
+		});
+		seedSessionAlive(provider, task);
+		mockInspectTmuxPaneAgent.mockImplementation(() => "unknown");
+
+		provider.readRegistry = () => makeRegistry({ [task.id]: task });
+		provider.reload();
+
+		expect(provider.getTasks()[0]?.status).toBe("running");
+		const taskNode = provider
+			.getChildren()
+			.find((n) => n.type === "task" && n.task.id === task.id);
+		if (!taskNode) throw new Error("task node missing from getChildren()");
+		const item = provider.getTreeItem(taskNode);
+		const icon = item.iconPath as { id?: string } | undefined;
+		expect(icon?.id).toBe("sync~spin");
+		const description = String(item.description ?? "");
+		expect(description).not.toContain("(interactive)");
 	});
 
 	test("unknown pane evidence + stale stream → downgraded out of running", () => {

@@ -408,6 +408,23 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			)._tmuxPaneAgentCache = new Map([
 				[getTmuxHealthCacheKey(running), { alive: true, checkedAt: now }],
 			]);
+			// Tri-state evidence cache (added when inspectTmuxPaneAgent was
+			// introduced) is authoritative in isRunningTaskHealthy — seed it
+			// too or the provider calls real tmux against the synthetic session
+			// and downgrades the running task to "stopped".
+			(
+				provider as unknown as {
+					_tmuxPaneAgentEvidenceCache: Map<
+						string,
+						{
+							evidence: "alive" | "dead" | "unknown";
+							checkedAt: number;
+						}
+					>;
+				}
+			)._tmuxPaneAgentEvidenceCache = new Map([
+				[getTmuxHealthCacheKey(running), { evidence: "alive", checkedAt: now }],
+			]);
 			provider.reload();
 			(
 				provider as unknown as {
