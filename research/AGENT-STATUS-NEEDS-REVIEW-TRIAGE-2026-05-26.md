@@ -1,7 +1,7 @@
 # Agent Status Needs Review Triage - 2026-05-26
 
-Generated: 2026-05-26 18:32 EDT  
-Source: `/Users/ostehost/.config/ghostty-launcher/tasks.json`  
+Generated: 2026-05-26 18:32 EDT
+Source: `/Users/ostehost/.config/ghostty-launcher/tasks.json`
 Scope: Command Central VS Code extension `Needs Review` / limbo status bucket
 
 ## Summary

@@ -40,6 +40,60 @@ interface HelperSyncResult {
 	skipped: string[];
 }
 
+interface HelperCheckResult {
+	outOfSync: string[];
+	skipped: string[];
+}
+
+async function filesMatch(src: string, dest: string): Promise<boolean> {
+	if (!fs.existsSync(src) || !fs.existsSync(dest)) return false;
+	const [sourceContent, destContent] = await Promise.all([
+		fs.promises.readFile(src),
+		fs.promises.readFile(dest),
+	]);
+	return Buffer.compare(sourceContent, destContent) === 0;
+}
+
+async function checkHelpers(): Promise<HelperCheckResult> {
+	const outOfSync: string[] = [];
+	const skipped: string[] = [];
+
+	if (!fs.existsSync(SOURCE_SCRIPTS_DIR)) {
+		return { outOfSync, skipped };
+	}
+
+	for (const name of HELPER_TOP_LEVEL_FILES) {
+		const src = path.join(SOURCE_SCRIPTS_DIR, name);
+		const dest = path.join(DEST_SCRIPTS_DIR, name);
+		if (!fs.existsSync(src)) {
+			skipped.push(name);
+			continue;
+		}
+		if (!(await filesMatch(src, dest))) outOfSync.push(name);
+	}
+
+	const libSrc = path.join(SOURCE_SCRIPTS_DIR, "lib");
+	const libDest = path.join(DEST_SCRIPTS_DIR, "lib");
+	const expectedLibEntries = new Set<string>();
+	if (fs.existsSync(libSrc)) {
+		for (const entry of await fs.promises.readdir(libSrc)) {
+			if (!entry.endsWith(".sh") && !entry.endsWith(".py")) continue;
+			expectedLibEntries.add(entry);
+			if (!(await filesMatch(path.join(libSrc, entry), path.join(libDest, entry)))) {
+				outOfSync.push(`lib/${entry}`);
+			}
+		}
+	}
+	if (fs.existsSync(libDest)) {
+		for (const entry of await fs.promises.readdir(libDest)) {
+			if (!entry.endsWith(".sh") && !entry.endsWith(".py")) continue;
+			if (!expectedLibEntries.has(entry)) outOfSync.push(`lib/${entry}`);
+		}
+	}
+
+	return { outOfSync, skipped };
+}
+
 async function syncHelpers(): Promise<HelperSyncResult> {
 	const copied: string[] = [];
 	const skipped: string[] = [];
@@ -146,6 +200,19 @@ Examples:
 
 	if (isInSync) {
 		console.log("\n✅ Launcher binary already in sync");
+		if (isCheck) {
+			const helperResult = await checkHelpers();
+			if (helperResult.outOfSync.length > 0) {
+				console.log("\n❌ Helper sync needed:");
+				for (const helper of helperResult.outOfSync) {
+					console.log(`   • ${DEST_SCRIPTS_DIR}/${helper}`);
+				}
+				console.log("\nRun 'just sync-launcher' to update bundled helpers.");
+				process.exit(1);
+			}
+			console.log("✅ Launcher helpers already in sync");
+			return;
+		}
 		const helperResult = await syncHelpers();
 		if (helperResult.copied.length > 0) {
 			console.log(

@@ -517,9 +517,9 @@ sync-all: sync-launcher sync-terminal
 # Check if launcher needs sync (internal, called before dist)
 _check-launcher-sync:
     @if [ -f ~/projects/ghostty-launcher/launcher ]; then \
-        if ! diff -q resources/bin/ghostty-launcher ~/projects/ghostty-launcher/launcher >/dev/null 2>&1; then \
+        if ! bun run scripts-v2/sync-launcher.ts --check >/dev/null 2>&1; then \
             echo ""; \
-            echo "⚠️  WARNING: Bundled launcher differs from source!"; \
+            echo "⚠️  WARNING: Bundled launcher or helper scripts differ from source!"; \
             echo "   Run 'just sync-launcher' before distribution."; \
             echo ""; \
         fi; \
@@ -606,6 +606,7 @@ cut-preview *args="--prerelease":
     bun run scripts-v2/preview-status.ts start \
         --command "just cut-preview {{args}}" \
         --cwd "$(pwd)" \
+        --pid "$$" \
         --log-path "$LOG_FILE"
     trap 'rc=$?; bun run scripts-v2/preview-status.ts finish --exit-code="$rc" >/dev/null 2>&1 || true' EXIT
     exec > >(tee "$LOG_FILE") 2>&1

@@ -13,7 +13,8 @@
 #   --prompt-file <path>             Path to prompt file (required)
 #   --task-id <id>                   Task identifier (required for stream sidecars)
 #   --model <model>                  Model override (optional)
-#   --thinking-budget <tokens>       Thinking budget tokens, Claude only (optional)
+#   --thinking-budget <tokens>       Legacy thinking budget tokens, Claude only (optional; prefer --effort)
+#   OSTE_CLAUDE_EFFORT                 Claude effort level; defaults to xhigh (valid: low, medium, high, xhigh, max)
 #   --max-turns <N>                  Max agentic turns, Claude only (optional)
 #   --interactive                    Interactive TUI mode; required for Claude
 #   --project-dir <path>             Project directory (for codex git check)
@@ -217,6 +218,22 @@ build_agent_command() {
 		thinking_budget_flag=" --thinking-budget ${thinking_budget}"
 	fi
 
+	local effort_flag=""
+	if [[ "$backend" == "claude" ]]; then
+		local claude_effort="${OSTE_CLAUDE_EFFORT:-xhigh}"
+		if [[ -n "$claude_effort" ]]; then
+			case "$claude_effort" in
+				low | medium | high | xhigh | max)
+					effort_flag=" --effort '${claude_effort}'"
+					;;
+				*)
+					echo "build_agent_command: invalid OSTE_CLAUDE_EFFORT (expected: low, medium, high, xhigh, max)" >&2
+					return 1
+					;;
+			esac
+		fi
+	fi
+
 	# Wire the pre-generated session UUID through to claude. Only applies to
 	# the claude backend — codex and gemini don't have an equivalent flag.
 	local session_id_flag=""
@@ -287,7 +304,7 @@ build_agent_command() {
 			;;
 		claude | *)
 			if [[ -n "$interactive" ]]; then
-				cmd="claude \"\$(cat '${prompt_file}')\" --dangerously-skip-permissions --chrome${session_id_flag}${model_flag}${max_turns_flag}${thinking_budget_flag}"
+				cmd="claude \"\$(cat '${prompt_file}')\" --dangerously-skip-permissions --chrome${session_id_flag}${model_flag}${max_turns_flag}${thinking_budget_flag}${effort_flag}"
 			else
 				echo "build_agent_command: Claude launcher lanes require --interactive; refusing print mode" >&2
 				return 1
