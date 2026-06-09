@@ -260,15 +260,15 @@ build_agent_command() {
 		acp)
 			# ACP wraps claude via acpx — always interactive (visible terminal).
 			# --approve-all enables autonomous mode. --format text for readable output.
-			cmd="acpx --approve-all  --cwd \"\${project_dir}\" claude exec \"\$(cat '${prompt_file}')\""
+			cmd="acpx --approve-all  --cwd \"\${project_dir}\" claude exec \"\$(cat '${prompt_file}')\"${model_flag}"
 			;;
 		acp-codex)
 			# ACP wraps codex via acpx — always interactive (visible terminal).
-			cmd="acpx --approve-all  --cwd \"\${project_dir}\" codex exec \"\$(cat '${prompt_file}')\""
+			cmd="acpx --approve-all  --cwd \"\${project_dir}\" codex exec \"\$(cat '${prompt_file}')\"${model_flag}"
 			;;
 		acp-gemini)
 			# ACP wraps gemini via acpx — always interactive (visible terminal).
-			cmd="acpx --approve-all  --cwd \"\${project_dir}\" gemini exec \"\$(cat '${prompt_file}')\""
+			cmd="acpx --approve-all  --cwd \"\${project_dir}\" gemini exec \"\$(cat '${prompt_file}')\"${model_flag}"
 			;;
 		gemini)
 			if [[ -n "$interactive" ]]; then

@@ -1,4 +1,5 @@
 const EXACT_MODEL_ALIASES = new Map<string, string>([
+	["fable", "fable"],
 	["anthropic/claude-opus-4-7", "opus"],
 	["anthropic/claude-opus-4-6", "opus"],
 	["anthropic/claude-opus-4-5", "opus"],

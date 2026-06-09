@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { getModelAlias } from "../../src/utils/model-aliases.js";
 
 describe("getModelAlias", () => {
+	test("preserves the Fable 5 launcher key", () => {
+		expect(getModelAlias("fable")).toBe("fable");
+	});
+
 	test("maps common Anthropic models to short aliases", () => {
 		expect(getModelAlias("anthropic/claude-opus-4-7")).toBe("opus");
 		expect(getModelAlias("anthropic/claude-opus-4-6")).toBe("opus");
