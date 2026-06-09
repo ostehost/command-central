@@ -72,6 +72,9 @@ export interface CommandCentralIntegrationTestApi {
 	getAgentStatusTreeSnapshot(
 		options?: CommandCentralAgentStatusTreeSnapshotOptions,
 	): CommandCentralAgentStatusTreeSnapshot;
+	getSymphonyTreeSnapshot(
+		options?: CommandCentralAgentStatusTreeSnapshotOptions,
+	): CommandCentralAgentStatusTreeSnapshot;
 	deactivateForTest(): Promise<CommandCentralIntegrationDeactivationSnapshot>;
 }
 

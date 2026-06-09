@@ -11,9 +11,20 @@ export async function run(): Promise<void> {
 
 	const snapshot = testApi.getSnapshot();
 	const agentStatus = testApi.getAgentStatusSnapshot();
-	const tree = testApi.getAgentStatusTreeSnapshot({
+	// The Agent Status tree keeps a single static "Symphony Status Surface"
+	// summary node that points at the dedicated Symphony view.
+	const agentStatusTree = testApi.getAgentStatusTreeSnapshot({
 		maxDepth: 2,
-		requiredLabels: ["Symphony", "Workstreams", "Run Attempts"],
+		requiredLabels: ["Symphony"],
+	});
+	// Workstreams + Run Attempts were promoted out of the Agent Status tree into
+	// the dedicated Symphony view (commit 734d7280 "promote symphony tree
+	// surface"). They are static top-level roots of the Symphony provider, so
+	// they must be asserted via getSymphonyTreeSnapshot — mirroring the installed
+	// VSIX proof — rather than against the Agent Status provider.
+	const symphonyTree = testApi.getSymphonyTreeSnapshot({
+		maxDepth: 1,
+		requiredLabels: ["Workstreams", "Run Attempts"],
 	});
 
 	assert.equal(
@@ -26,15 +37,15 @@ export async function run(): Promise<void> {
 		"Agent status root children count should be readable without throwing.",
 	);
 	assert.ok(
-		tree.selected.requiredLabels["Symphony"]?.length,
-		"Agent Status tree inspection should expose the static Symphony root.",
+		agentStatusTree.selected.requiredLabels["Symphony"]?.length,
+		"Agent Status tree inspection should expose the static Symphony status surface.",
 	);
 	assert.ok(
-		tree.selected.requiredLabels["Workstreams"]?.length,
-		"Agent Status tree inspection should expose the Symphony Workstreams node.",
+		symphonyTree.selected.requiredLabels["Workstreams"]?.length,
+		"Symphony view inspection should expose the static Workstreams root.",
 	);
 	assert.ok(
-		tree.selected.requiredLabels["Run Attempts"]?.length,
-		"Agent Status tree inspection should expose the Symphony Run Attempts node.",
+		symphonyTree.selected.requiredLabels["Run Attempts"]?.length,
+		"Symphony view inspection should expose the static Run Attempts root.",
 	);
 }
