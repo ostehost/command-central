@@ -123,7 +123,15 @@ bundle_visibility_fields() {
 		tmux)
 			local target="${tmux_pane_id:-${tmux_window_id:-$session_id}}"
 			if [[ -n "$target" && -n "$tmux_socket" ]] && declare -F tmux_target_exists_on_socket >/dev/null 2>&1 && tmux_target_exists_on_socket "$tmux_socket" "$tmux_conf" "$target" 2>/dev/null; then
-				tmux_attached=true
+				# tmux_attached must mean a live client is displaying the
+				# target, not merely that the target exists on the socket.
+				if ! declare -F tmux_target_has_attached_client_on_socket >/dev/null 2>&1; then
+					tmux_attached=true
+				elif tmux_target_has_attached_client_on_socket "$tmux_socket" "$tmux_conf" "$target" 2>/dev/null; then
+					tmux_attached=true
+				else
+					reason="tmux_no_attached_clients"
+				fi
 			else
 				reason="tmux_target_missing"
 			fi

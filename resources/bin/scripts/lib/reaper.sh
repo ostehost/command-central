@@ -194,6 +194,19 @@ tmux_target_exists_on_socket() {
 	"${TMUX_RUNTIME_CMD[@]}" display-message -p -t "$target" '#{session_name}' >/dev/null 2>&1
 }
 
+# Target existence proves the session, not a viewer. Visibility receipts need
+# the stronger claim: at least one live client attached to the target's session.
+tmux_target_has_attached_client_on_socket() {
+	local socket="$1"
+	local conf="$2"
+	local target="$3"
+
+	_tmux_socket_cmd "$socket" "$conf"
+	local clients
+	clients=$("${TMUX_RUNTIME_CMD[@]}" list-clients -t "$target" -F '#{client_tty}' 2>/dev/null) || return 1
+	[[ -n "$clients" ]]
+}
+
 _tmux_target_identity_on_socket() {
 	local socket="$1"
 	local conf="$2"

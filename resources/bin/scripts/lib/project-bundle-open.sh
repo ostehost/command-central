@@ -203,6 +203,11 @@ _open_project_bundle_direct() {
 		unset GHOSTTY_URL_SCHEME
 		unset GHOSTTY_USE_TERMINAL_NOTIFIER
 		unset GHL_MULTIPLEXER
+		# open -a (no -n): each project owns a unique clone bundle, so re-open
+		# must activate the existing instance rather than spawn a duplicate on
+		# the same bundle id. Stale/mislaunched instances are reaped beforehand
+		# by open_project_bundle (_reap_mislaunched_project_bundle) and
+		# kill_zombie_bundle in the attach path.
 		exec env \
 			-u XDG_CONFIG_HOME \
 			-u __CFBundleIdentifier \
@@ -246,6 +251,9 @@ _open_project_bundle_via_stock_ghostty() {
 			env_args+=("$env_arg")
 		done < <(_project_bundle_env_args "$bundle_path")
 
+		# open -na (new instance): stock Ghostty may already be running as the
+		# user's daily terminal; plain `open -a` would only activate it and
+		# silently drop --args, so the project --config-file would never apply.
 		exec env \
 			-u __CFBundleIdentifier \
 			-u GHOSTTY_PERSIST_SOCKET \
