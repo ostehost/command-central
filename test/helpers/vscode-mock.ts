@@ -74,6 +74,10 @@ export function createVSCodeMock() {
 			appName: "Visual Studio Code",
 			language: "en",
 			openExternal: mock(() => Promise.resolve(true)),
+			clipboard: {
+				writeText: mock((_text: string) => Promise.resolve()),
+				readText: mock(() => Promise.resolve("")),
+			},
 		},
 		workspace: {
 			isTrusted: true,

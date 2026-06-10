@@ -5,12 +5,13 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { activateCronFeature } from "./activation/cron-feature.js";
+import { registerGitSortCommands } from "./activation/register-git-sort-commands.js";
+import { registerGroupingCommands } from "./activation/register-grouping-commands.js";
+import { registerMiscCommands } from "./activation/register-misc-commands.js";
 import {
 	getAgentQuickActions,
 	getOpenClawTaskQuickActions,
 } from "./commands/agent-quick-actions.js";
-import * as disableSortCommand from "./commands/disable-sort.js";
-import * as enableSortCommand from "./commands/enable-sort.js";
 import {
 	buildResumeCommand,
 	canShowResumeAction,
@@ -27,18 +28,6 @@ import {
 	resolveTaskInputTarget,
 	resolveTaskWindowTarget,
 } from "./commands/task-terminal-routing.js";
-import {
-	compareWithSelected,
-	copyPath,
-	copyRelativePath,
-	openInIntegratedTerminal,
-	openPreview,
-	openToSide,
-	openWith,
-	revealInExplorer,
-	revealInFinder,
-	selectForCompare,
-} from "./commands/tree-view-utils.js";
 import { parseWorktreeListPorcelain } from "./discovery/worktree-list.js";
 import { BinaryManager } from "./ghostty/BinaryManager.js";
 import { refreshGhosttyBundleAfterProjectIconChange } from "./ghostty/project-icon-bundle-refresh.js";
@@ -48,7 +37,6 @@ import {
 	focusGhosttyWindow,
 } from "./ghostty/window-focus.js";
 import { GitSorter } from "./git-sort/scm-sorter.js";
-import type { SortedGitChangesProvider } from "./git-sort/sorted-changes-provider.js";
 import { AgentDashboardPanel } from "./providers/agent-dashboard-panel.js";
 import { AgentDecorationProvider } from "./providers/agent-decoration-provider.js";
 import {
@@ -83,7 +71,6 @@ import { ProjectViewManager } from "./services/project-view-manager.js";
 import { SessionStore } from "./services/session-store.js";
 import { TelemetryService } from "./services/telemetry-service.js";
 import type { OpenClawTask } from "./types/openclaw-task-types.js";
-import type { GitChangeItem } from "./types/tree-element.js";
 import { GroupingViewManager } from "./ui/grouping-view-manager.js";
 import { migrateLegacyAgentStatusSettings } from "./utils/agent-status-settings-migration.js";
 import {
@@ -388,370 +375,31 @@ export async function activate(
 
 		// Register Grouping Commands
 		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.grouping.toggle",
-				async () => {
-					if (!groupingViewManager) {
-						mainLogger.error("Grouping view manager not initialized");
-						return;
-					}
-					await groupingViewManager.toggle();
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.grouping.selectOption",
-				async (optionId: "none" | "gitStatus") => {
-					if (!groupingViewManager) {
-						mainLogger.error("Grouping view manager not initialized");
-						vscode.window.showErrorMessage(
-							"Command Central: Grouping feature not available",
-						);
-						return;
-					}
-
-					try {
-						await groupingViewManager.selectOption(optionId);
-
-						// Track grouping mode change
-						telemetry.track("cc_agent_status_group_toggled", {
-							grouped: optionId === "gitStatus",
-						});
-
-						// Provide user feedback on success
-						const message =
-							optionId === "gitStatus"
-								? "Grouping enabled: Files grouped by Git status"
-								: "Grouping disabled: Files sorted by time only";
-						vscode.window.setStatusBarMessage(`✓ ${message}`, 2000);
-					} catch (error) {
-						const errorMessage =
-							error instanceof Error ? error.message : "Unknown error";
-						mainLogger.error("Failed to change grouping mode", error as Error);
-						vscode.window.showErrorMessage(
-							`Command Central: Failed to change grouping - ${errorMessage}`,
-						);
-					}
-				},
-			),
+			...registerGroupingCommands({
+				getGroupingViewManager: () => groupingViewManager,
+				telemetry,
+				logger: mainLogger,
+			}),
 		);
 
 		// Register Git Sort Commands
 		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.enable",
-				async () => {
-					if (gitSorter) {
-						await enableSortCommand.execute(gitSorter);
-						await gitSorter.activate();
-					}
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.disable",
-				async () => {
-					if (gitSorter) {
-						await disableSortCommand.execute(gitSorter);
-					}
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.refreshView",
-				(viewIdOrTreeView?: string | vscode.TreeView<unknown>) => {
-					gitSortLogger.info("🔄 Refresh view command invoked");
-
-					let provider: SortedGitChangesProvider | undefined;
-
-					// Strategy 1: View ID passed as string
-					if (typeof viewIdOrTreeView === "string" && projectViewManager) {
-						provider = projectViewManager.getProviderByViewId(viewIdOrTreeView);
-					}
-					// Strategy 2: TreeView object passed
-					else if (
-						viewIdOrTreeView &&
-						typeof viewIdOrTreeView === "object" &&
-						projectViewManager
-					) {
-						provider =
-							projectViewManager.getProviderForTreeView(viewIdOrTreeView);
-					}
-					// Strategy 3: Find any visible view provider
-					else if (projectViewManager) {
-						provider = projectViewManager.getAnyVisibleProvider();
-					}
-
-					if (!provider) {
-						gitSortLogger.error("❌ No provider found for refresh");
-						return;
-					}
-
-					gitSortLogger.debug("✅ Refreshing view");
-					provider.refresh();
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.changeSortOrder",
-				async (viewIdOrTreeView?: string | vscode.TreeView<unknown>) => {
-					gitSortLogger.info("🔄 Sort order command invoked");
-					gitSortLogger.debug(
-						`Argument received - type: ${typeof viewIdOrTreeView}, value: ${JSON.stringify(viewIdOrTreeView)}`,
-					);
-
-					let provider: SortedGitChangesProvider | undefined;
-
-					// Strategy 1: View ID passed as string (from package.json args)
-					if (typeof viewIdOrTreeView === "string" && projectViewManager) {
-						gitSortLogger.debug(`Using view ID: "${viewIdOrTreeView}"`);
-						provider = projectViewManager.getProviderByViewId(viewIdOrTreeView);
-					}
-					// Strategy 2: TreeView object passed (VS Code View Actions)
-					// Check if it's actually a TreeView by looking for expected properties
-					else if (
-						viewIdOrTreeView &&
-						typeof viewIdOrTreeView === "object" &&
-						"visible" in viewIdOrTreeView &&
-						"title" in viewIdOrTreeView &&
-						projectViewManager
-					) {
-						gitSortLogger.debug(
-							`TreeView object passed - visible: ${viewIdOrTreeView.visible}, title: ${viewIdOrTreeView.title}`,
-						);
-						provider =
-							projectViewManager.getProviderForTreeView(viewIdOrTreeView);
-					}
-					// Strategy 3: Find any visible view provider (fallback)
-					else if (projectViewManager) {
-						gitSortLogger.debug(
-							"No valid argument, searching for visible provider...",
-						);
-						provider = projectViewManager.getAnyVisibleProvider();
-					}
-
-					if (!provider) {
-						gitSortLogger.error("❌ No provider found for sort order change");
-						vscode.window.showErrorMessage(
-							"Could not change sort order: No active view found",
-						);
-						return;
-					}
-
-					gitSortLogger.debug("✅ Provider found");
-
-					// Direct toggle - no dialog
-					const currentOrder = provider.getSortOrder();
-					const newOrder = currentOrder === "newest" ? "oldest" : "newest";
-
-					gitSortLogger.info(
-						`Changing sort order: ${currentOrder} → ${newOrder}`,
-					);
-
-					provider.setSortOrder(newOrder);
-					// Title is updated automatically by refresh() in setSortOrder
-
-					// Minimal status bar message with correct arrow convention
-					const sortIcon = newOrder === "newest" ? "▼" : "▲";
-
-					// Show brief notification
-					vscode.window.setStatusBarMessage(`Sorted ${sortIcon}`, 2000);
-					gitSortLogger.info(`✅ Sort order changed to ${newOrder}`);
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.changeFileFilter",
-				async () => {
-					// Delegate to extension filter command module
-					const filterCommand = await import(
-						"./commands/filter-by-extension-command.js"
-					);
-					if (!extensionFilterViewManager) {
-						gitSortLogger.error(
-							"Extension filter view manager not initialized",
-						);
-						return;
-					}
-					await filterCommand.execute(
-						projectViewManager,
-						extensionFilterState,
-						gitSortLogger,
-						extensionFilterViewManager,
-					);
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.openChange",
-				async (item: GitChangeItem) => {
-					// Validate item has URI
-					if (!item?.uri) {
-						gitSortLogger.error("openChange called with invalid item (no URI)");
-						return;
-					}
-
-					// Find provider for this file's workspace
-					const provider = projectViewManager?.getProviderForFile(item.uri);
-
-					if (!provider) {
-						gitSortLogger.error(
-							`No provider found for file: ${item.uri.fsPath}`,
-						);
-						vscode.window.showErrorMessage(
-							"Could not open file: No workspace found for this file",
-						);
-						return;
-					}
-
-					// Open change using the correct provider
-					await provider.openChange(item);
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.openFile",
-				async (item: GitChangeItem) => {
-					if (item?.uri) {
-						await vscode.commands.executeCommand("vscode.open", item.uri);
-					}
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.openDiff",
-				async (item: GitChangeItem) => {
-					// Validate item has URI
-					if (!item?.uri) {
-						gitSortLogger.error("openDiff called with invalid item (no URI)");
-						return;
-					}
-
-					// Find provider for this file's workspace
-					const provider = projectViewManager?.getProviderForFile(item.uri);
-
-					if (!provider) {
-						gitSortLogger.error(
-							`No provider found for file: ${item.uri.fsPath}`,
-						);
-						vscode.window.showErrorMessage(
-							"Could not open diff: No workspace found for this file",
-						);
-						return;
-					}
-
-					// Delegate to the provider's openChange method
-					// which has proper multi-root workspace git URI handling
-					await provider.openChange(item);
-				},
-			),
-
-			// Tree View Utility Commands (Explorer-like functionality)
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.revealInExplorer",
-				async (item: GitChangeItem) => {
-					if (item?.uri) {
-						await revealInExplorer(item);
-					}
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.copyPath",
-				async (item: GitChangeItem) => {
-					if (item?.uri) {
-						await copyPath(item);
-					}
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.copyRelativePath",
-				async (item: GitChangeItem) => {
-					if (item?.uri) {
-						await copyRelativePath(item);
-					}
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.openToSide",
-				async (item: GitChangeItem) => {
-					if (item?.uri) {
-						await openToSide(item);
-					}
-				},
-			),
-
-			// File Comparison Commands (Explorer-like workflow)
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.selectForCompare",
-				async (item: GitChangeItem) => {
-					if (item?.uri) {
-						await selectForCompare(item);
-					}
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.compareWithSelected",
-				async (item: GitChangeItem) => {
-					if (item?.uri) {
-						await compareWithSelected(item);
-					}
-				},
-			),
-
-			// OS File Manager Integration
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.revealInFinder",
-				async (item: GitChangeItem) => {
-					if (item?.uri) {
-						await revealInFinder(item);
-					}
-				},
-			),
-
-			// Terminal Integration
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.openInIntegratedTerminal",
-				async (item: GitChangeItem) => {
-					if (item?.uri) {
-						await openInIntegratedTerminal(item, terminalManager);
-					}
-				},
-			),
-
-			// Editor Selection Commands
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.openWith",
-				async (item: GitChangeItem) => {
-					if (item?.uri) {
-						await openWith(item);
-					}
-				},
-			),
-
-			vscode.commands.registerCommand(
-				"commandCentral.gitSort.openPreview",
-				async (item: GitChangeItem) => {
-					if (item?.uri) {
-						await openPreview(item);
-					}
-				},
-			),
+			...registerGitSortCommands({
+				getGitSorter: () => gitSorter,
+				getProjectViewManager: () => projectViewManager,
+				extensionFilterState,
+				getExtensionFilterViewManager: () => extensionFilterViewManager,
+				getTerminalManager: () => terminalManager,
+				logger: gitSortLogger,
+			}),
 		);
 
-		// Utility: copy text to clipboard (used by detail item click commands)
+		// Utility singles: clipboard, infrastructure dashboard, test count
 		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.copyToClipboard",
-				async (text: string) => {
-					if (text) {
-						await vscode.env.clipboard.writeText(text);
-					}
-				},
-			),
+			...registerMiscCommands({
+				getTestCountStatusBar: () => testCountStatusBar,
+				logger: mainLogger,
+			}),
 		);
 
 		// Check if Git Sort is enabled and activate
@@ -900,16 +548,6 @@ export async function activate(
 		const agentStatusBar = new AgentStatusBar();
 		context.subscriptions.push(agentStatusBar);
 
-		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.openInfrastructureDashboard",
-				async () => {
-					await vscode.env.openExternal(
-						vscode.Uri.parse("https://dashboard.partnerai.dev"),
-					);
-				},
-			),
-		);
 		const infrastructureHealthStatusBar = new InfrastructureHealthStatusBar();
 		context.subscriptions.push(infrastructureHealthStatusBar);
 
@@ -3625,28 +3263,6 @@ export async function activate(
 			// Silently ignore — status bar already shows error state
 		});
 
-		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"command-central.showTestCount",
-				async () => {
-					try {
-						const count = await testCountStatusBar?.refreshCount();
-						if (count !== undefined) {
-							vscode.window.setStatusBarMessage(
-								`CC: ${count} tests passed`,
-								3000,
-							);
-						}
-					} catch (err) {
-						const msg = err instanceof Error ? err.message : String(err);
-						mainLogger.error("Failed to refresh test count", err as Error);
-						vscode.window.showErrorMessage(
-							`Command Central: Failed to run tests — ${msg}`,
-						);
-					}
-				},
-			),
-		);
 		mainLogger.info("Test count status bar initialized");
 		mainLogger.info("Infrastructure health status bar initialized");
 
