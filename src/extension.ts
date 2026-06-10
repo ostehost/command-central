@@ -72,6 +72,7 @@ import { TelemetryService } from "./services/telemetry-service.js";
 import type { OpenClawTask } from "./types/openclaw-task-types.js";
 import { GroupingViewManager } from "./ui/grouping-view-manager.js";
 import { migrateLegacyAgentStatusSettings } from "./utils/agent-status-settings-migration.js";
+import { resolveGatewayHealthSource } from "./utils/openclaw-gateway-health.js";
 import { buildOsteSpawnCommand } from "./utils/shell-command.js";
 
 let gitSorter: GitSorter | undefined;
@@ -537,12 +538,23 @@ export async function activate(
 		const agentStatusBar = new AgentStatusBar();
 		context.subscriptions.push(agentStatusBar);
 
-		const infrastructureHealthStatusBar = new InfrastructureHealthStatusBar();
+		// Probe the gateway this machine is actually configured against —
+		// nodes (gateway.mode "remote") probe the hub's readyz instead of
+		// 127.0.0.1, which would report a false DOWN while the hub is alive.
+		const gatewayHealthSource = resolveGatewayHealthSource();
+		const infrastructureHealthStatusBar = new InfrastructureHealthStatusBar({
+			readyzUrl: gatewayHealthSource.readyzUrl,
+			gatewayScope: gatewayHealthSource.scope,
+			gatewaySourceDetail: gatewayHealthSource.detail,
+		});
 		context.subscriptions.push(infrastructureHealthStatusBar);
 
 		// Update status bar + session store on tree data changes
 		agentStatusProvider.onDidChangeTreeData(() => {
-			agentStatusBar.update(agentStatusProvider?.getTasks() ?? []);
+			agentStatusBar.update(
+				agentStatusProvider?.getTasks() ?? [],
+				agentStatusProvider?.getReviewedTaskIds(),
+			);
 			// Populate session store from launcher tasks with bundle info
 			for (const task of agentStatusProvider?.getTasks() ?? []) {
 				if (
@@ -561,7 +573,10 @@ export async function activate(
 			sessionStore.save();
 		});
 		// Initial update
-		agentStatusBar.update(agentStatusProvider.getTasks());
+		agentStatusBar.update(
+			agentStatusProvider.getTasks(),
+			agentStatusProvider.getReviewedTaskIds(),
+		);
 
 		// Agent Dashboard Panel — rich webview dashboard
 		const agentDashboardPanel = new AgentDashboardPanel();

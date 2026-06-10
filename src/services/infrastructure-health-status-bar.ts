@@ -43,6 +43,15 @@ interface HealthSummaryInfo {
 interface InfrastructureHealthStatusBarOptions {
 	command?: string;
 	readyzUrl?: string;
+	/**
+	 * Where the probed gateway lives relative to this machine. "remote" means
+	 * this is a node probing the hub gateway (resolved from
+	 * ~/.openclaw/openclaw.json); the status bar labels the state "(hub)" so
+	 * a DOWN reading is unambiguous. Defaults to "local".
+	 */
+	gatewayScope?: "local" | "remote";
+	/** Provenance line for the tooltip, e.g. which config resolved the URL. */
+	gatewaySourceDetail?: string;
 	healthSummaryPath?: string;
 	pollIntervalMs?: number;
 	requestTimeoutMs?: number;
@@ -125,12 +134,20 @@ function buildTooltip(params: {
 	summary: HealthSummaryInfo | null;
 	readyzUrl: string;
 	healthSummaryPath: string;
+	gatewayScope: "local" | "remote";
+	gatewaySourceDetail?: string;
 }): vscode.MarkdownString {
+	const gatewayLabel =
+		params.gatewayScope === "remote" ? "Gateway (hub)" : "Gateway";
 	const lines = [
 		"**OpenClaw Infrastructure Health**",
 		"",
-		`- Gateway: ${formatGatewayLine(params.readiness)}`,
+		`- ${gatewayLabel}: ${formatGatewayLine(params.readiness)}`,
 	];
+
+	if (params.gatewaySourceDetail) {
+		lines.push(`- Health source: ${params.gatewaySourceDetail}`);
+	}
 
 	if (params.summary?.overallSummary) {
 		const severity =
@@ -172,6 +189,8 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 	private readonly fetchImpl: FetchLike;
 	private readonly readFile: (filePath: string) => Promise<string>;
 	private readonly readyzUrl: string;
+	private readonly gatewayScope: "local" | "remote";
+	private readonly gatewaySourceDetail: string | undefined;
 	private readonly healthSummaryPath: string;
 	private readonly requestTimeoutMs: number;
 	private readonly clearIntervalImpl: ClearIntervalLike;
@@ -183,6 +202,8 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 		this.readFile =
 			options.readFile ?? ((filePath: string) => fs.readFile(filePath, "utf8"));
 		this.readyzUrl = options.readyzUrl ?? DEFAULT_READYZ_URL;
+		this.gatewayScope = options.gatewayScope ?? "local";
+		this.gatewaySourceDetail = options.gatewaySourceDetail;
 		this.healthSummaryPath =
 			options.healthSummaryPath ?? DEFAULT_HEALTH_SUMMARY_PATH;
 		this.requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
@@ -237,20 +258,23 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 		summary: HealthSummaryInfo | null,
 	): void {
 		const displayState = this.resolveDisplayState(readiness, summary);
+		// On nodes the probe target is the hub gateway — label the glanceable
+		// text so OK/DOWN is never read as a claim about a local gateway.
+		const scopeSuffix = this.gatewayScope === "remote" ? " (hub)" : "";
 
 		switch (displayState) {
 			case "ok":
-				this.statusBarItem.text = "$(pulse) OpenClaw OK";
+				this.statusBarItem.text = `$(pulse) OpenClaw OK${scopeSuffix}`;
 				this.statusBarItem.backgroundColor = undefined;
 				break;
 			case "warn":
-				this.statusBarItem.text = "$(warning) OpenClaw WARN";
+				this.statusBarItem.text = `$(warning) OpenClaw WARN${scopeSuffix}`;
 				this.statusBarItem.backgroundColor = new vscode.ThemeColor(
 					"statusBarItem.warningBackground",
 				);
 				break;
 			case "down":
-				this.statusBarItem.text = "$(error) OpenClaw DOWN";
+				this.statusBarItem.text = `$(error) OpenClaw DOWN${scopeSuffix}`;
 				this.statusBarItem.backgroundColor = new vscode.ThemeColor(
 					"statusBarItem.errorBackground",
 				);
@@ -263,6 +287,8 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 			summary,
 			readyzUrl: this.readyzUrl,
 			healthSummaryPath: this.healthSummaryPath,
+			gatewayScope: this.gatewayScope,
+			gatewaySourceDetail: this.gatewaySourceDetail,
 		});
 		this.statusBarItem.show();
 	}

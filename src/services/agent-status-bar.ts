@@ -43,13 +43,13 @@ export class AgentStatusBar implements vscode.Disposable {
 		this.statusBarItem.command = "commandCentral.agentStatus.focus";
 	}
 
-	update(tasks: AgentTask[]): void {
+	update(tasks: AgentTask[], reviewedTaskIds?: ReadonlySet<string>): void {
 		if (tasks.length === 0) {
 			this.statusBarItem.hide();
 			return;
 		}
 
-		const counts = countAgentStatuses(tasks);
+		const counts = countAgentStatuses(tasks, { reviewedTaskIds });
 		const summary = formatCountSummary(counts, { includeAttention: true });
 		const attentionCount = getAttentionCount(counts);
 		const hasFailureAttention = tasks.some(

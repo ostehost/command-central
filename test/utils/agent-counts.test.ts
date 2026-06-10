@@ -173,6 +173,62 @@ describe("countAgentStatuses — review_status routing", () => {
 		});
 	});
 
+	// ── Reviewed sidecar marker: manual review clears the attention count ────
+	// Mirrors the tree provider's grouping — a completed task with a
+	// pending/changes_requested review_status counts as `done` once the user
+	// marks it reviewed, so the badge agrees with the Attention bucket.
+	test("reviewed: completed + review_status=pending + reviewed id → done", () => {
+		const tasks = [makeTask("t1", "completed", "pending")];
+		expect(
+			countAgentStatuses(tasks, { reviewedTaskIds: new Set(["t1"]) }),
+		).toEqual({
+			working: 0,
+			attention: 0,
+			limbo: 0,
+			done: 1,
+			total: 1,
+		});
+	});
+
+	test("reviewed: completed + review_status=changes_requested + reviewed id → done", () => {
+		const tasks = [makeTask("t1", "completed", "changes_requested")];
+		expect(
+			countAgentStatuses(tasks, { reviewedTaskIds: new Set(["t1"]) }),
+		).toEqual({
+			working: 0,
+			attention: 0,
+			limbo: 0,
+			done: 1,
+			total: 1,
+		});
+	});
+
+	test("reviewed: ids for other tasks do not clear attention", () => {
+		const tasks = [makeTask("t1", "completed", "pending")];
+		expect(
+			countAgentStatuses(tasks, { reviewedTaskIds: new Set(["other"]) }),
+		).toEqual({
+			working: 0,
+			attention: 1,
+			limbo: 0,
+			done: 0,
+			total: 1,
+		});
+	});
+
+	test("reviewed: failed task stays in attention even when reviewed (status, not review_status, drives it)", () => {
+		const tasks = [makeTask("t1", "failed")];
+		expect(
+			countAgentStatuses(tasks, { reviewedTaskIds: new Set(["t1"]) }),
+		).toEqual({
+			working: 0,
+			attention: 1,
+			limbo: 0,
+			done: 0,
+			total: 1,
+		});
+	});
+
 	test("formatCountSummary with includeAttention shows attention segment for mixed scenario", () => {
 		const counts = countAgentStatuses([
 			makeTask("r1", "running"),

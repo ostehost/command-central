@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly SCRIPT_NAME="fresh_slate_reset.sh"
-readonly VERSION="1.1.0"
+readonly VERSION="1.2.0"
 
 usage() {
   cat <<'USAGE'
@@ -37,6 +37,8 @@ Resolution chain for tasks.json (first match wins):
 Safety:
   - Refuses --apply if running launcher tasks exist (override with --force-running)
   - Acquires the launcher's tasks.json lock before mutation (compatible with tasks-lock.sh)
+  - Writes manifest.json (path + sha256 + size per file) into the backup
+    directory BEFORE any file is moved
   - All historical files are moved into a timestamped backup directory
   - Full pending-review store backed up (including reviewed/ and quarantined/ subdirs)
   - Empty scaffolds are recreated after backup
@@ -257,6 +259,64 @@ if $include_streams; then
   done < <(find /tmp -maxdepth 1 -name '*-stream-*.jsonl' -type f 2>/dev/null || true)
 fi
 
+# --- Backup manifest (receipt written before any mutation) ---
+
+checksum_file() {
+  if command -v shasum &>/dev/null; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v sha256sum &>/dev/null; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    echo "unavailable"
+  fi
+}
+
+# Collect every file the apply phase will move (NUL-safe is unnecessary —
+# these are launcher-owned paths without newlines).
+collect_manifest_files() {
+  if $tasks_found && [[ -f "$tasks_file" ]]; then
+    echo "$tasks_file"
+  fi
+  if [[ -f "$reviewed_file" ]]; then
+    echo "$reviewed_file"
+  fi
+  if [[ -d "$pending_dir" && "$pending_total" -gt 0 ]]; then
+    find "$pending_dir" -type f -name '*.json' 2>/dev/null || true
+  fi
+  if $include_streams && [[ ${#stream_files[@]} -gt 0 ]]; then
+    printf '%s\n' "${stream_files[@]}"
+  fi
+}
+
+write_manifest() {
+  local manifest="$backup_dir/manifest.json"
+  local entries="[]"
+  local f size
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    size=$(wc -c <"$f" | tr -d ' ')
+    entries=$(jq \
+      --arg path "$f" \
+      --arg sha256 "$(checksum_file "$f")" \
+      --argjson size "$size" \
+      '. + [{path: $path, sha256: $sha256, size: $size}]' <<<"$entries")
+  done < <(collect_manifest_files)
+
+  jq -n \
+    --arg script "$SCRIPT_NAME" \
+    --arg version "$VERSION" \
+    --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg backup_dir "$backup_dir" \
+    --argjson files "$entries" \
+    '{
+      script: $script,
+      version: $version,
+      created_at: $created_at,
+      backup_dir: $backup_dir,
+      files: $files
+    }' >"$manifest"
+}
+
 # --- Scaffolds to recreate ---
 
 scaffolds_tasks='{"version":2,"tasks":{}}'
@@ -396,6 +456,11 @@ if [[ -e "$backup_dir" ]]; then
 fi
 mkdir "$backup_dir"
 
+# Receipt before mutation: record path + sha256 + size of every file about
+# to be moved. Written while the tasks.json lock is still held, so the
+# manifest cannot drift from what actually gets backed up.
+write_manifest
+
 # --- Move tasks.json (lock is still held from above) ---
 
 if $tasks_found && [[ -f "$tasks_file" ]]; then
@@ -480,6 +545,7 @@ if $json_output; then
     '{
       mode: $mode,
       backup_dir: $backup_dir,
+      manifest: "\($backup_dir)/manifest.json",
       moved_count: $moved_count,
       recreated_count: $recreated_count,
       post_reset: {
@@ -494,6 +560,7 @@ else
   echo "============================"
   echo ""
   echo "Backup: $backup_dir"
+  echo "  Manifest: $backup_dir/manifest.json"
   echo "  Moved: $moved_count file(s)"
   echo "  Recreated: $recreated_count scaffold(s)"
   echo ""

@@ -1248,9 +1248,14 @@ export class AgentStatusTreeProvider
 
 	markTaskReviewed(taskId: string): void {
 		this._reviewTracker.markReviewed(taskId);
-		// Refresh the specific task node so the badge appears immediately
-		const element = this.getTaskRefreshElement(taskId);
-		this.scheduleTreeRefresh(element);
+		// Reviewed state feeds status grouping (a reviewed task leaves the
+		// Attention bucket), so a full rebuild is required — an element-level
+		// refresh would update the badge but leave the row in the old group.
+		this.scheduleTreeRefresh();
+	}
+
+	getReviewedTaskIds(): Set<string> {
+		return this._reviewTracker.getReviewedIds();
 	}
 
 	findTaskElement(taskId: string): TreeElement | undefined {
@@ -3204,11 +3209,14 @@ export class AgentStatusTreeProvider
 				? []
 				: this.applyAgentVisibilityCap(sortableFlatNodes);
 
+			const reviewedTaskIds = this._reviewTracker.getReviewedIds();
 			const agentCounts = countAgentStatuses(
 				this.getScopedAgentTasksForSummary(tasks, discovered),
+				{ reviewedTaskIds },
 			);
 			const counts = countAgentStatuses(
 				this.getScopedTasksForSummary(tasks, discovered),
+				{ reviewedTaskIds },
 			);
 			const backgroundTaskCount = openclawTasks.length;
 			const stuckCount = this.getStuckRunningCount(allTasks);
@@ -3783,10 +3791,16 @@ export class AgentStatusTreeProvider
 		}
 
 		if (status === "completed") {
+			// A pending/changes_requested review keeps the task in Attention
+			// only until the user manually marks it reviewed (ReviewTracker
+			// sidecar). Reviewed tasks fall through to the handoff and
+			// pending-review-receipt checks below, so true blockers still
+			// surface in Limbo instead of silently landing in Done.
 			if (
 				node.type === "task" &&
 				(node.task.review_status === "pending" ||
-					node.task.review_status === "changes_requested")
+					node.task.review_status === "changes_requested") &&
+				!this._reviewTracker.isReviewed(node.task.id)
 			) {
 				return "attention";
 			}
@@ -7975,7 +7989,9 @@ export class AgentStatusTreeProvider
 			node.tasks.find((task) => task.project_icon)?.project_icon ?? null;
 		const icon = this.getProjectIcon(projectDir, { launcherIcon });
 		const discoveredCount = node.discoveredAgents?.length ?? 0;
-		const counts = countAgentStatuses(node.tasks);
+		const counts = countAgentStatuses(node.tasks, {
+			reviewedTaskIds: this._reviewTracker.getReviewedIds(),
+		});
 		counts.working += discoveredCount;
 		counts.total += discoveredCount;
 		const total = counts.total;

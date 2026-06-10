@@ -160,6 +160,85 @@ describe("InfrastructureHealthStatusBar", () => {
 		expect(tooltip.value).toContain("Snapshot: unavailable");
 	});
 
+	// ── Hub/node-aware gateway scope ───────────────────────────────────────────
+	// Nodes probe the hub gateway (resolved from ~/.openclaw/openclaw.json),
+	// so the glanceable text and tooltip must label the state as the hub's —
+	// never an ambiguous claim about a local gateway that isn't running here.
+	test("remote scope labels OK state and tooltip with the hub gateway", async () => {
+		const { InfrastructureHealthStatusBar } = await loadModule();
+		const bar = new InfrastructureHealthStatusBar({
+			readyzUrl: "https://gateway.example.dev/readyz",
+			gatewayScope: "remote",
+			gatewaySourceDetail:
+				"hub gateway resolved from gateway.remote.url in ~/.openclaw/openclaw.json",
+			fetchImpl: mock(
+				async () => new Response(JSON.stringify({ ready: true })),
+			),
+			readFile: mock(async () => {
+				throw new Error("ENOENT");
+			}),
+			setIntervalImpl: mock(() => createTimerHandle()),
+			clearIntervalImpl: mock(),
+		});
+
+		await bar.refresh();
+
+		expect(mockStatusBarItem.text).toBe("$(pulse) OpenClaw OK (hub)");
+		const tooltip = mockStatusBarItem.tooltip as { value: string };
+		expect(tooltip.value).toContain("Gateway (hub): ready");
+		expect(tooltip.value).toContain(
+			"Health source: hub gateway resolved from gateway.remote.url",
+		);
+		expect(tooltip.value).toContain("`https://gateway.example.dev/readyz`");
+	});
+
+	test("remote scope labels DOWN state so a hub outage is unambiguous", async () => {
+		const { InfrastructureHealthStatusBar } = await loadModule();
+		const bar = new InfrastructureHealthStatusBar({
+			readyzUrl: "https://gateway.example.dev/readyz",
+			gatewayScope: "remote",
+			fetchImpl: mock(async () => {
+				throw new Error("getaddrinfo ENOTFOUND gateway.example.dev");
+			}),
+			readFile: mock(async () => {
+				throw new Error("ENOENT");
+			}),
+			setIntervalImpl: mock(() => createTimerHandle()),
+			clearIntervalImpl: mock(),
+		});
+
+		await bar.refresh();
+
+		expect(mockStatusBarItem.text).toBe("$(error) OpenClaw DOWN (hub)");
+		const tooltip = mockStatusBarItem.tooltip as { value: string };
+		expect(tooltip.value).toContain("Gateway (hub): unreachable");
+	});
+
+	test("local scope keeps the unsuffixed text and tooltip labels", async () => {
+		const { InfrastructureHealthStatusBar } = await loadModule();
+		const bar = new InfrastructureHealthStatusBar({
+			gatewayScope: "local",
+			gatewaySourceDetail: "local gateway (no remote gateway configured)",
+			fetchImpl: mock(
+				async () => new Response(JSON.stringify({ ready: true })),
+			),
+			readFile: mock(async () => {
+				throw new Error("ENOENT");
+			}),
+			setIntervalImpl: mock(() => createTimerHandle()),
+			clearIntervalImpl: mock(),
+		});
+
+		await bar.refresh();
+
+		expect(mockStatusBarItem.text).toBe("$(pulse) OpenClaw OK");
+		const tooltip = mockStatusBarItem.tooltip as { value: string };
+		expect(tooltip.value).toContain("Gateway: ready");
+		expect(tooltip.value).toContain(
+			"Health source: local gateway (no remote gateway configured)",
+		);
+	});
+
 	test("sets the dashboard click command and clears polling on dispose", async () => {
 		const clearIntervalImpl = mock();
 		const timerHandle = createTimerHandle();

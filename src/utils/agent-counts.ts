@@ -12,7 +12,20 @@ export interface FormatCountSummaryOptions {
 	includeAttention?: boolean;
 }
 
-export function countAgentStatuses(tasks: AgentTask[]): AgentCounts {
+export interface CountAgentStatusesOptions {
+	/**
+	 * Task IDs the user has manually marked reviewed (ReviewTracker sidecar).
+	 * A completed task whose review_status is still pending/changes_requested
+	 * counts as `done` once reviewed — mirrors the tree provider's grouping so
+	 * the badge and the Attention bucket stay in sync.
+	 */
+	reviewedTaskIds?: ReadonlySet<string>;
+}
+
+export function countAgentStatuses(
+	tasks: AgentTask[],
+	options: CountAgentStatusesOptions = {},
+): AgentCounts {
 	const counts: AgentCounts = {
 		working: 0,
 		attention: 0,
@@ -29,8 +42,9 @@ export function countAgentStatuses(tasks: AgentTask[]): AgentCounts {
 				break;
 			case "completed":
 				if (
-					task.review_status === "pending" ||
-					task.review_status === "changes_requested"
+					(task.review_status === "pending" ||
+						task.review_status === "changes_requested") &&
+					!options.reviewedTaskIds?.has(task.id)
 				) {
 					counts.attention++;
 				} else {

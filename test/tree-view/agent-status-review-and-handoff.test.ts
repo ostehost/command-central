@@ -349,4 +349,92 @@ describe("review_status × missing-handoff routing precedence", () => {
 
 		expect(groupOf(provider, task)).toBe("done");
 	});
+
+	// ── Reviewed sidecar marker × review_status routing ────────────────────────
+	// "Mark Agent Reviewed" must clear the Attention bucket: a completed task
+	// whose review_status is still pending/changes_requested no longer routes
+	// to attention once its id is in the ReviewTracker. True blockers (missing
+	// handoff, missing pending-review receipt) keep their limbo routing — the
+	// reviewed marker only silences the review_status signal, nothing else.
+	test("completed + review_status=pending + reviewed marker → done (attention cleared)", () => {
+		const dir = makeTmp();
+		realFs.writeFileSync(path.join(dir, "HANDOFF.md"), "# done\n");
+		const task = makeTask({
+			id: "pending-reviewed",
+			status: "completed",
+			project_dir: dir,
+			handoff_file: "HANDOFF.md",
+			review_status: "pending",
+		});
+
+		expect(groupOf(provider, task)).toBe("attention");
+		provider.markTaskReviewed(task.id);
+		expect(groupOf(provider, task)).toBe("done");
+
+		const counts = countAgentStatuses([task], {
+			reviewedTaskIds: provider.getReviewedTaskIds(),
+		});
+		expect(counts.attention).toBe(0);
+		expect(counts.done).toBe(1);
+	});
+
+	test("completed + review_status=changes_requested + reviewed marker → done", () => {
+		const dir = makeTmp();
+		realFs.writeFileSync(path.join(dir, "HANDOFF.md"), "# done\n");
+		const task = makeTask({
+			id: "changes-requested-reviewed",
+			status: "completed",
+			project_dir: dir,
+			handoff_file: "HANDOFF.md",
+			review_status: "changes_requested",
+		});
+
+		provider.markTaskReviewed(task.id);
+		expect(groupOf(provider, task)).toBe("done");
+	});
+
+	test("completed + review_status=pending + reviewed marker + missing handoff → limbo (true blocker stays visible)", () => {
+		const dir = makeTmp();
+		const task = makeTask({
+			id: "pending-reviewed-missing-handoff",
+			status: "completed",
+			project_dir: dir,
+			handoff_file: "MISSING.md",
+			review_status: "pending",
+		});
+
+		provider.markTaskReviewed(task.id);
+		expect(groupOf(provider, task)).toBe("limbo");
+	});
+
+	test("completed + review_status=pending + reviewed marker + missing pending-review receipt → limbo", () => {
+		const dir = makeTmp();
+		realFs.writeFileSync(path.join(dir, "HANDOFF.md"), "# done\n");
+		const task = makeTask({
+			id: "pending-reviewed-missing-receipt",
+			status: "completed",
+			project_dir: dir,
+			handoff_file: "HANDOFF.md",
+			review_status: "pending",
+			pending_review_path: path.join(dir, "no-such-receipt.json"),
+		});
+
+		provider.markTaskReviewed(task.id);
+		expect(groupOf(provider, task)).toBe("limbo");
+	});
+
+	test("reviewed marker for a different task does not clear attention", () => {
+		const dir = makeTmp();
+		realFs.writeFileSync(path.join(dir, "HANDOFF.md"), "# done\n");
+		const task = makeTask({
+			id: "pending-unreviewed",
+			status: "completed",
+			project_dir: dir,
+			handoff_file: "HANDOFF.md",
+			review_status: "pending",
+		});
+
+		provider.markTaskReviewed("some-other-task");
+		expect(groupOf(provider, task)).toBe("attention");
+	});
 });
