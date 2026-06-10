@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
 	classifyState,
+	detectArtifact,
 	formatRecord,
 	PREVIEW_STATUS_SCHEMA_VERSION,
 	PreviewStatusError,
@@ -507,5 +509,147 @@ describe("preview-status CLI (subprocess smoke)", () => {
 		const r = runCliSync(["--state-dir", stateDir, "clearr"]);
 		expect(r.status).toBe(64);
 		expect(r.stderr).toContain('unknown subcommand "clearr"');
+	});
+});
+
+async function mkTempRepoDir(version?: string, vsix?: string): Promise<string> {
+	const repoDir = await fs.mkdtemp(
+		path.join(os.tmpdir(), "preview-status-repo-"),
+	);
+	if (version) {
+		await fs.writeFile(
+			path.join(repoDir, "package.json"),
+			JSON.stringify({ name: "command-central", version }),
+			"utf8",
+		);
+	}
+	if (version && vsix != null) {
+		await fs.mkdir(path.join(repoDir, "releases"), { recursive: true });
+		await fs.writeFile(
+			path.join(repoDir, "releases", `command-central-${version}.vsix`),
+			vsix,
+			"utf8",
+		);
+	}
+	return repoDir;
+}
+
+describe("detectArtifact", () => {
+	let repoDir: string;
+	afterEach(async () => {
+		if (repoDir) await fs.rm(repoDir, { recursive: true, force: true });
+	});
+
+	test("resolves version, artifact path, and sha256 from a cut repo", async () => {
+		repoDir = await mkTempRepoDir("0.6.0-rc.50", "fake-vsix-bytes");
+		const detected = await detectArtifact(repoDir);
+		expect(detected.packageVersion).toBe("0.6.0-rc.50");
+		expect(detected.artifactPath).toBe(
+			path.join(repoDir, "releases", "command-central-0.6.0-rc.50.vsix"),
+		);
+		expect(detected.artifactSha256).toBe(
+			createHash("sha256").update("fake-vsix-bytes").digest("hex"),
+		);
+	});
+
+	test("reports version only when the matching VSIX is missing", async () => {
+		repoDir = await mkTempRepoDir("0.6.0-rc.50");
+		const detected = await detectArtifact(repoDir);
+		expect(detected.packageVersion).toBe("0.6.0-rc.50");
+		expect(detected.artifactPath).toBeNull();
+		expect(detected.artifactSha256).toBeNull();
+	});
+
+	test("degrades to all-null when package.json is absent", async () => {
+		repoDir = await mkTempRepoDir();
+		expect(await detectArtifact(repoDir)).toEqual({
+			packageVersion: null,
+			artifactPath: null,
+			artifactSha256: null,
+		});
+	});
+});
+
+describe("preview-status CLI finish --auto-artifact", () => {
+	let stateDir: string;
+	let repoDir: string;
+	beforeEach(async () => {
+		stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "preview-status-cli-"));
+	});
+	afterEach(async () => {
+		if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
+		if (repoDir) await fs.rm(repoDir, { recursive: true, force: true });
+	});
+
+	function startRecord(cwd: string): void {
+		const r = runCliSync([
+			"--state-dir",
+			stateDir,
+			"start",
+			"--command=just cut-preview --prerelease",
+			`--cwd=${cwd}`,
+		]);
+		expect(r.status).toBe(0);
+	}
+
+	function showRecord(): PreviewStatusRecord {
+		const r = runCliSync(["--state-dir", stateDir, "show", "--json"]);
+		expect(r.status).toBe(0);
+		return JSON.parse(r.stdout) as PreviewStatusRecord;
+	}
+
+	test("successful finish fills version/artifact/sha from the record cwd", async () => {
+		repoDir = await mkTempRepoDir("0.6.0-rc.50", "fake-vsix-bytes");
+		startRecord(repoDir);
+		const r = runCliSync([
+			"--state-dir",
+			stateDir,
+			"finish",
+			"--exit-code=0",
+			"--auto-artifact",
+		]);
+		expect(r.status).toBe(0);
+		const record = showRecord();
+		expect(record.state).toBe("succeeded");
+		expect(record.packageVersion).toBe("0.6.0-rc.50");
+		expect(record.artifactPath).toBe(
+			path.join(repoDir, "releases", "command-central-0.6.0-rc.50.vsix"),
+		);
+		expect(record.artifactSha256).toBe(
+			createHash("sha256").update("fake-vsix-bytes").digest("hex"),
+		);
+	});
+
+	test("explicit --version wins over auto-detection", async () => {
+		repoDir = await mkTempRepoDir("0.6.0-rc.50", "fake-vsix-bytes");
+		startRecord(repoDir);
+		const r = runCliSync([
+			"--state-dir",
+			stateDir,
+			"finish",
+			"--exit-code=0",
+			"--auto-artifact",
+			"--version=9.9.9-explicit",
+		]);
+		expect(r.status).toBe(0);
+		expect(showRecord().packageVersion).toBe("9.9.9-explicit");
+	});
+
+	test("failed finish does not record artifact identity", async () => {
+		repoDir = await mkTempRepoDir("0.6.0-rc.50", "fake-vsix-bytes");
+		startRecord(repoDir);
+		const r = runCliSync([
+			"--state-dir",
+			stateDir,
+			"finish",
+			"--exit-code=1",
+			"--auto-artifact",
+		]);
+		expect(r.status).toBe(0);
+		const record = showRecord();
+		expect(record.state).toBe("failed");
+		expect(record.packageVersion).toBeNull();
+		expect(record.artifactPath).toBeNull();
+		expect(record.artifactSha256).toBeNull();
 	});
 });

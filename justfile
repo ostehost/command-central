@@ -608,7 +608,7 @@ cut-preview *args="--prerelease":
         --cwd "$(pwd)" \
         --pid "$$" \
         --log-path "$LOG_FILE"
-    trap 'rc=$?; bun run scripts-v2/preview-status.ts finish --exit-code="$rc" >/dev/null 2>&1 || true' EXIT
+    trap 'rc=$?; bun run scripts-v2/preview-status.ts finish --exit-code="$rc" --auto-artifact >/dev/null 2>&1 || true' EXIT
     exec > >(tee "$LOG_FILE") 2>&1
     printf '╭──────────────────────────────────────────────────╮\n'
     printf '│  Cut Preview — command-central                   │\n'

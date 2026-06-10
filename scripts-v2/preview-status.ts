@@ -14,7 +14,7 @@
  *
  * Subcommands (CLI):
  *   start    --command=... --cwd=... [--log-path=...] [--version=...] [--force]
- *   finish   --exit-code=N [--version=...] [--artifact=...] [--artifact-sha=...]
+ *   finish   --exit-code=N [--version=...] [--artifact=...] [--artifact-sha=...] [--auto-artifact]
  *   show     [--json]
  *   clear
  *
@@ -22,6 +22,7 @@
  * `import.meta.main` is true.
  */
 
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -297,6 +298,48 @@ export class PreviewStatusStore {
 	}
 }
 
+export type DetectedArtifact = {
+	packageVersion: string | null;
+	artifactPath: string | null;
+	artifactSha256: string | null;
+};
+
+/**
+ * Best-effort artifact identity for a finished cut: the version comes from
+ * `<cwd>/package.json` (dist bumps it mid-cut, so the start record can never
+ * carry it), and the artifact is the matching `releases/command-central-
+ * <version>.vsix` with its sha256. Every miss degrades to null rather than
+ * failing — the lifecycle record must still be written on partial evidence.
+ */
+export async function detectArtifact(cwd: string): Promise<DetectedArtifact> {
+	let packageVersion: string | null = null;
+	try {
+		const raw = await fs.readFile(path.join(cwd, "package.json"), "utf8");
+		const parsed = JSON.parse(raw) as { version?: unknown };
+		if (typeof parsed.version === "string" && parsed.version.length > 0) {
+			packageVersion = parsed.version;
+		}
+	} catch {
+		// unreadable/invalid package.json — leave everything null
+	}
+	if (!packageVersion) {
+		return { packageVersion: null, artifactPath: null, artifactSha256: null };
+	}
+
+	const artifactPath = path.join(
+		cwd,
+		"releases",
+		`command-central-${packageVersion}.vsix`,
+	);
+	try {
+		const data = await fs.readFile(artifactPath);
+		const artifactSha256 = createHash("sha256").update(data).digest("hex");
+		return { packageVersion, artifactPath, artifactSha256 };
+	} catch {
+		return { packageVersion, artifactPath: null, artifactSha256: null };
+	}
+}
+
 function formatAlreadyRunning(record: PreviewStatusRecord): string {
 	const pid = record.pid ?? "?";
 	const startedAt = record.startedAt || "unknown";
@@ -469,7 +512,10 @@ async function runCli(argv: string[]): Promise<number> {
 				"  preview-status [--state-dir <dir>] [subcommand] [args...]",
 				"",
 				"  preview-status start    --command=... --cwd=... [--log-path=...] [--version=...] [--force]",
-				"  preview-status finish   --exit-code=N [--version=...] [--artifact=...] [--artifact-sha=...]",
+				"  preview-status finish   --exit-code=N [--version=...] [--artifact=...] [--artifact-sha=...] [--auto-artifact]",
+				"",
+				"  --auto-artifact (finish): on exit-code 0, fill version/artifact/sha",
+				"  from the record's cwd (package.json + releases/) when not given.",
 				"  preview-status show     [--json]   (default subcommand)",
 				"  preview-status clear",
 				"",
@@ -526,12 +572,19 @@ async function runCli(argv: string[]): Promise<number> {
 			console.error(`preview-status finish: --exit-code must be a number`);
 			return 64;
 		}
+		let auto: DetectedArtifact | null = null;
+		if (hasFlag(rest, "auto-artifact") && exitCode === 0) {
+			const existing = await store.read();
+			auto = await detectArtifact(existing?.cwd || process.cwd());
+		}
 		try {
 			const record = await store.finish({
 				exitCode,
-				artifactPath: getFlag(rest, "artifact") ?? null,
-				artifactSha256: getFlag(rest, "artifact-sha") ?? null,
-				packageVersion: getFlag(rest, "version") ?? null,
+				artifactPath: getFlag(rest, "artifact") ?? auto?.artifactPath ?? null,
+				artifactSha256:
+					getFlag(rest, "artifact-sha") ?? auto?.artifactSha256 ?? null,
+				packageVersion:
+					getFlag(rest, "version") ?? auto?.packageVersion ?? null,
 			});
 			console.log(
 				`preview-status: ${record.state} (exit=${record.exitCode}, duration=${record.durationMs}ms)`,
