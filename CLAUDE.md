@@ -164,7 +164,7 @@ Before submitting changes:
 - [ ] Build succeeds: `bun run build`
 - [ ] All imports use `.js` extension
 - [ ] `external: ['vscode']` preserved in build config
-- [ ] Bundle size reasonable (VSIX should be < 100KB)
+- [ ] VSIX within the enforced budget: ≤ 600KB compressed / ≤ 2MB uncompressed / ≤ 120 files (`scripts-v2/vsix-content-gate.ts` fails the build otherwise; current dieted candidate measures ~258KB / 51 files)
 
 ## Skills
 
