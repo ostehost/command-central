@@ -10,6 +10,10 @@ readonly SCRIPT_DIR
 readonly FOCUS_SCRIPT="${SCRIPT_DIR}/../oste-focus.applescript"
 readonly _DEFAULT_TASKS_DIR="${HOME}/.config/ghostty-launcher"
 readonly TASKS_FILE="${TASKS_FILE:-${_DEFAULT_TASKS_DIR}/tasks.json}"
+# shellcheck source=bundle-runtime.sh
+source "${SCRIPT_DIR}/bundle-runtime.sh"
+# shellcheck source=reaper.sh
+source "${SCRIPT_DIR}/reaper.sh"
 
 usage() {
 	cat <<EOF
@@ -113,8 +117,14 @@ if [[ -n "$task_id" ]]; then
 
 	session_id=$(jq -r --arg id "$task_id" '.tasks[$id].session_id // empty' "$TASKS_FILE" 2>/dev/null || true)
 
+	local_visibility_fields=$(bundle_visibility_fields "$task_id" "$TASKS_FILE" || true)
+	IFS='|' read -r visibility_verified visibility_degraded visibility_reason _visibility_tasks_file _visibility_bundle_id visibility_tmux_attached visibility_focusable_windows visibility_onscreen_windows _visibility_process_alive _visibility_pid <<<"$local_visibility_fields"
+	if [[ "${visibility_tmux_attached:-false}" != "true" ]]; then
+		focus_fail "tmux_not_attached" "task_id=${task_id} tasks_file=${TASKS_FILE} bundle_id=${bundle_id}"
+	fi
+
 	if [[ -n "$dry_run" ]]; then
-		echo "FOCUS_RESOLVE task_id=${task_id} bundle_id=${bundle_id} session_id=${session_id:-}"
+		echo "FOCUS_RESOLVE task_id=${task_id} tasks_file=${TASKS_FILE} bundle_id=${bundle_id} session_id=${session_id:-} visibility_verified=${visibility_verified:-false} visibility_degraded=${visibility_degraded:-true} visibility_reason=${visibility_reason:-unknown} focusable_windows=${visibility_focusable_windows:-0} onscreen_windows=${visibility_onscreen_windows:-0}"
 		exit 0
 	fi
 fi
