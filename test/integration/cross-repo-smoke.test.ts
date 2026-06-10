@@ -33,6 +33,10 @@ const TERMINAL_MANAGER_PATH = path.join(
 	"src/ghostty/TerminalManager.ts",
 );
 const EXTENSION_PATH = path.join(CC_ROOT, "src/extension.ts");
+const AGENT_REGISTRY_COMMANDS_PATH = path.join(
+	CC_ROOT,
+	"src/activation/register-agent-registry-commands.ts",
+);
 const LAUNCHER_REPO =
 	process.env["LAUNCHER_REPO"] ??
 	path.join(process.env["HOME"] ?? "", "projects", "ghostty-launcher");
@@ -40,6 +44,13 @@ const LAUNCHER_BIN = path.join(LAUNCHER_REPO, "launcher");
 
 const terminalManagerSource = fs.readFileSync(TERMINAL_MANAGER_PATH, "utf8");
 const extensionSource = fs.readFileSync(EXTENSION_PATH, "utf8");
+// captureAgentOutput/killAgent moved to the agent registry activation module;
+// the helper-resolution contract spans the composition root plus that module.
+const agentRegistryCommandsSource = fs.readFileSync(
+	AGENT_REGISTRY_COMMANDS_PATH,
+	"utf8",
+);
+const commandSurfaceSource = `${extensionSource}\n${agentRegistryCommandsSource}`;
 
 // ─── 1. Spawn ───────────────────────────────────────────────
 describe("smoke: spawn — oste-spawn.sh argument shapes", () => {
@@ -140,7 +151,7 @@ describe("smoke: steer — extension delegates to launcher --send", () => {
 // ─── 3. Capture — helper resolution ────────────────────────
 describe("smoke: capture — oste-capture.sh resolution", () => {
 	test("extension resolves oste-capture.sh via resolveLauncherHelperScriptPath", () => {
-		expect(extensionSource).toMatch(
+		expect(commandSurfaceSource).toMatch(
 			/resolveLauncherHelperScriptPath\s*\(\s*"oste-capture\.sh"/,
 		);
 	});
@@ -149,7 +160,7 @@ describe("smoke: capture — oste-capture.sh resolution", () => {
 		// Ensure no legacy pattern like: path.dirname(tasksFilePath) ... oste-capture.sh
 		const legacyPattern =
 			/path\.dirname\(tasksFilePath\)[\s\S]{0,240}oste-capture\.sh/;
-		expect(legacyPattern.test(extensionSource)).toBe(false);
+		expect(legacyPattern.test(commandSurfaceSource)).toBe(false);
 	});
 
 	test("TerminalManager anchors helper scripts to launcher binary dir", () => {
@@ -172,7 +183,7 @@ describe("smoke: capture — oste-capture.sh resolution", () => {
 // ─── 4. Kill — helper resolution ───────────────────────────
 describe("smoke: kill — oste-kill.sh resolution", () => {
 	test("extension resolves oste-kill.sh via resolveLauncherHelperScriptPath", () => {
-		expect(extensionSource).toMatch(
+		expect(commandSurfaceSource).toMatch(
 			/resolveLauncherHelperScriptPath\s*\(\s*"oste-kill\.sh"/,
 		);
 	});
@@ -180,7 +191,7 @@ describe("smoke: kill — oste-kill.sh resolution", () => {
 	test("extension does NOT resolve kill helper from tasks.json dir", () => {
 		const legacyPattern =
 			/path\.dirname\(tasksFilePath\)[\s\S]{0,240}oste-kill\.sh/;
-		expect(legacyPattern.test(extensionSource)).toBe(false);
+		expect(legacyPattern.test(commandSurfaceSource)).toBe(false);
 	});
 });
 
@@ -289,8 +300,8 @@ describe("smoke: static contract validation", () => {
 	test("extension resolves all required launcher helpers", () => {
 		const requiredHelpers = ["oste-capture.sh", "oste-kill.sh"];
 		for (const helper of requiredHelpers) {
-			expect(extensionSource).toContain(`resolveLauncherHelperScriptPath`);
-			expect(extensionSource).toContain(`"${helper}"`);
+			expect(commandSurfaceSource).toContain(`resolveLauncherHelperScriptPath`);
+			expect(commandSurfaceSource).toContain(`"${helper}"`);
 		}
 	});
 });
@@ -497,7 +508,7 @@ describe.if(launcherAvailable)(
 			const issues = validateLauncherContract(
 				terminalManagerSource,
 				launcherHelpText,
-				extensionSource,
+				commandSurfaceSource,
 			);
 			expect(issues).toEqual([]);
 		});

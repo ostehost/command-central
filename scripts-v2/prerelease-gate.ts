@@ -632,22 +632,39 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 			"scripts",
 			"oste-steer.sh",
 		);
-		const [extensionSource, terminalManagerSource, launcherHelp, steerHelp] =
-			await Promise.all([
-				fs.readFile(
-					path.join(config.commandCentralRepo, "src/extension.ts"),
+		const [
+			extensionSource,
+			agentRegistryCommandsSource,
+			terminalManagerSource,
+			launcherHelp,
+			steerHelp,
+		] = await Promise.all([
+			fs.readFile(
+				path.join(config.commandCentralRepo, "src/extension.ts"),
+				"utf8",
+			),
+			// Capture/kill helper resolution lives in the agent registry
+			// activation module; absence degrades to the helper-call contract
+			// failing below rather than an unreadable-file crash.
+			fs
+				.readFile(
+					path.join(
+						config.commandCentralRepo,
+						"src/activation/register-agent-registry-commands.ts",
+					),
 					"utf8",
-				),
-				fs.readFile(
-					path.join(config.commandCentralRepo, "src/ghostty/TerminalManager.ts"),
-					"utf8",
-				),
-				runCommand(
-					[config.launcherBinary, "--help"],
-					config.ghosttyLauncherRepo,
-				),
-				runCommand([steerScript, "--help"], config.ghosttyLauncherRepo),
-			]);
+				)
+				.catch(() => ""),
+			fs.readFile(
+				path.join(config.commandCentralRepo, "src/ghostty/TerminalManager.ts"),
+				"utf8",
+			),
+			runCommand(
+				[config.launcherBinary, "--help"],
+				config.ghosttyLauncherRepo,
+			),
+			runCommand([steerScript, "--help"], config.ghosttyLauncherRepo),
+		]);
 
 		if (launcherHelp.exitCode !== 0) {
 			throw new Error(
@@ -664,7 +681,7 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 			...validateLauncherContract(
 				terminalManagerSource,
 				launcherHelp.output,
-				extensionSource,
+				`${extensionSource}\n${agentRegistryCommandsSource}`,
 			),
 			...validateSteerContract(terminalManagerSource, steerHelp.output),
 		];
