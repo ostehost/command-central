@@ -26,6 +26,7 @@ import { spawn } from "bun";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { compareReleaseFileNames } from "./dist-simple-utils.ts";
+import { formatGateReport, gateVsix } from "./vsix-content-gate.ts";
 
 // Configuration
 const ROOT = process.cwd();
@@ -194,7 +195,16 @@ async function main() {
 			console.log(`   ✓ Built in ${(prodTime / 1000).toFixed(1)}s`);
 			console.log(`   ✓ Bundle size: ${formatSize(prodSize)} (${getPercentReduction(devSize, prodSize)}% smaller)`);
 			console.log(`   ✓ VSIX size: ${formatSize(prodVsixSize)} (${getPercentReduction(devVsixSize, prodVsixSize)}% smaller)`);
-			
+
+			// Gate the candidate before it can reach releases/ or VS Code.
+			const gateResult = await gateVsix(prodVsixName);
+			console.log(`\n${formatGateReport(gateResult)}`);
+			if (!gateResult.ok) {
+				throw new Error(
+					`VSIX content gate failed for ${prodVsixName} — candidate left in place for inspection, not released`,
+				);
+			}
+
 			// Move production VSIX to releases
 			await fs.rename(prodVsixName, prodVsixPath);
 			console.log(`\n📁 Moved production VSIX to releases/`);

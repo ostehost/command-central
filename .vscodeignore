@@ -1,6 +1,7 @@
 # Source code (bundled into dist/)
 src/**
 test/**
+scripts/**
 scripts-v2/**
 
 # Development config
@@ -12,30 +13,52 @@ biome.json
 justfile
 knip.json
 knip.ts
+knip.config.ts
+bunfig.toml
+.pre-commit-config.yaml
+.vscode/**
+.vscode-test/**
 
 # Build artifacts & tooling
 node_modules/**
 *.tsbuildinfo
 .turbo/**
+**/*.map
+*.vsix
+bun.lock
+coverage/**
+coverage-ci/**
 
 # Git & CI
 .git/**
 .github/**
+.githooks/**
 .gitignore
 
-# Development docs & markdown (keep only README.md and CHANGELOG.md)
-*.md
-!README.md
-!CHANGELOG.md
+# Dev/proof/research working artifacts (never ship)
+logs/**
+**/*.log
+research/**
+.clawpatch/**
+releases/**
+.claude/**
+.cursor/**
+specs/**
+.preview-status/**
+drafts/**
 memory/**
 docs/**
-.cursor/**
+site/**
+screenshots/**
+assets/**
+logo-concepts/**
+.oste-report.yaml
 
-# Development config files
-.githooks/**
-bunfig.toml
-knip.config.ts
-.pre-commit-config.yaml
+# Markdown — `**/*.md` also catches nested docs/receipts that a root-only
+# `*.md` glob misses (vsce minimatch); keep only README + CHANGELOG
+**/*.md
+!README.md
+!CHANGELOG.md
 
 # Unused icon explorations (not referenced in code)
 resources/icons/v3-minimal/**
@@ -58,14 +81,3 @@ resources/icons/git-status-staged-dark.svg
 resources/icons/git-status-staged-light.svg
 resources/icons/git-status-working-dark.svg
 resources/icons/git-status-working-light.svg
-
-# Website & screenshots (GitHub Pages, not part of extension)
-site/**
-screenshots/**
-
-# Test & dev artifacts
-coverage/**
-*.test.ts
-bun.lock
-logo-concepts/
-logo-concepts/**

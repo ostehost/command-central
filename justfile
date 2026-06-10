@@ -575,6 +575,11 @@ prerelease *args="--prerelease":
     @just prerelease-gate
     @just dist "{{args}}"
 
+# Inspect a built VSIX for dev-artifact leaks and size regressions
+# (defaults to newest in releases/; also runs inside `just dist` builds)
+vsix-gate *args="":
+    @bun run scripts-v2/vsix-content-gate.ts {{args}}
+
 # ──────────────────────────────────────────────────────────
 # CUT PREVIEW — single-entry release flow
 # ──────────────────────────────────────────────────────────
