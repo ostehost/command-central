@@ -5,11 +5,14 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { activateCronFeature } from "./activation/cron-feature.js";
+import { registerAgentDiffCommands } from "./activation/register-agent-diff-commands.js";
+import { registerAgentNavigationCommands } from "./activation/register-agent-navigation-commands.js";
 import { registerAgentRegistryCommands } from "./activation/register-agent-registry-commands.js";
 import { registerGhosttyCommands } from "./activation/register-ghostty-commands.js";
 import { registerGitSortCommands } from "./activation/register-git-sort-commands.js";
 import { registerGroupingCommands } from "./activation/register-grouping-commands.js";
 import { registerMiscCommands } from "./activation/register-misc-commands.js";
+import { registerOpenClawTaskCommands } from "./activation/register-openclaw-task-commands.js";
 import {
 	getAgentQuickActions,
 	getOpenClawTaskQuickActions,
@@ -30,9 +33,7 @@ import {
 	resolveTaskInputTarget,
 	resolveTaskWindowTarget,
 } from "./commands/task-terminal-routing.js";
-import { parseWorktreeListPorcelain } from "./discovery/worktree-list.js";
 import { BinaryManager } from "./ghostty/BinaryManager.js";
-import { refreshGhosttyBundleAfterProjectIconChange } from "./ghostty/project-icon-bundle-refresh.js";
 import { TerminalManager } from "./ghostty/TerminalManager.js";
 import {
 	focusGhosttyBundleAndTmuxWindow,
@@ -48,12 +49,8 @@ import {
 	getTaskExecutionHostLabel,
 	isRemoteNodeTaskForCurrentHost,
 	isValidSessionId,
-	type ProjectGroupNode,
 } from "./providers/agent-status-tree-provider.js";
-import {
-	buildDiffContentUri,
-	DiffContentProvider,
-} from "./providers/diff-content-provider.js";
+import { DiffContentProvider } from "./providers/diff-content-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
 import { AgentOutputChannels } from "./services/agent-output-channels.js";
 import { AgentStatusBar } from "./services/agent-status-bar.js";
@@ -570,16 +567,6 @@ export async function activate(
 		const agentDashboardPanel = new AgentDashboardPanel();
 		agentDashboardPanel.setGitInfoProvider(agentStatusProvider);
 		context.subscriptions.push(agentDashboardPanel);
-		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.openAgentDashboard",
-				() => {
-					agentDashboardPanel.show(
-						agentStatusProvider?.getDisplayRegistryTasks() ?? {},
-					);
-				},
-			),
-		);
 		agentStatusProvider.onDidChangeTreeData(() => {
 			agentDashboardPanel.update(
 				agentStatusProvider?.getDisplayRegistryTasks() ?? {},
@@ -631,14 +618,6 @@ export async function activate(
 			"Agent Discovery Diagnostics",
 		);
 		context.subscriptions.push(discoveryDiagnosticsChannel);
-
-		const isValidProjectIconInput = (value: string): boolean => {
-			const trimmed = value.trim();
-			if (!trimmed) return false;
-			if (/\p{Extended_Pictographic}/u.test(trimmed)) return true;
-			const length = [...trimmed].length;
-			return length >= 1 && length <= 2;
-		};
 
 		const execFileAsync = async (
 			command: string,
@@ -771,102 +750,6 @@ export async function activate(
 				);
 				return opened ? "integrated" : "cancelled";
 			}
-		};
-
-		const showGitDiffAsFilePicker = async (
-			projectDir: string,
-			rangeArgs: string[],
-			_title: string,
-			noChangesMessage: string,
-			startCommit?: string,
-			taskStatus?: AgentTask["status"],
-			endCommit?: string,
-		): Promise<void> => {
-			const { execFileSync } = await import("node:child_process");
-			let numstat: string;
-			try {
-				numstat = execFileSync(
-					"git",
-					["-C", projectDir, "diff", ...rangeArgs, "--numstat"],
-					{ encoding: "utf-8", timeout: 5000 },
-				).trim();
-			} catch {
-				vscode.window.showWarningMessage("Failed to read git diff.");
-				return;
-			}
-
-			if (!numstat) {
-				vscode.window.showInformationMessage(noChangesMessage);
-				return;
-			}
-
-			const files = numstat
-				.split("\n")
-				.filter((l) => l.trim())
-				.map((line) => {
-					const parts = line.split("\t");
-					const add = parts[0] ?? "0";
-					const del = parts[1] ?? "0";
-					const filePath = parts[2];
-					const additions = add === "-" ? -1 : Number.parseInt(add, 10);
-					const deletions = del === "-" ? -1 : Number.parseInt(del, 10);
-					const isBinary = add === "-" && del === "-";
-					const statsLabel = isBinary
-						? "binary"
-						: `+${additions} / -${deletions}`;
-					return {
-						filePath: filePath ?? "",
-						additions,
-						deletions,
-						isBinary,
-						statsLabel,
-					};
-				});
-
-			if (files.length === 1 && files[0]) {
-				// Single file — open diff directly
-				await vscode.commands.executeCommand("commandCentral.openFileDiff", {
-					projectDir,
-					filePath: files[0].filePath,
-					startCommit: startCommit,
-					endCommit: endCommit,
-					taskStatus: taskStatus ?? "completed",
-					additions: files[0].additions,
-					deletions: files[0].deletions,
-				});
-				return;
-			}
-
-			type DiffPickItem = vscode.QuickPickItem & {
-				filePath: string;
-				additions: number;
-				deletions: number;
-			};
-			const items: DiffPickItem[] = files.map((f) => ({
-				label: `$(file) ${f.filePath}`,
-				description: f.statsLabel,
-				filePath: f.filePath,
-				additions: f.additions,
-				deletions: f.deletions,
-			}));
-
-			const totalAdd = files.reduce((s, f) => s + Math.max(0, f.additions), 0);
-			const totalDel = files.reduce((s, f) => s + Math.max(0, f.deletions), 0);
-
-			const selected = await vscode.window.showQuickPick(items, {
-				placeHolder: `${files.length} files changed (+${totalAdd} / -${totalDel}) — select a file to diff`,
-			});
-			if (!selected) return;
-
-			await vscode.commands.executeCommand("commandCentral.openFileDiff", {
-				projectDir,
-				filePath: selected.filePath,
-				startCommit: startCommit,
-				endCommit: endCommit,
-				taskStatus: taskStatus ?? "completed",
-				additions: selected.additions,
-				deletions: selected.deletions,
-			});
 		};
 
 		const openGhosttyTmuxAttach = async (
@@ -1092,47 +975,6 @@ export async function activate(
 				);
 			}
 		};
-
-		// Default single-click action for agent tree items.
-		// Running → focus terminal; non-running → view diff/review.
-		// Terminal focus for non-running tasks is in the context menu.
-		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.defaultAgentAction",
-				async (node?: {
-					type: string;
-					task?: AgentTask;
-					agent?: { projectDir: string; sessionId?: string };
-				}) => {
-					const task = node?.task;
-					if (!task) {
-						if (node?.agent) {
-							await vscode.commands.executeCommand(
-								"commandCentral.focusAgentTerminal",
-								node,
-							);
-						}
-						return;
-					}
-
-					if (task.status === "running") {
-						await vscode.commands.executeCommand(
-							"commandCentral.focusAgentTerminal",
-							node,
-						);
-						return;
-					}
-
-					// Non-running: always show the diff/review regardless of whether
-					// a tmux session is still alive. Terminal focus for finished
-					// tasks is available via context menu / More Actions.
-					await vscode.commands.executeCommand(
-						"commandCentral.viewAgentDiff",
-						node,
-					);
-				},
-			),
-		);
 
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
@@ -1565,161 +1407,6 @@ export async function activate(
 					await vscode.commands.executeCommand(picked.command, node);
 				},
 			),
-			vscode.commands.registerCommand(
-				"commandCentral.agentStatus.focus",
-				() => {
-					// Focus the agent status tree view by focusing its container
-					vscode.commands.executeCommand(
-						"workbench.view.extension.commandCentral",
-					);
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.refreshAgentStatus",
-				() => {
-					agentStatusProvider?.reload();
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.showDiscoveryDiagnostics",
-				() => {
-					if (!agentStatusProvider) return;
-					discoveryDiagnosticsChannel.clear();
-					discoveryDiagnosticsChannel.appendLine(
-						agentStatusProvider.getDiscoveryDiagnosticsReport(),
-					);
-					discoveryDiagnosticsChannel.show(true);
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.changeProjectIcon",
-				async (node?: ProjectGroupNode) => {
-					if (!node) {
-						vscode.window.showWarningMessage(
-							"No project selected. Right-click a project group in the tree.",
-						);
-						return;
-					}
-
-					const projectDir = node.projectDir || node.tasks[0]?.project_dir;
-					if (!projectDir) {
-						vscode.window.showErrorMessage(
-							"Unable to determine project directory for this group.",
-						);
-						return;
-					}
-
-					const currentIcon =
-						projectIconManagerForAgents.getIconForProject(projectDir);
-					const input = await vscode.window.showInputBox({
-						title: "Change Project Icon",
-						prompt: `Set icon for ${node.projectName}`,
-						placeHolder: "e.g. 🚀 or AI",
-						value: currentIcon,
-						validateInput: (value) =>
-							isValidProjectIconInput(value)
-								? undefined
-								: "Enter an emoji, or a 1-2 character short icon.",
-					});
-					if (input == null) return;
-
-					const nextIcon = input.trim();
-					if (!isValidProjectIconInput(nextIcon)) {
-						vscode.window.showErrorMessage(
-							"Icon must be an emoji, or a 1-2 character short icon.",
-						);
-						return;
-					}
-
-					await projectIconManagerForAgents.setCustomIcon(projectDir, nextIcon);
-					await refreshGhosttyBundleAfterProjectIconChange(projectDir, {
-						terminalManager,
-						logger: mainLogger,
-						showWarningMessage: (message) =>
-							vscode.window.showWarningMessage(message),
-					});
-					await agentStatusProvider?.reload();
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.toggleProjectGrouping",
-				async () => {
-					const config = vscode.workspace.getConfiguration("commandCentral");
-					const current = config.get<boolean>(
-						"agentStatus.groupByProject",
-						true,
-					);
-					await config.update(
-						"agentStatus.groupByProject",
-						!current,
-						vscode.ConfigurationTarget.Global,
-					);
-					await syncAgentStatusViewContexts();
-					agentStatusProvider?.reload();
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.toggleProjectGroupingFlat",
-				async () => {
-					await vscode.commands.executeCommand(
-						"commandCentral.toggleProjectGrouping",
-					);
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.filterToProject",
-				(node?: ProjectGroupNode) => {
-					if (!node || !agentStatusProvider) return;
-					const projectDir =
-						node.projectDir || node.tasks[0]?.project_dir || node.projectName;
-					// Toggle: if already filtering this project, clear the filter
-					if (agentStatusProvider.projectFilter === projectDir) {
-						agentStatusProvider.filterToProject(null);
-					} else {
-						agentStatusProvider.filterToProject(projectDir);
-					}
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.filterCurrentProject",
-				() => {
-					agentStatusProvider?.filterToCurrentProject();
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.clearProjectFilter",
-				() => {
-					agentStatusProvider?.filterToProject(null);
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.selectProjectFilter",
-				async () => {
-					if (!agentStatusProvider) return;
-					const projectDirs = agentStatusProvider.getKnownProjectDirs();
-					if (projectDirs.length === 0) {
-						vscode.window.showInformationMessage("No agent projects found.");
-						return;
-					}
-					const items = [
-						{
-							label: "$(close) Show All Projects",
-							projectDir: null as string | null,
-						},
-						...projectDirs.map((dir) => ({
-							label: `$(folder) ${path.basename(dir)}`,
-							description: dir,
-							projectDir: dir as string | null,
-						})),
-					];
-					const pick = await vscode.window.showQuickPick(items, {
-						placeHolder: "Select a project to filter by",
-					});
-					if (pick) {
-						agentStatusProvider.filterToProject(pick.projectDir);
-					}
-				},
-			),
 		);
 		// Agent registry mutations: capture/kill/clear/stale/reap/remove/reviewed.
 		// agentStatusProvider and terminalManager are resettable module state, so
@@ -1731,23 +1418,22 @@ export async function activate(
 				agentOutputChannel,
 			}),
 		);
-		// Jump to Next Running Agent
+		// Agent navigation / filter / info commands: dashboard, single-click
+		// default action, tree focus + refresh, discovery diagnostics, project
+		// icon, grouping toggles, project filters, next-running jump, directory
+		// reveal, and worktree listing. agentStatusProvider and terminalManager
+		// are resettable module state, so the module receives getters
+		// (late-binding contract).
 		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.focusNextRunningAgent",
-				async () => {
-					const tasks = agentStatusProvider?.getTasks() ?? [];
-					const running = tasks.find((t) => t.status === "running");
-					if (running) {
-						await vscode.commands.executeCommand(
-							"commandCentral.focusAgentTerminal",
-							{ type: "task" as const, task: running },
-						);
-					} else {
-						vscode.window.showInformationMessage("No running agents");
-					}
-				},
-			),
+			...registerAgentNavigationCommands({
+				getAgentStatusProvider: () => agentStatusProvider,
+				getTerminalManager: () => terminalManager,
+				projectIconManager: projectIconManagerForAgents,
+				agentDashboardPanel,
+				discoveryDiagnosticsChannel,
+				syncAgentStatusViewContexts,
+				logger: mainLogger,
+			}),
 		);
 
 		// Resume Agent Session — backend-aware, task-specific resume flow
@@ -2035,470 +1721,20 @@ export async function activate(
 			),
 		);
 
+		// OpenClaw background task commands: cancel + detail view. The task
+		// service and output channel are activate()-local consts created above;
+		// the provider is resettable module state and arrives as a getter.
 		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.cancelOpenClawTask",
-				async (node?: {
-					type: string;
-					task?: { taskId: string; label?: string; status: string };
-				}) => {
-					const task = node?.task;
-					if (!task) {
-						vscode.window.showWarningMessage(
-							"No background task selected. Right-click a task in the tree.",
-						);
-						return;
-					}
-
-					try {
-						await openclawTaskService.cancelTask(task.taskId);
-						agentStatusProvider?.reload();
-						vscode.window.showInformationMessage(
-							`Cancelled background task ${task.label ?? task.taskId}.`,
-						);
-					} catch (error) {
-						vscode.window.showErrorMessage(
-							`Failed to cancel background task: ${
-								error instanceof Error ? error.message : String(error)
-							}`,
-						);
-					}
-				},
-			),
-			vscode.commands.registerCommand(
-				"commandCentral.showOpenClawTaskDetail",
-				async (node?: { type: string; task?: { taskId: string } }) => {
-					const task = node?.task;
-					if (!task) {
-						vscode.window.showWarningMessage(
-							"No background task selected. Right-click a task in the tree.",
-						);
-						return;
-					}
-
-					try {
-						const { stdout } = await execFileAsync("openclaw", [
-							"tasks",
-							"show",
-							task.taskId,
-							"--json",
-						]);
-						let formatted = stdout.trim();
-						try {
-							formatted = JSON.stringify(JSON.parse(stdout), null, 2);
-						} catch {
-							// Show raw stdout if the CLI returns non-JSON text.
-						}
-						openclawTaskOutputChannel.clear();
-						openclawTaskOutputChannel.appendLine(formatted);
-						openclawTaskOutputChannel.show(true);
-					} catch (error) {
-						vscode.window.showErrorMessage(
-							`Failed to load background task details: ${
-								error instanceof Error ? error.message : String(error)
-							}`,
-						);
-					}
-				},
-			),
+			...registerOpenClawTaskCommands({
+				openclawTaskService,
+				getAgentStatusProvider: () => agentStatusProvider,
+				openclawTaskOutputChannel,
+			}),
 		);
 
-		// View Agent Diff — opens git diff since agent started
-		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.viewAgentDiff",
-				async (node?: {
-					type: string;
-					task?: AgentTask;
-					agent?: { pid: number; projectDir: string; startTime?: Date };
-				}) => {
-					const task = node?.task;
-					const agent = node?.agent;
-
-					// Discovered agent: diff working tree vs HEAD
-					if (agent) {
-						const projectDir = agent.projectDir;
-						let sinceRef = "HEAD";
-						if (agent.startTime) {
-							try {
-								const { execFileSync } = await import("node:child_process");
-								const commitHash = execFileSync(
-									"git",
-									[
-										"-C",
-										projectDir,
-										"log",
-										`--before=${agent.startTime.toISOString()}`,
-										"-1",
-										"--format=%H",
-									],
-									{ encoding: "utf-8", timeout: 3000 },
-								).trim();
-								if (commitHash) sinceRef = commitHash;
-							} catch {
-								/* fallback to HEAD */
-							}
-						}
-						await showGitDiffAsFilePicker(
-							projectDir,
-							[sinceRef],
-							`Diff: ${path.basename(projectDir)}`,
-							"No changes found for this agent.",
-							sinceRef,
-						);
-						return;
-					}
-
-					// Launcher task: diff since started_at
-					if (!task?.project_dir) {
-						vscode.window.showWarningMessage(
-							"No agent selected. Right-click an agent in the tree.",
-						);
-						return;
-					}
-
-					// Find commit closest to started_at for a precise diff
-					let sinceRef = "HEAD~5";
-					if (task.started_at) {
-						try {
-							const { execFileSync } = await import("node:child_process");
-							const commitHash = execFileSync(
-								"git",
-								[
-									"-C",
-									task.project_dir,
-									"log",
-									`--before=${task.started_at}`,
-									"-1",
-									"--format=%H",
-								],
-								{ encoding: "utf-8", timeout: 3000 },
-							).trim();
-							if (commitHash) sinceRef = commitHash;
-						} catch {
-							/* fallback to HEAD~5 */
-						}
-					}
-
-					const endRef =
-						task.end_commit && task.end_commit !== "unknown"
-							? task.end_commit
-							: "HEAD";
-					await showGitDiffAsFilePicker(
-						task.project_dir,
-						[`${sinceRef}..${endRef}`],
-						`Diff: ${task.id}`,
-						"No changes found for this agent.",
-						task.start_sha ?? sinceRef,
-						task.status,
-						task.end_commit ?? undefined,
-					);
-				},
-			),
-		);
-
-		// Smart Open File — opens the actual file on disk (falls back to diff for deleted files)
-		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.smartOpenFile",
-				async (node?: {
-					projectDir?: string;
-					filePath?: string;
-					status?: string;
-				}) => {
-					if (!node?.projectDir || !node.filePath) {
-						vscode.window.showWarningMessage("No file change selected.");
-						return;
-					}
-
-					const absolutePath = path.isAbsolute(node.filePath)
-						? node.filePath
-						: path.join(node.projectDir, node.filePath);
-
-					const fs = await import("node:fs");
-					if (!fs.existsSync(absolutePath)) {
-						// File was deleted — fall back to showing the diff
-						await vscode.commands.executeCommand(
-							"commandCentral.openFileDiff",
-							node,
-						);
-						return;
-					}
-
-					await vscode.commands.executeCommand(
-						"vscode.open",
-						vscode.Uri.file(absolutePath),
-					);
-				},
-			),
-		);
-
-		// Open File Diff — opens a focused diff for a specific changed file
-		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.openFileDiff",
-				async (node?: {
-					projectDir?: string;
-					projectName?: string;
-					filePath?: string;
-					taskId?: string;
-					taskStatus?: AgentTask["status"];
-					startCommit?: string;
-					endCommit?: string;
-					additions?: number;
-					deletions?: number;
-				}) => {
-					if (!node?.projectDir || !node.filePath) {
-						vscode.window.showWarningMessage("No file change selected.");
-						return;
-					}
-
-					const projectDir = node.projectDir;
-					const absolutePath = path.isAbsolute(node.filePath)
-						? node.filePath
-						: path.join(projectDir, node.filePath);
-					const relativePath = path
-						.relative(projectDir, absolutePath)
-						.split(path.sep)
-						.join("/");
-					const projectName =
-						node.projectName || path.basename(projectDir) || projectDir;
-
-					const beforeRef =
-						node.taskStatus === "running"
-							? "HEAD"
-							: (node.startCommit ?? "HEAD~1");
-					const afterRef =
-						node.taskStatus === "running" ? "Working Tree" : node.endCommit;
-
-					if (node.taskStatus !== "running" && !afterRef) {
-						vscode.window.showInformationMessage(
-							"No bounded diff is available for this task.",
-						);
-						return;
-					}
-
-					try {
-						const fs = await import("node:fs");
-						const { execFileSync } = await import("node:child_process");
-
-						const openFileIfPresent = async (): Promise<boolean> => {
-							if (!fs.existsSync(absolutePath)) return false;
-							await vscode.commands.executeCommand(
-								"vscode.open",
-								vscode.Uri.file(absolutePath),
-							);
-							return true;
-						};
-
-						if (
-							typeof node.additions === "number" &&
-							typeof node.deletions === "number" &&
-							(node.additions < 0 || node.deletions < 0)
-						) {
-							const opened = await openFileIfPresent();
-							vscode.window.showInformationMessage(
-								opened
-									? "Binary file detected — opened file directly."
-									: "Binary file detected — no text diff is available.",
-							);
-							return;
-						}
-
-						type GitFileReadResult =
-							| { kind: "text"; content: string }
-							| { kind: "missing" }
-							| { kind: "binary" };
-
-						const readWorkingTreeFile = (): GitFileReadResult => {
-							try {
-								const content = fs.readFileSync(absolutePath);
-								const asBuffer = Buffer.isBuffer(content)
-									? content
-									: Buffer.from(String(content));
-								if (asBuffer.includes(0x00)) return { kind: "binary" };
-								return { kind: "text", content: asBuffer.toString("utf-8") };
-							} catch {
-								return { kind: "missing" };
-							}
-						};
-
-						const readFileAtRef = (ref: string): GitFileReadResult => {
-							try {
-								const content = execFileSync(
-									"git",
-									["-C", projectDir, "show", `${ref}:${relativePath}`],
-									{ timeout: 3000 },
-								);
-								const asBuffer = Buffer.isBuffer(content)
-									? content
-									: Buffer.from(String(content));
-								if (asBuffer.includes(0x00)) return { kind: "binary" };
-								return { kind: "text", content: asBuffer.toString("utf-8") };
-							} catch {
-								return { kind: "missing" };
-							}
-						};
-
-						const beforeFile = readFileAtRef(beforeRef);
-						const afterFile =
-							node.taskStatus === "running"
-								? readWorkingTreeFile()
-								: afterRef
-									? readFileAtRef(afterRef)
-									: { kind: "missing" };
-
-						if (beforeFile.kind === "binary" || afterFile.kind === "binary") {
-							const opened = await openFileIfPresent();
-							vscode.window.showInformationMessage(
-								opened
-									? "Binary content detected — opened file directly."
-									: "Binary content detected — no text diff is available.",
-							);
-							return;
-						}
-
-						if (beforeFile.kind === "missing" && afterFile.kind === "missing") {
-							vscode.window.showInformationMessage(
-								"File does not exist in the selected revisions.",
-							);
-							return;
-						}
-
-						const beforeUri = buildDiffContentUri({
-							projectDir,
-							ref: beforeFile.kind === "missing" ? "empty" : beforeRef,
-							relativePath,
-							taskId: node.taskId ?? "unknown",
-						});
-						const afterUri = buildDiffContentUri({
-							projectDir,
-							ref:
-								afterFile.kind === "missing"
-									? "empty"
-									: node.taskStatus === "running"
-										? "working-tree"
-										: (afterRef ?? "HEAD"),
-							relativePath,
-							taskId: node.taskId ?? "unknown",
-						});
-
-						const changeHint =
-							beforeFile.kind === "missing" && afterFile.kind === "text"
-								? " · added"
-								: beforeFile.kind === "text" && afterFile.kind === "missing"
-									? " · deleted"
-									: "";
-
-						await vscode.commands.executeCommand(
-							"vscode.diff",
-							beforeUri,
-							afterUri,
-							`${path.basename(relativePath)} (${beforeRef} ↔ ${afterRef}${changeHint}) — ${projectName}`,
-						);
-					} catch (err) {
-						vscode.window.showErrorMessage(
-							`Failed to open file diff: ${err instanceof Error ? err.message : String(err)}`,
-						);
-					}
-				},
-			),
-		);
-
-		// Open Agent Directory — reveals project dir in OS file manager
-		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.openAgentDirectory",
-				async (node?: { type: string; task?: AgentTask }) => {
-					const task = node?.task;
-					if (!task?.project_dir) {
-						vscode.window.showWarningMessage(
-							"No agent selected. Right-click an agent in the tree.",
-						);
-						return;
-					}
-					const uri = vscode.Uri.file(task.project_dir);
-					await vscode.commands.executeCommand("revealFileInOS", uri);
-				},
-			),
-		);
-
-		context.subscriptions.push(
-			vscode.commands.registerCommand(
-				"commandCentral.listWorktrees",
-				async () => {
-					const folders = vscode.workspace.workspaceFolders;
-					if (!folders || folders.length === 0) {
-						vscode.window.showWarningMessage("No workspace folder open.");
-						return;
-					}
-
-					let workspaceFolder: vscode.WorkspaceFolder | undefined;
-					const activeUri = vscode.window.activeTextEditor?.document.uri;
-					if (activeUri) {
-						workspaceFolder = vscode.workspace.getWorkspaceFolder(activeUri);
-					}
-					if (!workspaceFolder && folders.length === 1) {
-						workspaceFolder = folders[0];
-					}
-					if (!workspaceFolder && folders.length > 1) {
-						workspaceFolder = await vscode.window.showWorkspaceFolderPick({
-							placeHolder: "Select a workspace to list git worktrees",
-						});
-					}
-					if (!workspaceFolder) return;
-
-					try {
-						const { execFile } = await import("node:child_process");
-						const { promisify } = await import("node:util");
-						const execFileAsync = promisify(execFile);
-						const { stdout } = await execFileAsync(
-							"git",
-							[
-								"-C",
-								workspaceFolder.uri.fsPath,
-								"worktree",
-								"list",
-								"--porcelain",
-							],
-							{
-								encoding: "utf-8",
-								timeout: 3_000,
-							},
-						);
-						const worktrees = parseWorktreeListPorcelain(stdout);
-						if (worktrees.length === 0) {
-							vscode.window.showInformationMessage(
-								"No git worktrees found for this workspace.",
-							);
-							return;
-						}
-
-						const picked = await vscode.window.showQuickPick(
-							worktrees.map((worktree) => ({
-								label: worktree.branch,
-								description: worktree.path,
-								worktree,
-							})),
-							{
-								placeHolder: "Select a worktree to open",
-							},
-						);
-						if (!picked) return;
-
-						await vscode.commands.executeCommand(
-							"vscode.openFolder",
-							vscode.Uri.file(picked.worktree.path),
-							true,
-						);
-					} catch (err) {
-						vscode.window.showErrorMessage(
-							`Failed to list git worktrees: ${err instanceof Error ? err.message : String(err)}`,
-						);
-					}
-				},
-			),
-		);
+		// Agent diff / file-viewing commands: viewAgentDiff, smartOpenFile,
+		// openFileDiff. Fully self-contained — no module state, so no deps.
+		context.subscriptions.push(...registerAgentDiffCommands());
 
 		// Restart Agent — kill and re-spawn with same task config
 		context.subscriptions.push(

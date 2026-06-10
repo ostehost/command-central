@@ -1,11 +1,18 @@
 /**
  * Extension Command Tests
  *
- * Tests key agent commands registered in extension.ts:
- * focusAgentTerminal, focusNextRunningAgent, showAgentOutput,
- * openAgentDashboard, viewAgentDiff, openAgentDirectory.
+ * Tests the terminal focus/resume commands still registered inline in
+ * extension.ts (focusAgentTerminal, showAgentOutput) plus the exported
+ * launcher-truth helpers (taskMatchesSessionStoreBundle,
+ * shouldTrustBundleSurface).
  *
- * Commands are tested via their handler logic patterns, not by loading extension.ts.
+ * The inline commands are tested via their handler logic patterns, not by
+ * loading extension.ts. Commands extracted to src/activation/ modules are
+ * covered by real-handler registration tests instead:
+ * agent-navigation-commands-registration.test.ts,
+ * agent-diff-commands-registration.test.ts,
+ * openclaw-task-commands-registration.test.ts, and
+ * agent-registry-commands-registration.test.ts.
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -709,48 +716,6 @@ describe("focusAgentTerminal command", () => {
 	});
 });
 
-describe("focusNextRunningAgent command", () => {
-	test("finds first running task", () => {
-		const tasks = [
-			createTask({ id: "t1", status: "completed" }),
-			createTask({ id: "t2", status: "running" }),
-			createTask({ id: "t3", status: "running" }),
-		];
-
-		const running = tasks.find((t) => t.status === "running");
-
-		expect(running).toBeDefined();
-		expect(running?.id).toBe("t2");
-	});
-
-	test("shows info message when no running agents", () => {
-		const tasks = [
-			createTask({ id: "t1", status: "completed" }),
-			createTask({ id: "t2", status: "failed" }),
-		];
-
-		const running = tasks.find((t) => t.status === "running");
-		if (!running) {
-			vscodeMock.window.showInformationMessage("No running agents");
-		}
-
-		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-			"No running agents",
-		);
-	});
-
-	test("handles empty task list gracefully", () => {
-		const tasks: AgentTask[] = [];
-		const running = tasks.find((t) => t.status === "running");
-
-		if (!running) {
-			vscodeMock.window.showInformationMessage("No running agents");
-		}
-
-		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalled();
-	});
-});
-
 describe("showAgentOutput command", () => {
 	test("shows warning when no task provided", () => {
 		const node = undefined as { type: string; task?: AgentTask } | undefined;
@@ -811,224 +776,6 @@ describe("showAgentOutput command", () => {
 		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
 			"No output transcript file found for this task.",
 		);
-	});
-});
-
-describe("openAgentDashboard command", () => {
-	test("dashboard receives tasks from registry", () => {
-		const tasks: Record<string, AgentTask> = {
-			t1: createTask({ id: "t1", status: "running" }),
-			t2: createTask({ id: "t2", status: "completed" }),
-		};
-
-		expect(Object.keys(tasks)).toHaveLength(2);
-		expect(tasks["t1"]?.status).toBe("running");
-	});
-
-	test("dashboard handles empty registry", () => {
-		const tasks: Record<string, AgentTask> = {};
-		expect(Object.keys(tasks)).toHaveLength(0);
-	});
-});
-
-describe("viewAgentDiff command", () => {
-	test("shows warning when no task or project_dir", () => {
-		const node = { type: "task", task: createTask({ project_dir: "" }) };
-		const task = node.task;
-
-		if (!task?.project_dir) {
-			vscodeMock.window.showWarningMessage(
-				"No agent selected. Right-click an agent in the tree.",
-			);
-		}
-
-		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
-			"No agent selected. Right-click an agent in the tree.",
-		);
-	});
-
-	test("creates terminal with diff command for valid task", () => {
-		const task = createTask({
-			id: "diff-task",
-			project_dir: "/tmp/my-project",
-			started_at: "2026-01-01T00:00:00Z",
-		});
-
-		expect(task.project_dir).toBe("/tmp/my-project");
-		expect(task.started_at).toBeDefined();
-
-		// The terminal would be created with cwd: task.project_dir
-		const terminalOpts = {
-			name: `Diff: ${task.id}`,
-			cwd: task.project_dir,
-		};
-
-		expect(terminalOpts.name).toBe("Diff: diff-task");
-		expect(terminalOpts.cwd).toBe("/tmp/my-project");
-	});
-
-	test("handles undefined node gracefully", () => {
-		const node = undefined as { type: string; task?: AgentTask } | undefined;
-		const task = node?.task;
-
-		if (!task?.project_dir) {
-			vscodeMock.window.showWarningMessage(
-				"No agent selected. Right-click an agent in the tree.",
-			);
-		}
-
-		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalled();
-	});
-});
-
-describe("openFileDiff command", () => {
-	test("uses HEAD as before ref for running agents", () => {
-		const node = {
-			projectDir: "/tmp/project",
-			filePath: "src/app.ts",
-			taskStatus: "running" as const,
-		};
-		const beforeRef = node.taskStatus === "running" ? "HEAD" : "HEAD~1";
-		expect(beforeRef).toBe("HEAD");
-	});
-
-	test("uses startCommit for completed agents when provided", () => {
-		const node = {
-			projectDir: "/tmp/project",
-			filePath: "src/app.ts",
-			taskStatus: "completed" as string,
-			startCommit: "abc123",
-		};
-		const beforeRef =
-			node.taskStatus === "running" ? "HEAD" : (node.startCommit ?? "HEAD~1");
-		expect(beforeRef).toBe("abc123");
-	});
-
-	test("shows warning when no file is selected", () => {
-		const node = { projectDir: "/tmp/project", filePath: "" };
-		if (!node.projectDir || !node.filePath) {
-			vscodeMock.window.showWarningMessage("No file change selected.");
-		}
-		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
-			"No file change selected.",
-		);
-	});
-
-	test("binary file change falls back to opening the file", () => {
-		const node = {
-			projectDir: "/tmp/project",
-			filePath: "assets/logo.png",
-			additions: -1,
-			deletions: -1,
-		};
-		const isBinary = node.additions < 0 || node.deletions < 0;
-		if (isBinary) {
-			vscodeMock.window.showInformationMessage(
-				"Binary file detected — no text diff is available.",
-			);
-		}
-		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-			"Binary file detected — no text diff is available.",
-		);
-	});
-
-	test("includes project name in diff tab title", () => {
-		const node = {
-			projectDir: "/tmp/project",
-			projectName: "command-central",
-			filePath: "src/app.ts",
-			taskStatus: "completed",
-			startCommit: "abc123",
-			endCommit: "def456",
-		};
-		const beforeRef =
-			node.taskStatus === "running" ? "HEAD" : (node.startCommit ?? "HEAD~1");
-		const afterRef =
-			node.taskStatus === "running" ? "Working Tree" : node.endCommit;
-		const title = `${path.basename(node.filePath)} (${beforeRef} ↔ ${afterRef}) — ${node.projectName}`;
-
-		expect(title).toBe("app.ts (abc123 ↔ def456) — command-central");
-	});
-
-	test("does not fall back to HEAD for terminal tasks without endCommit", () => {
-		const node = {
-			projectDir: "/tmp/project",
-			filePath: "src/app.ts",
-			taskStatus: "completed",
-			startCommit: "abc123",
-			endCommit: undefined,
-		};
-		const afterRef =
-			node.taskStatus === "running" ? "Working Tree" : node.endCommit;
-
-		if (node.taskStatus !== "running" && !afterRef) {
-			vscodeMock.window.showInformationMessage(
-				"No bounded diff is available for this task.",
-			);
-		}
-
-		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-			"No bounded diff is available for this task.",
-		);
-	});
-});
-
-describe("openAgentDirectory command", () => {
-	test("shows warning when no project_dir", () => {
-		const node = { type: "task", task: undefined as AgentTask | undefined };
-		const task = node.task;
-
-		if (!task?.project_dir) {
-			vscodeMock.window.showWarningMessage(
-				"No agent selected. Right-click an agent in the tree.",
-			);
-		}
-
-		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalled();
-	});
-
-	test("calls revealFileInOS with URI for valid task", () => {
-		const task = createTask({ project_dir: "/tmp/agent-dir" });
-
-		const uri = vscodeMock.Uri.file(task.project_dir);
-		expect(uri.fsPath).toBe("/tmp/agent-dir");
-	});
-
-	test("handles missing project_dir in task", () => {
-		const task = createTask({ project_dir: "" });
-
-		if (!task.project_dir) {
-			vscodeMock.window.showWarningMessage(
-				"No agent selected. Right-click an agent in the tree.",
-			);
-		}
-
-		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalled();
-	});
-});
-
-describe("changeProjectIcon command", () => {
-	test("accepts emoji input", () => {
-		const value = "🚀";
-		const isValid = /\p{Extended_Pictographic}/u.test(value);
-		expect(isValid).toBe(true);
-	});
-
-	test("accepts 1-2 character non-emoji short strings", () => {
-		const short1 = "A";
-		const short2 = "AI";
-		const length1 = [...short1].length;
-		const length2 = [...short2].length;
-		expect(length1 >= 1 && length1 <= 2).toBe(true);
-		expect(length2 >= 1 && length2 <= 2).toBe(true);
-	});
-
-	test("rejects non-emoji strings longer than 2 characters", () => {
-		const longValue = "API";
-		const hasEmoji = /\p{Extended_Pictographic}/u.test(longValue);
-		const length = [...longValue].length;
-		const isValid = hasEmoji || (length >= 1 && length <= 2);
-		expect(isValid).toBe(false);
 	});
 });
 
@@ -1178,86 +925,5 @@ describe("shouldTrustBundleSurface (launcher-truth gate)", () => {
 			ghostty_bundle_id: "dev.partnerai.ghostty.project",
 		});
 		expect(shouldTrustBundleSurface(task, null)).toBe(true);
-	});
-});
-
-describe("defaultAgentAction routing (single-click behavior matrix)", () => {
-	async function simulateDefaultAction(
-		task: AgentTask | undefined,
-		agent?: { projectDir: string; sessionId?: string },
-	): Promise<string> {
-		const node = task
-			? { type: "task" as const, task }
-			: agent
-				? { type: "discovered" as const, agent }
-				: undefined;
-
-		if (!node?.task) {
-			if ((node as { agent?: unknown })?.agent) {
-				await vscodeMock.commands.executeCommand(
-					"commandCentral.focusAgentTerminal",
-					node,
-				);
-				return "focusAgentTerminal";
-			}
-			return "noop";
-		}
-
-		if (node.task.status === "running") {
-			await vscodeMock.commands.executeCommand(
-				"commandCentral.focusAgentTerminal",
-				node,
-			);
-			return "focusAgentTerminal";
-		}
-
-		await vscodeMock.commands.executeCommand(
-			"commandCentral.viewAgentDiff",
-			node,
-		);
-		return "viewAgentDiff";
-	}
-
-	test("running task → focusAgentTerminal", async () => {
-		const task = createTask({ status: "running" });
-		const action = await simulateDefaultAction(task);
-		expect(action).toBe("focusAgentTerminal");
-	});
-
-	for (const status of [
-		"failed",
-		"stopped",
-		"killed",
-		"contract_failure",
-	] as const) {
-		test(`${status} task with live tmux metadata → viewAgentDiff (not terminal)`, async () => {
-			const task = createTask({
-				status,
-				terminal_backend: "tmux",
-				session_id: "agent-my-project",
-			});
-			const action = await simulateDefaultAction(task);
-			expect(action).toBe("viewAgentDiff");
-		});
-	}
-
-	for (const status of [
-		"completed",
-		"completed_dirty",
-		"completed_stale",
-	] as const) {
-		test(`${status} task → viewAgentDiff`, async () => {
-			const task = createTask({ status });
-			const action = await simulateDefaultAction(task);
-			expect(action).toBe("viewAgentDiff");
-		});
-	}
-
-	test("discovered agent (no task) → focusAgentTerminal", async () => {
-		const action = await simulateDefaultAction(undefined, {
-			projectDir: "/tmp/project",
-			sessionId: "sess-1",
-		});
-		expect(action).toBe("focusAgentTerminal");
 	});
 });
