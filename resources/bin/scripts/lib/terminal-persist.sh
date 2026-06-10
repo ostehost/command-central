@@ -250,11 +250,26 @@ s.close()
 
 # Capture output from a persist session.
 # Usage: persist_capture <session_id> [lines]
+#        persist_capture <session_id> --lines N
+# Accepts the shared terminal_capture flag form (--lines N) used by all
+# backends, plus the legacy positional count. Default 50 lines.
 # Reads from script log file: /tmp/cc-agent-<session_id>.log
-# Returns last N lines (default 50).
 persist_capture() {
 	local session_id="$1"
-	local lines="${2:-50}"
+	shift
+	local lines=50
+
+	if [[ "${1:-}" == "--lines" ]]; then
+		lines="${2:-50}"
+	elif [[ -n "${1:-}" ]]; then
+		lines="$1"
+	fi
+
+	if ! [[ "$lines" =~ ^[0-9]+$ ]]; then
+		echo "Error: persist_capture: invalid line count '$lines'" >&2
+		return 1
+	fi
+
 	local logfile
 	logfile=$(_persist_log_path "$session_id")
 

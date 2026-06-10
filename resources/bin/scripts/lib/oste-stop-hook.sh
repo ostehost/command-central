@@ -76,6 +76,38 @@ _file_mtime_epoch() {
 	stat -f %m "$path" 2>/dev/null || stat -c %Y "$path" 2>/dev/null
 }
 
+_candidate_artifact_dirs() {
+	local task_json="${1:-}"
+	local cwd_arg="${2:-}"
+	local dirs=""
+
+	# Claude's Stop hook cwd is the runtime truth for visible worktree lanes.
+	# task.project_dir can intentionally be the canonical launcher identity while
+	# the agent works in a separate target worktree. Prefer cwd/exec_cwd before
+	# falling back to project_dir so deterministic completion can find artifacts
+	# where the agent actually wrote them.
+	for key in cwd exec_cwd project_dir; do
+		local dir=""
+		if [[ "$key" == "cwd" ]]; then
+			dir="$cwd_arg"
+		else
+			dir=$(printf '%s' "$task_json" | jq -r ".${key} // empty" 2>/dev/null) || dir=""
+		fi
+		[[ -n "$dir" && "$dir" != "null" ]] || continue
+		case "
+${dirs}
+" in
+			*"
+${dir}
+"*) ;;
+			*) dirs="${dirs}${dir}"$'
+' ;;
+		esac
+	done
+
+	printf '%s' "$dirs"
+}
+
 _resolve_handoff_path() {
 	local handoff="${1:-}"
 	local project_dir="${2:-}"
@@ -102,36 +134,39 @@ _artifact_contract_ready() {
 	task_json=$(jq -c --arg id "$task_id_arg" '.tasks[$id] // empty' "$tasks_file" 2>/dev/null) || return 1
 	[[ -n "$task_json" ]] || return 1
 
-	local status handoff project_dir started_at handoff_path
+	local status handoff started_at handoff_path artifact_dir
 	status=$(printf '%s' "$task_json" | jq -r '.status // empty' 2>/dev/null) || status=""
 	[[ "$status" == "running" ]] || return 1
 
 	handoff=$(printf '%s' "$task_json" | jq -r '.handoff_file // empty' 2>/dev/null) || handoff=""
 	[[ -n "$handoff" && "$handoff" != "null" ]] || return 1
 
-	project_dir=$(printf '%s' "$task_json" | jq -r '.project_dir // empty' 2>/dev/null) || project_dir=""
-	[[ -n "$project_dir" ]] || project_dir="$cwd_arg"
-	handoff_path=$(_resolve_handoff_path "$handoff" "$project_dir") || return 1
-	[[ -f "$handoff_path" ]] || return 1
+	while IFS= read -r artifact_dir; do
+		[[ -n "$artifact_dir" ]] || continue
+		handoff_path=$(_resolve_handoff_path "$handoff" "$artifact_dir") || continue
+		[[ -f "$handoff_path" ]] || continue
 
-	# Avoid accepting stale handoffs from a prior run. If started_at is present,
-	# the artifact must be written/updated after the task was registered.
-	started_at=$(printf '%s' "$task_json" | jq -r '.started_at // empty' 2>/dev/null) || started_at=""
-	if [[ -n "$started_at" && "$started_at" != "null" ]]; then
-		local start_epoch artifact_epoch
-		start_epoch=$(_iso_to_epoch "$started_at") || return 1
-		artifact_epoch=$(_file_mtime_epoch "$handoff_path") || return 1
-		[[ "$artifact_epoch" -ge "$start_epoch" ]] || return 1
-	fi
+		# Avoid accepting stale handoffs from a prior run. If started_at is present,
+		# the artifact must be written/updated after the task was registered.
+		started_at=$(printf '%s' "$task_json" | jq -r '.started_at // empty' 2>/dev/null) || started_at=""
+		if [[ -n "$started_at" && "$started_at" != "null" ]]; then
+			local start_epoch artifact_epoch
+			start_epoch=$(_iso_to_epoch "$started_at") || return 1
+			artifact_epoch=$(_file_mtime_epoch "$handoff_path") || continue
+			[[ "$artifact_epoch" -ge "$start_epoch" ]] || continue
+		fi
 
-	return 0
+		return 0
+	done < <(_candidate_artifact_dirs "$task_json" "$cwd_arg")
+
+	return 1
 }
 
 _finalize_artifact_contract() {
 	local task_id_arg="$1"
 	local complete_script="${OSTE_COMPLETE_SCRIPT:-${SCRIPT_DIR}/oste-complete.sh}"
 	[[ -x "$complete_script" || -f "$complete_script" ]] || return 1
-	TASKS_FILE="$_tasks_file" bash "$complete_script" "$task_id_arg" 0 >/tmp/oste-stop-complete-${task_id_arg}.log 2>&1
+	OSTE_COMPLETION_CWD="${OSTE_COMPLETION_CWD:-${cwd:-}}" TASKS_FILE="$_tasks_file" bash "$complete_script" "$task_id_arg" 0 >/tmp/oste-stop-complete-${task_id_arg}.log 2>&1
 }
 
 _finalize_completion_report() {
@@ -139,7 +174,7 @@ _finalize_completion_report() {
 	local exit_code="$2"
 	local complete_script="${OSTE_COMPLETE_SCRIPT:-${SCRIPT_DIR}/oste-complete.sh}"
 	[[ -x "$complete_script" || -f "$complete_script" ]] || return 1
-	TASKS_FILE="$_tasks_file" bash "$complete_script" "$task_id_arg" "$exit_code" >/tmp/oste-stop-complete-${task_id_arg}.log 2>&1
+	OSTE_COMPLETION_CWD="${OSTE_COMPLETION_CWD:-${cwd:-}}" TASKS_FILE="$_tasks_file" bash "$complete_script" "$task_id_arg" "$exit_code" >/tmp/oste-stop-complete-${task_id_arg}.log 2>&1
 }
 
 _report_field() {
@@ -229,7 +264,7 @@ _artifact_contract_repairable() {
 	task_json=$(jq -c --arg id "$task_id_arg" '.tasks[$id] // empty' "$tasks_file" 2>/dev/null) || return 1
 	[[ -n "$task_json" ]] || return 1
 
-	local status exit_code artifact_status handoff project_dir started_at
+	local status exit_code artifact_status handoff started_at
 	status=$(printf '%s' "$task_json" | jq -r '.status // empty' 2>/dev/null) || return 1
 	exit_code=$(printf '%s' "$task_json" | jq -r '.exit_code // empty' 2>/dev/null) || return 1
 	artifact_status=$(printf '%s' "$task_json" | jq -r '.artifact_status // empty' 2>/dev/null) || return 1
@@ -240,21 +275,28 @@ _artifact_contract_repairable() {
 	handoff=$(printf '%s' "$task_json" | jq -r '.handoff_file // empty' 2>/dev/null) || return 1
 	[[ -n "$handoff" && "$handoff" != "null" ]] || return 1
 
-	project_dir=$(printf '%s' "$task_json" | jq -r '.project_dir // empty' 2>/dev/null) || project_dir=""
-	[[ -n "$project_dir" ]] || project_dir="$cwd_arg"
-	local handoff_path
-	handoff_path=$(_resolve_handoff_path "$handoff" "$project_dir") || return 1
-	[[ -f "$handoff_path" ]] || return 1
-
 	started_at=$(printf '%s' "$task_json" | jq -r '.started_at // empty' 2>/dev/null) || started_at=""
-	if [[ -n "$started_at" && "$started_at" != "null" ]]; then
-		local start_epoch artifact_epoch
-		start_epoch=$(_iso_to_epoch "$started_at") || return 1
-		artifact_epoch=$(_file_mtime_epoch "$handoff_path") || return 1
-		[[ "$artifact_epoch" -ge "$start_epoch" ]] || return 1
-	fi
 
-	return 0
+	# Symmetry with _artifact_contract_ready: a target-worktree lane writes its
+	# handoff in cwd/exec_cwd rather than the canonical project_dir. Search the
+	# same candidate dirs (with the same freshness guard) so a late handoff that
+	# lands in the worktree is still reconciled out of contract_failure — the
+	# durable recovery path must not be narrower than the original contract check.
+	local artifact_dir handoff_path
+	while IFS= read -r artifact_dir; do
+		[[ -n "$artifact_dir" ]] || continue
+		handoff_path=$(_resolve_handoff_path "$handoff" "$artifact_dir") || continue
+		[[ -f "$handoff_path" ]] || continue
+		if [[ -n "$started_at" && "$started_at" != "null" ]]; then
+			local start_epoch artifact_epoch
+			start_epoch=$(_iso_to_epoch "$started_at") || continue
+			artifact_epoch=$(_file_mtime_epoch "$handoff_path") || continue
+			[[ "$artifact_epoch" -ge "$start_epoch" ]] || continue
+		fi
+		return 0
+	done < <(_candidate_artifact_dirs "$task_json" "$cwd_arg")
+
+	return 1
 }
 
 _reconcile_late_handoff() {

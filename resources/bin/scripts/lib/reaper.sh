@@ -1031,13 +1031,19 @@ _find_task_orphans_by_env() {
 	local exclude_list="$*"
 	local env_marker="OSTE_TASK_ID=${task_id}"
 
-	local pid ppid
-	while read -r pid ppid; do
+	# Single `ps eww` pass over the user's process table. A per-PID
+	# `ps eww -p` probe loop forks once per PPID=1 process — seconds of
+	# completion latency on a busy host (~3s observed at ~600 orphans) —
+	# making callers O(process count) and flaking time-bounded paths.
+	# macOS: the `e` flag appends each same-user process's environment to
+	# the command column, so the marker match sees the same data the old
+	# per-PID probe did.
+	local pid ppid cmd_env
+	while read -r pid ppid cmd_env; do
 		# Only target processes reparented to launchd (PPID=1).
 		# Processes with a living parent are either the terminal shell
 		# itself or something the user started after the agent exited.
 		[[ "$ppid" == "1" ]] || continue
-		pid="${pid#"${pid%%[! ]*}"}"
 		[[ -n "$pid" ]] || continue
 		[[ "$pid" =~ ^[0-9]+$ ]] || continue
 
@@ -1051,13 +1057,13 @@ _find_task_orphans_by_env() {
 		done
 		[[ "$skip" == true ]] && continue
 
-		# macOS: ps eww shows environment in the command column for same-user procs
-		if ps eww -p "$pid" -o command= 2>/dev/null | grep -qF "$env_marker"; then
-			echo "$pid"
-			# Also collect descendants of this orphan (they may not be PPID=1)
-			_collect_descendant_pids "$pid" "$exclude_list"
-		fi
-	done < <(ps -u "$(id -u)" -o pid=,ppid= 2>/dev/null || true)
+		# Fixed-string match — same semantics as the previous grep -qF.
+		[[ "$cmd_env" == *"$env_marker"* ]] || continue
+
+		echo "$pid"
+		# Also collect descendants of this orphan (they may not be PPID=1)
+		_collect_descendant_pids "$pid" "$exclude_list"
+	done < <(ps eww -U "$(id -u)" -o pid=,ppid=,command= 2>/dev/null || true)
 }
 
 _terminate_pid_list() {
