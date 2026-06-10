@@ -12,8 +12,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 const SOURCE_REPO =
-	process.env.LAUNCHER_SOURCE ||
-	path.join(process.env.HOME!, "projects", "ghostty-launcher");
+	process.env["LAUNCHER_SOURCE"] ||
+	path.join(process.env["HOME"] ?? "", "projects", "ghostty-launcher");
 const SOURCE_SCRIPT = path.join(SOURCE_REPO, "launcher");
 const DEST_SCRIPT = "resources/bin/ghostty-launcher";
 const VERSION_FILE = "resources/bin/.launcher-version";
@@ -26,6 +26,16 @@ const VERSION_FILE = "resources/bin/.launcher-version";
 const SOURCE_SCRIPTS_DIR = path.join(SOURCE_REPO, "scripts");
 const DEST_SCRIPTS_DIR = "resources/bin/scripts";
 const HELPER_TOP_LEVEL_FILES = ["oste-steer.sh", "routing-policy.json"];
+
+// `scripts/lib/` entries worth mirroring: only the runtime types the bundled
+// launcher actually executes (bash, python, osascript — bundle-runtime.sh
+// probes windows via window-probe.applescript). Anything else upstream
+// (docs, fixtures, editor droppings) must not leak into the VSIX.
+export const HELPER_LIB_EXTENSIONS = [".sh", ".py", ".applescript"] as const;
+
+export function isHelperLibEntry(name: string): boolean {
+	return HELPER_LIB_EXTENSIONS.some((extension) => name.endsWith(extension));
+}
 
 async function copyExecutable(src: string, dest: string): Promise<void> {
 	await fs.promises.mkdir(path.dirname(dest), { recursive: true });
@@ -77,7 +87,7 @@ async function checkHelpers(): Promise<HelperCheckResult> {
 	const expectedLibEntries = new Set<string>();
 	if (fs.existsSync(libSrc)) {
 		for (const entry of await fs.promises.readdir(libSrc)) {
-			if (!entry.endsWith(".sh") && !entry.endsWith(".py")) continue;
+			if (!isHelperLibEntry(entry)) continue;
 			expectedLibEntries.add(entry);
 			if (!(await filesMatch(path.join(libSrc, entry), path.join(libDest, entry)))) {
 				outOfSync.push(`lib/${entry}`);
@@ -86,7 +96,7 @@ async function checkHelpers(): Promise<HelperCheckResult> {
 	}
 	if (fs.existsSync(libDest)) {
 		for (const entry of await fs.promises.readdir(libDest)) {
-			if (!entry.endsWith(".sh") && !entry.endsWith(".py")) continue;
+			if (!isHelperLibEntry(entry)) continue;
 			if (!expectedLibEntries.has(entry)) outOfSync.push(`lib/${entry}`);
 		}
 	}
@@ -116,17 +126,17 @@ async function syncHelpers(): Promise<HelperSyncResult> {
 	const libSrc = path.join(SOURCE_SCRIPTS_DIR, "lib");
 	if (fs.existsSync(libSrc)) {
 		const libDest = path.join(DEST_SCRIPTS_DIR, "lib");
-		// Clean stale .sh files in destination lib (handles upstream removals)
+		// Clean stale helper files in destination lib (handles upstream removals)
 		// without nuking unrelated content the user may have added.
 		if (fs.existsSync(libDest)) {
 			for (const entry of await fs.promises.readdir(libDest)) {
-				if (entry.endsWith(".sh") || entry.endsWith(".py")) {
+				if (isHelperLibEntry(entry)) {
 					await fs.promises.unlink(path.join(libDest, entry));
 				}
 			}
 		}
 		for (const entry of await fs.promises.readdir(libSrc)) {
-			if (!entry.endsWith(".sh") && !entry.endsWith(".py")) continue;
+			if (!isHelperLibEntry(entry)) continue;
 			await copyExecutable(
 				path.join(libSrc, entry),
 				path.join(libDest, entry),
@@ -291,7 +301,9 @@ Examples:
 	console.log("\n💡 Run 'git diff' to review changes before committing.");
 }
 
-main().catch((err) => {
-	console.error("Error:", err.message);
-	process.exit(1);
-});
+if (import.meta.main) {
+	main().catch((err) => {
+		console.error("Error:", err.message);
+		process.exit(1);
+	});
+}

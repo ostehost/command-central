@@ -96,6 +96,9 @@ export const REQUIRED_ENTRIES: readonly string[] = [
 	"extension/package.json",
 	"extension/dist/extension.js",
 	"extension/resources/bin/ghostty-launcher",
+	// bundle-runtime.sh probes windows via this helper; rc51 shipped without
+	// it because sync-launcher only mirrored .sh/.py lib files.
+	"extension/resources/bin/scripts/lib/window-probe.applescript",
 	"extension/resources/icons/icon.png",
 ];
 

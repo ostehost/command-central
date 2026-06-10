@@ -25,6 +25,10 @@ function cleanEntries(): VsixEntry[] {
 			path: "extension/resources/bin/scripts/oste-steer.sh",
 			uncompressedBytes: 4_000,
 		},
+		{
+			path: "extension/resources/bin/scripts/lib/window-probe.applescript",
+			uncompressedBytes: 2_100,
+		},
 		{ path: "extension/resources/icons/icon.png", uncompressedBytes: 50_000 },
 		{
 			path: "extension/resources/icons/activity-bar.svg",
@@ -157,6 +161,9 @@ describe("evaluateVsixEntries", () => {
 	test("required entries cover the runtime payload contract", () => {
 		expect(REQUIRED_ENTRIES).toContain("extension/dist/extension.js");
 		expect(REQUIRED_ENTRIES).toContain("extension/package.json");
+		expect(REQUIRED_ENTRIES).toContain(
+			"extension/resources/bin/scripts/lib/window-probe.applescript",
+		);
 	});
 
 	test("rc50-scale package fails compressed, uncompressed, and count budgets", () => {
