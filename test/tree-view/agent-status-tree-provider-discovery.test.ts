@@ -20,6 +20,7 @@ import {
 	type AgentRole,
 	type AgentStatusTreeProvider,
 	type AgentTask,
+	createDiscoveredAgent,
 	createMockRegistry,
 	createMockTask,
 	createProviderHarness,
@@ -34,6 +35,7 @@ import {
 	loadDogfoodFixture,
 	type ProviderHarness,
 	setAgentStatusConfig,
+	setDiscoveredAgents,
 } from "./_helpers/agent-status-tree-provider-test-base.js";
 
 describe("AgentStatusTreeProvider — discovery", () => {
@@ -476,24 +478,6 @@ describe("AgentStatusTreeProvider — discovery", () => {
 							};
 						};
 					};
-					_discoveredAgents: Array<{
-						pid: number;
-						projectDir: string;
-						command: string;
-						cli_name?: string;
-						agent_backend?: "codex";
-						startTime: Date;
-						source: "process";
-					}>;
-					_allDiscoveredAgents: Array<{
-						pid: number;
-						projectDir: string;
-						command: string;
-						cli_name?: string;
-						agent_backend?: "codex";
-						startTime: Date;
-						source: "process";
-					}>;
 				}
 			)._openclawTaskService = {
 				isInstalled: true,
@@ -644,79 +628,28 @@ describe("AgentStatusTreeProvider — discovery", () => {
 					},
 				}),
 			};
-			(
-				provider as unknown as {
-					_discoveredAgents: Array<{
-						pid: number;
-						projectDir: string;
-						command: string;
-						cli_name?: string;
-						agent_backend?: "codex";
-						startTime: Date;
-						source: "process";
-					}>;
-					_allDiscoveredAgents: Array<{
-						pid: number;
-						projectDir: string;
-						command: string;
-						cli_name?: string;
-						agent_backend?: "codex";
-						startTime: Date;
-						source: "process";
-					}>;
-				}
-			)._discoveredAgents = [
-				{
-					pid: 64601,
-					projectDir: "/Users/test/projects/command-central",
-					command: "/opt/homebrew/bin/codex --model gpt-5",
-					cli_name: "codex",
-					agent_backend: "codex",
-					startTime: new Date(now - 5 * 60_000),
-					source: "process",
-				},
-				{
-					pid: 19321,
-					projectDir: "/Users/test/projects/ghostty-launcher",
-					command: "/opt/homebrew/bin/codex --model gpt-5 mini",
-					cli_name: "codex",
-					agent_backend: "codex",
-					startTime: new Date(now - 12 * 60_000),
-					source: "process",
-				},
-			];
-			(
-				provider as unknown as {
-					_allDiscoveredAgents: Array<{
-						pid: number;
-						projectDir: string;
-						command: string;
-						cli_name?: string;
-						agent_backend?: "codex";
-						startTime: Date;
-						source: "process";
-					}>;
-				}
-			)._allDiscoveredAgents = [
-				{
-					pid: 64601,
-					projectDir: "/Users/test/projects/command-central",
-					command: "/opt/homebrew/bin/codex --model gpt-5",
-					cli_name: "codex",
-					agent_backend: "codex",
-					startTime: new Date(now - 5 * 60_000),
-					source: "process",
-				},
-				{
-					pid: 19321,
-					projectDir: "/Users/test/projects/ghostty-launcher",
-					command: "/opt/homebrew/bin/codex --model gpt-5 mini",
-					cli_name: "codex",
-					agent_backend: "codex",
-					startTime: new Date(now - 12 * 60_000),
-					source: "process",
-				},
-			];
+			setDiscoveredAgents(
+				provider,
+				[
+					createDiscoveredAgent({
+						pid: 64601,
+						projectDir: "/Users/test/projects/command-central",
+						command: "/opt/homebrew/bin/codex --model gpt-5",
+						cli_name: "codex",
+						agent_backend: "codex",
+						startTime: new Date(now - 5 * 60_000),
+					}),
+					createDiscoveredAgent({
+						pid: 19321,
+						projectDir: "/Users/test/projects/ghostty-launcher",
+						command: "/opt/homebrew/bin/codex --model gpt-5 mini",
+						cli_name: "codex",
+						agent_backend: "codex",
+						startTime: new Date(now - 12 * 60_000),
+					}),
+				],
+				{ includeAll: true },
+			);
 
 			const report = provider.getDiscoveryDiagnosticsReport();
 			expect(report).toContain("Agent Discovery Health: ✅ Healthy");
@@ -1372,25 +1305,7 @@ describe("AgentStatusTreeProvider — discovery", () => {
 				[launcherOlder.id]: launcherOlder,
 			});
 		provider.reload();
-		(
-			provider as unknown as {
-				_discoveredAgents: Array<{
-					pid: number;
-					projectDir: string;
-					command: string;
-					startTime: Date;
-					source: "process";
-				}>;
-			}
-		)._discoveredAgents = [
-			{
-				pid: 4242,
-				projectDir: "/Users/test/projects/discovered-app",
-				command: "codex",
-				startTime: new Date("2026-02-25T09:00:00Z"),
-				source: "process",
-			},
-		];
+		setDiscoveredAgents(provider, [createDiscoveredAgent()]);
 
 		const children = provider
 			.getChildren()
@@ -1616,25 +1531,12 @@ describe("AgentStatusTreeProvider — discovery", () => {
 				"alpha-completed-latest": completedLatest,
 			});
 		provider.reload();
-		(
-			provider as unknown as {
-				_discoveredAgents: Array<{
-					pid: number;
-					projectDir: string;
-					command: string;
-					startTime: Date;
-					source: "process";
-				}>;
-			}
-		)._discoveredAgents = [
-			{
+		setDiscoveredAgents(provider, [
+			createDiscoveredAgent({
 				pid: 5151,
 				projectDir: "/Users/test/projects/my-app",
-				command: "codex",
-				startTime: new Date("2026-02-25T09:00:00Z"),
-				source: "process",
-			},
-		];
+			}),
+		]);
 
 		const rootChildren = provider.getChildren();
 		const groupNode = rootChildren.find(
@@ -1675,25 +1577,12 @@ describe("AgentStatusTreeProvider — discovery", () => {
 				"alpha-failed-old": failedOlder,
 			});
 		provider.reload();
-		(
-			provider as unknown as {
-				_discoveredAgents: Array<{
-					pid: number;
-					projectDir: string;
-					command: string;
-					startTime: Date;
-					source: "process";
-				}>;
-			}
-		)._discoveredAgents = [
-			{
+		setDiscoveredAgents(provider, [
+			createDiscoveredAgent({
 				pid: 5152,
 				projectDir: "/Users/test/projects/my-app",
-				command: "codex",
-				startTime: new Date("2026-02-25T09:00:00Z"),
-				source: "process",
-			},
-		];
+			}),
+		]);
 
 		const rootChildren = provider.getChildren();
 		const groupNode = rootChildren.find(
@@ -2583,13 +2472,11 @@ describe("AgentStatusTreeProvider — discovery", () => {
 				}),
 			}));
 
-			const p = provider as unknown as { _discoveredAgents: unknown[] };
-			p._discoveredAgents = [
-				{
+			setDiscoveredAgents(provider, [
+				createDiscoveredAgent({
 					pid: 99001,
 					projectDir: "/Users/test/projects/my-app-feature-a",
 					startTime: new Date("2026-02-25T08:00:00Z"),
-					source: "process",
 					command: "claude",
 					worktree: {
 						mainRepoDir: "/Users/test/projects/my-app",
@@ -2597,12 +2484,11 @@ describe("AgentStatusTreeProvider — discovery", () => {
 						branch: "feature/a",
 						isLinkedWorktree: true,
 					},
-				},
-				{
+				}),
+				createDiscoveredAgent({
 					pid: 99002,
 					projectDir: "/Users/test/projects/my-app-feature-b",
 					startTime: new Date("2026-02-25T08:01:00Z"),
-					source: "process",
 					command: "claude",
 					worktree: {
 						mainRepoDir: "/Users/test/projects/my-app",
@@ -2610,8 +2496,8 @@ describe("AgentStatusTreeProvider — discovery", () => {
 						branch: "feature/b",
 						isLinkedWorktree: true,
 					},
-				},
-			];
+				}),
+			]);
 
 			const root = provider.getChildren();
 			const projectGroups = root.filter((node) => node.type === "projectGroup");

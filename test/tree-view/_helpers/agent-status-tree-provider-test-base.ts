@@ -85,6 +85,7 @@ mock.module("../../../src/utils/port-detector.js", () => ({
 
 // ── Source imports (after mocks) ──────────────────────────────────────
 
+import type { DiscoveredAgent } from "../../../src/discovery/types.js";
 import {
 	type AgentNode,
 	AgentStatusTreeProvider,
@@ -104,6 +105,7 @@ export type {
 	TaskRegistry,
 } from "../../../src/providers/agent-status-tree-provider.js";
 export { AgentStatusTreeProvider };
+export type { DiscoveredAgent };
 
 // ── Mock data factories ───────────────────────────────────────────────
 
@@ -158,6 +160,41 @@ export function createMockRegistry(
 	tasks: Record<string, AgentTask> = {},
 ): TaskRegistry {
 	return { version: 2, tasks };
+}
+
+export function createDiscoveredAgent(
+	overrides: Partial<DiscoveredAgent> = {},
+): DiscoveredAgent {
+	return {
+		pid: 4242,
+		projectDir: "/Users/test/projects/discovered-app",
+		command: "codex",
+		startTime: new Date("2026-02-25T09:00:00Z"),
+		source: "process",
+		...overrides,
+	};
+}
+
+/**
+ * Inject discovered agents into the provider's private discovery state.
+ * Sets `_discoveredAgents` (the live, filtered set the tree renders).
+ * Pass `includeAll: true` to also mirror the list into
+ * `_allDiscoveredAgents` (the unfiltered set diagnostics read) — a copy is
+ * stored so in-place mutation of one set never leaks into the other.
+ */
+export function setDiscoveredAgents(
+	provider: AgentStatusTreeProvider,
+	agents: DiscoveredAgent[],
+	options: { includeAll?: boolean } = {},
+): void {
+	const p = provider as unknown as {
+		_discoveredAgents: DiscoveredAgent[];
+		_allDiscoveredAgents: DiscoveredAgent[];
+	};
+	p._discoveredAgents = agents;
+	if (options.includeAll) {
+		p._allDiscoveredAgents = [...agents];
+	}
 }
 
 export function loadAgentStatusFixture(fileName: string): TaskRegistry {
