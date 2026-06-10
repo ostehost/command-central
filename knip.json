@@ -3,6 +3,7 @@
   "entry": [
     "src/extension.ts",
     "scripts-v2/**/*.ts",
+    "scripts/**/*.ts",
     "test/integration/runTest.ts",
     "test/integration/suite/**/*.ts",
     "test/**/*.test.ts",
@@ -11,15 +12,15 @@
   ],
   "project": [
     "src/**/*.ts",
-    "scripts-v2/**/*.ts"
+    "scripts-v2/**/*.ts",
+    "scripts/**/*.ts"
   ],
   "ignore": [
     "test/**/*.fixture.ts",
     "test/**/*.legacy.ts"
   ],
   "ignoreDependencies": [
-    "@biomejs/biome",
-    "playwright"
+    "@biomejs/biome"
   ],
   "ignoreExportsUsedInFile": true
 }
