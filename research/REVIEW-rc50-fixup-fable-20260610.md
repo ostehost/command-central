@@ -55,7 +55,8 @@ already resolved by the rc-deps receipt and its clean review.
 | ~08:22 | This fixup lane starts at HEAD `cfd8c67d`, clean tree |
 | 08:22:57–08:23:55 | **Concurrent** `just cut-preview --prerelease` (separate actor) builds rc50; lifecycle record: state `succeeded`, version `0.6.0-rc.50`, artifact `releases/command-central-0.6.0-rc.50.vsix`, sha256 `32a10475c9317842d146819999f26f5dd0431b70cc48435552f692ca3eb1ce0f`, exit 0 — `--auto-artifact` (from `1665defe`) proven in production: no more `version: (none)` records |
 | 08:25 | Cut commits `07fe65fb` (version bump, digest, gate JSONs, consumption JSON, 2 launcher helpers re-synced from launcher `8f05d772`); tree clean again, ahead 8 |
-| after | This lane commits the fixup receipt on top |
+| 08:27 | Another concurrent docs commit `3ecdf99c` (cc hardening handoffs, 3 research files) lands; ahead 9 |
+| 08:29 | This lane commits the fixup receipt as `2a5baaae` (parent `3ecdf99c`); ahead 10 |
 
 Mid-lane the tree was transiently dirty with the in-flight cut's files
 (`package.json`, gate JSONs, two `resources/bin/scripts/lib/` helpers, digest).
@@ -65,8 +66,9 @@ committed them itself as `07fe65fb`.
 ## This fixup's facts
 
 - Start HEAD: `cfd8c67d` (clean)
-- End HEAD: the single docs commit carrying this receipt, parent `07fe65fb` (the
-  concurrent cut commit; not authored by this lane)
+- End HEAD: `2a5baaae` (this receipt) plus one follow-up docs commit correcting the
+  receipt's parent/ahead facts after concurrent commits `07fe65fb` and `3ecdf99c`
+  (neither authored by this lane) landed mid-lane
 - Files changed by this lane: `research/REVIEW-rc50-fixup-fable-20260610.md` (added
   — this file). No product code touched; no product bug found in Command Central.
 - Gates run this lane: `just check` (biome ci + tsc + knip) and `just test` (full
@@ -94,9 +96,9 @@ committed them itself as `07fe65fb`.
 
 1. **Cut approval — moot**: rc50 was cut at 08:23 UTC by a concurrent approved lane
    (`07fe65fb`); nothing left to approve there.
-2. **Push approval — still open and grown**: `main...origin/main` will be ahead 9
-   after this commit. Hub/node sync debt keeps accumulating; approve a push/sync
-   lane.
+2. **Push approval — still open and grown**: `main...origin/main` is ahead 11
+   after this lane's two docs commits (cut + hardening handoffs + fixup receipts).
+   Hub/node sync debt keeps accumulating; approve a push/sync lane.
 3. **Post-cut proofs** (carried from the rc-deps receipt): installed rc50 VSIX +
    reload proof of the Fable patch, and one manual ACP lane execution-test of the
    trailing `--model 'fable'` flag. `research/vscode-consumption-rc50-20260610.json`
