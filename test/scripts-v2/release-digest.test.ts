@@ -5,11 +5,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
 	type CommitRef,
+	CUT_SUBJECT_PREFIX,
 	collectSinceSection,
 	filterReleaseNoise,
 	formatDiscord,
 	formatMarkdown,
 	formatPlain,
+	isCutCommit,
 	MAX_SINCE_ITEMS,
 	parseChangelogSections,
 	parseSection,
@@ -112,8 +114,23 @@ describe("resolvePreviousCutBase", () => {
 		expect(resolvePreviousCutBase([], "0.6.0-rc.52")).toBeNull();
 	});
 
-	test("uses the most recent cut for non-rc versions", () => {
-		expect(resolvePreviousCutBase([rc52, rc51], "0.6.0")).toBe(rc52);
+	test("returns null for stable (non-rc) versions — no base is safe to pick", () => {
+		// After a stable cut, the most recent cut commit could be the stable
+		// cut itself; with no rc number to compare, omit rather than guess.
+		expect(resolvePreviousCutBase([rc52, rc51], "0.6.0")).toBeNull();
+	});
+});
+
+describe("isCutCommit", () => {
+	test("matches subjects that start with the cut prefix", () => {
+		expect(isCutCommit(`${CUT_SUBJECT_PREFIX}rc52 preview`)).toBe(true);
+	});
+
+	test("rejects subjects that merely mention a cut", () => {
+		expect(isCutCommit("revert: chore(release): cut rc52 preview")).toBe(false);
+		expect(isCutCommit("fix(digest): handle chore(release): cut parsing")).toBe(
+			false,
+		);
 	});
 });
 
@@ -291,6 +308,54 @@ describe("collectSinceSection (temp git repo)", () => {
 		expect(since).not.toBeNull();
 		expect(since?.baseLabel).toBe("rc2");
 		expect(since?.commits).toEqual([]);
+	});
+
+	test("resolves cuts even when grep.patternType is extended", async () => {
+		// Under extended/perl semantics an unpinned BRE pattern with literal
+		// parens silently matches nothing; --fixed-strings must pin matching
+		// regardless of repo or user git config.
+		const dir = await makeRepo();
+		git(dir, "config", "grep.patternType", "extended");
+		emptyCommit(dir, "chore(release): cut rc1 preview");
+		emptyCommit(dir, "fix(core): real change");
+
+		const since = collectSinceSection(dir, "0.0.1-rc.2");
+		expect(since?.baseLabel).toBe("rc1");
+		expect(since?.commits.map((c) => c.subject)).toEqual([
+			"fix(core): real change",
+		]);
+	});
+
+	test("ignores commits that only mention a cut in their body", async () => {
+		const dir = await makeRepo();
+		emptyCommit(dir, "chore(release): cut rc1 preview");
+		emptyCommit(dir, "fix(core): real change");
+		// Body references a cut subject; the commit itself is not a cut and
+		// must not be selected as the base.
+		git(
+			dir,
+			"commit",
+			"--allow-empty",
+			"-q",
+			"-m",
+			"docs(digest): explain cut detection",
+			"-m",
+			"Bases resolve from chore(release): cut rc1 preview commits.",
+		);
+
+		const since = collectSinceSection(dir, "0.0.1-rc.2");
+		expect(since?.baseLabel).toBe("rc1");
+		expect(since?.commits.map((c) => c.subject)).toEqual([
+			"docs(digest): explain cut detection",
+			"fix(core): real change",
+		]);
+	});
+
+	test("returns null for stable (non-rc) versions", async () => {
+		const dir = await makeRepo();
+		emptyCommit(dir, "chore(release): cut rc1 preview");
+		emptyCommit(dir, "fix(core): real change");
+		expect(collectSinceSection(dir, "0.6.0")).toBeNull();
 	});
 
 	test("returns null when no cut commits exist", async () => {

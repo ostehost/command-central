@@ -10,7 +10,10 @@
  * `chore(release): cut rcNN preview` commit that is not the current version,
  * with release-process noise filtered out. No network, no LLM — git only.
  * If git history is unavailable (shallow clone, no cut commits), the section
- * is omitted and the changelog digest still renders.
+ * is omitted and the changelog digest still renders. Stable (non-rc) versions
+ * also omit the section: without an rc number the current version's own cut
+ * commit cannot be recognized, so no base is safe to pick — and a stable cut
+ * gets a full changelog section, so nothing is lost.
  *
  * Pure module API is exported for testing; the CLI is invoked only when
  * `import.meta.main` is true.
@@ -41,7 +44,18 @@ export const RELEASE_NOISE_PATTERNS: readonly RegExp[] = [
 
 export const MAX_SINCE_ITEMS = 12;
 
-const CUT_SUBJECT_GREP = "^chore(release): cut ";
+/** Literal subject prefix of release-cut commits ("chore(release): cut rc52 preview"). */
+export const CUT_SUBJECT_PREFIX = "chore(release): cut ";
+
+/**
+ * Authoritative cut-commit check: the subject must start with the cut prefix.
+ * `git log --grep` matches body lines too, so grep results are only a coarse
+ * pre-filter — a commit that merely mentions a cut in its body must not be
+ * selected as the base.
+ */
+export function isCutCommit(subject: string): boolean {
+	return subject.startsWith(CUT_SUBJECT_PREFIX);
+}
 
 // --- Changelog parsing ---
 
@@ -99,15 +113,21 @@ export function rcNumber(text: string): number | null {
  * whose rc number differs from the current version. At cut time the current
  * version's cut commit does not exist yet; after the cut it does — skipping
  * same-rc cuts makes the derivation identical in both cases.
+ *
+ * Non-rc (stable) versions return null. Without an rc number there is no way
+ * to recognize the current version's own cut commit, so after a stable cut the
+ * most recent cut could be the stable cut itself and the section would
+ * silently describe an empty or wrong range. Stable cuts get a full changelog
+ * section, so the git-derived section is omitted rather than risk a bad base.
  */
 export function resolvePreviousCutBase(
 	cuts: CommitRef[],
 	currentVersion: string,
 ): CommitRef | null {
 	const currentRc = rcNumber(currentVersion);
+	if (currentRc === null) return null;
 	for (const cut of cuts) {
-		const cutRc = rcNumber(cut.subject);
-		if (currentRc === null || cutRc === null || cutRc !== currentRc) {
+		if (rcNumber(cut.subject) !== currentRc) {
 			return cut;
 		}
 	}
@@ -144,12 +164,19 @@ export function collectSinceSection(
 	currentVersion: string,
 ): SinceSection | null {
 	try {
+		// --fixed-strings pins the matching semantics regardless of any
+		// grep.patternType config (the default-BRE anchored pattern silently
+		// matches nothing under extended/perl). The grep is only a coarse
+		// pre-filter — it also matches body lines — so isCutCommit() on the
+		// subject is the authoritative check, and -n 50 keeps body-only false
+		// positives from crowding the real cut out of the candidate window.
 		const cuts = gitLog(repoRoot, [
-			`--grep=${CUT_SUBJECT_GREP}`,
+			"--fixed-strings",
+			`--grep=${CUT_SUBJECT_PREFIX}`,
 			"-n",
-			"10",
+			"50",
 			"--format=%H%x09%s",
-		]);
+		]).filter((c) => isCutCommit(c.subject));
 		const base = resolvePreviousCutBase(cuts, currentVersion);
 		if (!base) return null;
 
