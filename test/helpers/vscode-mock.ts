@@ -179,6 +179,11 @@ export function createVSCodeMock() {
 			Separator: -1,
 			Default: 0,
 		},
+		ProgressLocation: {
+			SourceControl: 1,
+			Window: 10,
+			Notification: 15,
+		},
 		ExtensionKind: {
 			UI: 1,
 			Workspace: 2,
@@ -230,6 +235,15 @@ export function createVSCodeMock() {
 			showWarningMessage: mock(),
 			showErrorMessage: mock(),
 			requestAttention: mock(),
+			withProgress: mock(
+				(
+					_options: unknown,
+					task: (
+						progress: { report: (value: unknown) => void },
+						token: { isCancellationRequested: boolean },
+					) => Promise<unknown>,
+				) => task({ report: mock() }, { isCancellationRequested: false }),
+			),
 			setStatusBarMessage: mock((_message?: string, _timeoutMs?: number) => ({
 				dispose: mock(),
 			})),
