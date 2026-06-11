@@ -7,9 +7,15 @@ import {
 	type AgentStatusProofTreeNode,
 	type AgentStatusProofTreeSnapshot,
 	buildSourceAuthorityMatrix,
+	collectLauncherAttributedTaskIdHits,
+	collectTaskIdPresence,
 	findNodesByLabel,
 	findSpecBoundaryViolations,
 	hasRequiredSymphonyRoots,
+	type InstalledVsixProofPhase,
+	type LauncherRegistryProofSnapshot,
+	type LauncherTaskIdHit,
+	parseTaskIdListEnv,
 } from "./installed-vsix-proof-shared.js";
 
 type ProofMode = "passive" | "live";
@@ -27,6 +33,7 @@ interface ProofAction {
 
 interface ProofManifest {
 	proof_kind: "installed-vsix-agent-status";
+	proof_phase: InstalledVsixProofPhase;
 	mode: ProofMode;
 	passive_or_live_mode: ProofMode;
 	machine: {
@@ -47,6 +54,11 @@ interface ProofManifest {
 	command_central_loaded_from_vsix: true;
 	is_extension_development_path_used_for_cc: false;
 	task_registry_path: string;
+	launcher_registry_snapshot: LauncherRegistryProofSnapshot;
+	forbidden_task_ids: string[];
+	forbidden_launcher_task_id_hits: LauncherTaskIdHit[];
+	expected_task_ids: string[];
+	expected_task_id_presence: Record<string, boolean>;
 	command_central_views: Array<{ id?: string; name?: string; type?: string }>;
 	agent_status_tree_snapshot: AgentStatusProofTreeSnapshot;
 	symphony_tree_snapshot: AgentStatusProofTreeSnapshot;
@@ -338,6 +350,22 @@ export async function run(): Promise<void> {
 	]?.trim() as ExpectedVsixIdentityKind | undefined;
 	const repoRoot = requireEnv("COMMAND_CENTRAL_REPO_ROOT");
 	const requiredTaskId = process.env["COMMAND_CENTRAL_REQUIRED_TASK_ID"];
+	const phase = (process.env["COMMAND_CENTRAL_PROOF_PHASE"] ??
+		"legacy-fixture") as InstalledVsixProofPhase;
+	assert.ok(
+		phase === "quarantine-default" || phase === "legacy-fixture",
+		`Unknown COMMAND_CENTRAL_PROOF_PHASE: ${phase}`,
+	);
+	assert.ok(
+		!(phase === "quarantine-default" && mode === "live"),
+		"Live action probes are not supported in the quarantine-default phase.",
+	);
+	const forbiddenTaskIds = parseTaskIdListEnv(
+		process.env["COMMAND_CENTRAL_FORBIDDEN_TASK_IDS"],
+	);
+	const expectedTaskIds = parseTaskIdListEnv(
+		process.env["COMMAND_CENTRAL_EXPECTED_TASK_IDS"],
+	);
 
 	const extension = vscode.extensions.getExtension(extensionId);
 	assert.ok(
@@ -366,6 +394,10 @@ export async function run(): Promise<void> {
 			"getAgentStatusTreeSnapshot" in testApi &&
 			"getSymphonyTreeSnapshot" in testApi,
 		"COMMAND_CENTRAL_TEST_MODE must expose the inspection API.",
+	);
+	assert.ok(
+		"getLauncherRegistrySnapshot" in testApi,
+		"Installed VSIX must expose getLauncherRegistrySnapshot — build the proof artifact from a quarantine-aware commit.",
 	);
 
 	await vscode.commands.executeCommand("commandCentral.refreshAgentStatus");
@@ -419,9 +451,89 @@ export async function run(): Promise<void> {
 		);
 	}
 	if (!hasRequiredSymphonyRoots(snapshot)) {
+		if (phase === "legacy-fixture") {
+			errors.push(
+				"Missing required top-level Symphony view roots with Operations Dashboard, Workstreams, and Run Attempts.",
+			);
+		} else {
+			skips.push(
+				"Quarantine phase: required Symphony roots absent (acceptable empty state with no launcher source configured).",
+			);
+		}
+	}
+
+	const launcherRegistrySnapshot = (
+		testApi as { getLauncherRegistrySnapshot(): LauncherRegistryProofSnapshot }
+	).getLauncherRegistrySnapshot();
+	const forbiddenHits = [
+		...collectLauncherAttributedTaskIdHits(snapshot, forbiddenTaskIds),
+		...collectLauncherAttributedTaskIdHits(
+			agentStatusSnapshot,
+			forbiddenTaskIds,
+		),
+	];
+	for (const hit of forbiddenHits) {
 		errors.push(
-			"Missing required top-level Symphony view roots with Operations Dashboard, Workstreams, and Run Attempts.",
+			`Forbidden launcher task id surfaced as launcher data: ${hit.taskId} (${hit.reason}) on "${hit.label}" [${hit.nodeKind}]`,
 		);
+	}
+	const expectedPresence = collectTaskIdPresence(snapshot, expectedTaskIds);
+	const agentStatusPresence = collectTaskIdPresence(
+		agentStatusSnapshot,
+		expectedTaskIds,
+	);
+	for (const taskId of expectedTaskIds) {
+		expectedPresence[taskId] =
+			Boolean(expectedPresence[taskId]) || Boolean(agentStatusPresence[taskId]);
+	}
+
+	if (phase === "quarantine-default") {
+		for (const [providerName, providerSnapshot] of Object.entries(
+			launcherRegistrySnapshot,
+		)) {
+			if (providerSnapshot.resolvedFilePaths.length > 0) {
+				errors.push(
+					`Quarantine violated: ${providerName} provider resolved launcher registries with default settings: ${providerSnapshot.resolvedFilePaths.join(", ")}`,
+				);
+			}
+			if (providerSnapshot.launcherTaskCount > 0) {
+				errors.push(
+					`Quarantine violated: ${providerName} provider ingested ${providerSnapshot.launcherTaskCount} launcher task(s) with default settings: ${providerSnapshot.launcherTaskIds.join(", ")}`,
+				);
+			}
+		}
+		if (forbiddenTaskIds.length === 0) {
+			skips.push(
+				"No forbidden launcher task ids supplied (real global registry absent or empty); quarantine id sweep is vacuous on this machine.",
+			);
+		}
+	}
+
+	if (phase === "legacy-fixture") {
+		const legacyRegistryPath = requireEnv("COMMAND_CENTRAL_TASK_REGISTRY_PATH");
+		for (const [providerName, providerSnapshot] of Object.entries(
+			launcherRegistrySnapshot,
+		)) {
+			if (!providerSnapshot.resolvedFilePaths.includes(legacyRegistryPath)) {
+				errors.push(
+					`Legacy escape hatch broken: ${providerName} provider did not resolve the fixture registry ${legacyRegistryPath} (resolved: ${providerSnapshot.resolvedFilePaths.join(", ") || "none"})`,
+				);
+			}
+			for (const taskId of expectedTaskIds) {
+				if (!providerSnapshot.launcherTaskIds.includes(taskId)) {
+					errors.push(
+						`Legacy escape hatch broken: ${providerName} provider did not ingest expected task id ${taskId}`,
+					);
+				}
+			}
+		}
+		for (const taskId of expectedTaskIds) {
+			if (!expectedPresence[taskId]) {
+				errors.push(
+					`Expected legacy fixture task id not visible in any tree snapshot: ${taskId}`,
+				);
+			}
+		}
 	}
 	const symphonyViewIndex = commandCentralViews.findIndex(
 		(view) => view.id === "commandCentral.symphony",
@@ -452,7 +564,7 @@ export async function run(): Promise<void> {
 	const passiveRun = findNodesByLabel(snapshot.roots, (label) =>
 		label.startsWith("Run Attempts"),
 	)[0]?.children?.find((node) => node.nodeKind === "codexRun");
-	if (passiveRun && mode === "passive") {
+	if (passiveRun && mode === "passive" && phase === "legacy-fixture") {
 		if (!hasDetailLabel(passiveRun, "Lifecycle owner")) {
 			errors.push("Passive run attempt is missing lifecycle-owner detail.");
 		}
@@ -523,6 +635,7 @@ export async function run(): Promise<void> {
 
 	const manifest: ProofManifest = {
 		proof_kind: "installed-vsix-agent-status",
+		proof_phase: phase,
 		mode,
 		passive_or_live_mode: mode,
 		machine: {
@@ -545,6 +658,11 @@ export async function run(): Promise<void> {
 		command_central_loaded_from_vsix: true,
 		is_extension_development_path_used_for_cc: false,
 		task_registry_path: requireEnv("COMMAND_CENTRAL_TASK_REGISTRY_PATH"),
+		launcher_registry_snapshot: launcherRegistrySnapshot,
+		forbidden_task_ids: forbiddenTaskIds,
+		forbidden_launcher_task_id_hits: forbiddenHits,
+		expected_task_ids: expectedTaskIds,
+		expected_task_id_presence: expectedPresence,
 		command_central_views: commandCentralViews,
 		agent_status_tree_snapshot: agentStatusSnapshot,
 		symphony_tree_snapshot: snapshot,

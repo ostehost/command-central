@@ -94,6 +94,25 @@ export interface CommandCentralIntegrationDeactivationSnapshot {
 	after: CommandCentralIntegrationSnapshot;
 }
 
+export interface CommandCentralLauncherRegistryProviderSnapshot {
+	/** Launcher tasks.json paths the provider actually resolved and ingests. */
+	resolvedFilePaths: string[];
+	launcherTaskCount: number;
+	launcherTaskIds: string[];
+}
+
+/**
+ * Ground truth for launcher tasks.json ingestion, per provider. The installed
+ * VSIX proof asserts quarantine (`resolvedFilePaths: []`, zero launcher tasks
+ * under default settings) and the legacy escape hatch (fixture path resolved,
+ * sentinel task ids ingested) against this snapshot rather than inferring
+ * ingestion from rendered tree labels.
+ */
+export interface CommandCentralLauncherRegistrySnapshot {
+	agentStatus: CommandCentralLauncherRegistryProviderSnapshot;
+	symphony: CommandCentralLauncherRegistryProviderSnapshot;
+}
+
 export interface CommandCentralIntegrationTestApi {
 	kind: "command-central-test-api";
 	getSnapshot(): CommandCentralIntegrationSnapshot;
@@ -104,6 +123,7 @@ export interface CommandCentralIntegrationTestApi {
 	getSymphonyTreeSnapshot(
 		options?: CommandCentralAgentStatusTreeSnapshotOptions,
 	): CommandCentralAgentStatusTreeSnapshot;
+	getLauncherRegistrySnapshot(): CommandCentralLauncherRegistrySnapshot;
 	deactivateForTest(): Promise<CommandCentralIntegrationDeactivationSnapshot>;
 }
 
@@ -414,6 +434,20 @@ export function getAgentStatusSnapshot(
 	};
 }
 
+export function getLauncherRegistrySnapshotForProvider(
+	provider: AgentStatusTreeProvider | undefined,
+): CommandCentralLauncherRegistryProviderSnapshot {
+	if (!provider) {
+		return { resolvedFilePaths: [], launcherTaskCount: 0, launcherTaskIds: [] };
+	}
+	const launcherTaskIds = provider.getLauncherTasks().map((task) => task.id);
+	return {
+		resolvedFilePaths: provider.filePaths,
+		launcherTaskCount: launcherTaskIds.length,
+		launcherTaskIds,
+	};
+}
+
 export function getIntegrationSnapshot(
 	deps: IntegrationTestApiDeps,
 ): CommandCentralIntegrationSnapshot {
@@ -455,6 +489,14 @@ export function createIntegrationTestApi(
 			getTreeSnapshotForProvider(deps.getAgentStatusProvider(), options),
 		getSymphonyTreeSnapshot: (options) =>
 			getTreeSnapshotForProvider(deps.getSymphonyProvider(), options),
+		getLauncherRegistrySnapshot: () => ({
+			agentStatus: getLauncherRegistrySnapshotForProvider(
+				deps.getAgentStatusProvider(),
+			),
+			symphony: getLauncherRegistrySnapshotForProvider(
+				deps.getSymphonyProvider(),
+			),
+		}),
 		deactivateForTest: async () => {
 			const before = snapshot();
 			await deps.deactivate();

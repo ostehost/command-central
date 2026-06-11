@@ -30,6 +30,26 @@ export interface AgentStatusProofTreeSnapshot {
 	};
 }
 
+export type InstalledVsixProofPhase = "quarantine-default" | "legacy-fixture";
+
+export interface LauncherRegistryProviderProofSnapshot {
+	resolvedFilePaths: string[];
+	launcherTaskCount: number;
+	launcherTaskIds: string[];
+}
+
+export interface LauncherRegistryProofSnapshot {
+	agentStatus: LauncherRegistryProviderProofSnapshot;
+	symphony: LauncherRegistryProviderProofSnapshot;
+}
+
+export interface LauncherTaskIdHit {
+	taskId: string;
+	label: string;
+	nodeKind: string;
+	reason: string;
+}
+
 export interface SourceAuthorityMatrixRow {
 	row_label: string;
 	source_owner?: unknown;
@@ -63,6 +83,96 @@ export function flattenProofTree(
 	};
 	for (const node of nodes) visit(node);
 	return flattened;
+}
+
+/**
+ * Parse a JSON-array task-id list passed through the proof environment.
+ * Tolerates an unset/empty value (no ids) but rejects malformed payloads so
+ * a broken harness wiring fails loudly instead of weakening the proof.
+ */
+export function parseTaskIdListEnv(value: string | undefined): string[] {
+	const trimmed = value?.trim();
+	if (!trimmed) return [];
+	const parsed = JSON.parse(trimmed) as unknown;
+	if (
+		!Array.isArray(parsed) ||
+		parsed.some((entry) => typeof entry !== "string")
+	) {
+		throw new Error(
+			`Task id list env must be a JSON array of strings, got: ${trimmed}`,
+		);
+	}
+	return parsed.map((entry) => entry.trim()).filter((entry) => entry !== "");
+}
+
+function nodeMatchesTaskId(
+	node: AgentStatusProofTreeNode,
+	taskId: string,
+): boolean {
+	if (node.label.includes(taskId)) return true;
+	const ownerTaskId = node.ownerFields?.["taskId"];
+	return typeof ownerTaskId === "string" && ownerTaskId === taskId;
+}
+
+function launcherAttributionReason(
+	node: AgentStatusProofTreeNode,
+): string | undefined {
+	if (node.nodeKind === "task") return "nodeKind=task";
+	const fields = node.ownerFields ?? {};
+	for (const key of [
+		"source_owner",
+		"lifecycle_owner",
+		"source_authority",
+	] as const) {
+		if (fields[key] === "launcher") return `${key}=launcher`;
+	}
+	return undefined;
+}
+
+/**
+ * Find tree nodes that surface one of the given task ids AS LAUNCHER DATA
+ * (launcher-attributed owner fields or a launcher `task` node). Ids that
+ * appear via OpenClaw/ACP-native sources are not hits — the quarantine proof
+ * forbids launcher ingestion, not the task id itself.
+ */
+export function collectLauncherAttributedTaskIdHits(
+	snapshot: AgentStatusProofTreeSnapshot,
+	taskIds: readonly string[],
+): LauncherTaskIdHit[] {
+	if (taskIds.length === 0) return [];
+	const hits: LauncherTaskIdHit[] = [];
+	for (const node of flattenProofTree(snapshot.roots)) {
+		const reason = launcherAttributionReason(node);
+		if (!reason) continue;
+		for (const taskId of taskIds) {
+			if (nodeMatchesTaskId(node, taskId)) {
+				hits.push({
+					taskId,
+					label: node.label,
+					nodeKind: node.nodeKind,
+					reason,
+				});
+			}
+		}
+	}
+	return hits;
+}
+
+/** Whether each task id is visible anywhere in the snapshot (any source). */
+export function collectTaskIdPresence(
+	snapshot: AgentStatusProofTreeSnapshot,
+	taskIds: readonly string[],
+): Record<string, boolean> {
+	const presence: Record<string, boolean> = {};
+	for (const taskId of taskIds) presence[taskId] = false;
+	for (const node of flattenProofTree(snapshot.roots)) {
+		for (const taskId of taskIds) {
+			if (!presence[taskId] && nodeMatchesTaskId(node, taskId)) {
+				presence[taskId] = true;
+			}
+		}
+	}
+	return presence;
 }
 
 export function findNodesByLabel(

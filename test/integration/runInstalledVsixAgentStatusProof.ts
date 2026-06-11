@@ -2,6 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import * as fs from "node:fs";
 import {
 	mkdir,
 	mkdtemp,
@@ -14,14 +15,21 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 import { assertNodeExecutionContext } from "../../scripts-v2/node-execution-guard.js";
+import type {
+	InstalledVsixProofPhase,
+	LauncherRegistryProofSnapshot,
+	LauncherTaskIdHit,
+} from "./installed-vsix-proof-shared.js";
 
 export type InstalledVsixProofMode = "passive" | "live";
+export type InstalledVsixProofPhaseSelection = InstalledVsixProofPhase | "both";
 export type ExpectedVsixIdentityKind =
 	| "published-prerelease"
 	| "temporary-proof-artifact";
 
 export interface InstalledVsixProofArgs {
 	mode: InstalledVsixProofMode;
+	phase: InstalledVsixProofPhaseSelection;
 	vsixPath?: string;
 	expectedSha256?: string;
 	expectedIdentityKind?: ExpectedVsixIdentityKind;
@@ -53,6 +61,7 @@ export function parseInstalledProofArgs(
 ): InstalledVsixProofArgs {
 	const parsed: InstalledVsixProofArgs = {
 		mode: process.env["COMMAND_CENTRAL_REQUIRED_TASK_ID"] ? "live" : "passive",
+		phase: "both",
 	};
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -84,6 +93,21 @@ export function parseInstalledProofArgs(
 			index += 1;
 			continue;
 		}
+		if (arg === "--phase") {
+			const value = argv[index + 1];
+			if (
+				value !== "quarantine-default" &&
+				value !== "legacy-fixture" &&
+				value !== "both"
+			) {
+				throw new Error(
+					"--phase must be quarantine-default, legacy-fixture, or both.",
+				);
+			}
+			parsed.phase = value;
+			index += 1;
+			continue;
+		}
 		if (arg === "--live") {
 			parsed.mode = "live";
 			continue;
@@ -95,6 +119,66 @@ export function parseInstalledProofArgs(
 		throw new Error(`Unknown installed proof argument: ${arg}`);
 	}
 	return parsed;
+}
+
+/**
+ * Sentinel launcher registry injected through the legacy escape hatch. Two
+ * tasks with distinct agent backends so the proof never depends on a single
+ * backend's rendering path.
+ */
+export function buildSentinelFixtureRegistry(nowIso: string): {
+	registry: { version: 2; tasks: Record<string, Record<string, unknown>> };
+	taskIds: string[];
+} {
+	const makeTask = (id: string, agentBackend: string) => ({
+		id,
+		status: "running",
+		project_dir: `/tmp/cc-installed-proof/${id}`,
+		project_name: `Installed Proof ${agentBackend}`,
+		session_id: `${id}-session`,
+		agent_backend: agentBackend,
+		bundle_path: "",
+		prompt_file: "",
+		started_at: nowIso,
+		updated_at: nowIso,
+		attempts: 1,
+		max_attempts: 3,
+	});
+	const tasks = {
+		"installed-proof-legacy-alpha": makeTask(
+			"installed-proof-legacy-alpha",
+			"claude",
+		),
+		"installed-proof-legacy-beta": makeTask(
+			"installed-proof-legacy-beta",
+			"codex",
+		),
+	};
+	return { registry: { version: 2, tasks }, taskIds: Object.keys(tasks) };
+}
+
+/** Read task ids from a launcher registry without failing on absence. */
+export function readRegistryTaskIdsSafe(filePath: string): string[] {
+	try {
+		const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
+			tasks?: Record<string, unknown>;
+		};
+		return raw.tasks && typeof raw.tasks === "object"
+			? Object.keys(raw.tasks)
+			: [];
+	} catch {
+		return [];
+	}
+}
+
+export function phaseManifestPath(
+	basePath: string,
+	phase: InstalledVsixProofPhase,
+): string {
+	const suffix = phase === "quarantine-default" ? "quarantine" : "legacy";
+	return basePath.endsWith(".json")
+		? `${basePath.slice(0, -5)}-${suffix}.json`
+		: `${basePath}-${suffix}.json`;
 }
 
 function formatDuration(durationMs: number): string {
@@ -156,7 +240,15 @@ async function createTestWorkspace(workspaceDir: string): Promise<void> {
 	);
 }
 
-async function writeUserSettings(
+/** Quarantine phase: pristine defaults — no escape hatch, no registry paths. */
+async function writeDefaultUserSettings(userDataDir: string): Promise<void> {
+	const settingsDir = path.join(userDataDir, "User");
+	await mkdir(settingsDir, { recursive: true });
+	await writeFile(path.join(settingsDir, "settings.json"), "{}\n");
+}
+
+/** Legacy phase: explicit diagnostics escape hatch + fixture registry. */
+async function writeLegacyUserSettings(
 	userDataDir: string,
 	taskRegistryPath: string,
 ): Promise<void> {
@@ -166,8 +258,6 @@ async function writeUserSettings(
 		path.join(settingsDir, "settings.json"),
 		JSON.stringify(
 			{
-				// Launcher registries are quarantined by default; the proof suite
-				// injects its temp fixture registry through the legacy escape hatch.
 				"commandCentral.legacyLauncherTasks.enabled": true,
 				"commandCentral.agentTasksFile": taskRegistryPath,
 				"commandCentral.agentTasksFiles": [],
@@ -268,28 +358,37 @@ function gitCommit(repoRoot: string): string {
 	}).trim();
 }
 
-function taskRegistryPath(): string {
-	return (
-		process.env["COMMAND_CENTRAL_TASK_REGISTRY_PATH"] ??
-		path.join(os.homedir(), ".config", "ghostty-launcher", "tasks.json")
-	);
+function globalLauncherRegistryPaths(): string[] {
+	return [
+		path.join(os.homedir(), ".config", "ghostty-launcher", "tasks.json"),
+		path.join(os.homedir(), ".ghostty-launcher", "tasks.json"),
+	];
 }
 
 async function readManifestSummary(manifestPath: string): Promise<{
+	phase: string;
 	installedVersion: string;
 	taskCount: number;
 	roots: string[];
 	mode: string;
 	actionsPassed: number;
 	actionsSkipped: number;
+	launcherRegistry: LauncherRegistryProofSnapshot;
+	forbiddenHits: LauncherTaskIdHit[];
+	expectedPresence: Record<string, boolean>;
 }> {
 	const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+		proof_phase: string;
 		installed_version: string;
 		mode: string;
 		tree_snapshot: { taskCount: number; roots: Array<{ label: string }> };
 		actions: Array<{ status: string }>;
+		launcher_registry_snapshot: LauncherRegistryProofSnapshot;
+		forbidden_launcher_task_id_hits: LauncherTaskIdHit[];
+		expected_task_id_presence: Record<string, boolean>;
 	};
 	return {
+		phase: manifest.proof_phase,
 		installedVersion: manifest.installed_version,
 		taskCount: manifest.tree_snapshot.taskCount,
 		roots: manifest.tree_snapshot.roots.map((root) => root.label),
@@ -300,6 +399,9 @@ async function readManifestSummary(manifestPath: string): Promise<{
 		actionsSkipped: manifest.actions.filter(
 			(action) => action.status === "skipped",
 		).length,
+		launcherRegistry: manifest.launcher_registry_snapshot,
+		forbiddenHits: manifest.forbidden_launcher_task_id_hits,
+		expectedPresence: manifest.expected_task_id_presence,
 	};
 }
 
@@ -330,76 +432,161 @@ export async function runInstalledVsixAgentStatusProof(): Promise<void> {
 			| ExpectedVsixIdentityKind
 			| undefined) ??
 		(expectedVsixSha256 ? "temporary-proof-artifact" : "");
-	const registryPath = taskRegistryPath();
 	const requestedVersion = process.env["VSCODE_VERSION"];
 	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "cc-installed-proof-"));
 	const workspaceDir = path.join(tempRoot, "workspace");
-	const userDataDir = path.join(tempRoot, "user-data");
 	const extensionsDir = path.join(tempRoot, "extensions");
 	const suiteOutdir = path.join(tempRoot, "suite");
 	const harnessExtensionDir = path.join(tempRoot, "harness-extension");
+	const fixtureRegistryPath = path.join(tempRoot, "fixture", "tasks.json");
 	const defaultManifestPath = path.join(
 		repoRoot,
 		"logs",
 		`installed-vsix-agent-status-proof-${Date.now()}.json`,
 	);
-	const manifestPath =
+	const baseManifestPath =
 		process.env["COMMAND_CENTRAL_PROOF_MANIFEST"] ?? defaultManifestPath;
 
 	try {
 		await mkdir(suiteOutdir, { recursive: true });
 		await mkdir(extensionsDir, { recursive: true });
-		await mkdir(path.dirname(manifestPath), { recursive: true });
+		await mkdir(path.dirname(baseManifestPath), { recursive: true });
+		await mkdir(path.dirname(fixtureRegistryPath), { recursive: true });
 		await createTestWorkspace(workspaceDir);
-		await writeUserSettings(userDataDir, registryPath);
 		await createHarnessExtension(harnessExtensionDir);
+
+		const sentinel = buildSentinelFixtureRegistry(new Date().toISOString());
+		await writeFile(
+			fixtureRegistryPath,
+			JSON.stringify(sentinel.registry, null, 2),
+		);
+		// Hermetic by default: the legacy phase reads the generated sentinel
+		// fixture. Pointing at a real registry (e.g. for a live dogfood proof)
+		// now requires the explicit env override.
+		const registryPath =
+			process.env["COMMAND_CENTRAL_TASK_REGISTRY_PATH"] ?? fixtureRegistryPath;
+		const legacyRegistryIds = readRegistryTaskIdsSafe(registryPath);
+		const realRegistryIds = [
+			...new Set(
+				globalLauncherRegistryPaths().flatMap((registry) =>
+					readRegistryTaskIdsSafe(registry),
+				),
+			),
+		];
+		// Ids in the registry deliberately injected for the legacy phase are
+		// expected there, never forbidden.
+		const quarantineForbiddenIds = [
+			...new Set([...realRegistryIds, ...sentinel.taskIds]),
+		];
+		const legacyForbiddenIds = realRegistryIds.filter(
+			(id) => !legacyRegistryIds.includes(id),
+		);
+		const legacyExpectedIds =
+			registryPath === fixtureRegistryPath ? sentinel.taskIds : [];
+		if (realRegistryIds.length === 0) {
+			console.log(
+				"note: no real global launcher registry found — quarantine id sweep will be vacuous on this machine.",
+			);
+		}
+
 		const extensionTestsPath = await buildProofSuite(suiteOutdir);
 		const vscodeExecutablePath = requestedVersion
 			? await downloadAndUnzipVSCode(requestedVersion)
 			: await downloadAndUnzipVSCode();
 		await installVsix({ vsixPath, extensionsDir });
 
-		const start = performance.now();
-		await runTests({
-			vscodeExecutablePath,
-			extensionDevelopmentPath: harnessExtensionDir,
-			extensionTestsPath,
-			launchArgs: buildLaunchArgs({
-				workspaceDir,
-				userDataDir,
-				extensionsDir,
-			}),
-			extensionTestsEnv: {
-				CI: process.env["CI"] ?? "false",
-				COMMAND_CENTRAL_EXTENSION_ID: extensionId,
-				COMMAND_CENTRAL_EXPECTED_VERSION: manifestVersion,
-				COMMAND_CENTRAL_EXPECTED_VSIX_IDENTITY_KIND: expectedIdentityKind,
-				COMMAND_CENTRAL_EXPECTED_VSIX_SHA256: expectedVsixSha256,
-				COMMAND_CENTRAL_PROOF_COMMIT: gitCommit(repoRoot),
-				COMMAND_CENTRAL_PROOF_MANIFEST: manifestPath,
-				COMMAND_CENTRAL_PROOF_MODE: args.mode,
-				COMMAND_CENTRAL_REPO_ROOT: repoRoot,
-				COMMAND_CENTRAL_REQUIRED_TASK_ID:
-					process.env["COMMAND_CENTRAL_REQUIRED_TASK_ID"] ?? "",
-				COMMAND_CENTRAL_TASK_REGISTRY_PATH: registryPath,
-				COMMAND_CENTRAL_TEST_MODE: "1",
-				COMMAND_CENTRAL_VSIX_PROOF_PATH: vsixPath,
-				COMMAND_CENTRAL_VSIX_SHA256: vsixSha256,
-			},
-		});
+		const phases: InstalledVsixProofPhase[] =
+			args.phase === "both"
+				? ["quarantine-default", "legacy-fixture"]
+				: [args.phase];
 
-		const summary = await readManifestSummary(manifestPath);
+		const summaries: Array<
+			Awaited<ReturnType<typeof readManifestSummary>> & {
+				manifestPath: string;
+				durationMs: number;
+			}
+		> = [];
+		for (const phase of phases) {
+			const userDataDir = path.join(tempRoot, `user-data-${phase}`);
+			if (phase === "quarantine-default") {
+				await writeDefaultUserSettings(userDataDir);
+			} else {
+				await writeLegacyUserSettings(userDataDir, registryPath);
+			}
+			const manifestPath = phaseManifestPath(baseManifestPath, phase);
+			const phaseMode = phase === "quarantine-default" ? "passive" : args.mode;
+			const start = performance.now();
+			await runTests({
+				vscodeExecutablePath,
+				extensionDevelopmentPath: harnessExtensionDir,
+				extensionTestsPath,
+				launchArgs: buildLaunchArgs({
+					workspaceDir,
+					userDataDir,
+					extensionsDir,
+				}),
+				extensionTestsEnv: {
+					CI: process.env["CI"] ?? "false",
+					COMMAND_CENTRAL_EXTENSION_ID: extensionId,
+					COMMAND_CENTRAL_EXPECTED_VERSION: manifestVersion,
+					COMMAND_CENTRAL_EXPECTED_VSIX_IDENTITY_KIND: expectedIdentityKind,
+					COMMAND_CENTRAL_EXPECTED_VSIX_SHA256: expectedVsixSha256,
+					COMMAND_CENTRAL_EXPECTED_TASK_IDS: JSON.stringify(
+						phase === "legacy-fixture" ? legacyExpectedIds : [],
+					),
+					COMMAND_CENTRAL_FORBIDDEN_TASK_IDS: JSON.stringify(
+						phase === "quarantine-default"
+							? quarantineForbiddenIds
+							: legacyForbiddenIds,
+					),
+					COMMAND_CENTRAL_PROOF_COMMIT: gitCommit(repoRoot),
+					COMMAND_CENTRAL_PROOF_MANIFEST: manifestPath,
+					COMMAND_CENTRAL_PROOF_MODE: phaseMode,
+					COMMAND_CENTRAL_PROOF_PHASE: phase,
+					COMMAND_CENTRAL_REPO_ROOT: repoRoot,
+					COMMAND_CENTRAL_REQUIRED_TASK_ID:
+						phase === "legacy-fixture"
+							? (process.env["COMMAND_CENTRAL_REQUIRED_TASK_ID"] ?? "")
+							: "",
+					COMMAND_CENTRAL_TASK_REGISTRY_PATH: registryPath,
+					COMMAND_CENTRAL_TEST_MODE: "1",
+					COMMAND_CENTRAL_VSIX_PROOF_PATH: vsixPath,
+					COMMAND_CENTRAL_VSIX_SHA256: vsixSha256,
+					// Never let an operator shell's TASKS_FILE leak into the proof —
+					// the resolver honors it unconditionally.
+					TASKS_FILE: "",
+				},
+			});
+			summaries.push({
+				...(await readManifestSummary(manifestPath)),
+				manifestPath,
+				durationMs: performance.now() - start,
+			});
+		}
+
 		console.log("");
 		console.log("installed-vsix-agent-status-proof-ok");
-		console.log(`version: ${summary.installedVersion}`);
-		console.log(`task count: ${summary.taskCount}`);
-		console.log(`symphony view roots: ${summary.roots.join(" | ")}`);
-		console.log(`mode: ${summary.mode}`);
-		console.log(
-			`actions: ${summary.actionsPassed} passed / ${summary.actionsSkipped} skipped`,
-		);
-		console.log(`manifest: ${manifestPath}`);
-		console.log(`duration: ${formatDuration(performance.now() - start)}`);
+		for (const summary of summaries) {
+			const registrySummary = summary.launcherRegistry.agentStatus;
+			console.log("");
+			console.log(`phase: ${summary.phase}`);
+			console.log(`version: ${summary.installedVersion}`);
+			console.log(`task count: ${summary.taskCount}`);
+			console.log(
+				`launcher registry: ${registrySummary.launcherTaskCount} task(s) from [${registrySummary.resolvedFilePaths.join(", ") || "none"}]`,
+			);
+			console.log(`forbidden launcher hits: ${summary.forbiddenHits.length}`);
+			console.log(
+				`expected ids visible: ${Object.values(summary.expectedPresence).filter(Boolean).length}/${Object.keys(summary.expectedPresence).length}`,
+			);
+			console.log(`symphony view roots: ${summary.roots.join(" | ")}`);
+			console.log(`mode: ${summary.mode}`);
+			console.log(
+				`actions: ${summary.actionsPassed} passed / ${summary.actionsSkipped} skipped`,
+			);
+			console.log(`manifest: ${summary.manifestPath}`);
+			console.log(`duration: ${formatDuration(summary.durationMs)}`);
+		}
 	} finally {
 		if (!process.env["COMMAND_CENTRAL_KEEP_PROOF_TEMP"]) {
 			await rm(tempRoot, { recursive: true, force: true });

@@ -1,11 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import {
 	type AgentStatusProofTreeSnapshot,
+	collectLauncherAttributedTaskIdHits,
+	collectTaskIdPresence,
 	findSpecBoundaryViolations,
+	parseTaskIdListEnv,
 } from "./installed-vsix-proof-shared.js";
 import {
+	buildSentinelFixtureRegistry,
 	parseInstalledProofArgs,
+	phaseManifestPath,
+	readRegistryTaskIdsSafe,
 	resolveInstalledProofVsixPath,
 } from "./runInstalledVsixAgentStatusProof.js";
 
@@ -52,10 +60,77 @@ describe("installed VSIX Agent Status proof harness", () => {
 			]),
 		).toEqual({
 			mode: "live",
+			phase: "both",
 			vsixPath: "x.vsix",
 			expectedSha256: "abc123",
 			expectedIdentityKind: "temporary-proof-artifact",
 		});
+	});
+
+	test("runs both proof phases by default and accepts targeted phases", () => {
+		expect(parseInstalledProofArgs([]).phase).toBe("both");
+		expect(
+			parseInstalledProofArgs(["--phase", "quarantine-default"]).phase,
+		).toBe("quarantine-default");
+		expect(parseInstalledProofArgs(["--phase", "legacy-fixture"]).phase).toBe(
+			"legacy-fixture",
+		);
+		expect(() => parseInstalledProofArgs(["--phase", "everything"])).toThrow(
+			/quarantine-default, legacy-fixture, or both/,
+		);
+	});
+
+	test("derives per-phase manifest paths from the base manifest path", () => {
+		expect(phaseManifestPath("/logs/proof.json", "quarantine-default")).toBe(
+			"/logs/proof-quarantine.json",
+		);
+		expect(phaseManifestPath("/logs/proof.json", "legacy-fixture")).toBe(
+			"/logs/proof-legacy.json",
+		);
+		expect(phaseManifestPath("/logs/proof", "legacy-fixture")).toBe(
+			"/logs/proof-legacy.json",
+		);
+	});
+
+	test("sentinel fixture registry is version 2 with two distinct agent backends", () => {
+		const { registry, taskIds } = buildSentinelFixtureRegistry(
+			"2026-06-11T00:00:00.000Z",
+		);
+		expect(registry.version).toBe(2);
+		expect(taskIds).toHaveLength(2);
+		expect(Object.keys(registry.tasks)).toEqual(taskIds);
+		const backends = new Set(
+			Object.values(registry.tasks).map((task) => task["agent_backend"]),
+		);
+		expect(backends.size).toBe(2);
+		for (const [taskId, task] of Object.entries(registry.tasks)) {
+			expect(task["id"]).toBe(taskId);
+			expect(task["status"]).toBe("running");
+			expect(task["started_at"]).toBe("2026-06-11T00:00:00.000Z");
+		}
+	});
+
+	test("reads registry task ids safely from real files and tolerates absence", () => {
+		const tempDir = mkdtempSync(path.join(os.tmpdir(), "cc-proof-harness-"));
+		const registryPath = path.join(tempDir, "tasks.json");
+		writeFileSync(
+			registryPath,
+			JSON.stringify({ version: 2, tasks: { "id-a": {}, "id-b": {} } }),
+		);
+		expect(readRegistryTaskIdsSafe(registryPath)).toEqual(["id-a", "id-b"]);
+		expect(readRegistryTaskIdsSafe(path.join(tempDir, "missing.json"))).toEqual(
+			[],
+		);
+		writeFileSync(registryPath, "not-json");
+		expect(readRegistryTaskIdsSafe(registryPath)).toEqual([]);
+	});
+
+	test("parses task id list env values and rejects malformed payloads", () => {
+		expect(parseTaskIdListEnv(undefined)).toEqual([]);
+		expect(parseTaskIdListEnv("")).toEqual([]);
+		expect(parseTaskIdListEnv('["a", " b ", ""]')).toEqual(["a", "b"]);
+		expect(() => parseTaskIdListEnv('{"a": 1}')).toThrow(/JSON array/);
+		expect(() => parseTaskIdListEnv("[1]")).toThrow(/JSON array/);
 	});
 
 	test("rejects invalid expected VSIX identity kinds", () => {
@@ -80,6 +155,77 @@ describe("installed VSIX Agent Status proof harness", () => {
 		expect(source).toContain("published_release_match");
 		expect(source).not.toContain("vsix_matches_published_release");
 		expect(source).toContain('expectedIdentityKind === "published-prerelease"');
+	});
+
+	test("flags forbidden task ids only when they surface as launcher data", () => {
+		const snapshot: AgentStatusProofTreeSnapshot = {
+			rootChildrenCount: 2,
+			taskCount: 2,
+			roots: [
+				{
+					label: "Run Attempts · 2",
+					nodeKind: "codexRuns",
+					children: [
+						{
+							label: "cc-real-task — running",
+							nodeKind: "codexRun",
+							ownerFields: {
+								taskId: "cc-real-task",
+								source_owner: "launcher",
+							},
+						},
+						{
+							label: "cc-openclaw-task — running",
+							nodeKind: "codexRun",
+							ownerFields: {
+								taskId: "cc-openclaw-task",
+								source_owner: "openclaw",
+								source_authority: "openclaw",
+							},
+						},
+					],
+				},
+			],
+			selected: { requiredLabels: {} },
+		};
+
+		const hits = collectLauncherAttributedTaskIdHits(snapshot, [
+			"cc-real-task",
+			"cc-openclaw-task",
+		]);
+		expect(hits).toHaveLength(1);
+		expect(hits[0]?.taskId).toBe("cc-real-task");
+		expect(hits[0]?.reason).toBe("source_owner=launcher");
+
+		const presence = collectTaskIdPresence(snapshot, [
+			"cc-real-task",
+			"cc-openclaw-task",
+			"cc-absent-task",
+		]);
+		expect(presence).toEqual({
+			"cc-real-task": true,
+			"cc-openclaw-task": true,
+			"cc-absent-task": false,
+		});
+	});
+
+	test("flags launcher task nodes by node kind even without owner fields", () => {
+		const snapshot: AgentStatusProofTreeSnapshot = {
+			rootChildrenCount: 1,
+			taskCount: 1,
+			roots: [
+				{
+					label: "stale-launcher-lane",
+					nodeKind: "task",
+				},
+			],
+			selected: { requiredLabels: {} },
+		};
+		const hits = collectLauncherAttributedTaskIdHits(snapshot, [
+			"stale-launcher-lane",
+		]);
+		expect(hits).toHaveLength(1);
+		expect(hits[0]?.reason).toBe("nodeKind=task");
 	});
 
 	test("rejects scheduler-owned commands under the Symphony surface", () => {
