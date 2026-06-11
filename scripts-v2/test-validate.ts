@@ -42,6 +42,11 @@ async function discoverAllTests(): Promise<TestFile[]> {
 		if (file.startsWith("legacy/")) {
 			continue;
 		}
+		// Real VS Code host scenarios are bundled by test/integration/runTest.ts
+		// and executed through `just test-electron`, not the Bun unit partitions.
+		if (file.startsWith("integration/suite/")) {
+			continue;
+		}
 
 		const fullPath = `test/${file}`;
 		const category = file.split("/")[0] || "root";

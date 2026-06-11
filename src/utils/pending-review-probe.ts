@@ -66,7 +66,12 @@ export function readPendingReviewReceipt(
 		return cached.receipt;
 	}
 
-	const filePath = path.join(baseDir, `${taskId}.json`);
+	const filePath = resolveReceiptFilePath(baseDir, taskId);
+	if (!filePath) {
+		cache.set(cacheKey, { checkedAt: now, receipt: null });
+		return null;
+	}
+
 	const receipt = parseReceiptFile(taskId, filePath);
 	cache.set(cacheKey, { checkedAt: now, receipt });
 	return receipt;
@@ -112,6 +117,24 @@ function parseReceiptFile(
 		agentSummary: asString(parsed["agent_summary"]),
 		filesChanged: asStringArray(parsed["files_changed"]),
 	};
+}
+
+function resolveReceiptFilePath(
+	baseDir: string,
+	taskId: string,
+): string | null {
+	if (
+		taskId.length === 0 ||
+		taskId === "." ||
+		taskId === ".." ||
+		taskId.includes("/") ||
+		taskId.includes("\\") ||
+		taskId.includes("\0")
+	) {
+		return null;
+	}
+
+	return path.join(baseDir, `${taskId}.json`);
 }
 
 function asString(value: unknown): string | null {
