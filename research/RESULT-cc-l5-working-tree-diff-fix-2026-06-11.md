@@ -44,7 +44,7 @@ Release-prep gates after commit:
 
 - L5 blocker is resolved and committed.
 - Working tree was clean immediately after `26f8f96f`; running `just prerelease-gate` intentionally dirtied release provenance (`research/prerelease-gate/latest.json` plus the timestamped gate report), which was committed with this receipt in `6ab8d07c`.
-- `main` remains far ahead of `origin/main` (39 after committing this receipt/provenance). This is now the main process risk: the code is gated locally, but the hub/remote does not have the local release stack.
+- `main` remains far ahead of `origin/main`. This is now the main process risk: the code is gated locally, but the hub/remote does not have the local release stack.
 - No preview rc was cut in this lane. The next preview cut should be rc54 or later, not a mutation of rc53.
 
 ## Remaining next-release work
