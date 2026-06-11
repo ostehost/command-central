@@ -2746,8 +2746,18 @@ export class AgentStatusTreeProvider
 		}
 	}
 
+	/**
+	 * VS Code sums every view badge inside an activity bar container. The
+	 * Symphony view is a second AgentStatusTreeProvider over the same data,
+	 * so only the Agent Status provider may write badges — otherwise the
+	 * container icon shows a multiple of the real running count.
+	 */
+	private get ownsActivityBadge(): boolean {
+		return this.viewMode === "agentStatus";
+	}
+
 	private updateDockBadge(): void {
-		if (process.platform !== "darwin") return;
+		if (!this.ownsActivityBadge) return;
 		const runningCount = this.getTasks().filter(
 			(task) => task.status === "running",
 		).length;
@@ -2756,13 +2766,15 @@ export class AgentStatusTreeProvider
 		const badge: vscode.ViewBadge | undefined =
 			runningCount > 0 ? { value: runningCount, tooltip } : undefined;
 
-		const windowWithBadge = vscode.window as typeof vscode.window & {
-			badge?: vscode.ViewBadge;
-		};
-		try {
-			windowWithBadge.badge = badge;
-		} catch {
-			// Best-effort only.
+		if (process.platform === "darwin") {
+			const windowWithBadge = vscode.window as typeof vscode.window & {
+				badge?: vscode.ViewBadge;
+			};
+			try {
+				windowWithBadge.badge = badge;
+			} catch {
+				// Best-effort only.
+			}
 		}
 
 		if (this._agentStatusView) {
@@ -3244,18 +3256,7 @@ export class AgentStatusTreeProvider
 				.join(" · ");
 			const summaryTooltip = this.getSummaryTooltip(agentCounts, stuckCount);
 
-			if (groupedByProject && this._agentStatusView) {
-				this._agentStatusView.badge =
-					agentCounts.working > 0
-						? {
-								value: agentCounts.working,
-								tooltip:
-									agentCounts.working === 1
-										? "1 working agent"
-										: `${agentCounts.working} working agents`,
-							}
-						: undefined;
-			}
+			this.updateDockBadge();
 
 			const summaryNodes: AgentNode[] = groupedByProject
 				? []
@@ -4206,6 +4207,25 @@ export class AgentStatusTreeProvider
 		});
 	}
 
+	/**
+	 * A lane without a launcher-assigned visible_project_name is the canonical
+	 * checkout for its project; worktree lanes carry a path-derived visible
+	 * name and must not define the group's identity.
+	 */
+	private isCanonicalProjectLane(task: AgentTask): boolean {
+		return !task.visible_project_name?.trim();
+	}
+
+	private getProjectGroupDisplayName(task: AgentTask): string {
+		const projectId = task.project_id?.trim();
+		if (projectId) {
+			// Identity-keyed groups take the project's own name, never a
+			// per-lane worktree label like "command-central cc 002 ...".
+			return task.project_name?.trim() || projectId;
+		}
+		return getTaskDisplayProjectName(task);
+	}
+
 	private buildProjectNodes(
 		tasks: AgentTask[],
 		discoveredAgents: DiscoveredAgent[],
@@ -4217,22 +4237,45 @@ export class AgentStatusTreeProvider
 				projectDir: string;
 				tasks: AgentTask[];
 				discoveredAgents: DiscoveredAgent[];
+				hasCanonicalIdentity: boolean;
 			}
 		>();
 
+		// Dirs claimed by project_id lanes route worktree lanes, legacy
+		// no-id tasks, and discovered agents in the same checkout into one
+		// canonical group instead of one group per worktree path.
+		const dirToGroupKey = new Map<string, string>();
+		for (const task of tasks) {
+			const projectId = task.project_id?.trim();
+			if (!projectId || !task.project_dir) continue;
+			dirToGroupKey.set(task.project_dir, `id:${projectId}`);
+		}
+
 		for (const task of tasks) {
 			const projectDir = task.project_dir || task.project_name || "";
-			const projectName = getTaskDisplayProjectName(task);
-			const groupKey = projectDir ? `dir:${projectDir}` : `name:${projectName}`;
+			const projectId = task.project_id?.trim();
+			const groupKey =
+				(projectId ? `id:${projectId}` : undefined) ??
+				dirToGroupKey.get(projectDir) ??
+				(projectDir
+					? `dir:${projectDir}`
+					: `name:${getTaskDisplayProjectName(task)}`);
+			const isCanonical = this.isCanonicalProjectLane(task);
 			const existing = grouped.get(groupKey);
 			if (existing) {
 				existing.tasks.push(task);
+				if (isCanonical && !existing.hasCanonicalIdentity) {
+					existing.projectName = this.getProjectGroupDisplayName(task);
+					existing.projectDir = projectDir;
+					existing.hasCanonicalIdentity = true;
+				}
 			} else {
 				grouped.set(groupKey, {
-					projectName,
+					projectName: this.getProjectGroupDisplayName(task),
 					projectDir,
 					tasks: [task],
 					discoveredAgents: [],
+					hasCanonicalIdentity: isCanonical,
 				});
 			}
 		}
@@ -4240,7 +4283,10 @@ export class AgentStatusTreeProvider
 		for (const agent of discoveredAgents) {
 			const projectDir = this.getDiscoveredProjectDir(agent);
 			const projectName = this.getDiscoveredProjectName(agent);
-			const groupKey = projectDir ? `dir:${projectDir}` : `name:${projectName}`;
+			const groupKey =
+				dirToGroupKey.get(projectDir) ??
+				dirToGroupKey.get(agent.projectDir) ??
+				(projectDir ? `dir:${projectDir}` : `name:${projectName}`);
 			const existing = grouped.get(groupKey);
 			if (existing) {
 				existing.discoveredAgents.push(agent);
@@ -4250,6 +4296,7 @@ export class AgentStatusTreeProvider
 					projectDir,
 					tasks: [],
 					discoveredAgents: [agent],
+					hasCanonicalIdentity: false,
 				});
 			}
 		}
@@ -8632,14 +8679,16 @@ export class AgentStatusTreeProvider
 	dispose(): void {
 		this._onDidChangeTreeData.dispose();
 		this._onAgentEvent.dispose();
-		if (process.platform === "darwin") {
-			const windowWithBadge = vscode.window as typeof vscode.window & {
-				badge?: vscode.ViewBadge;
-			};
-			try {
-				windowWithBadge.badge = undefined;
-			} catch {
-				// Best-effort only.
+		if (this.ownsActivityBadge) {
+			if (process.platform === "darwin") {
+				const windowWithBadge = vscode.window as typeof vscode.window & {
+					badge?: vscode.ViewBadge;
+				};
+				try {
+					windowWithBadge.badge = undefined;
+				} catch {
+					// Best-effort only.
+				}
 			}
 			if (this._agentStatusView) {
 				this._agentStatusView.badge = undefined;
