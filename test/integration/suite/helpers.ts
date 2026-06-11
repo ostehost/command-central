@@ -12,6 +12,7 @@ export interface CommandCentralIntegrationSnapshot {
 	hasTerminalManager: boolean;
 	hasBinaryManager: boolean;
 	hasTestCountStatusBar: boolean;
+	infrastructureHealthStatusText: string | undefined;
 	activeProjectSlots: string[];
 }
 

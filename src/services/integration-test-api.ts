@@ -31,6 +31,8 @@ export interface CommandCentralIntegrationSnapshot {
 	hasTerminalManager: boolean;
 	hasBinaryManager: boolean;
 	hasTestCountStatusBar: boolean;
+	/** Current rendered text of the OpenClaw infrastructure health item. */
+	infrastructureHealthStatusText: string | undefined;
 	activeProjectSlots: string[];
 }
 
@@ -116,6 +118,7 @@ export interface IntegrationTestApiDeps {
 	hasTerminalManager(): boolean;
 	hasBinaryManager(): boolean;
 	hasTestCountStatusBar(): boolean;
+	getInfrastructureHealthStatusText(): string | undefined;
 	getActiveProjectSlots(): string[];
 	deactivate(): Promise<void>;
 	clearIntegrationTestContextSubscriptions(): void;
@@ -418,6 +421,7 @@ export function getIntegrationSnapshot(
 		hasTerminalManager: deps.hasTerminalManager(),
 		hasBinaryManager: deps.hasBinaryManager(),
 		hasTestCountStatusBar: deps.hasTestCountStatusBar(),
+		infrastructureHealthStatusText: deps.getInfrastructureHealthStatusText(),
 		activeProjectSlots: deps.getActiveProjectSlots(),
 	};
 }

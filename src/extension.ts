@@ -71,6 +71,10 @@ import { SessionStore } from "./services/session-store.js";
 import { TelemetryService } from "./services/telemetry-service.js";
 import type { OpenClawTask } from "./types/openclaw-task-types.js";
 import { GroupingViewManager } from "./ui/grouping-view-manager.js";
+import {
+	countAgentStatuses,
+	formatCountSummary,
+} from "./utils/agent-counts.js";
 import { migrateLegacyAgentStatusSettings } from "./utils/agent-status-settings-migration.js";
 import { resolveGatewayHealthSource } from "./utils/openclaw-gateway-health.js";
 import { buildOsteSpawnCommand } from "./utils/shell-command.js";
@@ -88,6 +92,7 @@ let binaryManager: BinaryManager | undefined;
 let testCountStatusBar:
 	| import("./services/test-count-status-bar.js").TestCountStatusBar
 	| undefined;
+let infrastructureHealthStatusBar: InfrastructureHealthStatusBar | undefined;
 let mainLogger: LoggerService;
 let gitSortLogger: LoggerService;
 let integrationTestContext: vscode.ExtensionContext | undefined;
@@ -542,10 +547,23 @@ export async function activate(
 		// nodes (gateway.mode "remote") probe the hub's readyz instead of
 		// 127.0.0.1, which would report a false DOWN while the hub is alive.
 		const gatewayHealthSource = resolveGatewayHealthSource();
-		const infrastructureHealthStatusBar = new InfrastructureHealthStatusBar({
+		infrastructureHealthStatusBar = new InfrastructureHealthStatusBar({
 			readyzUrl: gatewayHealthSource.readyzUrl,
 			gatewayScope: gatewayHealthSource.scope,
 			gatewaySourceDetail: gatewayHealthSource.detail,
+			// Same counts the AgentStatusBar renders ("1 working · 3 done") —
+			// running tasks keep a failed gateway probe from claiming DOWN.
+			taskActivityProbe: () => {
+				const tasks = agentStatusProvider?.getTasks() ?? [];
+				if (tasks.length === 0) return null;
+				const counts = countAgentStatuses(tasks, {
+					reviewedTaskIds: agentStatusProvider?.getReviewedTaskIds(),
+				});
+				return {
+					workingCount: counts.working,
+					summary: formatCountSummary(counts, { includeAttention: true }),
+				};
+			},
 		});
 		context.subscriptions.push(infrastructureHealthStatusBar);
 
@@ -1949,6 +1967,8 @@ export async function activate(
 				hasTerminalManager: () => terminalManager !== undefined,
 				hasBinaryManager: () => binaryManager !== undefined,
 				hasTestCountStatusBar: () => testCountStatusBar !== undefined,
+				getInfrastructureHealthStatusText: () =>
+					infrastructureHealthStatusBar?.getStatusText(),
 				getActiveProjectSlots: () => [
 					...(projectViewManager?.getAllWorkspaceDisplayNames().keys() ?? []),
 				],
@@ -2019,6 +2039,8 @@ export async function deactivate(): Promise<void> {
 	terminalManager = undefined;
 	binaryManager = undefined;
 	testCountStatusBar = undefined;
+	// Disposal handled by context.subscriptions; clear the test-API reference
+	infrastructureHealthStatusBar = undefined;
 
 	mainLogger?.info("Extension deactivated");
 

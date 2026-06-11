@@ -15,8 +15,9 @@ const DEFAULT_HEALTH_SUMMARY_PATH = path.join(
 const DEFAULT_COMMAND = "commandCentral.openInfrastructureDashboard";
 const POLL_INTERVAL_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 2_500;
+const SUMMARY_FRESHNESS_MS = 10 * 60_000;
 
-type DisplayState = "ok" | "warn" | "down";
+type DisplayState = "ok" | "warn" | "degraded" | "stale" | "down";
 type SummarySeverity = "ok" | "warn" | "critical" | null;
 type FetchLike = (
 	input: string | URL | Request,
@@ -40,6 +41,13 @@ interface HealthSummaryInfo {
 	channelSummaries: Partial<Record<"discord" | "bluebubbles", string>>;
 }
 
+interface TaskServiceActivity {
+	/** Number of tasks currently running — live evidence the task layer works. */
+	workingCount: number;
+	/** Glanceable summary matching the agent status bar, e.g. "1 working · 3 done". */
+	summary?: string;
+}
+
 interface InfrastructureHealthStatusBarOptions {
 	command?: string;
 	readyzUrl?: string;
@@ -55,6 +63,15 @@ interface InfrastructureHealthStatusBarOptions {
 	healthSummaryPath?: string;
 	pollIntervalMs?: number;
 	requestTimeoutMs?: number;
+	/**
+	 * Live task-service evidence, read at refresh time. Wire this to the same
+	 * counts the agent status bar renders so the two items can never
+	 * contradict each other (red DOWN next to "1 working · 3 done").
+	 */
+	taskActivityProbe?: () => TaskServiceActivity | null;
+	/** Max age before the health-summary snapshot stops driving state. */
+	summaryFreshnessMs?: number;
+	nowImpl?: () => number;
 	fetchImpl?: FetchLike;
 	readFile?: (filePath: string) => Promise<string>;
 	setIntervalImpl?: SetIntervalLike;
@@ -128,10 +145,31 @@ function formatChannelSummary(channel: unknown): string | undefined {
 	return parts.length > 0 ? parts.join(" — ") : undefined;
 }
 
+function formatTaskServiceLine(
+	activity: TaskServiceActivity | null,
+): string | undefined {
+	if (!activity) return undefined;
+	if (activity.workingCount > 0) {
+		return `alive — ${activity.summary ?? `${activity.workingCount} working`}`;
+	}
+	return activity.summary
+		? `no working tasks — ${activity.summary}`
+		: "no working tasks";
+}
+
+function formatAge(ageMs: number): string {
+	const minutes = Math.round(ageMs / 60_000);
+	if (minutes < 60) return `${minutes}m`;
+	return `${Math.round(minutes / 60)}h`;
+}
+
 function buildTooltip(params: {
 	displayState: DisplayState;
 	readiness: GatewayReadiness;
 	summary: HealthSummaryInfo | null;
+	summaryStale: boolean;
+	summaryAgeMs: number | undefined;
+	taskActivity: TaskServiceActivity | null;
 	readyzUrl: string;
 	healthSummaryPath: string;
 	gatewayScope: "local" | "remote";
@@ -144,6 +182,11 @@ function buildTooltip(params: {
 		"",
 		`- ${gatewayLabel}: ${formatGatewayLine(params.readiness)}`,
 	];
+
+	const taskServiceLine = formatTaskServiceLine(params.taskActivity);
+	if (taskServiceLine) {
+		lines.push(`- Task service: ${taskServiceLine}`);
+	}
 
 	if (params.gatewaySourceDetail) {
 		lines.push(`- Health source: ${params.gatewaySourceDetail}`);
@@ -168,7 +211,11 @@ function buildTooltip(params: {
 	}
 
 	if (params.summary?.generatedAt) {
-		lines.push(`- Snapshot: ${params.summary.generatedAt}`);
+		const staleNote =
+			params.summaryStale && params.summaryAgeMs !== undefined
+				? ` (stale — ${formatAge(params.summaryAgeMs)} old, not trusted for state)`
+				: "";
+		lines.push(`- Snapshot: ${params.summary.generatedAt}${staleNote}`);
 	} else {
 		lines.push("- Snapshot: unavailable (using readiness only)");
 	}
@@ -193,6 +240,9 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 	private readonly gatewaySourceDetail: string | undefined;
 	private readonly healthSummaryPath: string;
 	private readonly requestTimeoutMs: number;
+	private readonly taskActivityProbe: (() => TaskServiceActivity | null) | null;
+	private readonly summaryFreshnessMs: number;
+	private readonly nowImpl: () => number;
 	private readonly clearIntervalImpl: ClearIntervalLike;
 	private pollTimer: TimerHandle | undefined;
 	private refreshPromise: Promise<void> | null = null;
@@ -207,6 +257,10 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 		this.healthSummaryPath =
 			options.healthSummaryPath ?? DEFAULT_HEALTH_SUMMARY_PATH;
 		this.requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
+		this.taskActivityProbe = options.taskActivityProbe ?? null;
+		this.summaryFreshnessMs =
+			options.summaryFreshnessMs ?? SUMMARY_FRESHNESS_MS;
+		this.nowImpl = options.nowImpl ?? Date.now;
 		this.clearIntervalImpl =
 			options.clearIntervalImpl ?? globalThis.clearInterval;
 
@@ -228,6 +282,11 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 		}, pollIntervalMs);
 	}
 
+	/** Current rendered text, exposed for the integration-test API. */
+	getStatusText(): string {
+		return this.statusBarItem.text;
+	}
+
 	async refresh(): Promise<void> {
 		if (this.refreshPromise) return this.refreshPromise;
 
@@ -237,7 +296,7 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 					this.readGatewayReadiness(),
 					this.readHealthSummary(),
 				]);
-				this.applyState(readiness, summary);
+				this.applyState(readiness, summary, this.readTaskActivity());
 			} finally {
 				this.refreshPromise = null;
 			}
@@ -256,8 +315,17 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 	private applyState(
 		readiness: GatewayReadiness,
 		summary: HealthSummaryInfo | null,
+		taskActivity: TaskServiceActivity | null,
 	): void {
-		const displayState = this.resolveDisplayState(readiness, summary);
+		const summaryAgeMs = this.summaryAgeMs(summary);
+		const summaryStale =
+			summaryAgeMs !== undefined && summaryAgeMs > this.summaryFreshnessMs;
+		const displayState = this.resolveDisplayState(
+			readiness,
+			summary,
+			summaryStale,
+			taskActivity,
+		);
 		// On nodes the probe target is the hub gateway — label the glanceable
 		// text so OK/DOWN is never read as a claim about a local gateway.
 		const scopeSuffix = this.gatewayScope === "remote" ? " (hub)" : "";
@@ -269,6 +337,18 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 				break;
 			case "warn":
 				this.statusBarItem.text = `$(warning) OpenClaw WARN${scopeSuffix}`;
+				this.statusBarItem.backgroundColor = new vscode.ThemeColor(
+					"statusBarItem.warningBackground",
+				);
+				break;
+			case "degraded":
+				this.statusBarItem.text = `$(warning) OpenClaw DEGRADED${scopeSuffix}`;
+				this.statusBarItem.backgroundColor = new vscode.ThemeColor(
+					"statusBarItem.warningBackground",
+				);
+				break;
+			case "stale":
+				this.statusBarItem.text = `$(history) OpenClaw STALE${scopeSuffix}`;
 				this.statusBarItem.backgroundColor = new vscode.ThemeColor(
 					"statusBarItem.warningBackground",
 				);
@@ -285,6 +365,9 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 			displayState,
 			readiness,
 			summary,
+			summaryStale,
+			summaryAgeMs,
+			taskActivity,
 			readyzUrl: this.readyzUrl,
 			healthSummaryPath: this.healthSummaryPath,
 			gatewayScope: this.gatewayScope,
@@ -293,17 +376,67 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 		this.statusBarItem.show();
 	}
 
+	/**
+	 * Weighs three independent evidence channels instead of collapsing every
+	 * failure into DOWN:
+	 *
+	 * - gateway probe: live reachability (already retried once on failure)
+	 * - health summary: canonical but only while fresh — a stale snapshot
+	 *   must not drive the headline state in either direction
+	 * - task activity: running tasks prove the task layer is alive, so a
+	 *   failing gateway probe is at most a partial outage (DEGRADED)
+	 *
+	 * DOWN is reserved for: gateway unreachable/not-ready AND no fresh
+	 * evidence of life from any other channel.
+	 */
 	private resolveDisplayState(
 		readiness: GatewayReadiness,
 		summary: HealthSummaryInfo | null,
+		summaryStale: boolean,
+		taskActivity: TaskServiceActivity | null,
 	): DisplayState {
-		if (!readiness.reachable || !readiness.ready) return "down";
-		if (summary?.overallSeverity === "critical") return "down";
-		if (summary?.overallSeverity === "warn") return "warn";
-		return "ok";
+		const gatewayUp = readiness.reachable && readiness.ready;
+		const severity = summary?.overallSeverity ?? null;
+
+		if (gatewayUp) {
+			if (severity === "critical") return summaryStale ? "stale" : "degraded";
+			if (severity === "warn") return summaryStale ? "stale" : "warn";
+			return "ok";
+		}
+
+		if ((taskActivity?.workingCount ?? 0) > 0) return "degraded";
+		if (!summaryStale && (severity === "ok" || severity === "warn")) {
+			return "degraded";
+		}
+		return "down";
+	}
+
+	private summaryAgeMs(summary: HealthSummaryInfo | null): number | undefined {
+		if (!summary?.generatedAt) return undefined;
+		const generated = Date.parse(summary.generatedAt);
+		if (Number.isNaN(generated)) return undefined;
+		return this.nowImpl() - generated;
+	}
+
+	private readTaskActivity(): TaskServiceActivity | null {
+		if (!this.taskActivityProbe) return null;
+		try {
+			return this.taskActivityProbe();
+		} catch {
+			return null;
+		}
 	}
 
 	private async readGatewayReadiness(): Promise<GatewayReadiness> {
+		const first = await this.probeReadyzOnce();
+		// One immediate retry absorbs transient network blips (probe timeout on
+		// a saturated host, hub restart mid-poll) that previously flipped the
+		// bar straight to DOWN. A reachable answer is authoritative either way.
+		if (first.reachable) return first;
+		return this.probeReadyzOnce();
+	}
+
+	private async probeReadyzOnce(): Promise<GatewayReadiness> {
 		const controller = new AbortController();
 		const timeoutId = globalThis.setTimeout(() => {
 			controller.abort();
