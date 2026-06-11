@@ -166,6 +166,9 @@ async function writeUserSettings(
 		path.join(settingsDir, "settings.json"),
 		JSON.stringify(
 			{
+				// Launcher registries are quarantined by default; the proof suite
+				// injects its temp fixture registry through the legacy escape hatch.
+				"commandCentral.legacyLauncherTasks.enabled": true,
 				"commandCentral.agentTasksFile": taskRegistryPath,
 				"commandCentral.agentTasksFiles": [],
 			},

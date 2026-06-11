@@ -1088,6 +1088,12 @@ export class AgentStatusTreeProvider
 					void this.reload();
 				}
 				if (
+					e.affectsConfiguration("commandCentral.legacyLauncherTasks.enabled")
+				) {
+					this.setupFileWatch();
+					void this.reload();
+				}
+				if (
 					e.affectsConfiguration("commandCentral.agentStatus.groupByProject") ||
 					e.affectsConfiguration(
 						"commandCentral.agentStatus.completedTaskLimit",
@@ -1379,10 +1385,13 @@ export class AgentStatusTreeProvider
 					(value): value is string => typeof value === "string",
 				)
 			: [];
+		const legacyLauncherEnabled =
+			config.get<boolean>("legacyLauncherTasks.enabled", false) === true;
 		return resolveTasksFilePaths(
 			configValue,
 			additionalConfigValues,
 			vscode.workspace.workspaceFolders,
+			{ legacyLauncherEnabled },
 		);
 	}
 

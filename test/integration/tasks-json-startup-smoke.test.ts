@@ -75,12 +75,28 @@ describe("tasks.json startup smoke", () => {
 		fs.rmSync(tmpDir, { recursive: true, force: true });
 	});
 
-	async function createProvider(tasksFile: string): Promise<ProviderInstance> {
+	async function createProvider(
+		tasksFile: string,
+		options: {
+			legacyLauncherEnabled?: boolean;
+			workspaceFolders?: Array<{
+				uri: { fsPath: string };
+				name: string;
+				index: number;
+			}>;
+		} = {},
+	): Promise<ProviderInstance> {
 		const vscodeMock = setupVSCodeMock();
+		if (options.workspaceFolders) {
+			vscodeMock.workspace.workspaceFolders = options.workspaceFolders;
+		}
 		vscodeMock.workspace.getConfiguration = mock((_section?: string) => ({
 			get: mock((key: string, defaultValue?: unknown) => {
 				if (key === "agentTasksFile") {
 					return tasksFile;
+				}
+				if (key === "legacyLauncherTasks.enabled") {
+					return options.legacyLauncherEnabled ?? false;
 				}
 				if (key === "discovery.enabled") {
 					return false;
@@ -98,9 +114,25 @@ describe("tasks.json startup smoke", () => {
 		return provider;
 	}
 
+	/** Write a launcher-format registry with a single poisoned stale task. */
+	function writeStaleRegistry(registryPath: string): void {
+		fs.mkdirSync(path.dirname(registryPath), { recursive: true });
+		fs.writeFileSync(
+			registryPath,
+			JSON.stringify({
+				version: 2,
+				tasks: {
+					"stale-launcher-task": createTask("stale-launcher-task"),
+				},
+			}),
+		);
+	}
+
 	test("starts with missing tasks.json without crashing", async () => {
 		const tasksFile = path.join(tmpDir, "tasks.json");
-		const treeProvider = await createProvider(tasksFile);
+		const treeProvider = await createProvider(tasksFile, {
+			legacyLauncherEnabled: true,
+		});
 
 		expect(treeProvider.getTasks()).toEqual([]);
 		expect(treeProvider.getChildren()).toEqual(
@@ -112,7 +144,9 @@ describe("tasks.json startup smoke", () => {
 		const tasksFile = path.join(tmpDir, "tasks.json");
 		fs.writeFileSync(tasksFile, "");
 
-		const treeProvider = await createProvider(tasksFile);
+		const treeProvider = await createProvider(tasksFile, {
+			legacyLauncherEnabled: true,
+		});
 
 		expect(treeProvider.getTasks()).toEqual([]);
 		expect(treeProvider.getChildren()).toEqual(
@@ -129,7 +163,9 @@ describe("tasks.json startup smoke", () => {
 		console.warn = warnMock;
 
 		try {
-			const treeProvider = await createProvider(tasksFile);
+			const treeProvider = await createProvider(tasksFile, {
+				legacyLauncherEnabled: true,
+			});
 			expect(treeProvider.getTasks()).toEqual([]);
 			expect(treeProvider.getChildren()).toEqual(
 				expectedEmptyAgentStatusChildren(),
@@ -155,7 +191,9 @@ describe("tasks.json startup smoke", () => {
 			}),
 		);
 
-		const treeProvider = await createProvider(tasksFile);
+		const treeProvider = await createProvider(tasksFile, {
+			legacyLauncherEnabled: true,
+		});
 
 		expect(treeProvider.getTasks()).toHaveLength(1);
 		expect(treeProvider.getTasks()[0]?.id).toBe("task-1");
@@ -186,9 +224,68 @@ describe("tasks.json startup smoke", () => {
 			}),
 		);
 
-		const treeProvider = await createProvider(tasksFile);
+		const treeProvider = await createProvider(tasksFile, {
+			legacyLauncherEnabled: true,
+		});
 
 		expect(treeProvider.getTasks()).toHaveLength(1);
 		expect(treeProvider.getTasks()[0]?.id).toBe("legacy-task");
+	});
+
+	// ── Launcher quarantine (legacy default OFF) ─────────────────────────
+	// Regression guard for the contamination class where a test (or default
+	// dogfood session) silently ingested the operator's real global
+	// ~/.config/ghostty-launcher/tasks.json registry.
+
+	test("does NOT ingest explicit agentTasksFile when legacy launcher ingestion is off (default)", async () => {
+		const tasksFile = path.join(tmpDir, "tasks.json");
+		writeStaleRegistry(tasksFile);
+
+		const treeProvider = await createProvider(tasksFile);
+
+		expect(treeProvider.getTasks()).toEqual([]);
+		expect(treeProvider.getChildren()).toEqual(
+			expectedEmptyAgentStatusChildren(),
+		);
+	});
+
+	test("does NOT ingest global or workspace launcher registries by default", async () => {
+		// Workspace folder with an implicit .ghostty-launcher/tasks.json. On a
+		// dev machine the operator's real global ~/.config/ghostty-launcher
+		// registry may exist too; with legacy off, the resolver must return no
+		// paths at all, so neither source can leak into Agent Status.
+		const workspaceDir = path.join(tmpDir, "workspace");
+		writeStaleRegistry(
+			path.join(workspaceDir, ".ghostty-launcher", "tasks.json"),
+		);
+
+		const treeProvider = await createProvider("", {
+			workspaceFolders: [
+				{ uri: { fsPath: workspaceDir }, name: "workspace", index: 0 },
+			],
+		});
+
+		expect(treeProvider.filePaths).toEqual([]);
+		expect(treeProvider.getTasks()).toEqual([]);
+		expect(treeProvider.getChildren()).toEqual(
+			expectedEmptyAgentStatusChildren(),
+		);
+	});
+
+	test("legacy escape hatch re-enables implicit workspace registry ingestion", async () => {
+		const workspaceDir = path.join(tmpDir, "workspace");
+		writeStaleRegistry(
+			path.join(workspaceDir, ".ghostty-launcher", "tasks.json"),
+		);
+
+		const treeProvider = await createProvider("", {
+			legacyLauncherEnabled: true,
+			workspaceFolders: [
+				{ uri: { fsPath: workspaceDir }, name: "workspace", index: 0 },
+			],
+		});
+
+		expect(treeProvider.getTasks()).toHaveLength(1);
+		expect(treeProvider.getTasks()[0]?.id).toBe("stale-launcher-task");
 	});
 });

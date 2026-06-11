@@ -927,3 +927,92 @@ describe("AgentRegistry", () => {
 		});
 	});
 });
+
+// ── Launcher tasks quarantine (default readLauncherTasks source) ─────
+// The default launcherTasksProvider must never read launcher tasks.json
+// registries unless the legacy diagnostics escape hatch is enabled.
+
+describe("AgentRegistry launcher tasks quarantine", () => {
+	const realOs = require("node:os") as typeof import("node:os");
+	const realPath = require("node:path") as typeof import("node:path");
+	let quarantineRegistry: AgentRegistry | null = null;
+	let tmpDir = "";
+	let fixtureTasksFile = "";
+	let originalGetConfiguration: unknown;
+	let originalTasksFileEnv: string | undefined;
+
+	function setLauncherConfig(options: {
+		tasksFile: string;
+		legacyEnabled: boolean;
+	}): void {
+		const runtimeVscode = require("vscode") as typeof import("vscode");
+		originalGetConfiguration ??= runtimeVscode.workspace.getConfiguration;
+		runtimeVscode.workspace.getConfiguration = ((_section?: string) => ({
+			get: (key: string, defaultValue?: unknown) => {
+				if (key === "agentTasksFile") return options.tasksFile;
+				if (key === "legacyLauncherTasks.enabled") return options.legacyEnabled;
+				return defaultValue;
+			},
+			update: () => Promise.resolve(),
+			inspect: () => undefined,
+			has: () => true,
+		})) as typeof runtimeVscode.workspace.getConfiguration;
+	}
+
+	function readDefaultLauncherTasks(target: AgentRegistry): unknown[] {
+		return (
+			target as unknown as { launcherTasksProvider: () => unknown[] }
+		).launcherTasksProvider();
+	}
+
+	beforeEach(() => {
+		originalTasksFileEnv = process.env["TASKS_FILE"];
+		delete process.env["TASKS_FILE"];
+		tmpDir = realFs.mkdtempSync(
+			realPath.join(realOs.tmpdir(), "cc-launcher-quarantine-"),
+		);
+		fixtureTasksFile = realPath.join(tmpDir, "tasks.json");
+		realFs.writeFileSync(
+			fixtureTasksFile,
+			JSON.stringify({
+				version: 2,
+				tasks: { "fixture-task": createMockTask({ id: "fixture-task" }) },
+			}),
+		);
+	});
+
+	afterEach(() => {
+		quarantineRegistry?.dispose();
+		quarantineRegistry = null;
+		if (originalGetConfiguration) {
+			const runtimeVscode = require("vscode") as typeof import("vscode");
+			runtimeVscode.workspace.getConfiguration =
+				originalGetConfiguration as typeof runtimeVscode.workspace.getConfiguration;
+			originalGetConfiguration = undefined;
+		}
+		if (originalTasksFileEnv === undefined) {
+			delete process.env["TASKS_FILE"];
+		} else {
+			process.env["TASKS_FILE"] = originalTasksFileEnv;
+		}
+		realFs.rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	test("default source returns no launcher tasks when legacy is off (default)", () => {
+		setLauncherConfig({ tasksFile: fixtureTasksFile, legacyEnabled: false });
+		quarantineRegistry = new AgentRegistry("/tmp/test-sessions");
+
+		expect(readDefaultLauncherTasks(quarantineRegistry)).toEqual([]);
+	});
+
+	test("default source reads the configured registry when legacy is enabled", () => {
+		setLauncherConfig({ tasksFile: fixtureTasksFile, legacyEnabled: true });
+		quarantineRegistry = new AgentRegistry("/tmp/test-sessions");
+
+		const tasks = readDefaultLauncherTasks(quarantineRegistry) as Array<{
+			id?: string;
+		}>;
+		expect(tasks).toHaveLength(1);
+		expect(tasks[0]?.id).toBe("fixture-task");
+	});
+});

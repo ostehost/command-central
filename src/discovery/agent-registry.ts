@@ -464,7 +464,12 @@ export class AgentRegistry implements vscode.Disposable {
 	private readLauncherTasks(): AgentTask[] {
 		const config = vscode.workspace.getConfiguration("commandCentral");
 		const configuredPath = config.get<string>("agentTasksFile", "");
-		const tasksFilePath = this.resolveLauncherTasksFile(configuredPath);
+		const legacyLauncherEnabled =
+			config.get<boolean>("legacyLauncherTasks.enabled", false) === true;
+		const tasksFilePath = this.resolveLauncherTasksFile(
+			configuredPath,
+			legacyLauncherEnabled,
+		);
 		if (!tasksFilePath) return [];
 
 		try {
@@ -479,10 +484,14 @@ export class AgentRegistry implements vscode.Disposable {
 		}
 	}
 
-	private resolveLauncherTasksFile(configuredPath: string): string | null {
+	private resolveLauncherTasksFile(
+		configuredPath: string,
+		legacyLauncherEnabled: boolean,
+	): string | null {
 		return resolveTasksFilePath(
 			configuredPath,
 			vscode.workspace.workspaceFolders,
+			{ legacyLauncherEnabled },
 		);
 	}
 }
