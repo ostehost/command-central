@@ -43,12 +43,12 @@ Release-prep gates after commit:
 ## Current release posture
 
 - L5 blocker is resolved and committed.
-- Working tree was clean immediately after `26f8f96f`; running `just prerelease-gate` intentionally dirtied release provenance (`research/prerelease-gate/latest.json` plus the timestamped gate report).
-- `main` remains far ahead of `origin/main` (38 before committing this receipt/provenance). This is now the main process risk: the code is gated locally, but the hub/remote does not have the local release stack.
+- Working tree was clean immediately after `26f8f96f`; running `just prerelease-gate` intentionally dirtied release provenance (`research/prerelease-gate/latest.json` plus the timestamped gate report), which was committed with this receipt in `6ab8d07c`.
+- `main` remains far ahead of `origin/main` (39 after committing this receipt/provenance). This is now the main process risk: the code is gated locally, but the hub/remote does not have the local release stack.
 - No preview rc was cut in this lane. The next preview cut should be rc54 or later, not a mutation of rc53.
 
 ## Remaining next-release work
 
-- Commit this receipt and the prerelease-gate provenance.
-- Cut the next preview only after deciding to move the large local stack forward.
+- Decide whether to push the large local `main` stack before cutting the next preview.
+- Cut the next preview only after deciding to move the local stack forward.
 - After the next VSIX exists, install it and run `just verify-vscode-consumption` plus `just test-installed-vsix-agent-status`; rc53 cannot prove this fix because it predates `26f8f96f`.
