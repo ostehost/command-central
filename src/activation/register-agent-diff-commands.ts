@@ -207,6 +207,7 @@ export function registerAgentDiffCommands(): vscode.Disposable[] {
 						`Diff: ${path.basename(projectDir)}`,
 						"No changes found for this agent.",
 						sinceRef,
+						"running",
 					);
 					return;
 				}
@@ -242,18 +243,25 @@ export function registerAgentDiffCommands(): vscode.Disposable[] {
 					}
 				}
 
+				const isRunningTask = task.status === "running";
 				const endRef =
 					task.end_commit && task.end_commit !== "unknown"
 						? task.end_commit
-						: "HEAD";
+						: undefined;
+				if (!isRunningTask && !endRef) {
+					vscode.window.showInformationMessage(
+						"No bounded diff is available for this task.",
+					);
+					return;
+				}
 				await showGitDiffAsFilePicker(
 					task.project_dir,
-					[`${sinceRef}..${endRef}`],
+					isRunningTask ? [sinceRef] : [`${sinceRef}..${endRef}`],
 					`Diff: ${task.id}`,
 					"No changes found for this agent.",
 					task.start_sha ?? sinceRef,
 					task.status,
-					task.end_commit ?? undefined,
+					isRunningTask ? undefined : endRef,
 				);
 			},
 		),
@@ -320,14 +328,13 @@ export function registerAgentDiffCommands(): vscode.Disposable[] {
 				const projectName =
 					node.projectName || path.basename(projectDir) || projectDir;
 
-				const beforeRef =
-					node.taskStatus === "running"
-						? "HEAD"
-						: (node.startCommit ?? "HEAD~1");
-				const afterRef =
-					node.taskStatus === "running" ? "Working Tree" : node.endCommit;
+				const isWorkingTreeDiff = node.taskStatus === "running";
+				const beforeRef = isWorkingTreeDiff
+					? (node.startCommit ?? "HEAD")
+					: (node.startCommit ?? "HEAD~1");
+				const afterRef = isWorkingTreeDiff ? "Working Tree" : node.endCommit;
 
-				if (node.taskStatus !== "running" && !afterRef) {
+				if (!isWorkingTreeDiff && !afterRef) {
 					vscode.window.showInformationMessage(
 						"No bounded diff is available for this task.",
 					);
@@ -365,12 +372,11 @@ export function registerAgentDiffCommands(): vscode.Disposable[] {
 						beforeRef,
 						relativePath,
 					);
-					const afterFile: GitFileReadResult =
-						node.taskStatus === "running"
-							? await readWorkingTreeFile(absolutePath)
-							: afterRef
-								? await readFileAtRef(projectDir, afterRef, relativePath)
-								: { kind: "missing" };
+					const afterFile: GitFileReadResult = isWorkingTreeDiff
+						? await readWorkingTreeFile(absolutePath)
+						: afterRef
+							? await readFileAtRef(projectDir, afterRef, relativePath)
+							: { kind: "missing" };
 
 					if (beforeFile.kind === "binary" || afterFile.kind === "binary") {
 						const opened = await openFileIfPresent();
@@ -400,7 +406,7 @@ export function registerAgentDiffCommands(): vscode.Disposable[] {
 						ref:
 							afterFile.kind === "missing"
 								? "empty"
-								: node.taskStatus === "running"
+								: isWorkingTreeDiff
 									? "working-tree"
 									: (afterRef ?? "HEAD"),
 						relativePath,

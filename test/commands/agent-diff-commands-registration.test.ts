@@ -258,7 +258,7 @@ describe("registerAgentDiffCommands", () => {
 			expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
 		});
 
-		test("routes a single changed file straight to openFileDiff with real numstat counts", async () => {
+		test("routes a discovered-agent working-tree file to openFileDiff as running", async () => {
 			registerAgentDiffCommands();
 			const repo = makeGitRepo();
 			fs.writeFileSync(path.join(repo, "f.txt"), "one\ntwo\n");
@@ -277,7 +277,7 @@ describe("registerAgentDiffCommands", () => {
 					filePath: "f.txt",
 					startCommit: "HEAD",
 					endCommit: undefined,
-					taskStatus: "completed",
+					taskStatus: "running",
 					additions: 2,
 					deletions: 1,
 				},
@@ -522,6 +522,35 @@ describe("registerAgentDiffCommands", () => {
 				expect.anything(),
 				expect.anything(),
 				"f.txt (HEAD ↔ Working Tree) — my-project",
+			);
+		});
+
+		test("uses the supplied start commit for running working-tree diffs", async () => {
+			registerAgentDiffCommands();
+			const repo = makeGitRepo();
+			fs.writeFileSync(path.join(repo, "f.txt"), "base\n");
+			const startSha = commitAll(repo, "base");
+			fs.writeFileSync(path.join(repo, "f.txt"), "committed\n");
+			commitAll(repo, "middle");
+			fs.writeFileSync(path.join(repo, "f.txt"), "working tree edit\n");
+
+			await handler("commandCentral.openFileDiff")({
+				projectDir: repo,
+				projectName: "my-project",
+				filePath: "f.txt",
+				taskId: "task-1",
+				taskStatus: "running",
+				startCommit: startSha,
+			});
+
+			expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+				"vscode.diff",
+				expect.anything(),
+				expect.anything(),
+				`f.txt (${startSha} ↔ Working Tree) — my-project`,
+			);
+			expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalledWith(
+				"No bounded diff is available for this task.",
 			);
 		});
 	});
