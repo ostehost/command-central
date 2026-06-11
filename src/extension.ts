@@ -93,6 +93,7 @@ let testCountStatusBar:
 	| import("./services/test-count-status-bar.js").TestCountStatusBar
 	| undefined;
 let infrastructureHealthStatusBar: InfrastructureHealthStatusBar | undefined;
+let agentStatusBar: AgentStatusBar | undefined;
 let mainLogger: LoggerService;
 let gitSortLogger: LoggerService;
 let integrationTestContext: vscode.ExtensionContext | undefined;
@@ -540,7 +541,7 @@ export async function activate(
 		});
 
 		// Agent Status Bar — shows running/total count
-		const agentStatusBar = new AgentStatusBar();
+		agentStatusBar = new AgentStatusBar();
 		context.subscriptions.push(agentStatusBar);
 
 		// Probe the gateway this machine is actually configured against —
@@ -569,10 +570,15 @@ export async function activate(
 
 		// Update status bar + session store on tree data changes
 		agentStatusProvider.onDidChangeTreeData(() => {
-			agentStatusBar.update(
+			agentStatusBar?.update(
 				agentStatusProvider?.getTasks() ?? [],
 				agentStatusProvider?.getReviewedTaskIds(),
 			);
+			// The health item weighs the same working counts via its
+			// taskActivityProbe — re-read them now instead of waiting for its
+			// 30s poll, so the two items can never contradict each other
+			// (red DOWN beside "1 working · 3 done") for a poll interval.
+			infrastructureHealthStatusBar?.refreshTaskActivity();
 			// Populate session store from launcher tasks with bundle info
 			for (const task of agentStatusProvider?.getTasks() ?? []) {
 				if (
@@ -595,6 +601,7 @@ export async function activate(
 			agentStatusProvider.getTasks(),
 			agentStatusProvider.getReviewedTaskIds(),
 		);
+		infrastructureHealthStatusBar.refreshTaskActivity();
 
 		// Agent Dashboard Panel — rich webview dashboard
 		const agentDashboardPanel = new AgentDashboardPanel();
@@ -1969,6 +1976,7 @@ export async function activate(
 				hasTestCountStatusBar: () => testCountStatusBar !== undefined,
 				getInfrastructureHealthStatusText: () =>
 					infrastructureHealthStatusBar?.getStatusText(),
+				getAgentStatusBarText: () => agentStatusBar?.getStatusText(),
 				getActiveProjectSlots: () => [
 					...(projectViewManager?.getAllWorkspaceDisplayNames().keys() ?? []),
 				],
@@ -2041,6 +2049,7 @@ export async function deactivate(): Promise<void> {
 	testCountStatusBar = undefined;
 	// Disposal handled by context.subscriptions; clear the test-API reference
 	infrastructureHealthStatusBar = undefined;
+	agentStatusBar = undefined;
 
 	mainLogger?.info("Extension deactivated");
 

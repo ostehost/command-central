@@ -246,6 +246,15 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 	private readonly clearIntervalImpl: ClearIntervalLike;
 	private pollTimer: TimerHandle | undefined;
 	private refreshPromise: Promise<void> | null = null;
+	/**
+	 * Gateway-side evidence from the most recent completed refresh. Lets
+	 * `refreshTaskActivity()` re-resolve the display state when only the task
+	 * activity changed, without re-probing the gateway off-cadence.
+	 */
+	private lastEvidence: {
+		readiness: GatewayReadiness;
+		summary: HealthSummaryInfo | null;
+	} | null = null;
 
 	constructor(options: InfrastructureHealthStatusBarOptions = {}) {
 		this.fetchImpl = options.fetchImpl ?? fetch;
@@ -296,6 +305,7 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 					this.readGatewayReadiness(),
 					this.readHealthSummary(),
 				]);
+				this.lastEvidence = { readiness, summary };
 				this.applyState(readiness, summary, this.readTaskActivity());
 			} finally {
 				this.refreshPromise = null;
@@ -303,6 +313,28 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 		})();
 
 		return this.refreshPromise;
+	}
+
+	/**
+	 * Re-read the task activity probe and re-resolve the display state from
+	 * the last polled gateway evidence. Wired to agent-status tree changes so
+	 * this item can never hold a contradictory DOWN beside fresh working
+	 * counts for up to a full poll interval (CC-001 follow-up). Cheap by
+	 * design — no gateway probe, no summary read — so it is safe on every
+	 * tree refresh. A full refresh already in flight reads the latest
+	 * activity when it applies state, so there is nothing to do then.
+	 */
+	refreshTaskActivity(): void {
+		if (this.refreshPromise) return;
+		if (!this.lastEvidence) {
+			void this.refresh();
+			return;
+		}
+		this.applyState(
+			this.lastEvidence.readiness,
+			this.lastEvidence.summary,
+			this.readTaskActivity(),
+		);
 	}
 
 	dispose(): void {

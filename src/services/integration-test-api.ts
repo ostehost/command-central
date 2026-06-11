@@ -33,6 +33,13 @@ export interface CommandCentralIntegrationSnapshot {
 	hasTestCountStatusBar: boolean;
 	/** Current rendered text of the OpenClaw infrastructure health item. */
 	infrastructureHealthStatusText: string | undefined;
+	/**
+	 * Current rendered text of the agent count item ("1 working · 3 done"),
+	 * or undefined while it is hidden. Paired with
+	 * `infrastructureHealthStatusText` so live-host proofs can assert the two
+	 * items never contradict each other (CC-001).
+	 */
+	agentStatusBarText: string | undefined;
 	activeProjectSlots: string[];
 }
 
@@ -119,6 +126,7 @@ export interface IntegrationTestApiDeps {
 	hasBinaryManager(): boolean;
 	hasTestCountStatusBar(): boolean;
 	getInfrastructureHealthStatusText(): string | undefined;
+	getAgentStatusBarText(): string | undefined;
 	getActiveProjectSlots(): string[];
 	deactivate(): Promise<void>;
 	clearIntegrationTestContextSubscriptions(): void;
@@ -422,6 +430,7 @@ export function getIntegrationSnapshot(
 		hasBinaryManager: deps.hasBinaryManager(),
 		hasTestCountStatusBar: deps.hasTestCountStatusBar(),
 		infrastructureHealthStatusText: deps.getInfrastructureHealthStatusText(),
+		agentStatusBarText: deps.getAgentStatusBarText(),
 		activeProjectSlots: deps.getActiveProjectSlots(),
 	};
 }

@@ -41,6 +41,53 @@ async function createTestWorkspace(workspaceDir: string): Promise<void> {
 	);
 }
 
+/**
+ * Write a launcher task registry with one fresh `running` task, exposed to
+ * the extension host via TASKS_FILE (highest-priority resolution).
+ *
+ * Field choices keep the truth hierarchy trusting the registry status for
+ * the whole run: `session_id` is required by the registry normalizer, while
+ * `terminal_backend: "applescript"` routes liveness through the
+ * non-tmux/non-persist branch, where a launch-time `started_at` (far under
+ * the one-hour staleness floor) means "healthy". This makes the agent
+ * status bar deterministically render a working count, letting the
+ * infrastructure-health scenario assert the CC-001 invariant — a
+ * demonstrably alive task service forbids a DOWN render — against the real
+ * providers in a live extension host.
+ */
+async function writeFixtureTasksFile(fixtureTasksFile: string): Promise<void> {
+	const now = new Date().toISOString();
+	await mkdir(path.dirname(fixtureTasksFile), { recursive: true });
+	await writeFile(
+		fixtureTasksFile,
+		`${JSON.stringify(
+			{
+				version: 2,
+				tasks: {
+					"cc001-proof-working-task": {
+						id: "cc001-proof-working-task",
+						status: "running",
+						project_name: "cc001-integration-proof",
+						project_dir: "/tmp/cc001-integration-proof",
+						session_id: "cc001-proof-session",
+						terminal_backend: "applescript",
+						agent_backend: "integration-proof-backend",
+						prompt_file: "",
+						bundle_path: "(test-mode)",
+						created_at: now,
+						started_at: now,
+						updated_at: now,
+						attempts: 1,
+						max_attempts: 1,
+					},
+				},
+			},
+			null,
+			2,
+		)}\n`,
+	);
+}
+
 async function readExtensionId(
 	extensionDevelopmentPath: string,
 ): Promise<string> {
@@ -103,6 +150,8 @@ export async function runIntegrationTests(): Promise<void> {
 		await mkdir(userDataDir, { recursive: true });
 		await mkdir(extensionsDir, { recursive: true });
 		await createTestWorkspace(workspaceDir);
+		const fixtureTasksFile = path.join(tempRoot, "fixtures", "tasks.json");
+		await writeFixtureTasksFile(fixtureTasksFile);
 		const extensionTestsPath = await buildIntegrationSuite(suiteOutdir);
 		const extensionId = await readExtensionId(extensionDevelopmentPath);
 		console.log(`✅ Suite bundled to ${extensionTestsPath}`);
@@ -132,6 +181,9 @@ export async function runIntegrationTests(): Promise<void> {
 				COMMAND_CENTRAL_EXTENSION_ID: extensionId,
 				COMMAND_CENTRAL_TEST_MODE: "1",
 				TEST_VERSION: requestedVersion ?? "stable",
+				// Deterministic launcher registry for the host (resolution
+				// priority #1) — see writeFixtureTasksFile.
+				TASKS_FILE: fixtureTasksFile,
 			},
 		});
 		const durationMs = performance.now() - start;

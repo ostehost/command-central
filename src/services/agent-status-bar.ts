@@ -34,6 +34,7 @@ function truncateForTooltip(value: string, max = 48): string {
 
 export class AgentStatusBar implements vscode.Disposable {
 	private statusBarItem: vscode.StatusBarItem;
+	private visible = false;
 
 	constructor() {
 		this.statusBarItem = vscode.window.createStatusBarItem(
@@ -43,11 +44,22 @@ export class AgentStatusBar implements vscode.Disposable {
 		this.statusBarItem.command = "commandCentral.agentStatus.focus";
 	}
 
+	/**
+	 * Current rendered text, or undefined while the item is hidden (no
+	 * tasks). Exposed for the integration-test API so live-host proofs can
+	 * assert this item against the infrastructure health item.
+	 */
+	getStatusText(): string | undefined {
+		return this.visible ? this.statusBarItem.text : undefined;
+	}
+
 	update(tasks: AgentTask[], reviewedTaskIds?: ReadonlySet<string>): void {
 		if (tasks.length === 0) {
+			this.visible = false;
 			this.statusBarItem.hide();
 			return;
 		}
+		this.visible = true;
 
 		const counts = countAgentStatuses(tasks, { reviewedTaskIds });
 		const summary = formatCountSummary(counts, { includeAttention: true });

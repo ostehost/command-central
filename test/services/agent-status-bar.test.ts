@@ -66,6 +66,19 @@ describe("AgentStatusBar", () => {
 		expect(mockStatusBarItem.hide).toHaveBeenCalled();
 	});
 
+	test("getStatusText exposes the rendered text only while visible", async () => {
+		const { AgentStatusBar } = await loadModule();
+		const bar = new AgentStatusBar();
+
+		expect(bar.getStatusText()).toBeUndefined();
+
+		bar.update([createTask({ id: "t1", status: "running" })]);
+		expect(bar.getStatusText()).toBe("$(pulse) 1 working");
+
+		bar.update([]);
+		expect(bar.getStatusText()).toBeUndefined();
+	});
+
 	test("shows '1 working' with pulse icon for single running task", async () => {
 		const { AgentStatusBar } = await loadModule();
 		const bar = new AgentStatusBar();

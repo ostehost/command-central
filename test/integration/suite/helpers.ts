@@ -13,6 +13,7 @@ export interface CommandCentralIntegrationSnapshot {
 	hasBinaryManager: boolean;
 	hasTestCountStatusBar: boolean;
 	infrastructureHealthStatusText: string | undefined;
+	agentStatusBarText: string | undefined;
 	activeProjectSlots: string[];
 }
 

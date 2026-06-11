@@ -387,6 +387,133 @@ describe("InfrastructureHealthStatusBar", () => {
 		expect(tooltip.value).toContain("Snapshot: unavailable");
 	});
 
+	// ── Immediate task-activity refresh (CC-001 follow-up) ────────────────────
+	// AgentStatusBar updates on every tree-data change, but this item used to
+	// re-read its taskActivityProbe only on the 30s poll — leaving a window
+	// where red DOWN sat beside fresh working counts. refreshTaskActivity()
+	// is wired to the same tree event and must re-resolve the state from the
+	// cached gateway evidence immediately, without an off-cadence probe.
+	test("flips DOWN to DEGRADED the moment task activity appears, without re-probing", async () => {
+		let activity = { workingCount: 0, summary: "3 done" };
+		const fetchImpl = mock(async () => {
+			throw new Error("connect ECONNREFUSED 127.0.0.1:18789");
+		});
+		const { InfrastructureHealthStatusBar } = await loadModule();
+		const bar = new InfrastructureHealthStatusBar({
+			fetchImpl,
+			readFile: mock(async () => {
+				throw new Error("ENOENT");
+			}),
+			taskActivityProbe: () => activity,
+			setIntervalImpl: mock(() => createTimerHandle()),
+			clearIntervalImpl: mock(),
+		});
+
+		await bar.refresh();
+		expect(mockStatusBarItem.text).toBe("$(error) OpenClaw DOWN");
+		const probeCallsAfterPoll = fetchImpl.mock.calls.length;
+
+		activity = { workingCount: 1, summary: "1 working · 3 done" };
+		bar.refreshTaskActivity();
+
+		expect(mockStatusBarItem.text).toBe("$(warning) OpenClaw DEGRADED");
+		expect((mockStatusBarItem.backgroundColor as { id: string }).id).toBe(
+			"statusBarItem.warningBackground",
+		);
+		const tooltip = mockStatusBarItem.tooltip as { value: string };
+		expect(tooltip.value).toContain("Task service: alive — 1 working · 3 done");
+		expect(fetchImpl.mock.calls.length).toBe(probeCallsAfterPoll);
+	});
+
+	test("flips DEGRADED back to DOWN the moment working tasks drain", async () => {
+		let activity = { workingCount: 1, summary: "1 working" };
+		const { InfrastructureHealthStatusBar } = await loadModule();
+		const bar = new InfrastructureHealthStatusBar({
+			fetchImpl: mock(async () => {
+				throw new Error("connect ECONNREFUSED 127.0.0.1:18789");
+			}),
+			readFile: mock(async () => {
+				throw new Error("ENOENT");
+			}),
+			taskActivityProbe: () => activity,
+			setIntervalImpl: mock(() => createTimerHandle()),
+			clearIntervalImpl: mock(),
+		});
+
+		await bar.refresh();
+		expect(mockStatusBarItem.text).toBe("$(warning) OpenClaw DEGRADED");
+
+		activity = { workingCount: 0, summary: "1 done" };
+		bar.refreshTaskActivity();
+
+		expect(mockStatusBarItem.text).toBe("$(error) OpenClaw DOWN");
+		expect((mockStatusBarItem.backgroundColor as { id: string }).id).toBe(
+			"statusBarItem.errorBackground",
+		);
+	});
+
+	test("defers to an in-flight refresh, which reads the latest activity itself", async () => {
+		let releaseProbe: (() => void) | undefined;
+		const probeGate = new Promise<void>((resolve) => {
+			releaseProbe = resolve;
+		});
+		let activity = { workingCount: 0, summary: "3 done" };
+		const fetchImpl = mock(async () => {
+			await probeGate;
+			throw new Error("connect ECONNREFUSED 127.0.0.1:18789");
+		});
+		const { InfrastructureHealthStatusBar } = await loadModule();
+		const bar = new InfrastructureHealthStatusBar({
+			fetchImpl,
+			readFile: mock(async () => {
+				throw new Error("ENOENT");
+			}),
+			taskActivityProbe: () => activity,
+			setIntervalImpl: mock(() => createTimerHandle()),
+			clearIntervalImpl: mock(),
+		});
+
+		const inFlight = bar.refresh();
+		activity = { workingCount: 2, summary: "2 working" };
+		bar.refreshTaskActivity();
+		releaseProbe?.();
+		await inFlight;
+
+		// No probes beyond the in-flight pair (initial + retry), and the
+		// refresh applied the activity as it stood at completion time.
+		expect(fetchImpl).toHaveBeenCalledTimes(2);
+		expect(mockStatusBarItem.text).toBe("$(warning) OpenClaw DEGRADED");
+	});
+
+	test("a task-activity refresh does not disturb a gateway-OK state", async () => {
+		let activity = { workingCount: 0, summary: "3 done" };
+		const fetchImpl = mock(
+			async () => new Response(JSON.stringify({ ready: true })),
+		);
+		const { InfrastructureHealthStatusBar } = await loadModule();
+		const bar = new InfrastructureHealthStatusBar({
+			fetchImpl,
+			readFile: mock(async () => {
+				throw new Error("ENOENT");
+			}),
+			taskActivityProbe: () => activity,
+			setIntervalImpl: mock(() => createTimerHandle()),
+			clearIntervalImpl: mock(),
+		});
+
+		await bar.refresh();
+		expect(mockStatusBarItem.text).toBe("$(pulse) OpenClaw OK");
+		const probeCallsAfterPoll = fetchImpl.mock.calls.length;
+
+		activity = { workingCount: 1, summary: "1 working" };
+		bar.refreshTaskActivity();
+
+		expect(mockStatusBarItem.text).toBe("$(pulse) OpenClaw OK");
+		const tooltip = mockStatusBarItem.tooltip as { value: string };
+		expect(tooltip.value).toContain("Task service: alive — 1 working");
+		expect(fetchImpl.mock.calls.length).toBe(probeCallsAfterPoll);
+	});
+
 	// ── Hub/node-aware gateway scope ───────────────────────────────────────────
 	// Nodes probe the hub gateway (resolved from ~/.openclaw/openclaw.json),
 	// so the glanceable text and tooltip must label the state as the hub's —
