@@ -2063,7 +2063,7 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			additions: 1,
 			deletions: 0,
 			status: "M",
-			taskStatus: "completed",
+			diffMode: "boundedCommit",
 			startCommit: "HEAD~1",
 		});
 		expect(parent?.type).toBe("task");

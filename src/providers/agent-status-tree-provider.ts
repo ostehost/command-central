@@ -446,6 +446,14 @@ export interface PerFileDiff {
 
 export type FileChangeStatus = "A" | "M" | "D";
 
+/**
+ * Explicit diff-routing intent carried on diff command payloads.
+ * "workingTree" diffs startCommit (or HEAD) against the on-disk working
+ * tree; "boundedCommit" diffs startCommit against endCommit and refuses
+ * to open without an end ref.
+ */
+export type AgentDiffMode = "workingTree" | "boundedCommit";
+
 export interface FileChangeNode {
 	type: "fileChange";
 	taskId: string;
@@ -455,7 +463,7 @@ export interface FileChangeNode {
 	additions: number;
 	deletions: number;
 	status: FileChangeStatus;
-	taskStatus: AgentTask["status"];
+	diffMode: AgentDiffMode;
 	startCommit?: string;
 	endCommit?: string;
 }
@@ -4836,7 +4844,7 @@ export class AgentStatusTreeProvider
 			additions: diff.additions,
 			deletions: diff.deletions,
 			status: diff.status ?? this.deriveFallbackFileChangeStatus(diff),
-			taskStatus: t.status,
+			diffMode: t.status === "running" ? "workingTree" : "boundedCommit",
 			startCommit,
 			endCommit,
 		}));

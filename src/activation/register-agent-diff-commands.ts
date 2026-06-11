@@ -5,6 +5,12 @@
  * openFileDiff (focused two-ref diff for a single changed file via the
  * cc-diff virtual document scheme).
  *
+ * Diff routing contract: openFileDiff payloads carry an explicit
+ * `diffMode` ("workingTree" | "boundedCommit") — task status is never the
+ * routing signal. Payloads without a diffMode are treated as
+ * bounded-commit and hit the "No bounded diff" guard when no end ref is
+ * supplied.
+ *
  * Fully self-contained: no extension.ts module state is touched, so the
  * registration function takes no dependencies. All node:fs / node:child_process
  * access stays behind lazy dynamic imports inside the handlers (activation
@@ -13,7 +19,10 @@
 
 import * as path from "node:path";
 import * as vscode from "vscode";
-import type { AgentTask } from "../providers/agent-status-tree-provider.js";
+import type {
+	AgentDiffMode,
+	AgentTask,
+} from "../providers/agent-status-tree-provider.js";
 import { buildDiffContentUri } from "../providers/diff-content-provider.js";
 
 export type GitFileReadResult =
@@ -71,8 +80,8 @@ const showGitDiffAsFilePicker = async (
 	rangeArgs: string[],
 	_title: string,
 	noChangesMessage: string,
+	diffMode: AgentDiffMode,
 	startCommit?: string,
-	taskStatus?: AgentTask["status"],
 	endCommit?: string,
 ): Promise<void> => {
 	const { execFileSync } = await import("node:child_process");
@@ -121,7 +130,7 @@ const showGitDiffAsFilePicker = async (
 			filePath: files[0].filePath,
 			startCommit: startCommit,
 			endCommit: endCommit,
-			taskStatus: taskStatus ?? "completed",
+			diffMode,
 			additions: files[0].additions,
 			deletions: files[0].deletions,
 		});
@@ -154,7 +163,7 @@ const showGitDiffAsFilePicker = async (
 		filePath: selected.filePath,
 		startCommit: startCommit,
 		endCommit: endCommit,
-		taskStatus: taskStatus ?? "completed",
+		diffMode,
 		additions: selected.additions,
 		deletions: selected.deletions,
 	});
@@ -206,8 +215,8 @@ export function registerAgentDiffCommands(): vscode.Disposable[] {
 						[sinceRef],
 						`Diff: ${path.basename(projectDir)}`,
 						"No changes found for this agent.",
+						"workingTree",
 						sinceRef,
-						"running",
 					);
 					return;
 				}
@@ -259,8 +268,8 @@ export function registerAgentDiffCommands(): vscode.Disposable[] {
 					isRunningTask ? [sinceRef] : [`${sinceRef}..${endRef}`],
 					`Diff: ${task.id}`,
 					"No changes found for this agent.",
+					isRunningTask ? "workingTree" : "boundedCommit",
 					task.start_sha ?? sinceRef,
-					task.status,
 					isRunningTask ? undefined : endRef,
 				);
 			},
@@ -306,7 +315,7 @@ export function registerAgentDiffCommands(): vscode.Disposable[] {
 				projectName?: string;
 				filePath?: string;
 				taskId?: string;
-				taskStatus?: AgentTask["status"];
+				diffMode?: AgentDiffMode;
 				startCommit?: string;
 				endCommit?: string;
 				additions?: number;
@@ -328,7 +337,10 @@ export function registerAgentDiffCommands(): vscode.Disposable[] {
 				const projectName =
 					node.projectName || path.basename(projectDir) || projectDir;
 
-				const isWorkingTreeDiff = node.taskStatus === "running";
+				// Routing intent must be explicit: only diffMode selects the
+				// working-tree path. Payloads without it (including legacy
+				// taskStatus-bearing ones) get the bounded-commit guard.
+				const isWorkingTreeDiff = node.diffMode === "workingTree";
 				const beforeRef = isWorkingTreeDiff
 					? (node.startCommit ?? "HEAD")
 					: (node.startCommit ?? "HEAD~1");

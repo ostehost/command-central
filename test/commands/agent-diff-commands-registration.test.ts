@@ -258,7 +258,7 @@ describe("registerAgentDiffCommands", () => {
 			expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
 		});
 
-		test("routes a discovered-agent working-tree file to openFileDiff as running", async () => {
+		test("routes a discovered-agent working-tree file to openFileDiff with explicit workingTree mode", async () => {
 			registerAgentDiffCommands();
 			const repo = makeGitRepo();
 			fs.writeFileSync(path.join(repo, "f.txt"), "one\ntwo\n");
@@ -277,11 +277,101 @@ describe("registerAgentDiffCommands", () => {
 					filePath: "f.txt",
 					startCommit: "HEAD",
 					endCommit: undefined,
-					taskStatus: "running",
+					diffMode: "workingTree",
 					additions: 2,
 					deletions: 1,
 				},
 			);
+		});
+
+		test("routes a running launcher task with workingTree mode and the task's left ref", async () => {
+			registerAgentDiffCommands();
+			const repo = makeGitRepo();
+			fs.writeFileSync(path.join(repo, "f.txt"), "one\ntwo\n");
+			const startSha = commitAll(repo, "init", "2020-01-01T00:00:00Z");
+			fs.writeFileSync(path.join(repo, "f.txt"), "one\nchanged\nadded\n");
+
+			await handler("commandCentral.viewAgentDiff")({
+				type: "task",
+				task: {
+					id: "task-running",
+					project_dir: repo,
+					status: "running",
+					started_at: "2021-01-01T00:00:00Z",
+					start_sha: startSha,
+				},
+			});
+
+			expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+				"commandCentral.openFileDiff",
+				{
+					projectDir: repo,
+					filePath: "f.txt",
+					startCommit: startSha,
+					endCommit: undefined,
+					diffMode: "workingTree",
+					additions: 2,
+					deletions: 1,
+				},
+			);
+		});
+
+		test("routes a completed launcher task with both refs as a boundedCommit diff", async () => {
+			registerAgentDiffCommands();
+			const repo = makeGitRepo();
+			fs.writeFileSync(path.join(repo, "f.txt"), "before\n");
+			const startSha = commitAll(repo, "init", "2020-01-01T00:00:00Z");
+			fs.writeFileSync(path.join(repo, "f.txt"), "after\n");
+			const endSha = commitAll(repo, "change", "2022-01-01T00:00:00Z");
+			// Dirty the working tree to prove the bounded diff ignores it.
+			fs.writeFileSync(path.join(repo, "f.txt"), "working tree noise\n");
+
+			await handler("commandCentral.viewAgentDiff")({
+				type: "task",
+				task: {
+					id: "task-done",
+					project_dir: repo,
+					status: "completed",
+					started_at: "2021-01-01T00:00:00Z",
+					start_sha: startSha,
+					end_commit: endSha,
+				},
+			});
+
+			expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+				"commandCentral.openFileDiff",
+				{
+					projectDir: repo,
+					filePath: "f.txt",
+					startCommit: startSha,
+					endCommit: endSha,
+					diffMode: "boundedCommit",
+					additions: 1,
+					deletions: 1,
+				},
+			);
+		});
+
+		test("stops a completed launcher task without an end commit at the bounded-diff guard", async () => {
+			registerAgentDiffCommands();
+			const repo = makeGitRepo();
+			fs.writeFileSync(path.join(repo, "f.txt"), "content\n");
+			commitAll(repo, "init");
+
+			await handler("commandCentral.viewAgentDiff")({
+				type: "task",
+				task: {
+					id: "task-unbounded",
+					project_dir: repo,
+					status: "completed",
+					started_at: "2021-01-01T00:00:00Z",
+				},
+			});
+
+			expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+				"No bounded diff is available for this task.",
+			);
+			expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
 		});
 
 		test("offers a quick pick when a launcher task changed multiple files", async () => {
@@ -378,8 +468,27 @@ describe("registerAgentDiffCommands", () => {
 			await handler("commandCentral.openFileDiff")({
 				projectDir: "/tmp/project",
 				filePath: "src/app.ts",
-				taskStatus: "completed",
+				diffMode: "boundedCommit",
 				startCommit: "abc123",
+			});
+
+			expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+				"No bounded diff is available for this task.",
+			);
+			expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
+		});
+
+		test("ignores legacy taskStatus as a routing signal — no diffMode means bounded-commit", async () => {
+			registerAgentDiffCommands();
+			const repo = makeGitRepo();
+			fs.writeFileSync(path.join(repo, "f.txt"), "committed\n");
+			commitAll(repo, "init");
+			fs.writeFileSync(path.join(repo, "f.txt"), "working tree edit\n");
+
+			await handler("commandCentral.openFileDiff")({
+				projectDir: repo,
+				filePath: "f.txt",
+				taskStatus: "running",
 			});
 
 			expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
@@ -395,7 +504,7 @@ describe("registerAgentDiffCommands", () => {
 			await handler("commandCentral.openFileDiff")({
 				projectDir: dir,
 				filePath: "logo.png",
-				taskStatus: "completed",
+				diffMode: "boundedCommit",
 				startCommit: "abc123",
 				endCommit: "def456",
 				additions: -1,
@@ -415,7 +524,7 @@ describe("registerAgentDiffCommands", () => {
 			await handler("commandCentral.openFileDiff")({
 				projectDir: dir,
 				filePath: "logo.png",
-				taskStatus: "completed",
+				diffMode: "boundedCommit",
 				startCommit: "abc123",
 				endCommit: "def456",
 				additions: -1,
@@ -444,7 +553,7 @@ describe("registerAgentDiffCommands", () => {
 				projectName: "my-project",
 				filePath: "f.txt",
 				taskId: "task-1",
-				taskStatus: "completed",
+				diffMode: "boundedCommit",
 				startCommit: startSha,
 				endCommit: endSha,
 			});
@@ -470,7 +579,7 @@ describe("registerAgentDiffCommands", () => {
 				projectName: "my-project",
 				filePath: "new.txt",
 				taskId: "task-1",
-				taskStatus: "completed",
+				diffMode: "boundedCommit",
 				startCommit: startSha,
 				endCommit: endSha,
 			});
@@ -491,7 +600,7 @@ describe("registerAgentDiffCommands", () => {
 			await handler("commandCentral.openFileDiff")({
 				projectDir: repo,
 				filePath: "ghost.txt",
-				taskStatus: "completed",
+				diffMode: "boundedCommit",
 				startCommit: sha,
 				endCommit: sha,
 			});
@@ -502,7 +611,7 @@ describe("registerAgentDiffCommands", () => {
 			expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
 		});
 
-		test("diffs the working tree against HEAD for running tasks", async () => {
+		test("diffs the working tree against HEAD in workingTree mode", async () => {
 			registerAgentDiffCommands();
 			const repo = makeGitRepo();
 			fs.writeFileSync(path.join(repo, "f.txt"), "committed\n");
@@ -514,7 +623,7 @@ describe("registerAgentDiffCommands", () => {
 				projectName: "my-project",
 				filePath: "f.txt",
 				taskId: "task-1",
-				taskStatus: "running",
+				diffMode: "workingTree",
 			});
 
 			expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
@@ -525,7 +634,7 @@ describe("registerAgentDiffCommands", () => {
 			);
 		});
 
-		test("uses the supplied start commit for running working-tree diffs", async () => {
+		test("uses the supplied start commit for workingTree diffs", async () => {
 			registerAgentDiffCommands();
 			const repo = makeGitRepo();
 			fs.writeFileSync(path.join(repo, "f.txt"), "base\n");
@@ -539,7 +648,7 @@ describe("registerAgentDiffCommands", () => {
 				projectName: "my-project",
 				filePath: "f.txt",
 				taskId: "task-1",
-				taskStatus: "running",
+				diffMode: "workingTree",
 				startCommit: startSha,
 			});
 
