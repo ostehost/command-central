@@ -104,8 +104,8 @@ export type {
 	GitInfo,
 	TaskRegistry,
 } from "../../../src/providers/agent-status-tree-provider.js";
-export { AgentStatusTreeProvider };
 export type { DiscoveredAgent };
+export { AgentStatusTreeProvider };
 
 // ── Mock data factories ───────────────────────────────────────────────
 

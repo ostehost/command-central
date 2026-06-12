@@ -207,7 +207,7 @@ describe("OpenClaw task nodes", () => {
 		const flowsNode = getTaskFlowsNode(provider);
 		const groups = provider.getChildren(flowsNode);
 		const group = groups.find((node) => node.type === "taskFlowGroup");
-		if (!group || group.type !== "taskFlowGroup") {
+		if (group?.type !== "taskFlowGroup") {
 			throw new Error("No taskFlowGroup node found");
 		}
 		return provider.getChildren(group);
@@ -219,7 +219,7 @@ describe("OpenClaw task nodes", () => {
 		const flowsNode = getSymphonyChildren(provider).find(
 			(node) => node.type === "taskflows",
 		);
-		if (!flowsNode || flowsNode.type !== "taskflows") {
+		if (flowsNode?.type !== "taskflows") {
 			throw new Error("No Symphony Workstreams node found");
 		}
 		return flowsNode;
@@ -231,7 +231,7 @@ describe("OpenClaw task nodes", () => {
 		const runsNode = getSymphonyChildren(provider).find(
 			(node) => node.type === "codexRuns",
 		);
-		if (!runsNode || runsNode.type !== "codexRuns") {
+		if (runsNode?.type !== "codexRuns") {
 			throw new Error("No Symphony Run Attempts node found");
 		}
 		return runsNode;
@@ -439,7 +439,7 @@ describe("OpenClaw task nodes", () => {
 		const dashboard = symphonyChildren.find(
 			(node) => node.type === "symphonyDashboard",
 		);
-		if (!dashboard || dashboard.type !== "symphonyDashboard") {
+		if (dashboard?.type !== "symphonyDashboard") {
 			throw new Error("No Operations Dashboard node found");
 		}
 		const dashboardItem = provider.getTreeItem(dashboard);
@@ -564,7 +564,7 @@ describe("OpenClaw task nodes", () => {
 		const dashboard = symphonyChildren.find(
 			(node) => node.type === "symphonyDashboard",
 		);
-		if (!dashboard || dashboard.type !== "symphonyDashboard") {
+		if (dashboard?.type !== "symphonyDashboard") {
 			throw new Error("No Operations Dashboard node found");
 		}
 		const dashboardValues = new Map(
@@ -685,7 +685,7 @@ describe("OpenClaw task nodes", () => {
 		let dashboard = getSymphonyChildren(provider).find(
 			(node) => node.type === "symphonyDashboard",
 		);
-		if (!dashboard || dashboard.type !== "symphonyDashboard") {
+		if (dashboard?.type !== "symphonyDashboard") {
 			throw new Error("No Operations Dashboard node found");
 		}
 		let dashboardValues = new Map(
@@ -715,7 +715,7 @@ describe("OpenClaw task nodes", () => {
 		dashboard = getSymphonyChildren(provider).find(
 			(node) => node.type === "symphonyDashboard",
 		);
-		if (!dashboard || dashboard.type !== "symphonyDashboard") {
+		if (dashboard?.type !== "symphonyDashboard") {
 			throw new Error("No Operations Dashboard node found");
 		}
 		dashboardValues = new Map(
@@ -797,7 +797,7 @@ describe("OpenClaw task nodes", () => {
 
 		const runs = provider.getChildren(runsNode);
 		const run = runs.find((node) => node.type === "codexRun");
-		if (!run || run.type !== "codexRun") {
+		if (run?.type !== "codexRun") {
 			throw new Error("No Codex run child found");
 		}
 		expect(run.run.source).toEqual({ kind: "openclaw-task", id: "bg-1" });
@@ -1911,7 +1911,7 @@ describe("OpenClaw task nodes", () => {
 		]);
 		const root = provider.getChildren();
 		const summary = root.find((node) => node.type === "summary");
-		if (!summary || summary.type !== "summary") {
+		if (summary?.type !== "summary") {
 			throw new Error("No summary node found");
 		}
 		expect(summary.label).toContain("2 background tasks");
@@ -1941,7 +1941,7 @@ describe("OpenClaw task nodes", () => {
 		const flowsNode = getTaskFlowsNode(provider);
 		const groups = provider.getChildren(flowsNode);
 		const group = groups.find((node) => node.type === "taskFlowGroup");
-		if (!group || group.type !== "taskFlowGroup") {
+		if (group?.type !== "taskFlowGroup") {
 			throw new Error("No taskFlowGroup node found");
 		}
 		const children = provider.getChildren(group);
@@ -1965,7 +1965,7 @@ describe("OpenClaw task nodes", () => {
 		const flowsNode = getTaskFlowsNode(provider);
 		const groups = provider.getChildren(flowsNode);
 		const group = groups.find((node) => node.type === "taskFlowGroup");
-		if (!group || group.type !== "taskFlowGroup") {
+		if (group?.type !== "taskFlowGroup") {
 			throw new Error("No taskFlowGroup node found");
 		}
 		const children = provider.getChildren(group);

@@ -275,7 +275,7 @@ test *args="":
     elif [ -z "{{args}}" ]; then \
         echo "🧪 Running test suite..."; \
         echo ""; \
-        bun run test; \
+        bun run test || exit 1; \
         echo ""; \
         just test-quality; \
     else \

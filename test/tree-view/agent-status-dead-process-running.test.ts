@@ -155,8 +155,7 @@ class InMemoryReviewTracker {
 /** Extract the summary node from provider.getChildren() root. */
 function getSummaryLabel(provider: AgentStatusTreeProvider): string {
 	const summary = provider.getChildren().find((n) => n.type === "summary");
-	if (!summary || summary.type !== "summary")
-		throw new Error("No summary node found");
+	if (summary?.type !== "summary") throw new Error("No summary node found");
 	return String(summary.label);
 }
 

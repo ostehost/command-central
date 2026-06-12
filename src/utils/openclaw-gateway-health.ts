@@ -72,7 +72,7 @@ export function resolveGatewayHealthSource(
 	} catch {
 		return local;
 	}
-	if (!gateway || gateway["mode"] !== "remote") return local;
+	if (gateway?.["mode"] !== "remote") return local;
 
 	const remote =
 		gateway["remote"] != null && typeof gateway["remote"] === "object"

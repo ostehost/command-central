@@ -293,6 +293,16 @@ describe("tasks.json startup smoke", () => {
 		);
 	});
 
+	test("ambient TASKS_FILE is sanitized by the global preload", () => {
+		// Launcher-spawned shells export TASKS_FILE pointing at the operator's
+		// real registry, and the resolver honors it unconditionally. The
+		// global preload (test/setup/global-test-cleanup.ts) must delete it so
+		// only tests that set it explicitly can resolve an env tasks file —
+		// otherwise every empty-registry expectation in the suite ingests live
+		// operator tasks and fails non-deterministically.
+		expect(process.env["TASKS_FILE"]).toBeUndefined();
+	});
+
 	test("legacy escape hatch re-enables implicit workspace registry ingestion", async () => {
 		const workspaceDir = path.join(tmpDir, "workspace");
 		writeStaleRegistry(

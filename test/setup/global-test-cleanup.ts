@@ -99,6 +99,15 @@ if (process.env["CC_HARNESS_TRACE"] === "1") {
 // (typed-mocks.ts → terminal-launcher-service.ts → logger-service.ts → vscode)
 mock.module("vscode", () => createVSCodeMock());
 
+// Ambient TASKS_FILE must never reach the suite: the resolver honors it
+// unconditionally as an explicit per-test injection, so an operator or
+// launcher-spawned shell that exports TASKS_FILE (e.g. pointing at the real
+// ~/.config/ghostty-launcher/tasks.json) would leak live operator tasks into
+// every provider test that expects an empty registry. Delete it BEFORE the
+// env snapshot below so the per-test restore keeps it deleted; tests that
+// need the override set it explicitly.
+delete process.env["TASKS_FILE"];
+
 // Snapshot process.env at preload so we can restore it after every test.
 // 12+ test files mutate process.env (NODE_ENV, agent config keys, etc.) and
 // most don't restore explicitly. Without this, env values leak across files
