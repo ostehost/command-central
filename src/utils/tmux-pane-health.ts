@@ -194,6 +194,15 @@ export function inspectTmuxPaneById(
  * Node's `execFileSync` throws with `err.status` set to the exit code when
  * the process exited normally, or `null` when killed by a signal (e.g. the
  * `timeout` option). Only status === 1 is treated as a clean "no children".
+ *
+ * The `-a` flag is load-bearing: BSD/macOS pgrep silently excludes the
+ * calling process AND all of its ancestors from matches. Without `-a`, an
+ * extension host that is itself a descendant of the observed lane (e.g. the
+ * installed-VSIX proof harness launched from inside that lane, or VS Code
+ * started from an agent terminal) gets a clean "no children" exit for its
+ * own ancestor chain and falsely flips the live lane to stopped. On Linux
+ * procps, `-a` merely appends the command line to each output row, which
+ * the pid parse below tolerates.
  */
 function walkDescendants(panePids: number[]): TmuxPaneAgentEvidence {
 	const visited = new Set<number>(panePids);
@@ -209,7 +218,7 @@ function walkDescendants(panePids: number[]): TmuxPaneAgentEvidence {
 			if (visited.size >= MAX_PIDS) break;
 			let childOutput: string;
 			try {
-				childOutput = execFileSync("pgrep", ["-P", String(ppid)], {
+				childOutput = execFileSync("pgrep", ["-a", "-P", String(ppid)], {
 					timeout: TIMEOUT_MS,
 					encoding: "utf8",
 				});

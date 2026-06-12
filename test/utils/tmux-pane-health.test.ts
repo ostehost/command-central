@@ -130,14 +130,38 @@ describe("isTmuxPaneAgentAlive", () => {
 			if (cmd === "tmux") return "bash|1234\n";
 			if (cmd === "pgrep") {
 				pgrep_call++;
-				if (pgrep_call === 1 && a[1] === "1234") return "5678\n"; // depth 1
-				if (pgrep_call === 2 && a[1] === "5678") return "6789\n"; // depth 2
+				if (pgrep_call === 1 && a[a.indexOf("-P") + 1] === "1234")
+					return "5678\n"; // depth 1
+				if (pgrep_call === 2 && a[a.indexOf("-P") + 1] === "5678")
+					return "6789\n"; // depth 2
 				throw Object.assign(new Error("no children"), { status: 1 });
 			}
 			if (cmd === "ps") return "bash\naider\n";
 			return "";
 		});
 		expect(isTmuxPaneAgentAlive("agent-aider")).toBe(true);
+	});
+
+	test("descendant walk passes -a so pgrep does not exclude the probe's own ancestors", () => {
+		// BSD/macOS pgrep silently omits the calling process and ALL of its
+		// ancestors from matches. Without -a, an extension host running as a
+		// descendant of the observed lane (installed-VSIX proof harness, VS Code
+		// launched from an agent terminal) gets a clean "no children" exit for
+		// its own ancestor chain and falsely reports a live lane as dead.
+		const pgrepArgs: string[][] = [];
+		execFileSyncMock.mockImplementation((cmd: unknown, args: unknown) => {
+			if (cmd === "tmux") return "bash|1234\n";
+			if (cmd === "pgrep") {
+				pgrepArgs.push([...(args as string[])]);
+				throw Object.assign(new Error("no children"), { status: 1 });
+			}
+			return "";
+		});
+		expect(inspectTmuxPaneAgent("agent-ancestor-probe")).toBe("dead");
+		expect(pgrepArgs.length).toBeGreaterThan(0);
+		for (const args of pgrepArgs) {
+			expect(args).toContain("-a");
+		}
 	});
 
 	// ── Dead lane: bash pane, no agent descendants ────────────────────────────
@@ -420,7 +444,8 @@ describe("inspectTmuxPaneAgent (tri-state evidence)", () => {
 			if (cmd === "tmux") return "bash|1234\n";
 			if (cmd === "pgrep") {
 				pgrepCall++;
-				if (pgrepCall === 1 && a[1] === "1234") return "5678\n";
+				if (pgrepCall === 1 && a[a.indexOf("-P") + 1] === "1234")
+					return "5678\n";
 				throw new Error("pgrep transient failure");
 			}
 			if (cmd === "ps") return "bash\n";
