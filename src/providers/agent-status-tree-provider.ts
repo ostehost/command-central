@@ -1294,6 +1294,40 @@ export class AgentStatusTreeProvider
 		string,
 		{ alive: boolean; checkedAt: number }
 	>();
+	/** TTL cache for stream file path resolution, keyed by task.id (TTL 5s) */
+	private _streamFilePathCache = new Map<
+		string,
+		{ path: string | null; checkedAt: number }
+	>();
+	/** TTL cache for getStreamTerminalState results, keyed by task.id (TTL 5s) */
+	private _streamTerminalStateCache = new Map<
+		string,
+		{
+			state: {
+				status: "completed" | "failed";
+				reason?: string;
+				completedAt?: string;
+				exitCode?: number | null;
+			} | null;
+			checkedAt: number;
+		}
+	>();
+	/** TTL cache for hasCommitsSinceStart, keyed by `taskId::startCommit` (TTL 30s) */
+	private _commitsSinceStartCache = new Map<
+		string,
+		{ result: boolean; checkedAt: number }
+	>();
+	/**
+	 * Per-render-cycle memoization for getDisplayLauncherTasks().
+	 *
+	 * Populated on the first call within a synchronous burst; the cached result
+	 * is only returned when `this.registry` is the same object as when the
+	 * cache was populated (i.e. no reload/test-helper assignment happened).
+	 * Additionally invalidated via queueMicrotask so each new event-loop entry
+	 * recomputes even when the registry object is stable.
+	 */
+	private _displayTasksRenderCache: AgentTask[] | null = null;
+	private _displayTasksCachedRegistry: TaskRegistry | null = null;
 	private projectIconManager: ProjectIconManager;
 	/** Project filter: when set, only show agents from this project dir */
 	private _projectFilter: string | null = null;
@@ -1592,7 +1626,7 @@ export class AgentStatusTreeProvider
 			for (const pending of elements) {
 				this._onDidChangeTreeData.fire(pending);
 			}
-		}, 0);
+		}, 16);
 	}
 
 	private pruneDiffSummaryCache(
@@ -2225,6 +2259,14 @@ export class AgentStatusTreeProvider
 		if (!task.project_dir) return false;
 		if (isRemoteNodeTaskForCurrentHost(task)) return false;
 
+		const cacheKey = `${task.id}::${startRef}`;
+		const cached = this._commitsSinceStartCache.get(cacheKey);
+		const now = Date.now();
+		if (cached && now - cached.checkedAt < 30_000) {
+			return cached.result;
+		}
+
+		let result = false;
 		try {
 			const output = execFileSync(
 				"git",
@@ -2232,14 +2274,32 @@ export class AgentStatusTreeProvider
 				{ encoding: "utf-8", timeout: 3000 },
 			);
 			const count = Number.parseInt(output.trim(), 10);
-			return Number.isFinite(count) && count > 0;
+			result = Number.isFinite(count) && count > 0;
 		} catch {
 			// Git call failed (missing repo, bad ref, etc.) — fall through.
-			return false;
 		}
+		this._commitsSinceStartCache.set(cacheKey, { result, checkedAt: now });
+		return result;
 	}
 
 	private getStreamTerminalState(task: AgentTask): {
+		status: "completed" | "failed";
+		reason?: string;
+		completedAt?: string;
+		exitCode?: number | null;
+	} | null {
+		const now = Date.now();
+		const cached = this._streamTerminalStateCache.get(task.id);
+		if (cached && now - cached.checkedAt < 5_000) {
+			return cached.state;
+		}
+
+		const state = this._computeStreamTerminalState(task);
+		this._streamTerminalStateCache.set(task.id, { state, checkedAt: now });
+		return state;
+	}
+
+	private _computeStreamTerminalState(task: AgentTask): {
 		status: "completed" | "failed";
 		reason?: string;
 		completedAt?: string;
@@ -2498,10 +2558,28 @@ export class AgentStatusTreeProvider
 	}
 
 	private getDisplayLauncherTasks(): AgentTask[] {
+		// Cache hit: same registry object AND cache populated in this synchronous
+		// burst (queueMicrotask hasn't fired yet to clear _displayTasksRenderCache).
+		// The registry-reference check also handles direct test-helper assignments
+		// like `provider.registry = {...}` that bypass reload().
+		if (
+			this._displayTasksRenderCache !== null &&
+			this._displayTasksCachedRegistry === this.registry
+		) {
+			return this._displayTasksRenderCache;
+		}
 		const displayTasks = Object.values(this.registry.tasks).map((task) =>
 			this.toDisplayTask(task),
 		);
-		return this.reconcileDuplicateRunningSessions(displayTasks);
+		const result = this.reconcileDuplicateRunningSessions(displayTasks);
+		this._displayTasksRenderCache = result;
+		this._displayTasksCachedRegistry = this.registry;
+		// Invalidate after the current synchronous burst so each new event-loop
+		// entry (next render, next timer callback) recomputes fresh task states.
+		queueMicrotask(() => {
+			this._displayTasksRenderCache = null;
+		});
+		return result;
 	}
 
 	private getDisplayTaskById(taskId: string): AgentTask | undefined {
@@ -2742,6 +2820,13 @@ export class AgentStatusTreeProvider
 			return;
 		}
 		this.registry = nextRegistry;
+		// Invalidate per-render and TTL caches so downstream code sees the new
+		// registry and recomputed stream/commit state for the next render cycle.
+		this._displayTasksRenderCache = null;
+		this._displayTasksCachedRegistry = null;
+		this._streamTerminalStateCache.clear();
+		this._streamFilePathCache.clear();
+		this._commitsSinceStartCache.clear();
 		this._initialReadInProgress = false;
 		this._allDiscoveredAgents = this._agentRegistry
 			? this._agentRegistry.getAllDiscovered()
@@ -8770,12 +8855,20 @@ export class AgentStatusTreeProvider
 	}
 
 	public resolveStreamFilePath(task: AgentTask): string | null {
+		const now = Date.now();
+		const cached = this._streamFilePathCache.get(task.id);
+		if (cached && now - cached.checkedAt < 5_000) {
+			return cached.path;
+		}
+		let resolved: string | null = null;
 		for (const candidate of this.getStreamFileCandidates(task)) {
 			if (fs.existsSync(candidate)) {
-				return candidate;
+				resolved = candidate;
+				break;
 			}
 		}
-		return null;
+		this._streamFilePathCache.set(task.id, { path: resolved, checkedAt: now });
+		return resolved;
 	}
 
 	public isAgentStuck(task: AgentTask): boolean {
@@ -9249,6 +9342,11 @@ export class AgentStatusTreeProvider
 		}
 		this._tmuxSessionHealthCache.clear();
 		this._persistSessionHealthCache.clear();
+		this._streamFilePathCache.clear();
+		this._streamTerminalStateCache.clear();
+		this._commitsSinceStartCache.clear();
+		this._displayTasksRenderCache = null;
+		this._displayTasksCachedRegistry = null;
 		for (const d of this.disposables) d.dispose();
 	}
 }
