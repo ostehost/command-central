@@ -1795,6 +1795,20 @@ export class AgentStatusTreeProvider
 		return `${socketPath ?? "__default__"}::${sessionId}`;
 	}
 
+	/**
+	 * Public click-time liveness check for command handlers in extension.ts.
+	 *
+	 * Delegates to the 5s-TTL `_tmuxSessionHealthCache` so callers reuse the
+	 * tree-render probe result rather than shelling out a separate `has-session`
+	 * per click. Returns `false` immediately for remote-node tasks (wrong host)
+	 * and for missing/invalid session IDs.
+	 */
+	public isTaskTmuxSessionAlive(task: AgentTask): boolean {
+		if (!task.session_id || !isValidSessionId(task.session_id)) return false;
+		if (isRemoteNodeTaskForCurrentHost(task)) return false;
+		return this.isTmuxSessionAlive(task.session_id, task.tmux_socket);
+	}
+
 	private isTmuxSessionAlive(
 		sessionId: string,
 		socketPath?: string | null,
