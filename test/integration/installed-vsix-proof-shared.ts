@@ -1,7 +1,21 @@
+import { DEFAULT_LANE_REGISTRY_FILES } from "../../src/utils/tasks-file-resolver.js";
+
 export interface SerializedCommand {
 	command: string;
 	title: string;
 	arguments?: unknown[];
+}
+
+/**
+ * The zero-config lane registry paths the extension resolves under default
+ * settings, expanded against the given home directory. The quarantine-default
+ * proof phase asserts the provider resolves exactly these (lane-records-only
+ * bridges) and nothing else.
+ */
+export function expandedDefaultLaneRegistryPaths(homeDir: string): string[] {
+	return DEFAULT_LANE_REGISTRY_FILES.map((entry) =>
+		entry.startsWith("~/") ? `${homeDir}/${entry.slice(2)}` : entry,
+	);
 }
 
 export interface AgentStatusProofTreeNode {

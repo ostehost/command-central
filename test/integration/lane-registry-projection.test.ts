@@ -7,13 +7,18 @@
  * tasks.json quarantine — SYMPHONY showed 0 / "no projected runs" and Agent
  * Status sat on "Waiting for agents..." while lanes were live.
  *
- * Verifies, against a temp lane registry wired through the explicit
- * `commandCentral.laneRegistry.files` setting (legacy quarantine untouched):
+ * Verifies, against temp lane registries (explicit `laneRegistry.files`
+ * values plus the zero-config default under a sandboxed $HOME):
  *   - active LaneRef records render and count as visible lanes (non-empty
  *     root, non-zero Symphony projection);
- *   - stale launcher-era rows (no project_ref) in the same file stay hidden
- *     under default settings;
- *   - the legacy diagnostics opt-in still ingests the full file;
+ *   - zero-config default settings read the canonical OpenClaw registry
+ *     (`~/.config/openclaw/lanes.json`) and the deprecated ghostty-launcher
+ *     compat path with the lane-records-only filter;
+ *   - stale launcher-era rows (no project_ref) in the same files stay hidden
+ *     under default settings — defaults never resurrect stale launcher truth;
+ *   - an explicit empty `laneRegistry.files` opts out of the default;
+ *   - the deprecated legacy diagnostics opt-in still ingests the full file
+ *     and is visibly marked with a pinned warning row;
  *   - grouping prefers project_ref.id (worktree lanes join the canonical
  *     project group, never a basename/worktree-label group);
  *   - unresolved records collapse under UNREGISTERED PROJECTS instead of
@@ -31,6 +36,7 @@ import type {
 } from "../../src/providers/agent-status-tree-provider.js";
 import { UNREGISTERED_PROJECT_GROUP_NAME } from "../../src/providers/agent-status-tree-provider.js";
 import { createStaticProjectRefResolver } from "../../src/utils/project-ref-resolver.js";
+import { DEFAULT_LANE_REGISTRY_FILES } from "../../src/utils/tasks-file-resolver.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 type ProviderModule =
@@ -126,6 +132,7 @@ describe("Work Registry lane projection", () => {
 	let provider: ProviderInstance | null = null;
 	let originalNodeEnv = "";
 	let originalTasksFileEnv: string | undefined;
+	let originalHomeEnv: string | undefined;
 
 	beforeEach(() => {
 		mock.restore();
@@ -134,6 +141,11 @@ describe("Work Registry lane projection", () => {
 		originalTasksFileEnv = process.env["TASKS_FILE"];
 		delete process.env["TASKS_FILE"];
 		process.env["NODE_ENV"] = "test";
+		// Sandbox $HOME so the zero-config default lane registry paths
+		// (~/.config/openclaw/lanes.json, ~/.config/ghostty-launcher/tasks.json)
+		// resolve inside the temp dir — never the operator's real registries.
+		originalHomeEnv = process.env["HOME"];
+		process.env["HOME"] = tmpDir;
 	});
 
 	afterEach(() => {
@@ -144,6 +156,11 @@ describe("Work Registry lane projection", () => {
 			delete process.env["TASKS_FILE"];
 		} else {
 			process.env["TASKS_FILE"] = originalTasksFileEnv;
+		}
+		if (originalHomeEnv === undefined) {
+			delete process.env["HOME"];
+		} else {
+			process.env["HOME"] = originalHomeEnv;
 		}
 		fs.rmSync(tmpDir, { recursive: true, force: true });
 	});
@@ -157,6 +174,23 @@ describe("Work Registry lane projection", () => {
 		return registryPath;
 	}
 
+	/** Write a registry at a $HOME-relative default lane registry location. */
+	function writeHomeRegistry(
+		relativeSegments: string[],
+		tasks: Record<string, Record<string, unknown>>,
+	): string {
+		const registryPath = path.join(tmpDir, ...relativeSegments);
+		fs.mkdirSync(path.dirname(registryPath), { recursive: true });
+		fs.writeFileSync(registryPath, JSON.stringify({ version: 2, tasks }));
+		return registryPath;
+	}
+
+	function getLegacyDeprecationMarkers(children: AgentNode[]): string[] {
+		return getStateLabels(children).filter((label) =>
+			label.includes("deprecated"),
+		);
+	}
+
 	async function createProvider(options: {
 		laneRegistryFiles?: string[];
 		agentTasksFile?: string;
@@ -168,7 +202,12 @@ describe("Work Registry lane projection", () => {
 		vscodeMock.workspace.getConfiguration = mock((_section?: string) => ({
 			get: mock((key: string, defaultValue?: unknown) => {
 				if (key === "laneRegistry.files") {
-					return options.laneRegistryFiles ?? [];
+					// Omitting the option simulates an unset user setting: real
+					// VS Code returns the package.json default
+					// (DEFAULT_LANE_REGISTRY_FILES — pinned to it by the
+					// lane-registry-defaults-contract test). $HOME is sandboxed to
+					// tmpDir, so the default paths resolve inside the fixture dir.
+					return options.laneRegistryFiles ?? [...DEFAULT_LANE_REGISTRY_FILES];
 				}
 				if (key === "agentTasksFile") {
 					return options.agentTasksFile ?? "";
@@ -279,6 +318,106 @@ describe("Work Registry lane projection", () => {
 
 		const taskIds = treeProvider.getTasks().map((task) => task.id);
 		expect(taskIds.sort()).toEqual(["lane-impl-1", "stale-old-row"]);
+	});
+
+	test("zero-config default surfaces LaneRef records from the transitional OpenClaw bridge registry", async () => {
+		writeHomeRegistry([".config", "openclaw", "lanes.json"], {
+			"lane-impl-1": createLaneRecord("lane-impl-1"),
+			"stale-old-row": createStaleLegacyRecord("stale-old-row"),
+		});
+
+		// No laneRegistryFiles, no legacy opt-in: pure default settings.
+		const treeProvider = await createProvider({});
+
+		const taskIds = treeProvider.getTasks().map((task) => task.id);
+		expect(taskIds).toEqual(["lane-impl-1"]);
+
+		const children = treeProvider.getChildren();
+		expect(getStateLabels(children)).toEqual([]);
+		expect(getLegacyDeprecationMarkers(children)).toEqual([]);
+		expect(getSymphonySummaryLabel(children)).not.toContain(
+			"no projected runs",
+		);
+
+		const groups = getProjectGroups(children);
+		expect(groups).toHaveLength(1);
+		expect(groups[0]?.projectName).toBe("Command Central");
+	});
+
+	test("zero-config default surfaces LaneRef records from the deprecated launcher compat registry", async () => {
+		writeHomeRegistry([".config", "ghostty-launcher", "tasks.json"], {
+			"lane-review-1": createLaneRecord("lane-review-1", {
+				lane_kind: "review",
+			}),
+			"stale-old-row": createStaleLegacyRecord("stale-old-row"),
+		});
+
+		const treeProvider = await createProvider({});
+
+		const taskIds = treeProvider.getTasks().map((task) => task.id);
+		expect(taskIds).toEqual(["lane-review-1"]);
+
+		const groups = getProjectGroups(treeProvider.getChildren());
+		expect(groups).toHaveLength(1);
+		expect(groups[0]?.projectName).toBe("Command Central");
+	});
+
+	test("zero-config default never resurrects stale launcher rows as active lanes", async () => {
+		// Both default registries hold only launcher-era rows without
+		// project_ref — the default-on lane source must stay record-filtered.
+		writeHomeRegistry([".config", "openclaw", "lanes.json"], {
+			"stale-bridge-row": createStaleLegacyRecord("stale-bridge-row"),
+		});
+		writeHomeRegistry([".config", "ghostty-launcher", "tasks.json"], {
+			"stale-launcher-row": createStaleLegacyRecord("stale-launcher-row"),
+		});
+
+		const treeProvider = await createProvider({});
+
+		expect(treeProvider.getTasks()).toEqual([]);
+		const children = treeProvider.getChildren();
+		expect(getSymphonySummaryLabel(children)).toContain("no projected runs");
+		expect(getStateLabels(children)).toEqual(["Waiting for agents..."]);
+		const groupNames = getProjectGroups(children).map(
+			(group) => group.projectName,
+		);
+		expect(groupNames).not.toContain("Old Stale Project");
+	});
+
+	test("an explicit empty laneRegistry.files opts out of the default registries", async () => {
+		writeHomeRegistry([".config", "openclaw", "lanes.json"], {
+			"lane-impl-1": createLaneRecord("lane-impl-1"),
+		});
+
+		const treeProvider = await createProvider({ laneRegistryFiles: [] });
+
+		expect(treeProvider.getTasks()).toEqual([]);
+		expect(getStateLabels(treeProvider.getChildren())).toEqual([
+			"Waiting for agents...",
+		]);
+	});
+
+	test("legacy diagnostics opt-in is visibly marked with a pinned deprecation warning row", async () => {
+		const laneFile = writeRegistry("lanes.json", {
+			"lane-impl-1": createLaneRecord("lane-impl-1"),
+			"stale-old-row": createStaleLegacyRecord("stale-old-row"),
+		});
+
+		const treeProvider = await createProvider({
+			agentTasksFile: laneFile,
+			legacyLauncherEnabled: true,
+		});
+
+		const children = treeProvider.getChildren();
+		const marker = children[0];
+		expect(marker?.type).toBe("state");
+		if (marker?.type !== "state") throw new Error("Expected a state marker");
+		expect(marker.label).toBe("Legacy launcher diagnostics (deprecated)");
+		expect(marker.icon).toBe("warning");
+		expect(marker.description).toContain("legacyLauncherTasks.enabled");
+
+		const item = treeProvider.getTreeItem(marker) as import("vscode").TreeItem;
+		expect(String(item.label)).toContain("deprecated");
 	});
 
 	test("worktree lanes group under project_ref.id, never a basename or worktree label", async () => {

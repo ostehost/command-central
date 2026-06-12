@@ -307,6 +307,12 @@ export function setAgentStatusConfig(
 			if (_key === "discovery.enabled") {
 				return options.discoveryEnabled ?? false;
 			}
+			// Never let the production default lane registries (real $HOME
+			// paths) leak into harness-driven tests; lane ingestion is proven
+			// hermetically in lane-registry-projection.test.ts.
+			if (_key === "laneRegistry.files") {
+				return [];
+			}
 			return defaultValue;
 		}),
 		inspect: mock((_key: string) => undefined),

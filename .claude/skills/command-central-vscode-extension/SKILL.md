@@ -77,15 +77,13 @@ Commands are registered in `src/extension.ts` via `vscode.commands.registerComma
 
 ### Task Registry Resolution
 
-The extension resolves `tasks.json` in this priority order:
+Two channels feed Agent Status from registry files (see `src/utils/tasks-file-resolver.ts`):
 
-1. `TASKS_FILE` environment variable (if file exists)
-2. `commandCentral.agentTasksFile` VS Code setting
-3. Workspace-local: `.ghostty-launcher/tasks.json` (per workspace folder)
-4. Global XDG: `~/.config/ghostty-launcher/tasks.json`
-5. Global simple: `~/.ghostty-launcher/tasks.json`
+**Lane registry (primary, zero-config).** `commandCentral.laneRegistry.files` defaults to `["~/.config/openclaw/lanes.json", "~/.config/ghostty-launcher/tasks.json"]` — a transitional OpenClaw-namespace bridge/outbox plus the deprecated launcher compat path. These ingest `lane-records-only`: only Work Registry-backed LaneRef records (records carrying `project_ref.id`) are admitted; launcher-era rows without `project_ref` stay quarantined (logged count). An explicit empty list reads nothing. Long-term primary source is the OpenClaw-native Work System plugin/API (`workSystem.lanes.list` + per-session `workSystem` projection from plugin session extensions), not a file path.
 
-Additionally, `commandCentral.agentTasksFiles` provides read-only registry files for multi-node or mirrored launchers.
+**Legacy launcher ingestion (deprecated, opt-in diagnostics).** Quarantined behind `commandCentral.legacyLauncherTasks.enabled` (default `false`, marked deprecated). When enabled, full-file ingestion resolves in priority order — `commandCentral.agentTasksFile`, workspace-local `.ghostty-launcher/tasks.json`, `~/.config/ghostty-launcher/tasks.json`, `~/.ghostty-launcher/tasks.json` — plus `commandCentral.agentTasksFiles` mirrors, and the tree pins a "Legacy launcher diagnostics (deprecated)" warning row first.
+
+The `TASKS_FILE` environment variable (hermetic test/dev fixtures) is always honored, ingests all records, and never falls back to operator-global registries.
 
 Schema: `{"version": 2, "tasks": {"<id>": <AgentTask>}}`. Versions 1 and 2 are both supported; default to 2 when creating.
 

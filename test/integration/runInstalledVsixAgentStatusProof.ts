@@ -15,10 +15,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 import { assertNodeExecutionContext } from "../../scripts-v2/node-execution-guard.js";
-import type {
-	InstalledVsixProofPhase,
-	LauncherRegistryProofSnapshot,
-	LauncherTaskIdHit,
+import {
+	expandedDefaultLaneRegistryPaths,
+	type InstalledVsixProofPhase,
+	type LauncherRegistryProofSnapshot,
+	type LauncherTaskIdHit,
 } from "./installed-vsix-proof-shared.js";
 
 export type InstalledVsixProofMode = "passive" | "live";
@@ -171,6 +172,43 @@ export function readRegistryTaskIdsSafe(filePath: string): string[] {
 	}
 }
 
+export interface RegistryTaskIdSplit {
+	/** Ids carrying a Work Registry `project_ref.id` — admitted by default. */
+	laneBacked: string[];
+	/** Launcher-era ids without `project_ref` — quarantined by default. */
+	stale: string[];
+}
+
+/**
+ * Split a registry's task ids by the default ingest contract: under default
+ * settings the extension reads the zero-config lane registries with the
+ * `lane-records-only` filter, so LaneRef records (`project_ref.id`) may
+ * legitimately surface while stale rows must stay quarantined.
+ */
+export function readRegistryTaskIdSplitSafe(
+	filePath: string,
+): RegistryTaskIdSplit {
+	const split: RegistryTaskIdSplit = { laneBacked: [], stale: [] };
+	try {
+		const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
+			tasks?: Record<string, unknown>;
+		};
+		if (!raw.tasks || typeof raw.tasks !== "object") return split;
+		for (const [taskId, record] of Object.entries(raw.tasks)) {
+			const projectRef =
+				record && typeof record === "object"
+					? (record as { project_ref?: { id?: unknown } }).project_ref
+					: undefined;
+			const laneBacked =
+				typeof projectRef?.id === "string" && projectRef.id.trim() !== "";
+			(laneBacked ? split.laneBacked : split.stale).push(taskId);
+		}
+		return split;
+	} catch {
+		return split;
+	}
+}
+
 export function phaseManifestPath(
 	basePath: string,
 	phase: InstalledVsixProofPhase,
@@ -240,7 +278,11 @@ async function createTestWorkspace(workspaceDir: string): Promise<void> {
 	);
 }
 
-/** Quarantine phase: pristine defaults — no escape hatch, no registry paths. */
+/**
+ * Quarantine phase: pristine defaults — no escape hatch, no explicit registry
+ * paths. The zero-config lane registry defaults (lane-records-only bridges)
+ * still apply, so LaneRef records may surface; stale rows must not.
+ */
 async function writeDefaultUserSettings(userDataDir: string): Promise<void> {
 	const settingsDir = path.join(userDataDir, "User");
 	await mkdir(settingsDir, { recursive: true });
@@ -358,9 +400,15 @@ function gitCommit(repoRoot: string): string {
 	}).trim();
 }
 
-function globalLauncherRegistryPaths(): string[] {
+/**
+ * Every real registry the installed extension could read on this machine:
+ * the zero-config default lane registries plus the legacy home-dir launcher
+ * location (legacy escape hatch only). Used to sweep for stale ids that must
+ * never surface as launcher data.
+ */
+function globalLaneAndLauncherRegistryPaths(): string[] {
 	return [
-		path.join(os.homedir(), ".config", "ghostty-launcher", "tasks.json"),
+		...expandedDefaultLaneRegistryPaths(os.homedir()),
 		path.join(os.homedir(), ".ghostty-launcher", "tasks.json"),
 	];
 }
@@ -466,26 +514,31 @@ export async function runInstalledVsixAgentStatusProof(): Promise<void> {
 		const registryPath =
 			process.env["COMMAND_CENTRAL_TASK_REGISTRY_PATH"] ?? fixtureRegistryPath;
 		const legacyRegistryIds = readRegistryTaskIdsSafe(registryPath);
-		const realRegistryIds = [
-			...new Set(
-				globalLauncherRegistryPaths().flatMap((registry) =>
-					readRegistryTaskIdsSafe(registry),
-				),
-			),
-		];
+		// Under default settings the extension legitimately ingests LaneRef
+		// records (project_ref.id) from the zero-config lane registries, so the
+		// forbidden sweep targets only stale launcher-era ids.
+		const realRegistrySplits = globalLaneAndLauncherRegistryPaths().map(
+			(registry) => readRegistryTaskIdSplitSafe(registry),
+		);
+		const realLaneBackedIds = new Set(
+			realRegistrySplits.flatMap((split) => split.laneBacked),
+		);
+		const realStaleIds = [
+			...new Set(realRegistrySplits.flatMap((split) => split.stale)),
+		].filter((id) => !realLaneBackedIds.has(id));
 		// Ids in the registry deliberately injected for the legacy phase are
 		// expected there, never forbidden.
 		const quarantineForbiddenIds = [
-			...new Set([...realRegistryIds, ...sentinel.taskIds]),
+			...new Set([...realStaleIds, ...sentinel.taskIds]),
 		];
-		const legacyForbiddenIds = realRegistryIds.filter(
+		const legacyForbiddenIds = realStaleIds.filter(
 			(id) => !legacyRegistryIds.includes(id),
 		);
 		const legacyExpectedIds =
 			registryPath === fixtureRegistryPath ? sentinel.taskIds : [];
-		if (realRegistryIds.length === 0) {
+		if (realStaleIds.length === 0) {
 			console.log(
-				"note: no real global launcher registry found — quarantine id sweep will be vacuous on this machine.",
+				"note: no stale launcher-era ids found in real registries — quarantine id sweep will be vacuous on this machine.",
 			);
 		}
 

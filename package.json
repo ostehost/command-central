@@ -195,12 +195,14 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "**Legacy diagnostics escape hatch — default off.** When `true`, Agent Status ingests Ghostty Launcher `tasks.json` registries again: the explicit `#commandCentral.agentTasksFile#` / `#commandCentral.agentTasksFiles#` paths, workspace-local `.ghostty-launcher/tasks.json`, and the global `~/.config/ghostty-launcher/tasks.json` / `~/.ghostty-launcher/tasks.json` locations. When `false` (default), launcher registries are quarantined and never read, so stale launcher records cannot leak into Agent Status. The `TASKS_FILE` environment variable override (hermetic test/dev fixtures) is always honored regardless of this setting.",
+          "markdownDeprecationMessage": "**Deprecated.** Full launcher `tasks.json` ingestion is a diagnostics-only escape hatch slated for removal. Active lanes are read from `#commandCentral.laneRegistry.files#`, which only admits Work Registry-backed LaneRef records (`project_ref`). While this is `true`, Agent Status shows a warning row and stale launcher-era records can resurface — leave it `false` outside short-lived diagnostics sessions.",
           "scope": "machine"
         },
         "commandCentral.agentTasksFile": {
           "type": "string",
           "default": "",
           "markdownDescription": "**Legacy launcher diagnostics only — ignored unless `#commandCentral.legacyLauncherTasks.enabled#` is `true`.** Path to the Ghostty Launcher agent task registry JSON file. Leave empty to auto-detect (legacy mode only) from: `${workspaceFolder}/.ghostty-launcher/tasks.json`, `~/.config/ghostty-launcher/tasks.json`, or `~/.ghostty-launcher/tasks.json`.",
+          "markdownDeprecationMessage": "**Deprecated.** Legacy launcher diagnostics input, only read while the deprecated `#commandCentral.legacyLauncherTasks.enabled#` escape hatch is `true`. Use `#commandCentral.laneRegistry.files#` for active Work Registry-backed lanes.",
           "scope": "machine"
         },
         "commandCentral.agentTasksFiles": {
@@ -210,6 +212,7 @@
           },
           "default": [],
           "markdownDescription": "**Legacy launcher diagnostics only — ignored unless `#commandCentral.legacyLauncherTasks.enabled#` is `true`.** Additional read-only agent task registry JSON files to merge into Agent Status. Use this for mirrored node launcher registries that should appear in the Command Central UI without making hub-local terminal assumptions.",
+          "markdownDeprecationMessage": "**Deprecated.** Legacy launcher diagnostics input, only read while the deprecated `#commandCentral.legacyLauncherTasks.enabled#` escape hatch is `true`. Use `#commandCentral.laneRegistry.files#` for active Work Registry-backed lanes.",
           "scope": "machine"
         },
         "commandCentral.laneRegistry.files": {
@@ -217,8 +220,11 @@
           "items": {
             "type": "string"
           },
-          "default": [],
-          "markdownDescription": "Explicit operator-provided lane registry files for **active Work Registry-backed lanes** (launcher `tasks.json` schema). Only registry-backed LaneRef records — records carrying a Work Registry `project_ref` — are ingested from these files; launcher-era rows without `project_ref` stay quarantined unless `#commandCentral.legacyLauncherTasks.enabled#` is turned on. Paths are never auto-detected: the default empty list reads nothing, and adding the global launcher registry here is an explicit operator decision, independent of the legacy diagnostics escape hatch.",
+          "default": [
+            "~/.config/openclaw/lanes.json",
+            "~/.config/ghostty-launcher/tasks.json"
+          ],
+          "markdownDescription": "Lane registry files for **active Work Registry-backed lanes** (launcher `tasks.json` schema). Only registry-backed LaneRef records — records carrying a Work Registry `project_ref` — are ingested from these files; launcher-era rows without `project_ref` stay quarantined unless the deprecated `#commandCentral.legacyLauncherTasks.enabled#` diagnostics escape hatch is turned on. The default reads the **transitional** Work System bridge file `~/.config/openclaw/lanes.json`, plus the **deprecated** Ghostty Launcher compatibility path `~/.config/ghostty-launcher/tasks.json` until lane producers mirror LaneRef projection to the bridge. Both defaults are file bridges, not the end state: long-term, lane state should come from an OpenClaw-native projection (plugin state/API), at which point the file defaults retire. Set an explicit empty list to read no lane registries; paths beyond the defaults are never auto-detected.",
           "scope": "machine"
         },
         "commandCentral.agentStatus.autoRefreshMs": {

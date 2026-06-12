@@ -104,6 +104,12 @@ export function createVSCodeMock() {
 				// `setAgentStatusConfig(vscodeMock, { "discovery.enabled": true })`.
 				get: mock((key: string, defaultValue?: unknown) => {
 					if (key === "discovery.enabled") return false;
+					// The production default (DEFAULT_LANE_REGISTRY_FILES) points at
+					// real $HOME registries — letting it through would leak operator
+					// lane records into every test that constructs a provider. Tests
+					// proving the zero-config default override getConfiguration and
+					// sandbox $HOME themselves (see lane-registry-projection.test.ts).
+					if (key === "laneRegistry.files") return [];
 					return defaultValue;
 				}),
 				update: mock((_section: string, _value: unknown, _target?: unknown) =>

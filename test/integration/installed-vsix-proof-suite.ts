@@ -9,6 +9,7 @@ import {
 	buildSourceAuthorityMatrix,
 	collectLauncherAttributedTaskIdHits,
 	collectTaskIdPresence,
+	expandedDefaultLaneRegistryPaths,
 	findNodesByLabel,
 	findSpecBoundaryViolations,
 	hasRequiredSymphonyRoots,
@@ -457,7 +458,7 @@ export async function run(): Promise<void> {
 			);
 		} else {
 			skips.push(
-				"Quarantine phase: required Symphony roots absent (acceptable empty state with no launcher source configured).",
+				"Quarantine phase: required Symphony roots absent (acceptable empty state when no active LaneRef lanes exist on this machine).",
 			);
 		}
 	}
@@ -488,23 +489,34 @@ export async function run(): Promise<void> {
 	}
 
 	if (phase === "quarantine-default") {
+		// Zero-config contract: exactly the default lane registry bridges
+		// resolve (lane-records-only), no legacy launcher paths. LaneRef
+		// records may surface; stale launcher-era ids (the forbidden list)
+		// must stay quarantined at the record level.
+		const expectedDefaultPaths = [
+			...expandedDefaultLaneRegistryPaths(os.homedir()),
+		].sort();
 		for (const [providerName, providerSnapshot] of Object.entries(
 			launcherRegistrySnapshot,
 		)) {
-			if (providerSnapshot.resolvedFilePaths.length > 0) {
+			const resolved = [...providerSnapshot.resolvedFilePaths].sort();
+			if (JSON.stringify(resolved) !== JSON.stringify(expectedDefaultPaths)) {
 				errors.push(
-					`Quarantine violated: ${providerName} provider resolved launcher registries with default settings: ${providerSnapshot.resolvedFilePaths.join(", ")}`,
+					`Default lane registry contract violated: ${providerName} provider resolved [${providerSnapshot.resolvedFilePaths.join(", ") || "none"}] with default settings, expected exactly the zero-config lane registries [${expectedDefaultPaths.join(", ")}]`,
 				);
 			}
-			if (providerSnapshot.launcherTaskCount > 0) {
+			const forbiddenIngested = providerSnapshot.launcherTaskIds.filter(
+				(id: string) => forbiddenTaskIds.includes(id),
+			);
+			if (forbiddenIngested.length > 0) {
 				errors.push(
-					`Quarantine violated: ${providerName} provider ingested ${providerSnapshot.launcherTaskCount} launcher task(s) with default settings: ${providerSnapshot.launcherTaskIds.join(", ")}`,
+					`Quarantine violated: ${providerName} provider ingested stale launcher record(s) under default settings: ${forbiddenIngested.join(", ")}`,
 				);
 			}
 		}
 		if (forbiddenTaskIds.length === 0) {
 			skips.push(
-				"No forbidden launcher task ids supplied (real global registry absent or empty); quarantine id sweep is vacuous on this machine.",
+				"No forbidden launcher task ids supplied (no stale rows in real registries); quarantine id sweep is vacuous on this machine.",
 			);
 		}
 	}

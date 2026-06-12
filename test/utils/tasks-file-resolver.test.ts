@@ -26,12 +26,31 @@ mock.module("node:fs", () => ({
 }));
 
 import {
+	DEFAULT_LANE_REGISTRY_FILES,
 	resolveTaskRegistrySources,
 	resolveTasksFilePath,
 	resolveTasksFilePaths,
 } from "../../src/utils/tasks-file-resolver.js";
 
 const LEGACY_ON = { legacyLauncherEnabled: true };
+
+function homePath(...segments: string[]): string {
+	const home = process.env["HOME"] || process.env["USERPROFILE"] || "";
+	return path.join(home, ...segments);
+}
+
+function expandedDefaultLaneSources() {
+	return [
+		{
+			path: homePath(".config", "openclaw", "lanes.json"),
+			ingest: "lane-records-only" as const,
+		},
+		{
+			path: homePath(".config", "ghostty-launcher", "tasks.json"),
+			ingest: "lane-records-only" as const,
+		},
+	];
+}
 
 function mockWorkspaceFolder(fsPath: string) {
 	return {
@@ -427,9 +446,44 @@ describe("resolveTaskRegistrySources — explicit lane registry files", () => {
 		]);
 	});
 
-	test("returns no sources by default (no lane files, legacy off)", () => {
+	test("zero-config default resolves the bridge lane registries with lane-records-only ingest", () => {
+		// Transitional OpenClaw-namespace bridge first, deprecated
+		// ghostty-launcher compat path second — both record-filtered, legacy
+		// stays quarantined.
 		mockExistsSync.mockReturnValue(true);
-		expect(resolveTaskRegistrySources("", [])).toEqual([]);
+		expect(resolveTaskRegistrySources("", [])).toEqual(
+			expandedDefaultLaneSources(),
+		);
+	});
+
+	test("default lane registry files lead with the OpenClaw-namespace bridge, launcher path as compat only", () => {
+		expect(DEFAULT_LANE_REGISTRY_FILES).toEqual([
+			"~/.config/openclaw/lanes.json",
+			"~/.config/ghostty-launcher/tasks.json",
+		]);
+		expect(DEFAULT_LANE_REGISTRY_FILES[0]).toContain("openclaw");
+	});
+
+	test("an explicit empty lane registry list opts out of the default", () => {
+		mockExistsSync.mockReturnValue(true);
+		expect(
+			resolveTaskRegistrySources("", [], undefined, { laneRegistryFiles: [] }),
+		).toEqual([]);
+	});
+
+	test("legacy opt-in keeps all-records ingest for the auto-detected launcher file while the bridge default stays filtered", () => {
+		const xdgPath = xdgTasksPath();
+		mockExistsSync.mockImplementation((p: unknown) => p === xdgPath);
+
+		const result = resolveTaskRegistrySources("", [], undefined, LEGACY_ON);
+
+		expect(result).toEqual([
+			{ path: xdgPath, ingest: "all" },
+			{
+				path: homePath(".config", "openclaw", "lanes.json"),
+				ingest: "lane-records-only",
+			},
+		]);
 	});
 
 	test("TASKS_FILE override ingests all records and precedes lane registry files", () => {

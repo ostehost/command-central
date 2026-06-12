@@ -6,6 +6,7 @@ import {
 	type AgentStatusProofTreeSnapshot,
 	collectLauncherAttributedTaskIdHits,
 	collectTaskIdPresence,
+	expandedDefaultLaneRegistryPaths,
 	findSpecBoundaryViolations,
 	parseTaskIdListEnv,
 } from "./installed-vsix-proof-shared.js";
@@ -13,6 +14,7 @@ import {
 	buildSentinelFixtureRegistry,
 	parseInstalledProofArgs,
 	phaseManifestPath,
+	readRegistryTaskIdSplitSafe,
 	readRegistryTaskIdsSafe,
 	resolveInstalledProofVsixPath,
 } from "./runInstalledVsixAgentStatusProof.js";
@@ -131,6 +133,36 @@ describe("installed VSIX Agent Status proof harness", () => {
 		expect(parseTaskIdListEnv('["a", " b ", ""]')).toEqual(["a", "b"]);
 		expect(() => parseTaskIdListEnv('{"a": 1}')).toThrow(/JSON array/);
 		expect(() => parseTaskIdListEnv("[1]")).toThrow(/JSON array/);
+	});
+
+	test("splits registry ids into LaneRef-backed vs stale by project_ref.id", () => {
+		const tempDir = mkdtempSync(path.join(os.tmpdir(), "cc-proof-harness-"));
+		const registryPath = path.join(tempDir, "tasks.json");
+		writeFileSync(
+			registryPath,
+			JSON.stringify({
+				version: 2,
+				tasks: {
+					"lane-a": { project_ref: { id: "command-central" } },
+					"stale-b": {},
+					"stale-c": { project_ref: { id: "  " } },
+				},
+			}),
+		);
+		expect(readRegistryTaskIdSplitSafe(registryPath)).toEqual({
+			laneBacked: ["lane-a"],
+			stale: ["stale-b", "stale-c"],
+		});
+		expect(
+			readRegistryTaskIdSplitSafe(path.join(tempDir, "missing.json")),
+		).toEqual({ laneBacked: [], stale: [] });
+	});
+
+	test("expands the zero-config default lane registry paths against a home dir", () => {
+		expect(expandedDefaultLaneRegistryPaths("/Users/proof")).toEqual([
+			"/Users/proof/.config/openclaw/lanes.json",
+			"/Users/proof/.config/ghostty-launcher/tasks.json",
+		]);
 	});
 
 	test("rejects invalid expected VSIX identity kinds", () => {

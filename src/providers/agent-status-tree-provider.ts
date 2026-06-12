@@ -1118,6 +1118,12 @@ export class AgentStatusTreeProvider
 	private _lastLoggedTasksFilePath: string | null = null;
 	private _lastLoggedRegistryState: string | null = null;
 	private _lastLoggedLaneQuarantine: string | null = null;
+	/**
+	 * Whether the deprecated `legacyLauncherTasks.enabled` diagnostics escape
+	 * hatch is on — surfaces a warning row at the tree root so full launcher
+	 * ingestion is never mistaken for the primary truth surface.
+	 */
+	private _legacyDiagnosticsEnabled = false;
 	/** Prevent stale async reload results from overwriting newer state */
 	private _reloadGeneration = 0;
 	private _agentStatusView: vscode.TreeView<AgentNode> | null = null;
@@ -1481,12 +1487,18 @@ export class AgentStatusTreeProvider
 			config,
 			"agentTasksFiles",
 		);
+		// Zero-config behavior comes from the package.json default
+		// (DEFAULT_LANE_REGISTRY_FILES): real VS Code returns it for unset
+		// settings. Deliberately no code-side fallback here — config-less hosts
+		// (unit-test mocks) must resolve [] so the operator's real $HOME
+		// registries never leak into hermetic tests.
 		const laneRegistryFiles = this.getStringArrayConfig(
 			config,
 			"laneRegistry.files",
 		);
 		const legacyLauncherEnabled =
 			config.get<boolean>("legacyLauncherTasks.enabled", false) === true;
+		this._legacyDiagnosticsEnabled = legacyLauncherEnabled;
 		return resolveTaskRegistrySources(
 			configValue,
 			additionalConfigValues,
@@ -3326,6 +3338,7 @@ export class AgentStatusTreeProvider
 			if (this.viewMode === "symphony") {
 				return this.getSymphonyChildren(symphonyNode);
 			}
+			const legacyDiagnosticsNodes = this.createLegacyDiagnosticsMarkerNodes();
 			const hasAnyAgents =
 				allTasks.length > 0 ||
 				discovered.length > 0 ||
@@ -3334,6 +3347,7 @@ export class AgentStatusTreeProvider
 			if (!hasAnyAgents) {
 				if (this._initialReadInProgress && this._filePath) {
 					return [
+						...legacyDiagnosticsNodes,
 						this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
 						{
 							type: "state",
@@ -3345,6 +3359,7 @@ export class AgentStatusTreeProvider
 				}
 				if (this._registryLoadIssue) {
 					return [
+						...legacyDiagnosticsNodes,
 						this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
 						{
 							type: "state",
@@ -3355,6 +3370,7 @@ export class AgentStatusTreeProvider
 					];
 				}
 				return [
+					...legacyDiagnosticsNodes,
 					this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
 					{
 						type: "state",
@@ -3437,6 +3453,7 @@ export class AgentStatusTreeProvider
 					];
 
 			return [
+				...legacyDiagnosticsNodes,
 				...summaryNodes,
 				this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
 				...(!showOpenClawInline && openclawTasks.length > 0
@@ -5921,6 +5938,25 @@ export class AgentStatusTreeProvider
 			{ type: "codexRuns", runs: node.runs },
 		);
 		return children;
+	}
+
+	/**
+	 * Pinned-first warning row shown while the deprecated
+	 * `legacyLauncherTasks.enabled` escape hatch is on, so a diagnostics
+	 * session ingesting full launcher `tasks.json` files (stale rows included)
+	 * is always visibly marked and never mistaken for registry-backed truth.
+	 */
+	private createLegacyDiagnosticsMarkerNodes(): AgentNode[] {
+		if (!this._legacyDiagnosticsEnabled) return [];
+		return [
+			{
+				type: "state",
+				label: "Legacy launcher diagnostics (deprecated)",
+				description:
+					"commandCentral.legacyLauncherTasks.enabled ingests stale launcher rows — diagnostics only",
+				icon: "warning",
+			},
+		];
 	}
 
 	private createSymphonyStatusSurfaceSummaryNode(

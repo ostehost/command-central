@@ -47,19 +47,27 @@ The full AgentTask interface has ~85 fields. The above covers the most commonly 
 
 ### Resolution Chain
 
-The extension resolves the tasks.json file path in strict priority order:
+**Lane registry (primary, zero-config).** `commandCentral.laneRegistry.files` defaults to:
 
-1. **`TASKS_FILE` environment variable** — if set and the file exists.
-2. **`commandCentral.agentTasksFile` VS Code setting** — user-configured explicit path.
-3. **Workspace-local** — `.ghostty-launcher/tasks.json` relative to each workspace folder.
-4. **Global XDG** — `~/.config/ghostty-launcher/tasks.json`.
-5. **Global simple** — `~/.ghostty-launcher/tasks.json`.
+1. `~/.config/openclaw/lanes.json` — transitional OpenClaw-namespace Work System bridge/outbox.
+2. `~/.config/ghostty-launcher/tasks.json` — deprecated launcher compat path.
+
+Lane registry files ingest `lane-records-only`: only records carrying a Work Registry `project_ref.id` are admitted; launcher-era rows stay quarantined with a logged count. An explicit empty list disables lane ingestion. Both defaults are file bridges — the long-term primary source is the OpenClaw-native Work System plugin/API (`workSystem.lanes.list` plus per-session `workSystem` projection from plugin session extensions), behind a native CC service like OpenClawTaskService.
+
+**Legacy launcher chain (deprecated, opt-in via `commandCentral.legacyLauncherTasks.enabled`, default `false`).** When enabled, full-file ingestion resolves in strict priority order and the tree pins a "Legacy launcher diagnostics (deprecated)" warning row:
+
+1. **`commandCentral.agentTasksFile` VS Code setting** — user-configured explicit path.
+2. **Workspace-local** — `.ghostty-launcher/tasks.json` relative to each workspace folder.
+3. **Global XDG** — `~/.config/ghostty-launcher/tasks.json`.
+4. **Global simple** — `~/.ghostty-launcher/tasks.json`.
+
+**`TASKS_FILE` environment variable** is always honored regardless of either channel (hermetic test/dev fixtures), ingests all records, and never falls back to operator-global registries.
 
 For CLI scripts that cannot read VS Code settings: use `--tasks-file`, then `TASKS_FILE` env, then workspace-local, then global paths. If a user has a custom VS Code setting, they must pass `--tasks-file` explicitly.
 
 ### Read-Only Registries
 
-`commandCentral.agentTasksFiles` (array) provides additional read-only registry files for multi-node or mirrored launcher setups. These are merged into the tree view but never written to.
+`commandCentral.agentTasksFiles` (array, deprecated, legacy-gated) provides additional read-only registry files for multi-node or mirrored launcher setups. These are merged into the tree view but never written to.
 
 ### Terminal Statuses (Clearable)
 

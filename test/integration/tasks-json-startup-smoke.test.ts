@@ -32,8 +32,23 @@ function createTask(id: string) {
 	};
 }
 
-function expectedEmptyAgentStatusChildren(): AgentNode[] {
+function expectedEmptyAgentStatusChildren(
+	options: { legacyDiagnostics?: boolean } = {},
+): AgentNode[] {
 	return [
+		// The deprecated legacy escape hatch pins a warning row first so a
+		// diagnostics session is always visibly marked.
+		...(options.legacyDiagnostics
+			? [
+					{
+						type: "state" as const,
+						label: "Legacy launcher diagnostics (deprecated)",
+						description:
+							"commandCentral.legacyLauncherTasks.enabled ingests stale launcher rows — diagnostics only",
+						icon: "warning",
+					},
+				]
+			: []),
 		{
 			type: "summary",
 			label: "Symphony Status Surface: no projected runs",
@@ -101,6 +116,12 @@ describe("tasks.json startup smoke", () => {
 				if (key === "discovery.enabled") {
 					return false;
 				}
+				// Keep the default lane registries (real $HOME paths) out of this
+				// hermetic smoke; the zero-config default is proven in
+				// lane-registry-projection.test.ts under a sandboxed $HOME.
+				if (key === "laneRegistry.files") {
+					return [];
+				}
 				return defaultValue;
 			}),
 			update: mock(() => Promise.resolve()),
@@ -136,7 +157,7 @@ describe("tasks.json startup smoke", () => {
 
 		expect(treeProvider.getTasks()).toEqual([]);
 		expect(treeProvider.getChildren()).toEqual(
-			expectedEmptyAgentStatusChildren(),
+			expectedEmptyAgentStatusChildren({ legacyDiagnostics: true }),
 		);
 	});
 
@@ -150,7 +171,7 @@ describe("tasks.json startup smoke", () => {
 
 		expect(treeProvider.getTasks()).toEqual([]);
 		expect(treeProvider.getChildren()).toEqual(
-			expectedEmptyAgentStatusChildren(),
+			expectedEmptyAgentStatusChildren({ legacyDiagnostics: true }),
 		);
 	});
 
@@ -168,7 +189,7 @@ describe("tasks.json startup smoke", () => {
 			});
 			expect(treeProvider.getTasks()).toEqual([]);
 			expect(treeProvider.getChildren()).toEqual(
-				expectedEmptyAgentStatusChildren(),
+				expectedEmptyAgentStatusChildren({ legacyDiagnostics: true }),
 			);
 			expect(warnMock).toHaveBeenCalledTimes(1);
 			expect(

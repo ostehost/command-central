@@ -12,16 +12,53 @@
  * fixtures, and it never falls back to operator-global registries.
  *
  * Separately from the legacy quarantine, `commandCentral.laneRegistry.files`
- * names explicit operator-provided lane registry files for active Work
- * Registry-backed lanes. Those paths are never auto-detected, and records
- * read from them are restricted to registry-backed LaneRef records
- * (`project_ref.id` present) — see {@link resolveTaskRegistrySources}.
+ * names lane registry files for active Work Registry-backed lanes. The
+ * setting defaults to {@link DEFAULT_LANE_REGISTRY_FILES} so registry-backed
+ * lanes are visible zero-config; records read from lane registry files are
+ * always restricted to registry-backed LaneRef records (`project_ref.id`
+ * present) — see {@link resolveTaskRegistrySources}. Beyond that fixed
+ * default, lane registry paths are never auto-detected, and an explicit
+ * empty list reads nothing.
  */
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type * as vscode from "vscode";
+
+/**
+ * Default lane registry files (`commandCentral.laneRegistry.files`), in
+ * precedence order. Zero-config installs read these with the
+ * `lane-records-only` filter, so only Work Registry-backed LaneRef records
+ * (records carrying `project_ref.id`) can enter Agent Status — stale
+ * launcher-era rows in the same files stay quarantined.
+ *
+ * Both entries are file bridges, not the end-state interface. OpenClaw has
+ * no native lane concept today (`openclaw tasks` runtimes are subagent /
+ * acp / cron / cli background runs; interactive launcher lanes are absent),
+ * so lane producers write JSON registries and Command Central tails them.
+ * The long-term primary source is the OpenClaw-native Work System
+ * plugin/API — `workSystem.lanes.list` plus a per-session `workSystem`
+ * projection from plugin session extensions — at which point these file
+ * defaults retire behind a native service (like the existing
+ * OpenClawTaskService/TaskFlowService consumers).
+ *
+ * - `~/.config/openclaw/lanes.json` — TRANSITIONAL bridge/outbox file in the
+ *   OpenClaw config namespace. Not launcher-branded, but explicitly not
+ *   final truth either.
+ * - `~/.config/ghostty-launcher/tasks.json` — DEPRECATED launcher-branded
+ *   compatibility fallback, kept only until the launcher mirrors LaneRef
+ *   projection to the transitional bridge (or the native Work System
+ *   projection lands). Never the product identity path.
+ *
+ * Must stay in sync with the `commandCentral.laneRegistry.files` default in
+ * package.json (enforced by
+ * `test/package-json/lane-registry-defaults-contract.test.ts`).
+ */
+export const DEFAULT_LANE_REGISTRY_FILES: readonly string[] = [
+	"~/.config/openclaw/lanes.json",
+	"~/.config/ghostty-launcher/tasks.json",
+];
 
 /** Well-known auto-detect search locations (relative to home dir). */
 const AUTO_DETECT_CANDIDATES = [
@@ -40,9 +77,11 @@ export interface TasksFileResolverOptions {
 	 */
 	legacyLauncherEnabled?: boolean;
 	/**
-	 * Explicit lane registry files (`commandCentral.laneRegistry.files`) for
-	 * active Work Registry-backed lanes. Independent of the legacy quarantine,
-	 * never auto-detected, and ingested with the `lane-records-only` filter.
+	 * Lane registry files (`commandCentral.laneRegistry.files`) for active
+	 * Work Registry-backed lanes. Independent of the legacy quarantine and
+	 * always ingested with the `lane-records-only` filter. Omitting the
+	 * option applies {@link DEFAULT_LANE_REGISTRY_FILES}; pass an explicit
+	 * empty array to read no lane registries.
 	 */
 	laneRegistryFiles?: readonly string[];
 }
@@ -153,10 +192,12 @@ export function resolveTasksFilePaths(
  *
  * Env-override and legacy launcher paths (when the legacy opt-in is on)
  * resolve exactly as {@link resolveTasksFilePaths} and ingest every record.
- * Explicit `commandCentral.laneRegistry.files` paths are appended with the
- * `lane-records-only` filter so only Work Registry-backed LaneRef records can
- * enter Agent Status. A path resolved through both channels keeps the wider
- * `all` ingest (the legacy opt-in is the operator's explicit diagnostics ask).
+ * `commandCentral.laneRegistry.files` paths — defaulting to
+ * {@link DEFAULT_LANE_REGISTRY_FILES} when the option is omitted — are
+ * appended with the `lane-records-only` filter so only Work Registry-backed
+ * LaneRef records can enter Agent Status. A path resolved through both
+ * channels keeps the wider `all` ingest (the legacy opt-in is the operator's
+ * explicit diagnostics ask).
  */
 export function resolveTaskRegistrySources(
 	configValue: string,
@@ -172,7 +213,9 @@ export function resolveTaskRegistrySources(
 	).map((path) => ({ path, ingest: "all" }));
 
 	const seen = new Set(sources.map((source) => source.path));
-	for (const value of options?.laneRegistryFiles ?? []) {
+	const laneRegistryFiles =
+		options?.laneRegistryFiles ?? DEFAULT_LANE_REGISTRY_FILES;
+	for (const value of laneRegistryFiles) {
 		const trimmed = value.trim();
 		if (!trimmed) continue;
 		const expanded = expandHome(trimmed);
