@@ -57,7 +57,8 @@ mock.module("node:child_process", () => ({
 // ── tmux-pane-health: controlled per-test ────────────────────────────────────
 // Default: "unknown" (fail-open).  Tests override per scenario.
 const mockInspectTmuxPaneAgent = mock(
-	() => "unknown" as "alive" | "dead" | "unknown",
+	(_sessionId: string, _socket?: string | null) =>
+		"unknown" as "alive" | "dead" | "unknown",
 );
 const mockInspectTmuxPaneById = mock(
 	() => "unknown" as "alive" | "dead" | "unknown",
@@ -315,6 +316,37 @@ describe("completed-tmux regression", () => {
 
 		expect(groupOf(provider, task)).toBe("done");
 		expect(provider.getTasks()[0]?.status).toBe("completed");
+	});
+
+	test("resurrection guard: completed+alive window+unknown pane → still done (no promotion to running)", () => {
+		// The real on-disk task (review-symphony-orchestrator-http-decision-client-20260612)
+		// has status=completed, completed_at set, and the tmux session is STILL ALIVE on the
+		// custom socket (/Users/ostehost/.local/state/ghostty-launcher/tmux/symphony-daemon-*).
+		// "tmux list-sessions" (default server) shows no match, but the session IS live on
+		// the socket.  Pane evidence is "unknown" (fail-open — no confirmed agent comm).
+		//
+		// This is the STRONGEST form of Mike's requirement #1: completed records must not
+		// be re-routed to Running just because tmux metadata exists or the session is alive.
+		// A code path that calls isRunningTaskHealthy() for status=completed tasks would
+		// silently promote this task to Running on every render.
+		const task = makeCompletedTmuxTask();
+		// Session and window both alive on custom socket.
+		seedSessionCache(provider, task, true);
+		seedWindowCache(provider, task, true);
+		// Pane evidence unknown (fail-open): no confirmed dead or alive agent.
+		mockInspectTmuxPaneById.mockImplementation(() => "unknown");
+		mockInspectTmuxPaneAgent.mockImplementation(() => "unknown");
+
+		provider.readRegistry = () => makeRegistry({ [task.id]: task });
+		provider.reload();
+		provider.getDiffSummary = () => null;
+
+		// Must stay completed — never promoted to running by liveness signals.
+		expect(groupOf(provider, task)).toBe("done");
+		expect(provider.getTasks()[0]?.status).toBe("completed");
+		// No fresh-attach chip on a completed task.
+		const item = provider.getTreeItem({ type: "task", task });
+		expect(String(item.description ?? "")).not.toContain("fresh attach");
 	});
 
 	test("regression: completed+review_state=no_review_expected+tmux+dead session → group is done", () => {
