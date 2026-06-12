@@ -212,6 +212,15 @@
           "markdownDescription": "**Legacy launcher diagnostics only — ignored unless `#commandCentral.legacyLauncherTasks.enabled#` is `true`.** Additional read-only agent task registry JSON files to merge into Agent Status. Use this for mirrored node launcher registries that should appear in the Command Central UI without making hub-local terminal assumptions.",
           "scope": "machine"
         },
+        "commandCentral.laneRegistry.files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Explicit operator-provided lane registry files for **active Work Registry-backed lanes** (launcher `tasks.json` schema). Only registry-backed LaneRef records — records carrying a Work Registry `project_ref` — are ingested from these files; launcher-era rows without `project_ref` stay quarantined unless `#commandCentral.legacyLauncherTasks.enabled#` is turned on. Paths are never auto-detected: the default empty list reads nothing, and adding the global launcher registry here is an explicit operator decision, independent of the legacy diagnostics escape hatch.",
+          "scope": "machine"
+        },
         "commandCentral.agentStatus.autoRefreshMs": {
           "type": "number",
           "default": 5000,

@@ -10,6 +10,12 @@
  * The `TASKS_FILE` environment variable remains an unconditional override: it
  * is a per-process, explicit injection used by hermetic tests and dev-host
  * fixtures, and it never falls back to operator-global registries.
+ *
+ * Separately from the legacy quarantine, `commandCentral.laneRegistry.files`
+ * names explicit operator-provided lane registry files for active Work
+ * Registry-backed lanes. Those paths are never auto-detected, and records
+ * read from them are restricted to registry-backed LaneRef records
+ * (`project_ref.id` present) — see {@link resolveTaskRegistrySources}.
  */
 
 import * as fs from "node:fs";
@@ -33,6 +39,25 @@ export interface TasksFileResolverOptions {
 	 * Default `false`: launcher tasks.json registries are never resolved.
 	 */
 	legacyLauncherEnabled?: boolean;
+	/**
+	 * Explicit lane registry files (`commandCentral.laneRegistry.files`) for
+	 * active Work Registry-backed lanes. Independent of the legacy quarantine,
+	 * never auto-detected, and ingested with the `lane-records-only` filter.
+	 */
+	laneRegistryFiles?: readonly string[];
+}
+
+/**
+ * How records from a registry file may enter Agent Status:
+ * - `all`: every well-formed record (env override + legacy diagnostics opt-in).
+ * - `lane-records-only`: only registry-backed LaneRef records (records carrying
+ *   `project_ref.id`); legacy rows in the same file stay quarantined.
+ */
+export type TaskRegistryIngest = "all" | "lane-records-only";
+
+export interface ResolvedTaskRegistrySource {
+	path: string;
+	ingest: TaskRegistryIngest;
 }
 
 /**
@@ -121,6 +146,42 @@ export function resolveTasksFilePaths(
 	}
 
 	return Array.from(new Set(paths));
+}
+
+/**
+ * Resolve every task registry source with its record-level ingest mode.
+ *
+ * Env-override and legacy launcher paths (when the legacy opt-in is on)
+ * resolve exactly as {@link resolveTasksFilePaths} and ingest every record.
+ * Explicit `commandCentral.laneRegistry.files` paths are appended with the
+ * `lane-records-only` filter so only Work Registry-backed LaneRef records can
+ * enter Agent Status. A path resolved through both channels keeps the wider
+ * `all` ingest (the legacy opt-in is the operator's explicit diagnostics ask).
+ */
+export function resolveTaskRegistrySources(
+	configValue: string,
+	additionalConfigValues: readonly string[] = [],
+	workspaceFolders?: readonly vscode.WorkspaceFolder[],
+	options?: TasksFileResolverOptions,
+): ResolvedTaskRegistrySource[] {
+	const sources: ResolvedTaskRegistrySource[] = resolveTasksFilePaths(
+		configValue,
+		additionalConfigValues,
+		workspaceFolders,
+		options,
+	).map((path) => ({ path, ingest: "all" }));
+
+	const seen = new Set(sources.map((source) => source.path));
+	for (const value of options?.laneRegistryFiles ?? []) {
+		const trimmed = value.trim();
+		if (!trimmed) continue;
+		const expanded = expandHome(trimmed);
+		if (seen.has(expanded)) continue;
+		seen.add(expanded);
+		sources.push({ path: expanded, ingest: "lane-records-only" });
+	}
+
+	return sources;
 }
 
 /** Expand leading `~` to the user's home directory. */

@@ -26,6 +26,7 @@ mock.module("node:fs", () => ({
 }));
 
 import {
+	resolveTaskRegistrySources,
 	resolveTasksFilePath,
 	resolveTasksFilePaths,
 } from "../../src/utils/tasks-file-resolver.js";
@@ -390,5 +391,90 @@ describe("resolveTasksFilePaths", () => {
 		);
 
 		expect(result).toEqual([xdgPath, "/mirror/node/tasks.json"]);
+	});
+});
+
+describe("resolveTaskRegistrySources — explicit lane registry files", () => {
+	beforeEach(() => {
+		mockExistsSync.mockReset();
+		mockExistsSync.mockReturnValue(false);
+	});
+
+	test("resolves lane registry files with the lane-records-only filter while legacy stays quarantined", () => {
+		const result = resolveTaskRegistrySources("", [], undefined, {
+			laneRegistryFiles: ["/lanes/tasks.json"],
+		});
+
+		expect(result).toEqual([
+			{ path: "/lanes/tasks.json", ingest: "lane-records-only" },
+		]);
+	});
+
+	test("does not let lane registry files re-enable legacy launcher resolution", () => {
+		// Global XDG registry exists, explicit legacy paths configured — all of
+		// it must stay quarantined; only the explicit lane file resolves.
+		mockExistsSync.mockReturnValue(true);
+
+		const result = resolveTaskRegistrySources(
+			"/legacy/tasks.json",
+			["/mirror/tasks.json"],
+			[mockWorkspaceFolder("/Users/test/my-project")],
+			{ laneRegistryFiles: ["/lanes/tasks.json"] },
+		);
+
+		expect(result).toEqual([
+			{ path: "/lanes/tasks.json", ingest: "lane-records-only" },
+		]);
+	});
+
+	test("returns no sources by default (no lane files, legacy off)", () => {
+		mockExistsSync.mockReturnValue(true);
+		expect(resolveTaskRegistrySources("", [])).toEqual([]);
+	});
+
+	test("TASKS_FILE override ingests all records and precedes lane registry files", () => {
+		const envPath = "/env/tasks.json";
+		mockExistsSync.mockImplementation((p: unknown) => p === envPath);
+
+		const result = resolveTaskRegistrySources("", [], undefined, {
+			envTasksFile: envPath,
+			laneRegistryFiles: ["/lanes/tasks.json"],
+		});
+
+		expect(result).toEqual([
+			{ path: envPath, ingest: "all" },
+			{ path: "/lanes/tasks.json", ingest: "lane-records-only" },
+		]);
+	});
+
+	test("legacy opt-in keeps the wider all-records ingest when the same file is also a lane registry", () => {
+		const result = resolveTaskRegistrySources(
+			"/shared/tasks.json",
+			[],
+			undefined,
+			{ ...LEGACY_ON, laneRegistryFiles: ["/shared/tasks.json"] },
+		);
+
+		expect(result).toEqual([{ path: "/shared/tasks.json", ingest: "all" }]);
+	});
+
+	test("expands ~, trims, deduplicates, and skips blank lane registry entries", () => {
+		const home = process.env["HOME"] || process.env["USERPROFILE"] || "";
+		const result = resolveTaskRegistrySources("", [], undefined, {
+			laneRegistryFiles: [
+				"~/lanes/tasks.json",
+				"  ",
+				" ~/lanes/tasks.json ",
+				"/other/tasks.json",
+			],
+		});
+
+		expect(result).toEqual([
+			{
+				path: path.join(home, "lanes/tasks.json"),
+				ingest: "lane-records-only",
+			},
+			{ path: "/other/tasks.json", ingest: "lane-records-only" },
+		]);
 	});
 });

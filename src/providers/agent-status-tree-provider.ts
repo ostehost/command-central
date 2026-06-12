@@ -80,13 +80,21 @@ import {
 import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
 import type { ListeningPort } from "../utils/port-detector.js";
 import { detectListeningPortsAsync } from "../utils/port-detector.js";
+import {
+	nullProjectRefResolver,
+	type ProjectRefResolver,
+} from "../utils/project-ref-resolver.js";
 import { canonicalizeProjectDir } from "../utils/project-scope.js";
 import { relativeTime } from "../utils/relative-time.js";
 import {
 	type AdvertisedReviewQueueState,
 	checkAdvertisedReviewQueue,
 } from "../utils/review-queue-health.js";
-import { resolveTasksFilePaths } from "../utils/tasks-file-resolver.js";
+import {
+	type ResolvedTaskRegistrySource,
+	resolveTaskRegistrySources,
+	type TaskRegistryIngest,
+} from "../utils/tasks-file-resolver.js";
 import {
 	groupByTimePeriod,
 	TIME_PERIOD_LABELS,
@@ -174,11 +182,36 @@ export type AgentRole = "developer" | "planner" | "reviewer" | "test";
 export type AgentStatusScope = "all";
 export type AgentStatusSortMode = "status-recency";
 
+/**
+ * Embedded Work Registry resolution stamped on a lane record at spawn time.
+ * Presence of a non-empty `id` is what marks a record as registry-backed —
+ * the discriminator between active LaneRef records and stale launcher-era
+ * rows (see {@link isRegistryBackedLaneTask}).
+ */
+export interface AgentTaskProjectRef {
+	id: string;
+	displayName?: string | null;
+	status?: string | null;
+	registry_status?: string | null;
+	repoOrigins?: string[] | null;
+}
+
 export interface AgentTask {
 	task_id?: string | null;
 	id: string;
 	flow_id?: string | null;
 	project_id?: string | null;
+	project_ref?: AgentTaskProjectRef | null;
+	lane_kind?: string | null;
+	canonical_project_dir?: string | null;
+	execution_dir?: string | null;
+	/**
+	 * Internal normalization marker: `project_name` was derived from the
+	 * project_dir basename because the record carried no explicit name.
+	 * Derived names may label an individual lane but must never define a
+	 * top-level project group.
+	 */
+	project_name_derived?: boolean;
 	source_authority?: string | null;
 	owner_kind?: string | null;
 	owner_actions?: unknown[] | null;
@@ -265,6 +298,14 @@ export type AgentStatusTreeViewMode = "agentStatus" | "symphony";
 
 export interface AgentStatusTreeProviderOptions {
 	viewMode?: AgentStatusTreeViewMode;
+	/**
+	 * Adapter that attributes legacy/fixture records (no embedded
+	 * `project_ref`) to Work Registry projects by directory or repo origin.
+	 * Defaults to a resolver that resolves nothing, which routes such records
+	 * into the UNREGISTERED PROJECTS bucket when they also lack an explicit
+	 * launcher-assigned project name.
+	 */
+	projectRefResolver?: ProjectRefResolver;
 }
 
 // ── Tree node types ──────────────────────────────────────────────────
@@ -381,7 +422,16 @@ export interface ProjectGroupNode {
 	discoveredAgents?: DiscoveredAgent[];
 	parentGroupKey?: string;
 	parentGroupName?: string;
+	/**
+	 * Synthetic bucket for records with no Work Registry identity and no
+	 * explicit launcher project name. Rendered with warning metadata and
+	 * pinned after real project groups.
+	 */
+	unregistered?: boolean;
 }
+
+const UNREGISTERED_PROJECT_GROUP_KEY = "unregistered:";
+export const UNREGISTERED_PROJECT_GROUP_NAME = "Unregistered projects";
 
 export interface FolderGroupNode {
 	type: "folderGroup";
@@ -790,6 +840,37 @@ function asNullableNumber(value: unknown): number | null | undefined {
 	return value;
 }
 
+/**
+ * A registry-backed LaneRef record carries the Work Registry resolution
+ * (`project_ref.id`) stamped by the launcher at spawn time. Stale
+ * launcher-era rows predate the registry and never have it.
+ */
+export function isRegistryBackedLaneTask(
+	task: Pick<AgentTask, "project_ref">,
+): boolean {
+	return Boolean(task.project_ref?.id?.trim());
+}
+
+function normalizeTaskProjectRef(value: unknown): AgentTaskProjectRef | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const raw = value as Record<string, unknown>;
+	const id = asString(raw["id"]);
+	if (!id) return null;
+	const repoOriginsRaw = raw["repoOrigins"] ?? raw["repo_origins"];
+	return {
+		id,
+		displayName: asString(raw["displayName"] ?? raw["display_name"]) ?? null,
+		status: asString(raw["status"]) ?? null,
+		registry_status:
+			asString(raw["registry_status"] ?? raw["registryStatus"]) ?? null,
+		repoOrigins: Array.isArray(repoOriginsRaw)
+			? repoOriginsRaw.filter(
+					(origin): origin is string => typeof origin === "string",
+				)
+			: null,
+	};
+}
+
 function normalizeTask(
 	taskKey: string,
 	raw: Record<string, unknown>,
@@ -806,18 +887,26 @@ function normalizeTask(
 				? (statusRaw as AgentTaskStatus)
 				: "stopped";
 	const projectDir = canonicalizeProjectDir(asString(raw["project_dir"]) ?? "");
+	const explicitProjectName = asString(raw["project_name"]);
 	const projectName =
-		asString(raw["project_name"]) ??
-		(path.basename(projectDir) || "(unknown project)");
+		explicitProjectName ?? (path.basename(projectDir) || "(unknown project)");
 	const visibleProjectName = asString(raw["visible_project_name"]) ?? null;
 	const bundlePath = asString(raw["bundle_path"]) ?? "(unknown)";
 	const promptFile = asString(raw["prompt_file"]) ?? "";
+	const canonicalProjectDirRaw = asString(raw["canonical_project_dir"]);
 
 	return {
 		task_id: asString(raw["task_id"]) ?? null,
 		id,
 		flow_id: asString(raw["flow_id"]) ?? null,
 		project_id: asString(raw["project_id"]) ?? null,
+		project_ref: normalizeTaskProjectRef(raw["project_ref"]),
+		lane_kind: asString(raw["lane_kind"]) ?? null,
+		canonical_project_dir: canonicalProjectDirRaw
+			? canonicalizeProjectDir(canonicalProjectDirRaw)
+			: null,
+		execution_dir: asString(raw["execution_dir"]) ?? null,
+		...(explicitProjectName ? {} : { project_name_derived: true }),
 		source_authority: asString(raw["source_authority"]) ?? null,
 		owner_kind: asString(raw["owner_kind"]) ?? null,
 		owner_actions: Array.isArray(raw["owner_actions"])
@@ -998,6 +1087,8 @@ export class AgentStatusTreeProvider
 	private _nativeWatchers: fs.FSWatcher[] = [];
 	private _filePath: string | null = null;
 	private _filePaths: string[] = [];
+	/** Record-level ingest mode per resolved registry path (default `all`). */
+	private _fileIngestModes = new Map<string, TaskRegistryIngest>();
 	private disposables: vscode.Disposable[] = [];
 	private debounceTimer: NodeJS.Timeout | null = null;
 	private autoRefreshTimer: NodeJS.Timeout | null = null;
@@ -1026,6 +1117,7 @@ export class AgentStatusTreeProvider
 	private _initialReadInProgress = true;
 	private _lastLoggedTasksFilePath: string | null = null;
 	private _lastLoggedRegistryState: string | null = null;
+	private _lastLoggedLaneQuarantine: string | null = null;
 	/** Prevent stale async reload results from overwriting newer state */
 	private _reloadGeneration = 0;
 	private _agentStatusView: vscode.TreeView<AgentNode> | null = null;
@@ -1066,6 +1158,7 @@ export class AgentStatusTreeProvider
 	private _reviewTracker: ReviewTracker = new ReviewTracker();
 	private codexRunObserverService: CodexRunObserverService;
 	private readonly viewMode: AgentStatusTreeViewMode;
+	private readonly projectRefResolver: ProjectRefResolver;
 
 	constructor(
 		projectIconManager?: ProjectIconManager,
@@ -1076,6 +1169,8 @@ export class AgentStatusTreeProvider
 		this.codexRunObserverService =
 			codexRunObserverService ?? new CodexRunObserverService();
 		this.viewMode = options.viewMode ?? "agentStatus";
+		this.projectRefResolver =
+			options.projectRefResolver ?? nullProjectRefResolver;
 		// Watch config changes for the tasks file path
 		this.disposables.push(
 			vscode.workspace.onDidChangeConfiguration((e) => {
@@ -1090,6 +1185,10 @@ export class AgentStatusTreeProvider
 				if (
 					e.affectsConfiguration("commandCentral.legacyLauncherTasks.enabled")
 				) {
+					this.setupFileWatch();
+					void this.reload();
+				}
+				if (e.affectsConfiguration("commandCentral.laneRegistry.files")) {
 					this.setupFileWatch();
 					void this.reload();
 				}
@@ -1375,24 +1474,35 @@ export class AgentStatusTreeProvider
 		return this.findTaskElement(taskId);
 	}
 
-	private getConfiguredPaths(): string[] {
+	private getConfiguredSources(): ResolvedTaskRegistrySource[] {
 		const config = vscode.workspace.getConfiguration("commandCentral");
 		const configValue = config.get<string>("agentTasksFile") ?? "";
-		const additionalConfigValue =
-			config.get<unknown>("agentTasksFiles", []) ?? [];
-		const additionalConfigValues = Array.isArray(additionalConfigValue)
-			? additionalConfigValue.filter(
-					(value): value is string => typeof value === "string",
-				)
-			: [];
+		const additionalConfigValues = this.getStringArrayConfig(
+			config,
+			"agentTasksFiles",
+		);
+		const laneRegistryFiles = this.getStringArrayConfig(
+			config,
+			"laneRegistry.files",
+		);
 		const legacyLauncherEnabled =
 			config.get<boolean>("legacyLauncherTasks.enabled", false) === true;
-		return resolveTasksFilePaths(
+		return resolveTaskRegistrySources(
 			configValue,
 			additionalConfigValues,
 			vscode.workspace.workspaceFolders,
-			{ legacyLauncherEnabled },
+			{ legacyLauncherEnabled, laneRegistryFiles },
 		);
+	}
+
+	private getStringArrayConfig(
+		config: vscode.WorkspaceConfiguration,
+		key: string,
+	): string[] {
+		const value = config.get<unknown>(key, []) ?? [];
+		return Array.isArray(value)
+			? value.filter((entry): entry is string => typeof entry === "string")
+			: [];
 	}
 
 	private setupFileWatch(): void {
@@ -1411,7 +1521,11 @@ export class AgentStatusTreeProvider
 			this.debounceTimer = null;
 		}
 
-		const filePaths = this.getConfiguredPaths();
+		const sources = this.getConfiguredSources();
+		const filePaths = sources.map((source) => source.path);
+		this._fileIngestModes = new Map(
+			sources.map((source) => [source.path, source.ingest]),
+		);
 		this._filePaths = filePaths;
 		this._filePath = filePaths[0] ?? null;
 		const filePathLogKey = filePaths.join(", ");
@@ -2922,7 +3036,10 @@ export class AgentStatusTreeProvider
 
 		const merged: TaskRegistry = { version: 2, tasks: {} };
 		for (const filePath of filePaths) {
-			const registry = this.readRegistryFile(filePath);
+			const registry = this.readRegistryFile(
+				filePath,
+				this._fileIngestModes.get(filePath) ?? "all",
+			);
 			for (const [key, task] of Object.entries(registry.tasks)) {
 				const taskKey = this.getMergedTaskRegistryKey(
 					key,
@@ -2979,7 +3096,10 @@ export class AgentStatusTreeProvider
 		return candidate;
 	}
 
-	private readRegistryFile(filePath: string): TaskRegistry {
+	private readRegistryFile(
+		filePath: string,
+		ingest: TaskRegistryIngest = "all",
+	): TaskRegistry {
 		let content = "";
 
 		try {
@@ -3018,7 +3138,10 @@ export class AgentStatusTreeProvider
 			const version = parsedRegistry["version"];
 			const normalizedTasks = normalizeRegistryTasks(parsedRegistry["tasks"]);
 			if ((version === 1 || version === 2) && normalizedTasks) {
-				return { version: 2, tasks: normalizedTasks };
+				return {
+					version: 2,
+					tasks: this.applyIngestFilter(filePath, normalizedTasks, ingest),
+				};
 			}
 
 			warnTaskRegistryFallback(
@@ -3035,6 +3158,42 @@ export class AgentStatusTreeProvider
 			);
 			return createEmptyTaskRegistry();
 		}
+	}
+
+	/**
+	 * Lane registry sources only admit registry-backed LaneRef records;
+	 * launcher-era rows without a `project_ref` stay quarantined even though
+	 * they share the file. The quarantined count is logged so hidden rows are
+	 * diagnosable without flipping the legacy escape hatch.
+	 */
+	private applyIngestFilter(
+		filePath: string,
+		tasks: Record<string, AgentTask>,
+		ingest: TaskRegistryIngest,
+	): Record<string, AgentTask> {
+		if (ingest !== "lane-records-only") return tasks;
+
+		const admitted: Record<string, AgentTask> = {};
+		let quarantined = 0;
+		for (const [key, task] of Object.entries(tasks)) {
+			if (isRegistryBackedLaneTask(task)) {
+				admitted[key] = task;
+			} else {
+				quarantined += 1;
+			}
+		}
+
+		const quarantineState = `${filePath}::${quarantined}`;
+		if (quarantined > 0 && this._lastLoggedLaneQuarantine !== quarantineState) {
+			console.info(
+				`[Command Central] Lane registry ${filePath}: quarantined ${quarantined} record${
+					quarantined === 1 ? "" : "s"
+				} without project_ref (legacy launcher rows stay hidden)`,
+			);
+			this._lastLoggedLaneQuarantine = quarantineState;
+		}
+
+		return admitted;
 	}
 
 	getTreeItem(element: AgentNode): vscode.TreeItem {
@@ -4141,6 +4300,14 @@ export class AgentStatusTreeProvider
 		left: ProjectGroupNode,
 		right: ProjectGroupNode,
 	): number {
+		// The UNREGISTERED PROJECTS bucket is a diagnostics surface, not a
+		// project — it always sorts after real project groups.
+		const leftUnregistered = left.unregistered === true;
+		const rightUnregistered = right.unregistered === true;
+		if (leftUnregistered !== rightUnregistered) {
+			return leftUnregistered ? 1 : -1;
+		}
+
 		const leftHasRunning = this.projectGroupHasRunning(left);
 		const rightHasRunning = this.projectGroupHasRunning(right);
 		if (leftHasRunning !== rightHasRunning) {
@@ -4170,6 +4337,14 @@ export class AgentStatusTreeProvider
 		left: ProjectGroupNode | FolderGroupNode,
 		right: ProjectGroupNode | FolderGroupNode,
 	): number {
+		const leftUnregistered =
+			left.type === "projectGroup" && left.unregistered === true;
+		const rightUnregistered =
+			right.type === "projectGroup" && right.unregistered === true;
+		if (leftUnregistered !== rightUnregistered) {
+			return leftUnregistered ? 1 : -1;
+		}
+
 		const leftLabel =
 			left.type === "folderGroup" ? left.groupName : left.projectName;
 		const rightLabel =
@@ -4225,14 +4400,69 @@ export class AgentStatusTreeProvider
 		return !task.visible_project_name?.trim();
 	}
 
-	private getProjectGroupDisplayName(task: AgentTask): string {
+	/**
+	 * The launcher-assigned explicit project name, or null when the record's
+	 * name was derived from a path basename at normalization. Derived names
+	 * never label top-level project groups.
+	 */
+	private getExplicitTaskProjectName(task: AgentTask): string | null {
+		if (task.project_name_derived === true) return null;
+		return task.project_name?.trim() || null;
+	}
+
+	/**
+	 * Work Registry identity for grouping: the embedded `project_ref` wins,
+	 * then the launcher-stamped `project_id`, then the injectable resolver
+	 * adapter (canonical project dir → project dir → execution dir → exec cwd
+	 * → repo origin). Undefined means the record is not attributable to a
+	 * registered project.
+	 */
+	private getTaskProjectIdentity(
+		task: AgentTask,
+	): { id: string; displayName: string | null } | undefined {
+		const refId = task.project_ref?.id?.trim();
+		if (refId) {
+			return {
+				id: refId,
+				displayName: task.project_ref?.displayName?.trim() || null,
+			};
+		}
 		const projectId = task.project_id?.trim();
 		if (projectId) {
-			// Identity-keyed groups take the project's own name, never a
-			// per-lane worktree label like "command-central cc 002 ...".
-			return task.project_name?.trim() || projectId;
+			return { id: projectId, displayName: null };
 		}
-		return getTaskDisplayProjectName(task);
+		const resolved = this.projectRefResolver.resolveProjectRef({
+			canonicalProjectDir: task.canonical_project_dir,
+			projectDir: task.project_dir,
+			executionDir: task.execution_dir,
+			execCwd: task.exec_cwd,
+			repoOrigins: task.project_ref?.repoOrigins ?? null,
+		});
+		const resolvedId = resolved?.id?.trim();
+		if (resolvedId) {
+			return {
+				id: resolvedId,
+				displayName: resolved?.displayName?.trim() || null,
+			};
+		}
+		return undefined;
+	}
+
+	private getProjectGroupDisplayName(
+		task: AgentTask,
+		identity: { id: string; displayName: string | null } | undefined,
+	): string {
+		if (identity) {
+			// Identity-keyed groups take the registry display name or the
+			// project's own name — never a per-lane worktree label like
+			// "command-central cc 002 ..." and never a path basename.
+			return (
+				identity.displayName ||
+				this.getExplicitTaskProjectName(task) ||
+				identity.id
+			);
+		}
+		return this.getExplicitTaskProjectName(task) ?? task.project_name;
 	}
 
 	private buildProjectNodes(
@@ -4247,44 +4477,73 @@ export class AgentStatusTreeProvider
 				tasks: AgentTask[];
 				discoveredAgents: DiscoveredAgent[];
 				hasCanonicalIdentity: boolean;
+				unregistered: boolean;
 			}
 		>();
 
-		// Dirs claimed by project_id lanes route worktree lanes, legacy
-		// no-id tasks, and discovered agents in the same checkout into one
-		// canonical group instead of one group per worktree path.
+		// Dirs claimed by identity lanes (project_ref/project_id/resolver)
+		// route worktree lanes, legacy no-id tasks, and discovered agents in
+		// the same checkout into one canonical group instead of one group per
+		// worktree path.
+		const identities = new Map<
+			AgentTask,
+			{ id: string; displayName: string | null } | undefined
+		>();
 		const dirToGroupKey = new Map<string, string>();
 		for (const task of tasks) {
-			const projectId = task.project_id?.trim();
-			if (!projectId || !task.project_dir) continue;
-			dirToGroupKey.set(task.project_dir, `id:${projectId}`);
+			const identity = this.getTaskProjectIdentity(task);
+			identities.set(task, identity);
+			if (!identity) continue;
+			const groupKey = `id:${identity.id}`;
+			for (const dir of [
+				task.project_dir,
+				task.canonical_project_dir,
+				task.execution_dir,
+				task.exec_cwd,
+			]) {
+				if (dir?.trim()) dirToGroupKey.set(dir, groupKey);
+			}
 		}
 
 		for (const task of tasks) {
 			const projectDir = task.project_dir || task.project_name || "";
-			const projectId = task.project_id?.trim();
+			const identity = identities.get(task);
+			const explicitName = this.getExplicitTaskProjectName(task);
+			// Records with no registry identity, no claimed dir, and no
+			// explicit launcher name collapse into the UNREGISTERED PROJECTS
+			// bucket — a basename or worktree label never becomes a group.
 			const groupKey =
-				(projectId ? `id:${projectId}` : undefined) ??
+				(identity ? `id:${identity.id}` : undefined) ??
 				dirToGroupKey.get(projectDir) ??
-				(projectDir
-					? `dir:${projectDir}`
-					: `name:${getTaskDisplayProjectName(task)}`);
-			const isCanonical = this.isCanonicalProjectLane(task);
+				(explicitName
+					? projectDir
+						? `dir:${projectDir}`
+						: `name:${explicitName}`
+					: UNREGISTERED_PROJECT_GROUP_KEY);
+			const unregistered = groupKey === UNREGISTERED_PROJECT_GROUP_KEY;
+			const isCanonical = !unregistered && this.isCanonicalProjectLane(task);
+			const groupName = unregistered
+				? UNREGISTERED_PROJECT_GROUP_NAME
+				: this.getProjectGroupDisplayName(task, identity);
+			const groupDir = unregistered
+				? ""
+				: task.canonical_project_dir?.trim() || projectDir;
 			const existing = grouped.get(groupKey);
 			if (existing) {
 				existing.tasks.push(task);
 				if (isCanonical && !existing.hasCanonicalIdentity) {
-					existing.projectName = this.getProjectGroupDisplayName(task);
-					existing.projectDir = projectDir;
+					existing.projectName = groupName;
+					existing.projectDir = groupDir;
 					existing.hasCanonicalIdentity = true;
 				}
 			} else {
 				grouped.set(groupKey, {
-					projectName: this.getProjectGroupDisplayName(task),
-					projectDir,
+					projectName: groupName,
+					projectDir: groupDir,
 					tasks: [task],
 					discoveredAgents: [],
 					hasCanonicalIdentity: isCanonical,
+					unregistered,
 				});
 			}
 		}
@@ -4306,6 +4565,7 @@ export class AgentStatusTreeProvider
 					tasks: [],
 					discoveredAgents: [agent],
 					hasCanonicalIdentity: false,
+					unregistered: false,
 				});
 			}
 		}
@@ -4315,6 +4575,7 @@ export class AgentStatusTreeProvider
 				type: "projectGroup" as const,
 				projectName: group.projectName,
 				projectDir: group.projectDir,
+				...(group.unregistered ? { unregistered: true } : {}),
 				tasks: this.sortTasks(group.tasks),
 				discoveredAgents: [...group.discoveredAgents].sort((a, b) =>
 					this.compareSortableAgentNodes(
@@ -8051,7 +8312,9 @@ export class AgentStatusTreeProvider
 			node.projectDir || node.tasks[0]?.project_dir || node.projectName;
 		const launcherIcon =
 			node.tasks.find((task) => task.project_icon)?.project_icon ?? null;
-		const icon = this.getProjectIcon(projectDir, { launcherIcon });
+		const icon = node.unregistered
+			? "⚠️"
+			: this.getProjectIcon(projectDir, { launcherIcon });
 		const discoveredCount = node.discoveredAgents?.length ?? 0;
 		const counts = countAgentStatuses(node.tasks, {
 			reviewedTaskIds: this._reviewTracker.getReviewedIds(),
@@ -8074,9 +8337,25 @@ export class AgentStatusTreeProvider
 		const description = formatCountSummary(counts, {
 			includeAttention: true,
 		});
-		item.description = description;
 		const latestActivity = this.getProjectGroupRelativeActivity(node);
 		const attentionCount = counts.attention;
+		if (node.unregistered) {
+			item.description = `${description} · no Work Registry resolution`;
+			item.tooltip = new vscode.MarkdownString(
+				[
+					`**${UNREGISTERED_PROJECT_GROUP_NAME}**`,
+					"These records carry no Work Registry `project_ref` and could not be attributed to a registered project by directory, exec cwd, or repo origin.",
+					`Agents: ${description}`,
+					latestActivity ? `Latest activity: ${latestActivity}` : null,
+					"Register the project in the Work Registry (oc-project) or relaunch the lane so the launcher stamps `project_ref`.",
+				]
+					.filter(Boolean)
+					.join("\n\n"),
+			);
+			item.contextValue = "projectGroupUnregistered";
+			return item;
+		}
+		item.description = description;
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${node.projectName}**`,
