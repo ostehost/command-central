@@ -1189,8 +1189,11 @@ export async function activate(
 					// the case where no authoritative bundle surface is known (or
 					// the known one refused to focus). REQUIRES a live session.
 					//
-					// Reuse the up-front probe when we already have the answer so
-					// we don't double up on tmux has-session shells.
+					// Click-time liveness check: use the provider's 5s-TTL cached
+					// probe so we reuse the most recent tree-render result rather
+					// than shelling out a second has-session per click. Falls back
+					// to the up-front probe (probedTmuxSessionAlive) or a fresh
+					// direct check when the provider is unavailable.
 					let hasLiveTmuxSession = false;
 					if (
 						task.terminal_backend === "tmux" &&
@@ -1198,7 +1201,9 @@ export async function activate(
 						isValidSessionId(task.session_id)
 					) {
 						hasLiveTmuxSession =
-							probedTmuxSessionAlive ?? (await isTaskTmuxSessionAlive(task));
+							agentStatusProvider?.isTaskTmuxSessionAlive(task) ??
+							probedTmuxSessionAlive ??
+							(await isTaskTmuxSessionAlive(task));
 						if (hasLiveTmuxSession && (await openGhosttyTmuxAttach(task))) {
 							// Tell the user we spawned a fresh tmux client rather than
 							// focusing an existing launcher surface. Without this
@@ -1209,6 +1214,16 @@ export async function activate(
 								`Opened a fresh Ghostty window attached to tmux session "${task.session_id}" — no launcher surface known for this task.`,
 							);
 							return;
+						}
+						// If the cache said alive but openGhosttyTmuxAttach returned
+						// false, the session died between probe and attach (TOCTOU race).
+						// Update hasLiveTmuxSession so the dead-session route below fires
+						// with an explicit notification — never silently drop the click.
+						if (hasLiveTmuxSession) {
+							hasLiveTmuxSession = false;
+							vscode.window.showWarningMessage(
+								`Session for "${task.id}" ended just before Ghostty could attach — opening changes instead.`,
+							);
 						}
 					}
 
