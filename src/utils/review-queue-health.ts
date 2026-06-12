@@ -47,7 +47,7 @@ const RESOLVED_REVIEW_STATES = new Set(["reviewed", "no_review_expected"]);
  *
  * When this returns true the absence of the advertised pending-review
  * receipt is expected (the review flow consumes it on approval), so the UI
- * must NOT surface "review queue pending" — regardless of what a local
+ * must NOT surface "review receipt missing" — regardless of what a local
  * filesystem probe says. Metadata is the authority; the probe is only a
  * health check for reviews that are still owed a receipt.
  */

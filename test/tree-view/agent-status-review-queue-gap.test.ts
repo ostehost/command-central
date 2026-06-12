@@ -247,7 +247,7 @@ describe("review queue continuation gap", () => {
 		const item = provider.getTreeItem({ type: "task", task });
 
 		expect(String(item.description)).toContain("missing handoff: MISSING.md");
-		expect(String(item.description)).not.toContain("review queue pending");
+		expect(String(item.description)).not.toContain("review receipt missing");
 	});
 
 	test("detail row and inline chip explain missing review receipt", () => {
@@ -270,12 +270,12 @@ describe("review queue continuation gap", () => {
 		).toBe(true);
 		expect(
 			String(provider.getTreeItem({ type: "task", task }).description),
-		).toContain("review queue pending");
+		).toContain("review receipt missing");
 	});
 
 	// Source-of-truth regression suite (2026-06-12 screenshot bug): completed
 	// node-origin tasks with review_state=reviewed / review_status=approved
-	// rendered as "review queue pending" because the consumed receipt was
+	// rendered as "review receipt missing" because the consumed receipt was
 	// probed on the wrong host — and even on the right host, after approval
 	// the receipt's absence is the expected steady state.
 
@@ -295,7 +295,7 @@ describe("review queue continuation gap", () => {
 		expect(groupOf(provider, task)).toBe("done");
 		expect(
 			String(provider.getTreeItem({ type: "task", task }).description),
-		).not.toContain("review queue pending");
+		).not.toContain("review receipt missing");
 		const details = provider.getChildren({ type: "task", task });
 		expect(
 			details.some(
@@ -318,7 +318,7 @@ describe("review queue continuation gap", () => {
 		expect(groupOf(provider, task)).toBe("done");
 		expect(
 			String(provider.getTreeItem({ type: "task", task }).description),
-		).not.toContain("review queue pending");
+		).not.toContain("review receipt missing");
 	});
 
 	test("remote node-origin task never reports a local receipt gap", () => {
@@ -335,7 +335,7 @@ describe("review queue continuation gap", () => {
 		expect(groupOf(provider, task)).toBe("done");
 		expect(
 			String(provider.getTreeItem({ type: "task", task }).description),
-		).not.toContain("review queue pending");
+		).not.toContain("review receipt missing");
 	});
 
 	test("node-execution metadata without exec_host fails closed on local probes", () => {
@@ -351,6 +351,6 @@ describe("review queue continuation gap", () => {
 		expect(groupOf(provider, task)).toBe("done");
 		expect(
 			String(provider.getTreeItem({ type: "task", task }).description),
-		).not.toContain("review queue pending");
+		).not.toContain("review receipt missing");
 	});
 });

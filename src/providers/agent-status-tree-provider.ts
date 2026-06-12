@@ -8946,7 +8946,7 @@ export class AgentStatusTreeProvider
 			!missingHandoffRelpath &&
 			this.isReviewQueueReceiptMissing(task);
 		if (reviewQueuePending) {
-			descriptionParts.push("review queue pending");
+			descriptionParts.push("review receipt missing");
 		}
 		if (diffSummaryInline) {
 			descriptionParts.push(diffSummaryInline);
