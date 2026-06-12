@@ -17,6 +17,7 @@ import {
 	classifyTaskSurface,
 	getTaskDisplayProjectName,
 	getTaskExecutionHostLabel,
+	isLocalFileProbeAuthoritative,
 	isRemoteNodeTaskForCurrentHost,
 } from "../../src/providers/agent-task-classification.js";
 import { createMockTask } from "./_helpers/agent-status-tree-provider-test-base.js";
@@ -164,6 +165,37 @@ describe("isRemoteNodeTaskForCurrentHost", () => {
 		__setCurrentMachineHostOverrideForTests("Hub Mac");
 		const task = createMockTask({ exec_mode: "node" });
 		expect(isRemoteNodeTaskForCurrentHost(task)).toBe(false);
+	});
+});
+
+describe("isLocalFileProbeAuthoritative", () => {
+	test("record with no node-execution metadata is probe-authoritative", () => {
+		__setCurrentMachineHostOverrideForTests("Hub Mac");
+		expect(isLocalFileProbeAuthoritative(createMockTask())).toBe(true);
+	});
+
+	test("task that executed on the current host is probe-authoritative", () => {
+		__setCurrentMachineHostOverrideForTests("Hub Mac");
+		const task = createMockTask({
+			exec_mode: "hub",
+			exec_host: "HUB MAC.local",
+		});
+		expect(isLocalFileProbeAuthoritative(task)).toBe(true);
+	});
+
+	test("task that executed on another host is not probe-authoritative", () => {
+		__setCurrentMachineHostOverrideForTests("Hub Mac");
+		const task = createMockTask({ exec_host: "Node Mac" });
+		expect(isLocalFileProbeAuthoritative(task)).toBe(false);
+	});
+
+	test("node metadata without exec_host fails closed for file probes", () => {
+		__setCurrentMachineHostOverrideForTests("Hub Mac");
+		const task = createMockTask({ exec_mode: "node" });
+		// Surface classification degrades to local (no unfollowable remote
+		// menu), but file probes must not treat local absence as evidence.
+		expect(isRemoteNodeTaskForCurrentHost(task)).toBe(false);
+		expect(isLocalFileProbeAuthoritative(task)).toBe(false);
 	});
 });
 

@@ -168,6 +168,40 @@ export function isRemoteNodeTaskForCurrentHost(task: AgentTask): boolean {
 	return !isLocalExecutionHost(task);
 }
 
+/**
+ * Whether probing THIS machine's filesystem can prove anything about the
+ * task's advertised artifact paths (pending_review_path, handoff_file, …).
+ *
+ * Source-of-truth rule: local file probes are only valid for tasks that
+ * executed on the current host. Remote/node-origin launcher records carry
+ * absolute paths (`/tmp/oste-pending-review/…`) that are meaningful on the
+ * machine that ran the task — the same path being absent here is not
+ * evidence of anything. Such tasks must be judged by their recorded
+ * metadata (review_state / review_status / end_commit / completion fields)
+ * instead.
+ *
+ * The fail direction deliberately differs from {@link isRemoteNodeTaskForCurrentHost}:
+ * a task carrying node-execution metadata but no exec_host degrades to
+ * "local" for surface classification (so the user is not shown an
+ * unfollowable remote action menu), but degrades to "not authoritative"
+ * here (so a missing local file is never read as truth about another
+ * machine). Tasks with no node-execution metadata at all are plain local
+ * records and stay fully probe-able.
+ *
+ * TODO(work-system): the durable fix is a hub-readable Work System /
+ * OpenClaw-native projection of per-task review state instead of raw
+ * per-machine launcher files — once lanes carry review lifecycle in the
+ * projection, this host check becomes a fallback rather than the gate.
+ */
+export function isLocalFileProbeAuthoritative(task: AgentTask): boolean {
+	if (!hasNodeExecutionMetadata(task)) return true;
+	const taskHost = task.exec_host?.trim();
+	if (!taskHost) return false;
+	return (
+		normalizeHostName(taskHost) === normalizeHostName(getCurrentMachineHost())
+	);
+}
+
 export function getTaskDisplayProjectName(task: AgentTask): string {
 	return (
 		firstNonEmptyTaskString(task.visible_project_name, task.project_name) ??

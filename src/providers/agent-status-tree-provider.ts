@@ -89,6 +89,7 @@ import { relativeTime } from "../utils/relative-time.js";
 import {
 	type AdvertisedReviewQueueState,
 	checkAdvertisedReviewQueue,
+	isReviewLifecycleResolved,
 } from "../utils/review-queue-health.js";
 import {
 	type ResolvedTaskRegistrySource,
@@ -112,6 +113,7 @@ import {
 	classifyTaskSurface,
 	getTaskDisplayProjectName,
 	getTaskExecutionHostLabel,
+	isLocalFileProbeAuthoritative,
 	isRemoteNodeTaskForCurrentHost,
 } from "./agent-task-classification.js";
 
@@ -1819,7 +1821,9 @@ export class AgentStatusTreeProvider
 	}
 
 	private getDeclaredHandoffState(task: AgentTask): DeclaredHandoffState {
-		if (isRemoteNodeTaskForCurrentHost(task)) return "unknown";
+		// Local file probes are only evidence about this host — remote/node-
+		// origin tasks (or node tasks whose host we can't verify) stay unknown.
+		if (!isLocalFileProbeAuthoritative(task)) return "unknown";
 
 		const cacheTtlMs = 5_000;
 		const cacheKey = `${task.project_dir}::${task.handoff_file ?? ""}`;
@@ -1836,7 +1840,9 @@ export class AgentStatusTreeProvider
 	private getPendingReviewQueueState(
 		task: AgentTask,
 	): AdvertisedReviewQueueState {
-		if (isRemoteNodeTaskForCurrentHost(task)) return "unknown";
+		// Local file probes are only evidence about this host — remote/node-
+		// origin tasks (or node tasks whose host we can't verify) stay unknown.
+		if (!isLocalFileProbeAuthoritative(task)) return "unknown";
 
 		const cacheTtlMs = 5_000;
 		const cacheKey = `${task.project_dir}::${task.pending_review_path ?? ""}`;
@@ -1848,6 +1854,29 @@ export class AgentStatusTreeProvider
 		const state = checkAdvertisedReviewQueue(task);
 		this._reviewQueueCache.set(cacheKey, { state, checkedAt: now });
 		return state;
+	}
+
+	/**
+	 * True when this task advertised a pending-review receipt that should
+	 * exist on this machine but does not — i.e. the review-queue intake
+	 * genuinely failed and the task would never reach a reviewer.
+	 *
+	 * Source-of-truth order (both gates must pass before "missing" counts):
+	 * 1. Review metadata wins. Once the launcher records the review as
+	 *    resolved (review_status=approved or review_state=reviewed/
+	 *    no_review_expected), the review flow has consumed the receipt and
+	 *    its absence is the expected steady state, not a gap.
+	 * 2. Local probes only apply to local tasks. Remote/node-origin tasks
+	 *    return "unknown" from getPendingReviewQueueState, never "missing" —
+	 *    a path like /tmp/oste-pending-review/… is only meaningful on the
+	 *    host that executed the task.
+	 */
+	private isReviewQueueReceiptMissing(task: AgentTask): boolean {
+		if (isReviewLifecycleResolved(task)) return false;
+		return (
+			Boolean(task.pending_review_path) &&
+			this.getPendingReviewQueueState(task) === "missing"
+		);
 	}
 
 	/**
@@ -4189,11 +4218,7 @@ export class AgentStatusTreeProvider
 			) {
 				return "limbo";
 			}
-			if (
-				node.type === "task" &&
-				node.task.pending_review_path &&
-				this.getPendingReviewQueueState(node.task) === "missing"
-			) {
+			if (node.type === "task" && this.isReviewQueueReceiptMissing(node.task)) {
 				return "limbo";
 			}
 			return "done";
@@ -5085,14 +5110,13 @@ export class AgentStatusTreeProvider
 			t.review_status !== "pending" &&
 			t.review_status !== "changes_requested" &&
 			this.getDeclaredHandoffState(t) !== "missing" &&
-			t.pending_review_path &&
-			this.getPendingReviewQueueState(t) === "missing"
+			this.isReviewQueueReceiptMissing(t)
 		) {
 			details.push({
 				type: "detail",
 				label: "Review queue receipt not yet materialized",
 				value: "",
-				description: t.pending_review_path,
+				description: t.pending_review_path ?? undefined,
 				taskId: t.id,
 				icon: "watch",
 				iconColor: "charts.yellow",
@@ -8818,8 +8842,7 @@ export class AgentStatusTreeProvider
 			task.review_status !== "pending" &&
 			task.review_status !== "changes_requested" &&
 			!missingHandoffRelpath &&
-			task.pending_review_path &&
-			this.getPendingReviewQueueState(task) === "missing";
+			this.isReviewQueueReceiptMissing(task);
 		if (reviewQueuePending) {
 			descriptionParts.push("review queue pending");
 		}

@@ -165,6 +165,14 @@ A fresh-slate reset must back up the entire directory tree (including `reviewed/
 
 Ground-truth overlay. The launcher's completion hook writes this receipt immediately on task completion — before tasks.json is updated. When tasks.json still reports `running` due to write lag, the receipt provides the real status.
 
+### Source-of-Truth Rule (local probes vs. task metadata)
+
+Local file probes (`pending_review_path`, `handoff_file`) are only valid for tasks that executed on the **current host**. Remote/node-origin task records carry absolute paths that are meaningful on the machine that ran the task — a missing file here is not evidence of anything. The gate is `isLocalFileProbeAuthoritative()` in `src/providers/agent-task-classification.ts`: tasks with node-execution metadata must have an `exec_host` matching the current machine before any local probe counts; node metadata without a verifiable host fails closed (probe state `unknown`, never `missing`).
+
+Review metadata wins before any probe. Once the launcher records the review as resolved (`review_status: approved` or `review_state: reviewed` / `no_review_expected`), the review flow has consumed the receipt — its absence is the expected steady state, not a queue gap. `isReviewLifecycleResolved()` in `src/utils/review-queue-health.ts` encodes this; the "review queue pending" chip / limbo routing only fires for completed tasks whose review is still owed a receipt on this host.
+
+Long-term, remote-origin review state should come from a hub-readable Work System / OpenClaw-native projection rather than raw per-machine launcher files (see the TODO on `isLocalFileProbeAuthoritative`).
+
 ### Cache Behavior
 
 In-memory cache with 5-second TTL per task. The extension re-reads the receipt file after TTL expiry.

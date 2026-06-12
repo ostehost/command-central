@@ -16,7 +16,7 @@ mock.module("node:fs", () => ({
 	statSync: statSyncMock,
 }));
 
-const { checkAdvertisedReviewQueue } = await import(
+const { checkAdvertisedReviewQueue, isReviewLifecycleResolved } = await import(
 	"../../src/utils/review-queue-health.js"
 );
 
@@ -133,5 +133,43 @@ describe("checkAdvertisedReviewQueue", () => {
 				pending_review_path: "receipt.json",
 			}),
 		).toBe("unknown");
+	});
+});
+
+describe("isReviewLifecycleResolved", () => {
+	test("approved review_status resolves the lifecycle", () => {
+		expect(isReviewLifecycleResolved({ review_status: "approved" })).toBe(true);
+		expect(
+			isReviewLifecycleResolved({
+				review_status: "approved",
+				review_state: "pending",
+			}),
+		).toBe(true);
+	});
+
+	test("terminal review_state values resolve the lifecycle", () => {
+		expect(isReviewLifecycleResolved({ review_state: "reviewed" })).toBe(true);
+		expect(isReviewLifecycleResolved({ review_state: " Reviewed " })).toBe(
+			true,
+		);
+		expect(
+			isReviewLifecycleResolved({ review_state: "no_review_expected" }),
+		).toBe(true);
+	});
+
+	test("in-flight or absent review metadata stays unresolved", () => {
+		expect(isReviewLifecycleResolved({})).toBe(false);
+		expect(
+			isReviewLifecycleResolved({ review_status: null, review_state: null }),
+		).toBe(false);
+		expect(isReviewLifecycleResolved({ review_status: "pending" })).toBe(false);
+		expect(isReviewLifecycleResolved({ review_state: "reviewing" })).toBe(
+			false,
+		);
+		expect(isReviewLifecycleResolved({ review_state: "awaiting_fixup" })).toBe(
+			false,
+		);
+		expect(isReviewLifecycleResolved({ review_state: "blocked" })).toBe(false);
+		expect(isReviewLifecycleResolved({ review_state: "" })).toBe(false);
 	});
 });

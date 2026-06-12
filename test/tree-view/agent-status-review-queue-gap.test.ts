@@ -44,6 +44,7 @@ mock.module("../../src/utils/port-detector.js", () => ({
 }));
 
 import {
+	__setCurrentMachineHostOverrideForTests,
 	type AgentStatusGroup,
 	AgentStatusTreeProvider,
 	type AgentTask,
@@ -187,6 +188,7 @@ describe("review queue continuation gap", () => {
 	});
 
 	afterEach(() => {
+		__setCurrentMachineHostOverrideForTests(null);
 		const p = provider as unknown as { _agentRegistry: unknown };
 		if (
 			p._agentRegistry &&
@@ -269,5 +271,86 @@ describe("review queue continuation gap", () => {
 		expect(
 			String(provider.getTreeItem({ type: "task", task }).description),
 		).toContain("review queue pending");
+	});
+
+	// Source-of-truth regression suite (2026-06-12 screenshot bug): completed
+	// node-origin tasks with review_state=reviewed / review_status=approved
+	// rendered as "review queue pending" because the consumed receipt was
+	// probed on the wrong host — and even on the right host, after approval
+	// the receipt's absence is the expected steady state.
+
+	test("approved + reviewed task on the current host renders done despite consumed receipt", () => {
+		__setCurrentMachineHostOverrideForTests("Lane Host");
+		const dir = makeTmp();
+		const task = makeTask({
+			id: "approved-receipt-consumed",
+			project_dir: dir,
+			pending_review_path: path.join(dir, "consumed-receipt.json"),
+			review_status: "approved",
+			review_state: "reviewed",
+			exec_mode: "hub",
+			exec_host: "Lane Host",
+		});
+
+		expect(groupOf(provider, task)).toBe("done");
+		expect(
+			String(provider.getTreeItem({ type: "task", task }).description),
+		).not.toContain("review queue pending");
+		const details = provider.getChildren({ type: "task", task });
+		expect(
+			details.some(
+				(node) =>
+					node.type === "detail" &&
+					node.label === "Review queue receipt not yet materialized",
+			),
+		).toBe(false);
+	});
+
+	test("review_state=reviewed alone suppresses the receipt gap", () => {
+		const dir = makeTmp();
+		const task = makeTask({
+			id: "reviewed-state-only",
+			project_dir: dir,
+			pending_review_path: path.join(dir, "consumed-receipt.json"),
+			review_state: "reviewed",
+		});
+
+		expect(groupOf(provider, task)).toBe("done");
+		expect(
+			String(provider.getTreeItem({ type: "task", task }).description),
+		).not.toContain("review queue pending");
+	});
+
+	test("remote node-origin task never reports a local receipt gap", () => {
+		__setCurrentMachineHostOverrideForTests("Hub Mac");
+		const dir = makeTmp();
+		const task = makeTask({
+			id: "remote-node-task",
+			project_dir: dir,
+			pending_review_path: "/tmp/oste-pending-review/remote-node-task.json",
+			exec_mode: "node",
+			exec_host: "Node Mac",
+		});
+
+		expect(groupOf(provider, task)).toBe("done");
+		expect(
+			String(provider.getTreeItem({ type: "task", task }).description),
+		).not.toContain("review queue pending");
+	});
+
+	test("node-execution metadata without exec_host fails closed on local probes", () => {
+		__setCurrentMachineHostOverrideForTests("Hub Mac");
+		const dir = makeTmp();
+		const task = makeTask({
+			id: "node-no-host-task",
+			project_dir: dir,
+			pending_review_path: path.join(dir, "missing-review.json"),
+			exec_mode: "node",
+		});
+
+		expect(groupOf(provider, task)).toBe("done");
+		expect(
+			String(provider.getTreeItem({ type: "task", task }).description),
+		).not.toContain("review queue pending");
 	});
 });
