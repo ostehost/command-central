@@ -2129,6 +2129,14 @@ export class AgentStatusTreeProvider
 	 *         / `result`). Authoritative when present because the launcher-
 	 *         spawned agent writes it directly.
 	 *
+	 *   Tier 2c — Launcher completion evidence in tasks.json
+	 *     `completed_at` set (no exit_code) → completed.
+	 *     `exit_code === 0` → completed.
+	 *     non-zero `exit_code` → failed.
+	 *     Must run BEFORE the liveness check; a partial-write race can leave
+	 *     `status:"running"` while these fields are already set. tmux liveness
+	 *     is fail-open (unknown pane → healthy), so completion facts must win.
+	 *
 	 *   Tier 3 — Liveness overlay (does NOT decide status on its own)
 	 *     Tmux pane evidence + discovered-session presence are consulted by
 	 *     `isRunningTaskHealthy()` only to decide whether to keep trusting a
@@ -2136,10 +2144,8 @@ export class AgentStatusTreeProvider
 	 *     corroborating Tier 1/2 signals.
 	 *
 	 *   Tier 4 — Last-resort inference (only when Tier 1–3 say "unhealthy")
-	 *     4a. `exit_code === 0` or `completed_at` set → completed.
-	 *     4b. non-zero `exit_code` → failed.
-	 *     4c. Commits since start → completed_dirty.
-	 *     4d. Default → stopped.
+	 *     4a. Commits since start → completed_dirty.
+	 *     4b. Default → stopped.
 	 *
 	 *   See research/COMMAND-CENTRAL-LAUNCHER-TRUTH-HIERARCHY-2026-04-20.md
 	 *   for the full rationale.
@@ -2175,22 +2181,16 @@ export class AgentStatusTreeProvider
 			return this.applyRuntimeStatusOverlay(task, streamTerminalState);
 		}
 
-		// Tier 3 — Liveness overlay. `isRunningTaskHealthy()` folds tmux pane
-		// evidence and discovered-session presence into a single verdict. If it
-		// still says "healthy", keep the task as running.
-		if (this.isRunningTaskHealthy(task)) return task;
-
-		// Tier 4 — Last-resort inference. The process is gone; we have no
-		// receipt, no stream terminal event, and liveness signals say dead.
-		// Look for completion evidence before defaulting to "stopped". Many
-		// tasks finish successfully but the completion hook doesn't fire
-		// (race / Ghostty lifecycle), leaving tasks.json stuck at "running".
-		// Exit code and completed_at are ground-truth signals that should
-		// override the inference.
+		// Tier 2c — Launcher completion evidence already in tasks.json.
+		// A partial-write race can leave status:"running" while completed_at or
+		// exit_code is already set by the completion hook.  These are launcher-
+		// authoritative signals and must beat liveness checks: an alive tmux
+		// window / fail-open pane inspection must NOT keep a fully-completed
+		// task in the "running" group.
 		if (task.exit_code === 0 || (task.exit_code == null && task.completed_at)) {
 			return this.applyRuntimeStatusOverlay(task, {
 				status: "completed",
-				reason: "Session ended with completion evidence.",
+				reason: "Completion evidence found in launcher record.",
 			});
 		}
 		if (task.exit_code != null && task.exit_code !== 0) {
@@ -2199,6 +2199,15 @@ export class AgentStatusTreeProvider
 				reason: `Session ended with exit code ${task.exit_code}.`,
 			});
 		}
+
+		// Tier 3 — Liveness overlay. `isRunningTaskHealthy()` folds tmux pane
+		// evidence and discovered-session presence into a single verdict. If it
+		// still says "healthy", keep the task as running.
+		if (this.isRunningTaskHealthy(task)) return task;
+
+		// Tier 4 — Last-resort inference. The process is gone; we have no
+		// receipt, no stream terminal event, no launcher completion evidence,
+		// and liveness signals say dead.  Commit history is the final fallback.
 
 		// Dirty-exit tasks lack exit_code and completed_at, but may have
 		// produced commits.  Check git history as a last-resort signal
