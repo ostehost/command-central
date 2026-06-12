@@ -203,6 +203,14 @@ export interface AgentTask {
 	project_id?: string | null;
 	project_ref?: AgentTaskProjectRef | null;
 	lane_kind?: string | null;
+	/**
+	 * Launcher-native lane kind retained verbatim when it differs from the
+	 * canonical `lane_kind` (e.g. `lane_kind: "review"` with
+	 * `lane_kind_source: "release-proof"`); null when the native kind is
+	 * already canonical or unset. Emitted by Work System `lane_ref_update`
+	 * envelopes and tolerated on plain task-registry rows.
+	 */
+	lane_kind_source?: string | null;
 	canonical_project_dir?: string | null;
 	execution_dir?: string | null;
 	/**
@@ -212,6 +220,14 @@ export interface AgentTask {
 	 * top-level project group.
 	 */
 	project_name_derived?: boolean;
+	/**
+	 * Internal normalization marker: this row was transformed from a
+	 * `work-system-lanes-projection` `lane_ref_update` envelope. The
+	 * projection is a TRANSITIONAL bridge read-model, never authoritative
+	 * truth — a primary task-registry record with the same task id always
+	 * wins the merge over a projection row (see `readRegistry`).
+	 */
+	lane_projection?: boolean;
 	source_authority?: string | null;
 	owner_kind?: string | null;
 	owner_actions?: unknown[] | null;
@@ -902,6 +918,7 @@ function normalizeTask(
 		project_id: asString(raw["project_id"]) ?? null,
 		project_ref: normalizeTaskProjectRef(raw["project_ref"]),
 		lane_kind: asString(raw["lane_kind"]) ?? null,
+		lane_kind_source: asString(raw["lane_kind_source"]) ?? null,
 		canonical_project_dir: canonicalProjectDirRaw
 			? canonicalizeProjectDir(canonicalProjectDirRaw)
 			: null,
@@ -1040,6 +1057,127 @@ function normalizeRegistryTasks(
 		if (!raw || typeof raw !== "object") continue;
 		const task = normalizeTask(key, raw as Record<string, unknown>);
 		if (task) normalized[key] = task;
+	}
+
+	return normalized;
+}
+
+/**
+ * Self-describing `kind` of the transitional Work System lanes
+ * read-model/projection (`~/.config/openclaw/lanes.json`): `{version: 1,
+ * kind: "work-system-lanes-projection", lanes: {<lane_ref.id>:
+ * <lane_ref_update>}, updated_at}`, as written by the Ghostty Launcher
+ * work-system bridge in outbox mode. Ingesting it is BRIDGE COMPATIBILITY
+ * ONLY — the long-term primary source stays the OpenClaw-native Work System
+ * plugin/API (`workSystem.lanes.list` + per-session `workSystem`
+ * projection), and the projection is never authoritative truth.
+ */
+export const WORK_SYSTEM_LANES_PROJECTION_KIND = "work-system-lanes-projection";
+
+/**
+ * Transform one `lane_ref_update` envelope from the Work System lanes
+ * projection into the raw record shape {@link normalizeTask} understands.
+ * Returns null for rows that are not lane_ref_update envelopes or carry no
+ * task id.
+ *
+ * Field mapping (per ghostty-launcher `scripts/laneref-update-schema.json`):
+ * - `lane_ref.task` → `id` / `task_id`: the launcher task id correlates
+ *   stream files and pending-review receipts; the provider-scoped
+ *   `lane_ref.id` (`launcher:<task_id>`) is kept as `provenance.source_ref`.
+ * - `lane_ref.status` → `status` verbatim — the launcher-native enum matches
+ *   {@link AgentTaskStatus}; unknown values normalize to `stopped`.
+ * - `lane_ref.lane_kind` / `lane_ref.lane_kind_source` → preserved as-is
+ *   (canonical kind plus the verbatim native kind when they differ, e.g.
+ *   `review` + `release-proof`).
+ * - `lane_ref.session` → `session_id`; a session-less envelope falls back to
+ *   `lane_ref.id`, which fails `isValidSessionId` by construction (it
+ *   contains `:`), so focus actions refuse loudly instead of acting on a
+ *   fabricated session name.
+ * - `lane_ref.worktree` → `execution_dir` / `exec_cwd` and the best-effort
+ *   `project_dir` (registry-backed rows group by `project_ref.id` anyway).
+ * - `lane_ref.updatedAt` → `updated_at` and `started_at` — the only
+ *   timestamp the projection carries; for running lanes it is the spawn
+ *   emission, for terminal lanes the settle emission. Stable across reads,
+ *   unlike the wall-clock default.
+ * - `project_ref` → passed through; `project_ref.id` also backfills the
+ *   legacy `project_id` (the contract states they are equal for registered
+ *   lanes). Envelopes with `project_ref: null` (legacy / resolution-skipped
+ *   lanes) stay quarantined by the `lane-records-only` filter.
+ */
+function laneRefUpdateToTaskRecord(
+	envelope: Record<string, unknown>,
+): Record<string, unknown> | null {
+	if (envelope["kind"] !== "lane_ref_update") return null;
+	const laneRefRaw = envelope["lane_ref"];
+	if (
+		!laneRefRaw ||
+		typeof laneRefRaw !== "object" ||
+		Array.isArray(laneRefRaw)
+	) {
+		return null;
+	}
+	const laneRef = laneRefRaw as Record<string, unknown>;
+	const taskId = asString(laneRef["task"]);
+	if (!taskId) return null;
+	const laneId = asString(laneRef["id"]) ?? `launcher:${taskId}`;
+	const projectRefRaw = envelope["project_ref"];
+	const projectRef =
+		projectRefRaw &&
+		typeof projectRefRaw === "object" &&
+		!Array.isArray(projectRefRaw)
+			? (projectRefRaw as Record<string, unknown>)
+			: null;
+	const worktree = asString(laneRef["worktree"]);
+	const updatedAt = asString(laneRef["updatedAt"]);
+	return {
+		id: taskId,
+		task_id: taskId,
+		status: asString(laneRef["status"]),
+		project_ref: projectRef,
+		project_id: projectRef ? (asString(projectRef["id"]) ?? null) : null,
+		lane_kind: asString(laneRef["lane_kind"]),
+		lane_kind_source: asString(laneRef["lane_kind_source"]),
+		session_id: asString(laneRef["session"]) ?? laneId,
+		terminal_backend: asString(laneRef["surface"]),
+		execution_dir: worktree,
+		exec_cwd: worktree,
+		project_dir: worktree,
+		started_at: updatedAt,
+		updated_at: updatedAt,
+		source_authority: asString(laneRef["provider"]),
+		provenance: {
+			source_ref: laneId,
+			adapter_kind: WORK_SYSTEM_LANES_PROJECTION_KIND,
+		},
+	};
+}
+
+/**
+ * Normalize the `lanes` collection of a `work-system-lanes-projection`
+ * document. Every admitted row is marked `lane_projection: true` so the
+ * registry merge never lets the read-model displace or duplicate a primary
+ * task-registry record (transitional bridge compatibility only).
+ */
+function normalizeProjectionLanes(
+	lanes: unknown,
+): Record<string, AgentTask> | null {
+	if (!lanes || typeof lanes !== "object" || Array.isArray(lanes)) return null;
+
+	const normalized: Record<string, AgentTask> = {};
+	for (const [laneKey, rawEnvelope] of Object.entries(lanes)) {
+		if (
+			!rawEnvelope ||
+			typeof rawEnvelope !== "object" ||
+			Array.isArray(rawEnvelope)
+		) {
+			continue;
+		}
+		const record = laneRefUpdateToTaskRecord(
+			rawEnvelope as Record<string, unknown>,
+		);
+		if (!record) continue;
+		const task = normalizeTask(laneKey, record);
+		if (task) normalized[laneKey] = { ...task, lane_projection: true };
 	}
 
 	return normalized;
@@ -3053,6 +3191,21 @@ export class AgentStatusTreeProvider
 				this._fileIngestModes.get(filePath) ?? "all",
 			);
 			for (const [key, task] of Object.entries(registry.tasks)) {
+				// The Work System lanes projection is a read-model, never
+				// authoritative truth: when a primary registry record and a
+				// projection row share a task id, the primary record wins
+				// regardless of file order — the projection row neither
+				// displaces it nor duplicates it under a suffixed key.
+				const preferred = task.id || key;
+				const existing = merged.tasks[preferred];
+				if (existing) {
+					if (task.lane_projection && !existing.lane_projection) continue;
+					if (!task.lane_projection && existing.lane_projection) {
+						merged.tasks[preferred] =
+							preferred === task.id ? task : { ...task, id: preferred };
+						continue;
+					}
+				}
 				const taskKey = this.getMergedTaskRegistryKey(
 					key,
 					task,
@@ -3148,6 +3301,38 @@ export class AgentStatusTreeProvider
 
 			const parsedRegistry = parsed as Record<string, unknown>;
 			const version = parsedRegistry["version"];
+
+			// Transitional bridge compatibility: the Work System lanes
+			// read-model/projection is self-describing via `kind`, so it can
+			// never be confused with a legacy `{version, tasks}` registry (or
+			// with the §6 drainable op-queue outbox, which uses a different
+			// envelope at a different path). Rows still pass through the same
+			// per-source ingest filter — the projection never widens what a
+			// lane registry may admit.
+			if (parsedRegistry["kind"] === WORK_SYSTEM_LANES_PROJECTION_KIND) {
+				if (version !== 1) {
+					warnTaskRegistryFallback(
+						filePath,
+						`unsupported ${WORK_SYSTEM_LANES_PROJECTION_KIND} version: ${String(version)}`,
+					);
+					return createEmptyTaskRegistry();
+				}
+				const normalizedLanes = normalizeProjectionLanes(
+					parsedRegistry["lanes"],
+				);
+				if (!normalizedLanes) {
+					warnTaskRegistryFallback(
+						filePath,
+						`${WORK_SYSTEM_LANES_PROJECTION_KIND} is missing a valid lanes collection`,
+					);
+					return createEmptyTaskRegistry();
+				}
+				return {
+					version: 2,
+					tasks: this.applyIngestFilter(filePath, normalizedLanes, ingest),
+				};
+			}
+
 			const normalizedTasks = normalizeRegistryTasks(parsedRegistry["tasks"]);
 			if ((version === 1 || version === 2) && normalizedTasks) {
 				return {

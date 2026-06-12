@@ -49,10 +49,41 @@ The full AgentTask interface has ~85 fields. The above covers the most commonly 
 
 **Lane registry (primary, zero-config).** `commandCentral.laneRegistry.files` defaults to:
 
-1. `~/.config/openclaw/lanes.json` — transitional OpenClaw-namespace Work System bridge/outbox.
+1. `~/.config/openclaw/lanes.json` — transitional OpenClaw-namespace Work System bridge.
 2. `~/.config/ghostty-launcher/tasks.json` — deprecated launcher compat path.
 
-Lane registry files ingest `lane-records-only`: only records carrying a Work Registry `project_ref.id` are admitted; launcher-era rows stay quarantined with a logged count. An explicit empty list disables lane ingestion. Both defaults are file bridges — the long-term primary source is the OpenClaw-native Work System plugin/API (`workSystem.lanes.list` plus per-session `workSystem` projection from plugin session extensions), behind a native CC service like OpenClawTaskService.
+Lane registry files accept two shapes: the launcher `{version, tasks: {...}}` registry, and the transitional Work System lanes read-model/projection written by the launcher bridge in outbox mode:
+
+```json
+{
+  "version": 1,
+  "kind": "work-system-lanes-projection",
+  "lanes": {
+    "launcher:<task_id>": {
+      "schema_version": 1,
+      "kind": "lane_ref_update",
+      "project_ref": { "id": "...", "displayName": "...", "...": "..." },
+      "lane_ref": {
+        "id": "launcher:<task_id>",
+        "provider": "ghostty-launcher",
+        "surface": "tmux | persist | applescript | auto | null",
+        "session": "agent-<safe-name> | null",
+        "task": "<task_id>",
+        "worktree": "string | null",
+        "lane_kind": "implementation | review | research | null",
+        "lane_kind_source": "string | null",
+        "status": "launcher-native status, verbatim",
+        "updatedAt": "ISO-8601"
+      }
+    }
+  },
+  "updated_at": "ISO-8601"
+}
+```
+
+Projection envelopes transform into AgentTask rows (`lane_ref.task` → `id`/`task_id`; status/lane_kind/lane_kind_source/session/worktree/updatedAt preserved; `lane_ref.id` kept as `provenance.source_ref`). This is read-only bridge compatibility: projection rows are never authoritative truth — a primary registry record with the same task id wins the merge regardless of file order, and Command Central never writes the projection shape.
+
+Either shape ingests `lane-records-only`: only records carrying a Work Registry `project_ref.id` are admitted; launcher-era rows and projection envelopes without `project_ref` stay quarantined with a logged count. An explicit empty list disables lane ingestion. Both defaults are file bridges — the long-term primary source is the OpenClaw-native Work System plugin/API (`workSystem.lanes.list` plus per-session `workSystem` projection from plugin session extensions), behind a native CC service like OpenClawTaskService.
 
 **Legacy launcher chain (deprecated, opt-in via `commandCentral.legacyLauncherTasks.enabled`, default `false`).** When enabled, full-file ingestion resolves in strict priority order and the tree pins a "Legacy launcher diagnostics (deprecated)" warning row:
 

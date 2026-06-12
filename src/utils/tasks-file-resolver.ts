@@ -43,13 +43,19 @@ import type * as vscode from "vscode";
  * defaults retire behind a native service (like the existing
  * OpenClawTaskService/TaskFlowService consumers).
  *
- * - `~/.config/openclaw/lanes.json` — TRANSITIONAL bridge/outbox file in the
+ * - `~/.config/openclaw/lanes.json` — TRANSITIONAL bridge file in the
  *   OpenClaw config namespace. Not launcher-branded, but explicitly not
- *   final truth either.
+ *   final truth either. Carries the self-describing Work System lanes
+ *   read-model/projection (`{version: 1, kind:
+ *   "work-system-lanes-projection", lanes: {...}}`) written by the launcher
+ *   bridge in outbox mode; the reader also tolerates a legacy `{version,
+ *   tasks: {...}}` registry at this path. Either way the file is a
+ *   read-model, never authoritative truth — primary registry records win
+ *   any task-id overlap.
  * - `~/.config/ghostty-launcher/tasks.json` — DEPRECATED launcher-branded
- *   compatibility fallback, kept only until the launcher mirrors LaneRef
- *   projection to the transitional bridge (or the native Work System
- *   projection lands). Never the product identity path.
+ *   compatibility fallback, kept only while launcher tasks.json remains the
+ *   primary working record (until the native Work System projection lands).
+ *   Never the product identity path.
  *
  * Must stay in sync with the `commandCentral.laneRegistry.files` default in
  * package.json (enforced by
