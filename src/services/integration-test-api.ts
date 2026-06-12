@@ -95,18 +95,31 @@ export interface CommandCentralIntegrationDeactivationSnapshot {
 }
 
 export interface CommandCentralLauncherRegistryProviderSnapshot {
-	/** Launcher tasks.json paths the provider actually resolved and ingests. */
+	/**
+	 * Task registry paths the provider actually resolved and ingests. Under
+	 * default settings these are exactly the zero-config lane registry
+	 * bridges (`commandCentral.laneRegistry.files`); legacy launcher
+	 * tasks.json paths appear only via the deprecated
+	 * `commandCentral.legacyLauncherTasks.enabled` escape hatch.
+	 */
 	resolvedFilePaths: string[];
 	launcherTaskCount: number;
+	/**
+	 * Ids of every registry-ingested task ("launcher" for historical reasons
+	 * only). Under default settings the `lane-records-only` filter admits
+	 * just LaneRef-backed records (non-empty `project_ref.id`); stale
+	 * launcher-era ids reach this list only through the legacy escape hatch.
+	 */
 	launcherTaskIds: string[];
 }
 
 /**
- * Ground truth for launcher tasks.json ingestion, per provider. The installed
- * VSIX proof asserts quarantine (`resolvedFilePaths: []`, zero launcher tasks
- * under default settings) and the legacy escape hatch (fixture path resolved,
- * sentinel task ids ingested) against this snapshot rather than inferring
- * ingestion from rendered tree labels.
+ * Ground truth for task registry ingestion, per provider. The installed VSIX
+ * proof asserts the default lane registry contract (`resolvedFilePaths` =
+ * exactly the zero-config lane registries, with stale non-`project_ref` ids
+ * quarantined out of `launcherTaskIds`) and the legacy escape hatch (fixture
+ * path resolved, sentinel task ids ingested) against this snapshot rather
+ * than inferring ingestion from rendered tree labels.
  */
 export interface CommandCentralLauncherRegistrySnapshot {
 	agentStatus: CommandCentralLauncherRegistryProviderSnapshot;
