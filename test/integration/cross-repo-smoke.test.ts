@@ -441,9 +441,9 @@ describe.if(launcherAvailable)(
 			);
 			// arg-parser case exists
 			expect(backendCommands).toMatch(/--session-id\)/);
-			// session_id_flag is built and gated on claude backend
+			// session_id_flag is built through the shared shell-quoting helper and gated on claude backend
 			expect(backendCommands).toMatch(
-				/session_id_flag=" --session-id '\$\{session_id\}'"/,
+				/session_id_flag=" --session-id \$\(backend_shell_quote_arg "\$session_id"\)"/,
 			);
 			// session_id_flag is appended in the claude cmd build
 			expect(backendCommands).toMatch(/\$\{session_id_flag\}/);
