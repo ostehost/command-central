@@ -1,8 +1,8 @@
 # RESULT — cross-repo-integration-gate-20260613
 
-**Status:** manager-run cross-repo gate complete (visible hub→node spawn timed out twice; source gates ran node-local).  
-**Date:** 2026-06-13 17:45 EDT  
-**Scope:** `command-central`, `ghostty-launcher`, `symphony-daemon`, `config`.  
+**Status:** manager-run cross-repo gate complete (visible hub→node spawn timed out twice; source gates ran node-local).
+**Date:** 2026-06-13 17:45 EDT
+**Scope:** `command-central`, `ghostty-launcher`, `symphony-daemon`, `config`.
 **No push/tag/release/live writes/config writes/destructive cleanup.**
 
 ## Spawn note
