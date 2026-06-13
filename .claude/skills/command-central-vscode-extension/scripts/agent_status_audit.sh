@@ -117,8 +117,12 @@ if tasks_file=$(resolve_tasks_file); then
   if [[ -f "$tasks_file" && -s "$tasks_file" ]]; then
     tasks_total=$(jq '[.tasks // {} | to_entries[]] | length' "$tasks_file" 2>/dev/null || echo 0)
     tasks_running=$(jq '[.tasks // {} | to_entries[] | select(.value.status == "running")] | length' "$tasks_file" 2>/dev/null || echo 0)
+    # Coerce null/missing status to a stable "unknown" bucket. A null key would
+    # make `from_entries` error and silently collapse the whole breakdown to {},
+    # hiding even the valid running/completed counts (malformed launcher-era rows
+    # without a status do occur in live registries).
     tasks_by_status=$(jq '
-      [.tasks // {} | to_entries[] | .value.status] |
+      [.tasks // {} | to_entries[] | (.value.status // "unknown")] |
       group_by(.) | map({key: .[0], value: length}) | from_entries
     ' "$tasks_file" 2>/dev/null || echo '{}')
   fi
