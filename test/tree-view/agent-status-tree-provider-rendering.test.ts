@@ -1087,7 +1087,7 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 			);
 		});
 
-		test("idle Symphony summary appends 'none active' so a historical count is not alarming", () => {
+		test("idle Symphony summary states '0 live now' without implying history is gone", () => {
 			const fmt = (
 				provider as unknown as {
 					formatSymphonyRootDescription: (
@@ -1096,12 +1096,16 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 					) => string;
 				}
 			).formatSymphonyRootDescription.bind(provider);
-			expect(fmt([{ status: "succeeded" }, { status: "succeeded" }], [])).toBe(
-				"2 standalone run attempts · none active",
-			);
+			const label = fmt([{ status: "succeeded" }, { status: "succeeded" }], []);
+			// Historical attempt count is retained in the label — nothing dropped.
+			expect(label).toContain("2 standalone run attempts");
+			// Live state is stated explicitly; no absence/empty-state phrasing.
+			expect(label).toContain("0 live now");
+			expect(label).not.toContain("none active");
+			expect(label).toBe("2 standalone run attempts · 0 live now");
 		});
 
-		test("live Symphony summary omits 'none active' when a run is running", () => {
+		test("live Symphony summary omits the idle live-count suffix when a run is running", () => {
 			const fmt = (
 				provider as unknown as {
 					formatSymphonyRootDescription: (
