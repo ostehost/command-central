@@ -1600,30 +1600,11 @@ export class AgentStatusTreeProvider
 	}
 
 	private getRefreshElementKey(element: AgentNode): string | null {
-		switch (element.type) {
-			case "task":
-				return `task:${element.task.id}`;
-			case "discovered":
-				return `discovered:${element.agent.pid}`;
-			case "openclawTask":
-				return `openclaw:${element.task.taskId}`;
-			case "projectGroup":
-				return `project:${element.projectDir ?? element.projectName}`;
-			case "folderGroup":
-				return `folder:${element.groupKey}`;
-			case "statusGroup":
-				return `status-group:${element.status}`;
-			case "backgroundTasks":
-				return "backgroundTasks";
-			case "olderRuns":
-				return this.getOlderRunsStableId(element);
-			case "summary":
-				return "summary";
-			case "state":
-				return `state:${element.label}`;
-			default:
-				return null;
-		}
+		// Use the same canonical identity as TreeItem.id. Refresh coalescing does
+		// not get a parallel key scheme: if a node cannot be identified safely for
+		// VS Code tree identity, fall back to a full refresh instead of inventing a
+		// second, potentially divergent identity path.
+		return this.getStableTreeItemId(element) ?? null;
 	}
 
 	private scheduleTreeRefresh(element?: AgentNode): void {
@@ -3629,21 +3610,15 @@ export class AgentStatusTreeProvider
 		const timingStart = performance.now();
 		try {
 			const item = this.getTreeItemImpl(element);
-			// Anchor every node to a stable, globally-unique TreeItem.id. Without
-			// one, VS Code derives a node's handle from its parent's handle +
+			// Anchor every node to the provider's one canonical stable identity.
+			// Without one, VS Code derives a node's handle from its parent's handle +
 			// position + label. The project-first tree re-sorts project groups by
-			// activity and embeds a live "(N)" count in their header label, so
-			// those derived handles change on every refresh — which orphans deep
-			// descendants (notably the History `status-group:done` rows) and makes
-			// VS Code spam "Failed to resolve tree node" errors with audible alert
-			// feedback whenever the History surface is clicked or refreshed.
-			// Self-id'd nodes (status groups / time groups already set their own
-			// project-qualified id) are left untouched.
-			if (item.id === undefined) {
-				const stableId = this.getStableTreeItemId(element);
-				if (stableId !== undefined) {
-					item.id = stableId;
-				}
+			// activity and embeds live counts in section/header labels, so derived
+			// handles go stale across refreshes — orphaning descendants and causing
+			// "Failed to resolve tree node" storms with audible alert feedback.
+			const stableId = this.getStableTreeItemId(element);
+			if (stableId !== undefined) {
+				item.id = stableId;
 			}
 			return item;
 		} finally {
@@ -3655,41 +3630,16 @@ export class AgentStatusTreeProvider
 	}
 
 	/**
-	 * Globally-unique, render-stable identity for a tree node — the value used
-	 * for `TreeItem.id`. MUST NOT depend on tree index, display label, a live
-	 * count, or the current sort position (those all change across refreshes and
-	 * are exactly what breaks VS Code's node resolution). Returns `undefined` for
-	 * nodes that already set their own id in their create method (status groups,
-	 * time groups) or for which no stable global id is known (e.g. symphony
-	 * dashboard/run-group rows), leaving their handling unchanged.
+	 * One canonical, globally-unique, render-stable identity for Agent Status
+	 * tree nodes. The returned value is used for BOTH `TreeItem.id` and
+	 * element-level refresh coalescing; do not add per-node helper identity paths.
 	 *
-	 * NOTE: this is intentionally distinct from {@link getRefreshElementKey},
-	 * whose `statusGroup` key is project-agnostic (fine for refresh coalescing,
-	 * but NOT globally unique — reusing it as an id would collide one project's
-	 * History header with another's and crash the tree). Count-bearing
-	 * `olderRuns` rows get a count-independent id derived from their hidden
-	 * children; transient `state` rows keep VS Code's derived parent-relative
-	 * handle because their labels can repeat under many parents.
+	 * MUST NOT depend on tree index, display label, live count, or current sort
+	 * position. Those values change across refreshes and are exactly what breaks
+	 * VS Code's node resolution. Return `undefined` only when the provider cannot
+	 * prove a stable global id; those nodes use VS Code's parent-relative derived
+	 * handle and force full refreshes when targeted.
 	 */
-	private getOlderRunsStableId(element: OlderRunsNode): string {
-		const parentScope =
-			element.parentProjectDir ??
-			element.parentProjectName ??
-			element.parentGroupKey ??
-			"root";
-		const hiddenIds = element.hiddenNodes
-			.map((node) => {
-				if (node.type === "task") return `task:${node.task.id}`;
-				if (node.type === "openclawTask") {
-					return `openclaw:${node.task.taskId}`;
-				}
-				return `discovered:${node.agent.pid}`;
-			})
-			.sort()
-			.join(",");
-		return `olderRuns:${parentScope}:${hiddenIds}`;
-	}
-
 	private getStableTreeItemId(element: AgentNode): string | undefined {
 		switch (element.type) {
 			case "task":
@@ -3704,6 +3654,14 @@ export class AgentStatusTreeProvider
 					: `project:${element.projectDir ?? element.projectName}`;
 			case "folderGroup":
 				return `folder:${element.groupKey}`;
+			case "statusGroup":
+				return `status-group:${element.status}:${
+					element.parentProjectDir ?? element.parentProjectName ?? ""
+				}:${element.parentGroupKey ?? ""}`;
+			case "statusTimeGroup":
+				return `status-time-group:${element.status}:${element.period}:${
+					element.parentProjectDir ?? element.parentProjectName ?? ""
+				}:${element.parentGroupKey ?? ""}`;
 			case "backgroundTasks":
 				return "backgroundTasks";
 			case "summary":
@@ -3711,8 +3669,19 @@ export class AgentStatusTreeProvider
 				// provenance). Tag the Sources node so the two never collide into a
 				// duplicate id (a hard "already registered" tree crash).
 				return element.kind === "sources" ? "summary:sources" : "summary";
-			case "olderRuns":
-				return this.getOlderRunsStableId(element);
+			case "olderRuns": {
+				const parentScope =
+					element.parentProjectDir ??
+					element.parentProjectName ??
+					element.parentGroupKey ??
+					"root";
+				const hiddenIds = element.hiddenNodes
+					.map((node) => this.getStableTreeItemId(node))
+					.filter((id): id is string => id !== undefined)
+					.sort()
+					.join(",");
+				return `olderRuns:${parentScope}:${hiddenIds}`;
+			}
 			default:
 				return undefined;
 		}
@@ -8979,7 +8948,6 @@ export class AgentStatusTreeProvider
 			`${STATUS_GROUP_LABELS[node.status]} · ${count}`,
 			collapsibleState,
 		);
-		item.id = `status-group:${node.status}:${node.parentProjectDir ?? node.parentProjectName ?? ""}:${node.parentGroupKey ?? ""}`;
 		item.contextValue = "statusGroup";
 		item.iconPath = STATUS_GROUP_ICONS[node.status];
 		item.tooltip = `${STATUS_GROUP_LABELS[node.status]} • ${count} ${count === 1 ? "agent" : "agents"}`;
@@ -8990,7 +8958,6 @@ export class AgentStatusTreeProvider
 		node: StatusTimeGroupNode,
 	): vscode.TreeItem {
 		const item = new vscode.TreeItem(node.label, node.collapsibleState);
-		item.id = `status-time-group:${node.status}:${node.period}:${node.parentProjectDir ?? node.parentProjectName ?? ""}:${node.parentGroupKey ?? ""}`;
 		item.contextValue = "statusTimeGroup";
 		item.iconPath = new vscode.ThemeIcon("calendar");
 		item.tooltip = `${STATUS_GROUP_LABELS[node.status]} • ${node.label}`;

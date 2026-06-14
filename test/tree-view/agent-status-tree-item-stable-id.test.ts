@@ -12,12 +12,13 @@
  * the dense History surface was clicked or refreshed (observed live: 204
  * resolve failures across the agentStatus + symphony views on rc.61).
  *
- * CONTRACT (locked here): structural nodes carry a stable, globally-unique
- * `TreeItem.id` that does NOT depend on tree index, display label, live count,
- * or current sort position. Identical in both the `agentStatus` and `symphony`
- * views (both render through the same provider class). Nodes whose only
- * identity is a count-bearing label (`olderRuns`, transient `state`) are
- * deliberately left without an id rather than given a colliding/volatile one.
+ * CONTRACT (locked here): nodes with a provable stable global identity carry
+ * a stable, globally-unique `TreeItem.id` that does NOT depend on tree index,
+ * display label, live count, or current sort position. Identical in both the
+ * `agentStatus` and `symphony` views (both render through the same provider
+ * class). The same canonical identity function also drives targeted refresh
+ * coalescing. Ambiguous parent-relative rows (`state`) are deliberately left
+ * without an id rather than given a colliding/volatile one.
  *
  * See research/RESULT-cc-history-rattle-diagnosis-20260614.md.
  */
@@ -246,9 +247,9 @@ describe("Agent Status — stable TreeItem.id identity", () => {
 		expect(provider.getTreeItem(node).id).toBe("folder:manual:work");
 	});
 
-	// ── deliberate omissions (stable-and-unique beats comprehensive) ─────────
+	// ── canonical identity edge cases ─────────────────────────────────────
 
-	test("olderRuns uses hidden task identity instead of its count-bearing label", () => {
+	test("olderRuns uses the canonical hidden-node identities instead of its count-bearing label", () => {
 		const makeOlder = (label: string): OlderRunsNode => ({
 			type: "olderRuns",
 			label,
@@ -274,8 +275,9 @@ describe("Agent Status — stable TreeItem.id identity", () => {
 
 	test("parent-ambiguous state rows are intentionally left without a global id", () => {
 		const state: StateNode = { type: "state", label: "Waiting for agents..." };
-		// State labels can repeat under multiple parents, so leave VS Code's
-		// derived (parent-relative) handle in place.
+		// State labels can repeat under multiple parents, so the canonical
+		// identity function intentionally leaves VS Code's derived
+		// parent-relative handle in place.
 		expect(provider.getTreeItem(state).id).toBeUndefined();
 	});
 
