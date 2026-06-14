@@ -418,6 +418,13 @@ export interface SummaryNode {
 	type: "summary";
 	label: string;
 	tooltip?: string;
+	/**
+	 * Discriminates the Sources provenance summary from the ordinary V2 count
+	 * summary. In flat root mode both render as siblings, so their stable
+	 * TreeItem.id must differ (a duplicate id is a hard "already registered"
+	 * tree crash). Only the Sources node sets this.
+	 */
+	kind?: "sources";
 }
 
 export interface TaskNode {
@@ -3689,7 +3696,10 @@ export class AgentStatusTreeProvider
 			case "backgroundTasks":
 				return "backgroundTasks";
 			case "summary":
-				return "summary";
+				// Flat root mode renders two summary siblings (V2 count + Sources
+				// provenance). Tag the Sources node so the two never collide into a
+				// duplicate id (a hard "already registered" tree crash).
+				return element.kind === "sources" ? "summary:sources" : "summary";
 			default:
 				return undefined;
 		}
@@ -6482,6 +6492,7 @@ export class AgentStatusTreeProvider
 	): SummaryNode {
 		return {
 			type: "summary",
+			kind: "sources",
 			label: this.formatSourcesProvenanceDescription(node.runs, node.flows),
 			tooltip:
 				"Sources — read-only provenance feed. Symphony workstreams and run attempts contribute to Agent Status as a source; they do not compete as a separate status denominator. Open the Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, and Workstreams.",

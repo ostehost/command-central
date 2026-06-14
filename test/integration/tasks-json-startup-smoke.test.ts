@@ -51,6 +51,7 @@ function expectedEmptyAgentStatusChildren(
 			: []),
 		{
 			type: "summary",
+			kind: "sources" as const,
 			label: "Sources",
 			tooltip:
 				"Sources — read-only provenance feed. Symphony workstreams and run attempts contribute to Agent Status as a source; they do not compete as a separate status denominator. Open the Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, and Workstreams.",

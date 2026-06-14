@@ -359,4 +359,60 @@ describe("Agent Status — stable TreeItem.id identity", () => {
 		expect(ids.some((id) => id.startsWith("status-group:done:"))).toBe(true);
 		expect(ids.some((id) => id.startsWith("task:"))).toBe(true);
 	});
+
+	// ── flat root mode: the two summary siblings must not collide ────────────
+
+	test("the two flat-root summary nodes get distinct ids (count vs Sources provenance)", () => {
+		// Flat root mode renders BOTH the V2 count summary and the Sources
+		// provenance summary as siblings. Before the discriminator both returned
+		// the constant "summary" → duplicate root id → VS Code "Element with id
+		// summary is already registered" hard render failure.
+		const countSummary: AgentNode = { type: "summary", label: "1 running" };
+		const sourcesSummary: AgentNode = {
+			type: "summary",
+			kind: "sources",
+			label: "Sources",
+		};
+		expect(idOf(countSummary)).toBe("summary");
+		expect(idOf(sourcesSummary)).toBe("summary:sources");
+		expect(idOf(countSummary)).not.toBe(idOf(sourcesSummary));
+	});
+
+	test("a full FLAT render assigns globally-unique ids (root summaries do not collide)", () => {
+		setAgentStatusConfig(h.vscodeMock, { groupByProject: false });
+
+		// One running + one done lane: flat root = [count summary, Sources
+		// provenance summary, task:t-run, task:t-done]. Runtime proof of the
+		// regression was the duplicate-id list ["summary","summary",...].
+		const registry: Record<string, AgentTask> = {
+			"t-run": createMockTask({
+				id: "t-run",
+				status: "running",
+				project_dir: PROJ_A_DIR,
+				project_name: "Proj A",
+			}),
+			"t-done": completedTask("t-done", PROJ_A_DIR, "Proj A"),
+		};
+		provider.readRegistry = () => createMockRegistry(registry);
+		provider.reload();
+
+		const seen = new Map<string, AgentNode>();
+		const walk = (element?: AgentNode): void => {
+			for (const child of provider.getChildren(element)) {
+				const item: vscode.TreeItem = provider.getTreeItem(child);
+				if (item.id !== undefined) {
+					// Would FAIL before the fix: both summaries returned "summary".
+					expect(seen.has(item.id)).toBe(false);
+					seen.set(item.id, child);
+				}
+				walk(child);
+			}
+		};
+		walk(undefined);
+
+		// Both root summaries rendered AND received distinct ids.
+		const ids = [...seen.keys()];
+		expect(ids).toContain("summary");
+		expect(ids).toContain("summary:sources");
+	});
 });
