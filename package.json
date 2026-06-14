@@ -1390,12 +1390,12 @@
         },
         {
           "command": "commandCentral.killAgent",
-          "when": "(viewItem == agentTask.running && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
+          "when": "(viewItem =~ /^agentTask\\.running/ && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
           "group": "inline"
         },
         {
           "command": "commandCentral.killAgent",
-          "when": "(viewItem == agentTask.running && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
+          "when": "(viewItem =~ /^agentTask\\.running/ && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
           "group": "2_actions"
         },
         {
@@ -1410,7 +1410,7 @@
         },
         {
           "command": "commandCentral.markStaleAgentFailed",
-          "when": "viewItem == agentTask.completed_stale",
+          "when": "viewItem =~ /^agentTask\\.completed_stale/",
           "group": "inline"
         },
         {
@@ -1466,7 +1466,7 @@
         },
         {
           "command": "commandCentral.markAgentReviewed",
-          "when": "viewItem =~ /agentTask\\.(failed|stopped|killed|completed|completed_dirty|completed_stale|contract_failure)/ && !(viewItem =~ /\\.reviewed$/)",
+          "when": "viewItem =~ /agentTask\\.(failed|stopped|killed|completed|completed_dirty|completed_stale|contract_failure)/ && !(viewItem =~ /\\.reviewed(\\.|$)/)",
           "group": "2_actions"
         },
         {

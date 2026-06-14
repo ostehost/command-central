@@ -300,16 +300,90 @@ describe("package.json agent menu contributions", () => {
 		}
 	});
 
-	test("adds context-menu kill action for running agents", async () => {
+	test("kill action matches running rows including the .linked suffix (no exact-equality blind spot)", async () => {
+		// Regression: the provider appends a `.linked` contextValue suffix whenever
+		// a Claude session UUID is captured (agent-status-tree-provider.ts:9351-9354).
+		// A running Claude lane with a captured UUID is therefore `agentTask.running.linked`.
+		// killAgent previously gated on the exact `viewItem == agentTask.running`, so
+		// Kill silently vanished from exactly those (common) running lanes. Both the
+		// inline and 2_actions entries must match the running prefix like the sibling
+		// focus/capture/showOutput actions do.
 		const menu = await getViewItemContextMenu();
-		const runningKillAction = menu.find(
+		for (const group of ["inline", "2_actions"] as const) {
+			const killAction = menu.find(
+				(item) =>
+					item.command === "commandCentral.killAgent" && item.group === group,
+			);
+			expect(killAction).toBeDefined();
+			// Compound clause: keep the launcher + discovered-agent semantics intact.
+			expect(killAction?.when).toContain("commandCentral.hasLauncher");
+			expect(killAction?.when).toContain("viewItem == discoveredAgent.running");
+			const re = viewItemRegex(killAction?.when);
+			expect(re.test("agentTask.running")).toBe(true);
+			expect(re.test("agentTask.running.linked")).toBe(true);
+			for (const status of DEAD_STATUSES) {
+				expect(re.test(`agentTask.${status}`)).toBe(false);
+				expect(re.test(`agentTask.${status}.linked`)).toBe(false);
+			}
+		}
+	});
+
+	test("mark-stale-failed matches completed_stale rows including .linked/.reviewed suffixes", async () => {
+		// Regression: a stale Claude lane is `agentTask.completed_stale.linked` (and
+		// `.reviewed.linked` once reviewed). The exact `== agentTask.completed_stale`
+		// gate dropped the inline "Mark Failed" affordance on precisely those rows.
+		const menu = await getViewItemContextMenu();
+		const markFailed = menu.find(
 			(item) =>
-				item.command === "commandCentral.killAgent" &&
-				item.group === "2_actions" &&
-				item.when ===
-					"(viewItem == agentTask.running && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
+				item.command === "commandCentral.markStaleAgentFailed" &&
+				item.group === "inline",
 		);
-		expect(runningKillAction).toBeDefined();
+		expect(markFailed).toBeDefined();
+		const re = viewItemRegex(markFailed?.when);
+		expect(re.test("agentTask.completed_stale")).toBe(true);
+		expect(re.test("agentTask.completed_stale.linked")).toBe(true);
+		expect(re.test("agentTask.completed_stale.reviewed")).toBe(true);
+		expect(re.test("agentTask.completed_stale.reviewed.linked")).toBe(true);
+		// Must NOT bleed onto the other completed_* statuses.
+		expect(re.test("agentTask.completed")).toBe(false);
+		expect(re.test("agentTask.completed_dirty")).toBe(false);
+	});
+
+	test("mark-reviewed guard suppresses already-reviewed rows even with a trailing .linked suffix", async () => {
+		// Regression: the negative guard was `!(viewItem =~ /\.reviewed$/)`. With the
+		// `.linked` suffix appended AFTER `.reviewed`, a reviewed Claude lane is
+		// `agentTask.completed.reviewed.linked` — which ends in `.linked`, not
+		// `.reviewed` — so the guard failed and "Mark Reviewed" re-appeared on rows
+		// already reviewed. The guard must detect `.reviewed` as a segment.
+		const menu = await getViewItemContextMenu();
+		const markReviewed = menu.find(
+			(item) =>
+				item.command === "commandCentral.markAgentReviewed" &&
+				item.group === "2_actions",
+		);
+		expect(markReviewed).toBeDefined();
+		const guard = markReviewed?.when?.match(/!\(viewItem =~ \/(.+?)\/\)/)?.[1];
+		expect(guard).toBeDefined();
+		const re = new RegExp(guard as string);
+		// Reviewed (with or without the trailing link suffix) → guard hides the action.
+		expect(re.test("agentTask.completed.reviewed")).toBe(true);
+		expect(re.test("agentTask.completed.reviewed.linked")).toBe(true);
+		// Not reviewed (linked or not) → guard lets the action show.
+		expect(re.test("agentTask.completed")).toBe(false);
+		expect(re.test("agentTask.completed.linked")).toBe(false);
+	});
+
+	test("no agentTask action gates on brittle exact-equality (must survive .linked/.reviewed suffixes)", async () => {
+		// Systemic guard for the whole bug class: any `viewItem == agentTask.<status>`
+		// exact match breaks the moment the provider appends a `.linked`/`.reviewed`
+		// suffix. agentTask rows must always be matched by regex prefix. (Exact
+		// equality against suffix-free contextValues like discoveredAgent.running or
+		// projectGroup is fine — only agentTask carries the dynamic suffixes.)
+		const menu = await getViewItemContextMenu();
+		const offenders = menu
+			.filter((item) => item.when && /==\s*agentTask\./.test(item.when))
+			.map((item) => `${item.command}@${item.group}`);
+		expect(offenders).toEqual([]);
 	});
 
 	test("adds view-title clear action gated by terminal-task context key", async () => {
