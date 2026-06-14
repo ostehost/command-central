@@ -249,28 +249,87 @@ describe("Agent Status — stable TreeItem.id identity", () => {
 
 	// ── canonical identity edge cases ─────────────────────────────────────
 
-	test("olderRuns uses the canonical hidden-node identities instead of its count-bearing label", () => {
-		const makeOlder = (label: string): OlderRunsNode => ({
+	test("olderRuns id is anchored to its parent (status + project) scope, NOT the count-bearing label or the hidden-node set", () => {
+		const makeOlder = (
+			label: string,
+			hidden: AgentTask[],
+			parentStatus?: "done" | "limbo",
+		): OlderRunsNode => ({
 			type: "olderRuns",
 			label,
 			parentProjectDir: PROJ_A_DIR,
+			parentStatus,
+			hiddenNodes: hidden.map((task) => ({ type: "task" as const, task })),
+		});
+
+		const twoMembers = makeOlder(
+			"Show 2 older completed...",
+			[
+				completedTask("older-1", PROJ_A_DIR, "Proj A"),
+				completedTask("older-2", PROJ_A_DIR, "Proj A"),
+			],
+			"done",
+		);
+		// Same parent scope, but a different label AND a wholly churned hidden-node
+		// set — exactly what a refresh produces as completed lanes age in and out.
+		// The bucket's identity must not move.
+		const churned = makeOlder(
+			"Show 99 older completed...",
+			[
+				completedTask("older-3", PROJ_A_DIR, "Proj A"),
+				completedTask("older-4", PROJ_A_DIR, "Proj A"),
+				completedTask("older-5", PROJ_A_DIR, "Proj A"),
+			],
+			"done",
+		);
+
+		const idTwo = idOf(twoMembers);
+		expect(idOf(churned)).toBe(idTwo);
+		expect(idTwo).toBe(`olderRuns:done:${PROJ_A_DIR}:`);
+		// Encodes neither the live count nor any hidden member identity.
+		expect(idTwo).not.toContain("99");
+		expect(idTwo).not.toContain("task:");
+		expect(idTwo).not.toContain("older-");
+	});
+
+	test("sibling olderRuns buckets under the same project but different status get distinct ids (no collision)", () => {
+		// The previous design keyed olderRuns off the project scope PLUS a hash of
+		// the hidden set. Drop the (volatile) hash and the two sibling buckets a
+		// >5-lane project can emit — e.g. `done` and `limbo` — collapse to one
+		// `olderRuns:<project>` id: a hard "already registered" tree crash. Status
+		// in the canonical key is what keeps them apart without hashing contents.
+		const bucket = (parentStatus: "done" | "limbo"): OlderRunsNode => ({
+			type: "olderRuns",
+			label: "Show 3 older completed...",
+			parentProjectDir: PROJ_A_DIR,
+			parentProjectName: "Proj A",
+			parentStatus,
 			hiddenNodes: [
 				{
 					type: "task",
-					task: completedTask("older-1", PROJ_A_DIR, "Proj A"),
-				},
-				{
-					type: "task",
-					task: completedTask("older-2", PROJ_A_DIR, "Proj A"),
+					task: completedTask(`${parentStatus}-1`, PROJ_A_DIR, "Proj A"),
 				},
 			],
 		});
-		expect(
-			provider.getTreeItem(makeOlder("Show 2 older completed...")).id,
-		).toBe(provider.getTreeItem(makeOlder("Show 99 older completed...")).id);
-		expect(
-			provider.getTreeItem(makeOlder("Show 2 older completed...")).id,
-		).toBe(`olderRuns:${PROJ_A_DIR}:task:older-1,task:older-2`);
+		expect(idOf(bucket("done"))).toBe(`olderRuns:done:${PROJ_A_DIR}:`);
+		expect(idOf(bucket("limbo"))).toBe(`olderRuns:limbo:${PROJ_A_DIR}:`);
+		expect(idOf(bucket("done"))).not.toBe(idOf(bucket("limbo")));
+	});
+
+	test("the same olderRuns bucket under two different projects gets distinct ids", () => {
+		const bucket = (dir: string, name: string): OlderRunsNode => ({
+			type: "olderRuns",
+			label: "Show 1 older completed...",
+			parentProjectDir: dir,
+			parentProjectName: name,
+			parentStatus: "done",
+			hiddenNodes: [
+				{ type: "task", task: completedTask(`${name}-1`, dir, name) },
+			],
+		});
+		expect(idOf(bucket(PROJ_A_DIR, "Proj A"))).not.toBe(
+			idOf(bucket(PROJ_B_DIR, "Proj B")),
+		);
 	});
 
 	test("parent-ambiguous state rows are intentionally left without a global id", () => {
@@ -377,6 +436,48 @@ describe("Agent Status — stable TreeItem.id identity", () => {
 		expect(ids.some((id) => id.startsWith("project:"))).toBe(true);
 		expect(ids.some((id) => id.startsWith("status-group:done:"))).toBe(true);
 		expect(ids.some((id) => id.startsWith("task:"))).toBe(true);
+	});
+
+	test("a grouped render with completed overflow emits one stable, content-free olderRuns id", () => {
+		setAgentStatusConfig(h.vscodeMock, { groupByProject: true });
+
+		// 12 completed lanes in one project: >5 forces status sub-grouping, and the
+		// default completedTaskLimit (10) pushes the oldest 2 into a real
+		// `olderRuns` bucket under `status-group:done`. This is the render path the
+		// unit tests model directly.
+		const registry: Record<string, AgentTask> = {};
+		for (let i = 1; i <= 12; i++) {
+			registry[`a-done-${i}`] = completedTask(
+				`a-done-${i}`,
+				PROJ_A_DIR,
+				"Proj A",
+			);
+		}
+		provider.readRegistry = () => createMockRegistry(registry);
+		provider.reload();
+
+		const seen = new Map<string, AgentNode>();
+		const walk = (element?: AgentNode): void => {
+			for (const child of provider.getChildren(element)) {
+				const item: vscode.TreeItem = provider.getTreeItem(child);
+				if (item.id !== undefined) {
+					expect(seen.has(item.id)).toBe(false);
+					seen.set(item.id, child);
+				}
+				walk(child);
+			}
+		};
+		walk(undefined);
+
+		// Exactly one bucket rendered, scoped to (status, project) — the id carries
+		// no hidden member and no count, so it survives the next refresh unchanged.
+		const olderRunsIds = [...seen.keys()].filter((id) =>
+			id.startsWith("olderRuns:"),
+		);
+		expect(olderRunsIds).toHaveLength(1);
+		expect(olderRunsIds[0]).toStartWith(`olderRuns:done:${PROJ_A_DIR}`);
+		expect(olderRunsIds[0]).not.toContain("task:");
+		expect(olderRunsIds[0]).not.toContain("a-done-");
 	});
 
 	// ── flat root mode: the two summary siblings must not collide ────────────

@@ -558,6 +558,14 @@ export interface OlderRunsNode {
 	parentProjectName?: string;
 	parentProjectDir?: string;
 	parentGroupKey?: string;
+	/**
+	 * The status group this bucket lives under, when emitted beneath a
+	 * `statusGroup` (project mode with >5 lanes). Part of the node's stable
+	 * identity so two sibling buckets under the same project — e.g. a `done`
+	 * bucket and a `limbo` bucket — never collide. Undefined at the flat-root
+	 * and background-tasks lanes, which host a single bucket each.
+	 */
+	parentStatus?: AgentStatusGroup;
 }
 
 export interface StateNode {
@@ -3669,19 +3677,18 @@ export class AgentStatusTreeProvider
 				// provenance). Tag the Sources node so the two never collide into a
 				// duplicate id (a hard "already registered" tree crash).
 				return element.kind === "sources" ? "summary:sources" : "summary";
-			case "olderRuns": {
-				const parentScope =
-					element.parentProjectDir ??
-					element.parentProjectName ??
-					element.parentGroupKey ??
-					"root";
-				const hiddenIds = element.hiddenNodes
-					.map((node) => this.getStableTreeItemId(node))
-					.filter((id): id is string => id !== undefined)
-					.sort()
-					.join(",");
-				return `olderRuns:${parentScope}:${hiddenIds}`;
-			}
+			case "olderRuns":
+				// Identity mirrors the parent group's stable scope — status, project,
+				// and folder group — exactly as `statusGroup` does, so this bucket is
+				// unique wherever its parent is. It MUST NOT hash the hidden-node set
+				// or the count-bearing "Show N older completed..." label: membership
+				// churns as completed lanes age in and out, and a content-derived id
+				// would silently re-key the node on every refresh (losing expand state
+				// and orphaning targeted refreshes). `applyAgentVisibilityCap` emits at
+				// most one bucket per (status, project, group), so this is collision-free.
+				return `olderRuns:${element.parentStatus ?? ""}:${
+					element.parentProjectDir ?? element.parentProjectName ?? ""
+				}:${element.parentGroupKey ?? ""}`;
 			default:
 				return undefined;
 		}
@@ -4616,6 +4623,7 @@ export class AgentStatusTreeProvider
 				parentProjectName: node.parentProjectName,
 				parentProjectDir: node.parentProjectDir,
 				parentGroupKey: node.parentGroupKey,
+				parentStatus: node.status,
 			});
 		}
 
@@ -4720,6 +4728,7 @@ export class AgentStatusTreeProvider
 			parentProjectName?: string;
 			parentProjectDir?: string;
 			parentGroupKey?: string;
+			parentStatus?: AgentStatusGroup;
 		},
 	): AgentNode[] {
 		// Phase 1: Apply completed task cap — nodes are already sorted by recency.
@@ -4783,6 +4792,7 @@ export class AgentStatusTreeProvider
 				parentProjectName: options?.parentProjectName,
 				parentProjectDir: options?.parentProjectDir,
 				parentGroupKey: options?.parentGroupKey,
+				parentStatus: options?.parentStatus,
 			},
 		];
 	}
@@ -7621,9 +7631,12 @@ export class AgentStatusTreeProvider
 						statusChildren.some(
 							(node) =>
 								node.type === "olderRuns" &&
-								node.label === element.label &&
-								node.parentProjectDir === element.parentProjectDir &&
-								node.parentProjectName === element.parentProjectName,
+								// Match on the one canonical identity, not the volatile
+								// "Show N older completed..." label: the label re-counts on
+								// every refresh, and only the stable id distinguishes sibling
+								// buckets under the same project (e.g. done vs limbo).
+								this.getStableTreeItemId(node) ===
+									this.getStableTreeItemId(element),
 						)
 					) {
 						return statusGroup;
