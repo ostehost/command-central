@@ -111,10 +111,9 @@ function getProjectGroups(children: AgentNode[]): ProjectGroupNode[] {
 function getSymphonySummaryLabel(children: AgentNode[]): string {
 	const summary = children.find(
 		(node): node is Extract<AgentNode, { type: "summary" }> =>
-			node.type === "summary" &&
-			node.label.startsWith("Symphony Status Surface:"),
+			node.type === "summary" && node.label.startsWith("Sources"),
 	);
-	if (!summary) throw new Error("No Symphony summary node found");
+	if (!summary) throw new Error("No Sources provenance summary node found");
 	return summary.label;
 }
 
@@ -256,8 +255,11 @@ describe("Work Registry lane projection", () => {
 		expect(getStateLabels(children)).toEqual([]);
 
 		const symphonyLabel = getSymphonySummaryLabel(children);
-		expect(symphonyLabel).not.toContain("no projected runs");
-		expect(symphonyLabel).toContain("2 standalone run attempts");
+		// Folded under Sources as provenance — no competing "Symphony Status
+		// Surface" denominator, no "standalone run attempts" wording.
+		expect(symphonyLabel).toContain("Sources · Symphony");
+		expect(symphonyLabel).not.toContain("standalone run attempts");
+		expect(symphonyLabel).toContain("run attempts 2");
 		expect(symphonyLabel).toContain("2 running");
 
 		const groups = getProjectGroups(children);
@@ -301,7 +303,9 @@ describe("Work Registry lane projection", () => {
 
 		expect(treeProvider.getTasks()).toEqual([]);
 		const children = treeProvider.getChildren();
-		expect(getSymphonySummaryLabel(children)).toContain("no projected runs");
+		// Empty Symphony projection folds to a bare "Sources" provenance row —
+		// no competing denominator, no "no projected runs" wording.
+		expect(getSymphonySummaryLabel(children)).toBe("Sources");
 		expect(getStateLabels(children)).toEqual(["Waiting for agents..."]);
 	});
 
@@ -335,9 +339,7 @@ describe("Work Registry lane projection", () => {
 		const children = treeProvider.getChildren();
 		expect(getStateLabels(children)).toEqual([]);
 		expect(getLegacyDeprecationMarkers(children)).toEqual([]);
-		expect(getSymphonySummaryLabel(children)).not.toContain(
-			"no projected runs",
-		);
+		expect(getSymphonySummaryLabel(children)).toContain("Sources · Symphony");
 
 		const groups = getProjectGroups(children);
 		expect(groups).toHaveLength(1);
@@ -376,7 +378,9 @@ describe("Work Registry lane projection", () => {
 
 		expect(treeProvider.getTasks()).toEqual([]);
 		const children = treeProvider.getChildren();
-		expect(getSymphonySummaryLabel(children)).toContain("no projected runs");
+		// Empty Symphony projection folds to a bare "Sources" provenance row —
+		// no competing denominator, no "no projected runs" wording.
+		expect(getSymphonySummaryLabel(children)).toBe("Sources");
 		expect(getStateLabels(children)).toEqual(["Waiting for agents..."]);
 		const groupNames = getProjectGroups(children).map(
 			(group) => group.projectName,

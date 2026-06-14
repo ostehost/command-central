@@ -55,11 +55,14 @@ import {
 	taskflowStatusToIcon,
 	taskflowStatusToLabel,
 } from "../types/taskflow-types.js";
+import { type AgentCounts, countAgentStatuses } from "../utils/agent-counts.js";
 import {
-	type AgentCounts,
-	countAgentStatuses,
-	formatCountSummary,
-} from "../utils/agent-counts.js";
+	emptyUnifiedCounts,
+	formatV2Summary,
+	sectionFromStatusGroup,
+	type UnifiedCounts,
+	V2_SECTION_HEADERS,
+} from "../utils/agent-status-sections.js";
 import {
 	CLEARABLE_AGENT_TASK_STATUSES,
 	STALE_AGENT_STATUS_DESCRIPTION,
@@ -828,15 +831,18 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 const LIMBO_RECENT_THRESHOLD_MS = 8 * 60 * 60 * 1000;
 
+// Section subgroup headers are the locked Agent Status V2 labels, sourced from
+// the single centralized map (V2_SECTION_HEADERS) so a wording refinement is a
+// one-line change. The four legacy status buckets map onto the V2 lane sections:
+//   running → Live · limbo → Needs Review · attention → Action Required · done → History
+// "Live" (not "Current · Live") makes the live surface unmistakable; it sorts
+// first and auto-expands, and holds registry-`running` lanes whose visibility is
+// merely detached/unconfirmable rather than dead (detached is a chip, not death).
 const STATUS_GROUP_LABELS: Record<AgentStatusGroup, string> = {
-	// "Current · Live" makes the live/working surface unmistakable per the
-	// product doctrine ("current/live should be obvious"). This group always
-	// sorts first and auto-expands, and now also holds registry-`running` lanes
-	// whose visibility is merely detached/unconfirmable rather than dead.
-	running: "Current · Live",
-	done: "Completed",
-	attention: "Failed & Stopped",
-	limbo: "Needs Review",
+	running: V2_SECTION_HEADERS.live,
+	done: V2_SECTION_HEADERS.history,
+	attention: V2_SECTION_HEADERS.action,
+	limbo: V2_SECTION_HEADERS.review,
 };
 
 const STATUS_GROUP_ICONS: Record<AgentStatusGroup, vscode.ThemeIcon> = {
@@ -2812,10 +2818,6 @@ export class AgentStatusTreeProvider
 		return [...tasks, ...syntheticDiscovered];
 	}
 
-	private formatScopedAgentCount(total: number): string {
-		return total === 1 ? "1 agent" : `${total} agents`;
-	}
-
 	private getStuckRunningCount(tasks: AgentTask[]): number {
 		return tasks.filter(
 			(task) => task.status === "running" && this.isAgentStuck(task),
@@ -3761,7 +3763,7 @@ export class AgentStatusTreeProvider
 				if (this._initialReadInProgress && this._filePath) {
 					return [
 						...legacyDiagnosticsNodes,
-						this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
+						this.createSourcesProvenanceSummaryNode(symphonyNode),
 						{
 							type: "state",
 							label: "Scanning for agents...",
@@ -3773,7 +3775,7 @@ export class AgentStatusTreeProvider
 				if (this._registryLoadIssue) {
 					return [
 						...legacyDiagnosticsNodes,
-						this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
+						this.createSourcesProvenanceSummaryNode(symphonyNode),
 						{
 							type: "state",
 							label: "Could not read tasks.json",
@@ -3784,7 +3786,7 @@ export class AgentStatusTreeProvider
 				}
 				return [
 					...legacyDiagnosticsNodes,
-					this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
+					this.createSourcesProvenanceSummaryNode(symphonyNode),
 					{
 						type: "state",
 						label: "Waiting for agents...",
@@ -3831,15 +3833,16 @@ export class AgentStatusTreeProvider
 				this.getScopedAgentTasksForSummary(tasks, discovered),
 				{ reviewedTaskIds },
 			);
-			const counts = countAgentStatuses(
+			// V2 root denominator: one `live · review · action · history` vocabulary
+			// over the same lane set the tree renders. Always explicit (live: 0 when
+			// idle), full history retained — never "none active".
+			const unifiedCounts = this.computeUnifiedSectionCountsForTasks(
 				this.getScopedTasksForSummary(tasks, discovered),
-				{ reviewedTaskIds },
 			);
 			const backgroundTaskCount = openclawTasks.length;
 			const stuckCount = this.getStuckRunningCount(allTasks);
 			const summaryLabel = [
-				this.formatScopedAgentCount(agentCounts.total),
-				this.formatSummaryCounts(counts),
+				formatV2Summary(unifiedCounts),
 				...(backgroundTaskCount > 0
 					? [
 							backgroundTaskCount === 1
@@ -3868,7 +3871,7 @@ export class AgentStatusTreeProvider
 			return [
 				...legacyDiagnosticsNodes,
 				...summaryNodes,
-				this.createSymphonyStatusSurfaceSummaryNode(symphonyNode),
+				this.createSourcesProvenanceSummaryNode(symphonyNode),
 				...(!showOpenClawInline && openclawTasks.length > 0
 					? [
 							{
@@ -4258,18 +4261,37 @@ export class AgentStatusTreeProvider
 		return Math.max(1, Math.floor(raw));
 	}
 
-	private formatSummaryCounts(counts: AgentCounts): string {
-		const doneTotal = counts.done + counts.limbo;
-		const parts = [
-			counts.working > 0 ? `${counts.working} working` : null,
-			counts.attention > 0 ? `${counts.attention} ⏹` : null,
-			doneTotal > 0 ? `${doneTotal} ✓` : null,
-		];
+	/**
+	 * V2 unified section counts over a set of render nodes. Each node is
+	 * classified through the existing four-bucket status engine and relabelled to
+	 * a V2 lane section, so the counts are guaranteed consistent with the group a
+	 * lane actually renders under. Reads only cache-warmed liveness state (via
+	 * `getNodeStatusGroup`) — no new subprocess on the hot path.
+	 */
+	private computeUnifiedSectionCounts(
+		nodes: SortableAgentNode[],
+	): UnifiedCounts {
+		const counts = emptyUnifiedCounts();
+		for (const node of nodes) {
+			counts[sectionFromStatusGroup(this.getNodeStatusGroup(node))] += 1;
+		}
+		return counts;
+	}
 
-		return (
-			parts.filter((part): part is string => Boolean(part)).join(" · ") ||
-			"No agents"
+	/**
+	 * Project-aware V2 counts: classify a project's launcher tasks and fold in its
+	 * always-live discovered agents. Keeps per-project counts in the same single
+	 * `live · review · action · history` denominator as the root.
+	 */
+	private computeUnifiedSectionCountsForTasks(
+		tasks: AgentTask[],
+		discoveredCount = 0,
+	): UnifiedCounts {
+		const counts = this.computeUnifiedSectionCounts(
+			tasks.map((task) => ({ type: "task" as const, task })),
 		);
+		counts.live += discoveredCount;
+		return counts;
 	}
 
 	private getTimestampMs(timestamp?: string | null): number {
@@ -6371,17 +6393,38 @@ export class AgentStatusTreeProvider
 		];
 	}
 
-	private createSymphonyStatusSurfaceSummaryNode(
+	/**
+	 * Agent Status V2: the former "Symphony Status Surface" row is folded into a
+	 * read-only **Sources** provenance feed so it stops competing as a second
+	 * top-level status denominator. Symphony contributes its workstreams and run
+	 * attempts as provenance, not as a rival lifecycle count. (Per-project Sources
+	 * sections + the full Symphony fold are M6; this is the RC-safe reframe.)
+	 */
+	private formatSourcesProvenanceDescription(
+		runs: CodexRunView[],
+		flows: TaskFlow[],
+	): string {
+		const sources = V2_SECTION_HEADERS.sources;
+		if (runs.length === 0 && flows.length === 0) return sources;
+		const running = this.getSymphonyRunningSessionRuns(runs).length;
+		const retryQueued = this.getSymphonyRetryQueuedRuns(runs).length;
+		const parts = [
+			flows.length > 0 ? `workstreams ${flows.length}` : null,
+			`run attempts ${runs.length}`,
+			running > 0 ? `${running} running` : null,
+			retryQueued > 0 ? `${retryQueued} RetryQueued` : null,
+		].filter((part): part is string => part !== null);
+		return `${sources} · Symphony — ${parts.join(" · ")}`;
+	}
+
+	private createSourcesProvenanceSummaryNode(
 		node: SymphonyRootNode,
 	): SummaryNode {
 		return {
 			type: "summary",
-			label: `Symphony Status Surface: ${this.formatSymphonyRootDescription(
-				node.runs,
-				node.flows,
-			)}`,
+			label: this.formatSourcesProvenanceDescription(node.runs, node.flows),
 			tooltip:
-				"Open the top-level Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, Workstreams, and Run Attempts.",
+				"Sources — read-only provenance feed. Symphony workstreams and run attempts contribute to Agent Status as a source; they do not compete as a separate status denominator. Open the Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, and Workstreams.",
 		};
 	}
 
@@ -8774,15 +8817,18 @@ export class AgentStatusTreeProvider
 			? "⚠️"
 			: this.getProjectIcon(projectDir, { launcherIcon });
 		const discoveredCount = node.discoveredAgents?.length ?? 0;
-		const counts = countAgentStatuses(node.tasks, {
-			reviewedTaskIds: this._reviewTracker.getReviewedIds(),
-		});
-		counts.working += discoveredCount;
-		counts.total += discoveredCount;
-		const total = counts.total;
+		// Project-aware V2 counts: same `live · review · action · history`
+		// denominator as the root, scoped to this project's lanes plus its
+		// always-live discovered agents. Project grouping is preserved — these
+		// counts are per-project, not a flattened global tally.
+		const counts = this.computeUnifiedSectionCountsForTasks(
+			node.tasks,
+			discoveredCount,
+		);
+		const total = counts.live + counts.review + counts.action + counts.history;
 
 		// Uppercase name + ▼ + count in parens — mirrors Git Sort section headers
-		const hasRunning = counts.working > 0;
+		const hasRunning = counts.live > 0;
 		const collapseState = hasRunning
 			? vscode.TreeItemCollapsibleState.Expanded
 			: vscode.TreeItemCollapsibleState.Collapsed;
@@ -8791,12 +8837,10 @@ export class AgentStatusTreeProvider
 			collapseState,
 		);
 
-		// Description: just the status summary, no relative time
-		const description = formatCountSummary(counts, {
-			includeAttention: true,
-		});
+		// Description: per-project V2 status summary (all four sections, no time)
+		const description = formatV2Summary(counts);
 		const latestActivity = this.getProjectGroupRelativeActivity(node);
-		const attentionCount = counts.attention;
+		const attentionCount = counts.action;
 		if (node.unregistered) {
 			item.description = `${description} · no Work Registry resolution`;
 			item.tooltip = new vscode.MarkdownString(
@@ -8844,8 +8888,11 @@ export class AgentStatusTreeProvider
 			node.status !== "done" && this.statusGroupHasRecentItems(node)
 				? vscode.TreeItemCollapsibleState.Expanded
 				: vscode.TreeItemCollapsibleState.Collapsed;
+		// Agent Status V2 section header: locked `Live · N` / `Needs Review · N` /
+		// `Action Required · N` / `History · N` format (label · count). The count
+		// word ("agent"/"agents") stays in the tooltip for accessibility.
 		const item = new vscode.TreeItem(
-			`${STATUS_GROUP_LABELS[node.status]} · ${count} ${count === 1 ? "agent" : "agents"}`,
+			`${STATUS_GROUP_LABELS[node.status]} · ${count}`,
 			collapsibleState,
 		);
 		item.id = `status-group:${node.status}:${node.parentProjectDir ?? node.parentProjectName ?? ""}:${node.parentGroupKey ?? ""}`;

@@ -5,16 +5,16 @@ import type {
 } from "../../src/providers/agent-status-tree-provider.js";
 import {
 	AGENT_STATUS_GROUP_TO_SECTION,
-	type UnifiedCounts,
-	type V2SectionSignals,
 	countV2Sections,
 	emptyUnifiedCounts,
 	formatV2Summary,
-	formatV2SummaryCompact,
 	sectionFromSignals,
 	sectionFromStatusGroup,
+	type UnifiedCounts,
 	unifiedBadgeCount,
 	unifiedCountTotal,
+	V2_SECTION_HEADERS,
+	type V2SectionSignals,
 } from "../../src/utils/agent-status-sections.js";
 
 function signals(overrides: Partial<V2SectionSignals> = {}): V2SectionSignals {
@@ -74,8 +74,8 @@ describe("countV2Sections + unifiedCountTotal", () => {
 	});
 });
 
-describe("formatV2Summary (root) — explicit live, no 'none active'", () => {
-	test("AT1: renders live/review/action/history in canonical order", () => {
+describe("formatV2Summary (root + project rows) — explicit live, no 'none active'", () => {
+	test("AT1: renders the locked 'Live N · Review N · Action N · History N' format", () => {
 		const counts: UnifiedCounts = {
 			live: 2,
 			review: 1,
@@ -83,11 +83,11 @@ describe("formatV2Summary (root) — explicit live, no 'none active'", () => {
 			history: 47,
 		};
 		expect(formatV2Summary(counts)).toBe(
-			"live: 2 · review: 1 · action: 1 · history: 47",
+			"Live 2 · Review 1 · Action 1 · History 47",
 		);
 	});
 
-	test("AT2: zero live renders explicit live:0 and retains history; never 'none active'", () => {
+	test("AT2: zero live renders explicit Live 0 and retains history; never 'none active'", () => {
 		const counts: UnifiedCounts = {
 			live: 0,
 			review: 0,
@@ -95,30 +95,53 @@ describe("formatV2Summary (root) — explicit live, no 'none active'", () => {
 			history: 101,
 		};
 		const label = formatV2Summary(counts);
-		expect(label.startsWith("live: 0")).toBe(true);
-		expect(label).toContain("history: 101");
+		expect(label.startsWith("Live 0")).toBe(true);
+		expect(label).toContain("History 101");
 		expect(label).not.toContain("none active");
-		expect(label).toBe("live: 0 · review: 0 · action: 0 · history: 101");
+		expect(label).toBe("Live 0 · Review 0 · Action 0 · History 101");
+	});
+
+	test("avoids forbidden wording from the naming lock", () => {
+		const label = formatV2Summary({
+			live: 0,
+			review: 0,
+			action: 0,
+			history: 0,
+		});
+		for (const forbidden of [
+			"none active",
+			"Live now",
+			"Current",
+			"Failed & Stopped",
+			"Archive",
+		]) {
+			expect(label).not.toContain(forbidden);
+		}
 	});
 });
 
-describe("formatV2SummaryCompact (dense rows) — live always explicit", () => {
-	test("shows live plus only the non-zero sections", () => {
-		expect(
-			formatV2SummaryCompact({ live: 1, review: 0, action: 1, history: 5 }),
-		).toBe("live: 1 · action: 1 · history: 5");
+describe("V2_SECTION_HEADERS — locked, centralized section labels", () => {
+	test("uses the locked label wording", () => {
+		expect(V2_SECTION_HEADERS.live).toBe("Live");
+		expect(V2_SECTION_HEADERS.review).toBe("Needs Review");
+		expect(V2_SECTION_HEADERS.action).toBe("Action Required");
+		expect(V2_SECTION_HEADERS.history).toBe("History");
+		expect(V2_SECTION_HEADERS.sources).toBe("Sources");
 	});
 
-	test("history-only project still states live:0 explicitly", () => {
-		expect(
-			formatV2SummaryCompact({ live: 0, review: 0, action: 0, history: 12 }),
-		).toBe("live: 0 · history: 12");
-	});
-
-	test("never emits 'none active' even when everything but live is zero", () => {
-		const label = formatV2SummaryCompact(emptyUnifiedCounts());
-		expect(label).toBe("live: 0");
-		expect(label).not.toContain("none active");
+	test("avoids the forbidden section words", () => {
+		const labels = Object.values(V2_SECTION_HEADERS).join(" ");
+		for (const forbidden of [
+			"Current",
+			"Live now",
+			"Issues",
+			"Problems",
+			"Failed & Stopped",
+			"Archive",
+			"Diagnostics",
+		]) {
+			expect(labels).not.toContain(forbidden);
+		}
 	});
 });
 

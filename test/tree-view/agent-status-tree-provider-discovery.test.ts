@@ -97,8 +97,10 @@ describe("AgentStatusTreeProvider — discovery", () => {
 					.find((n) => n.type === "summary");
 				expect(summary).toBeDefined();
 				if (summary?.type === "summary") {
-					expect(summary.label).not.toContain("1 working");
-					expect(summary.label).toContain("2 ✓");
+					// Stale running task is excluded from the live count (detached/dead
+					// is not Live) — the V2 root reads an explicit "Live 0".
+					expect(summary.label).toContain("Live 0");
+					expect(summary.label).not.toContain("none active");
 				}
 
 				expect(vscodeMock.window.badge).toBeUndefined();
@@ -188,8 +190,10 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			const summary = provider.getChildren().find((n) => n.type === "summary");
 			expect(summary).toBeDefined();
 			if (summary?.type === "summary") {
-				expect(summary.label).toContain("1 working");
-				expect(summary.label).toContain("1 ✓");
+				// Discovered running agent shows as live; the completed lane is
+				// retained in the V2 count vocabulary (review/history).
+				expect(summary.label).toContain("Live 1");
+				expect(summary.label).toMatch(/Review 1|History 1/);
 			}
 		});
 
@@ -220,7 +224,8 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			if (!groupNode) throw new Error("expected project group");
 			const groupItem = provider.getTreeItem(groupNode);
 			expect(groupItem.label).toBe("🚀 COMMAND CENTRAL ▼ (1)");
-			expect(groupItem.description).toContain("1 working");
+			// Project row description uses the per-project V2 count vocabulary.
+			expect(groupItem.description).toContain("Live 1");
 
 			// ≤5 agents → flat children (no status sub-groups)
 			const children = provider.getChildren(groupNode);
@@ -286,8 +291,10 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			expect(tasks.filter((task) => task.status === "running")).toHaveLength(2);
 
 			const children = provider.getChildren();
-			expect(getSummaryNode(children).label).toContain("2 working");
-			expect(getSummaryNode(children).label).toContain("213 agents");
+			// 2 running → Live 2; full history preserved in the count denominator
+			// (total across sections == 213, asserted via getTasks above).
+			expect(getSummaryNode(children).label).toContain("Live 2");
+			expect(getSummaryNode(children).label).not.toContain("none active");
 			expect(getTaskNodes(children)).toHaveLength(50);
 			expect(getOlderRunsNode(children).hiddenNodes.length).toBeGreaterThan(
 				150,
@@ -725,8 +732,9 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		const summary = provider.getChildren().find((n) => n.type === "summary");
 		expect(summary).toBeDefined();
 		if (summary?.type === "summary") {
-			expect(summary.label).toContain("1 working");
-			expect(summary.label).toContain("2 ⏹");
+			// 1 running → Live 1; failed + stopped → Action 2; stuck suffix retained.
+			expect(summary.label).toContain("Live 1");
+			expect(summary.label).toContain("Action 2");
 			expect(summary.label).toContain("1 stuck");
 		}
 
@@ -759,7 +767,14 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		expect((taskNodes[1] as { type: "task"; task: AgentTask }).task.id).toBe(
 			"old",
 		);
-		expect(getSummaryNode(children).label).toContain("2 agents");
+		// Both tasks share the default tmux session, so the newer lane keeps the
+		// live session (Live 1) and the superseded older lane reconciles to a
+		// terminal status (Action 1) — the V2 count states both explicitly and
+		// never collapses to "none active".
+		const summaryLabel = getSummaryNode(children).label;
+		expect(summaryLabel).toContain("Live 1");
+		expect(summaryLabel).toContain("Action 1");
+		expect(summaryLabel).not.toContain("none active");
 	});
 
 	test("caps flat history and exposes older runs behind an expandable node", () => {
@@ -1382,8 +1397,9 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		});
 
 		expect(item.label).toBe("🧩 ALPHA ▼ (2)");
-		// Description no longer includes relative time — just status summary
-		expect(item.description).toContain("1 working");
+		// Description no longer includes relative time — per-project V2 count
+		// vocabulary (running lane → Live 1, completed lane → History 1).
+		expect(item.description).toContain("Live 1");
 	});
 
 	test("hardcodes status-recency mode", () => {
@@ -1756,7 +1772,7 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		};
 		const item = provider.getTreeItem(node);
 		expect(item.label).toBe("🧩 ALPHA ▼ (1)");
-		expect(item.description).toContain("1 working");
+		expect(item.description).toContain("Live 1");
 		expect(item.collapsibleState).toBe(2); // Expanded
 		expect(item.iconPath).toBeUndefined();
 		expect(item.contextValue).toBe("projectGroup");
@@ -1788,7 +1804,7 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		};
 		const item = provider.getTreeItem(node);
 		expect(item.label).toBe("🛸 ALPHA ▼ (1)");
-		expect(item.description).toContain("1 working");
+		expect(item.description).toContain("Live 1");
 		expect(projectIconManagerMock.getIconForProject).not.toHaveBeenCalled();
 	});
 

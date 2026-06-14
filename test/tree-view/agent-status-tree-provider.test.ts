@@ -291,9 +291,9 @@ describe("AgentStatusTreeProvider", () => {
 		expect(children).toHaveLength(2);
 		expect(children[0]).toEqual({
 			type: "summary",
-			label: "Symphony Status Surface: no projected runs",
+			label: "Sources",
 			tooltip:
-				"Open the top-level Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, Workstreams, and Run Attempts.",
+				"Sources — read-only provenance feed. Symphony workstreams and run attempts contribute to Agent Status as a source; they do not compete as a separate status denominator. Open the Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, and Workstreams.",
 		});
 		expect(children[1]).toEqual({
 			type: "state",
@@ -410,10 +410,10 @@ describe("AgentStatusTreeProvider", () => {
 		expect(summary).toBeDefined();
 		expect(summary?.type).toBe("summary");
 		if (summary?.type === "summary") {
-			expect(summary.label).toContain("4 agents");
-			expect(summary.label).toContain("1 working");
-			expect(summary.label).toContain("2 ⏹");
-			expect(summary.label).toContain("1 ✓");
+			// V2 root denominator: one `Live · Review · Action · History` vocabulary
+			// over all four lanes. running → Live 1, completed → History 1, failed +
+			// stopped → Action 2; every section stated explicitly, no "none active".
+			expect(summary.label).toBe("Live 1 · Review 0 · Action 2 · History 1");
 		}
 	});
 

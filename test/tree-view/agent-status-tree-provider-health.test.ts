@@ -74,8 +74,11 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			const summary = children.find((n) => n.type === "summary");
 			expect(summary).toBeDefined();
 			if (summary?.type === "summary") {
-				expect(summary.label).toContain("1 ✓");
-				expect(summary.label).not.toContain("1 working");
+				// completed_stale → limbo → the V2 "Needs Review" section. The stuck
+				// dead lane is surfaced for review, explicitly out of the live count
+				// (Live 0), never folded into the live/working surface.
+				expect(summary.label).toContain("Review 1");
+				expect(summary.label).toContain("Live 0");
 			}
 			const taskNode = getFirstTask(children);
 			const taskItem = provider.getTreeItem(taskNode);

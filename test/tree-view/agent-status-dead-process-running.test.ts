@@ -349,8 +349,9 @@ describe("dead-process-running detection (slice 2)", () => {
 
 	test("dead-process-running: NOT counted as working in summary", () => {
 		// When the pane check detects a dead agent, the task is overlaid to
-		// `stopped` and routes to the attention group. The summary label must
-		// reflect this: NOT "1 working", but "1 ⏹" (attention).
+		// `stopped` and routes to the attention group. The V2 summary must reflect
+		// this: out of the live count (Live 0), surfaced under Action Required
+		// (Action 1).
 		const task = makeTask({ id: "count-test-dead" });
 		seedSessionAlive(provider, task);
 		mockIsTmuxPaneAgentAlive.mockImplementation(() => false);
@@ -360,12 +361,12 @@ describe("dead-process-running detection (slice 2)", () => {
 		provider.reload();
 
 		const label = getSummaryLabel(provider);
-		expect(label).not.toContain("working");
-		expect(label).toContain("⏹");
+		expect(label).toContain("Live 0");
+		expect(label).toContain("Action 1");
 	});
 
 	test("live process: counted as working in summary", () => {
-		// Counterpart to the count test above: live agent → 1 working.
+		// Counterpart to the count test above: live agent → Live 1.
 		const task = makeTask({ id: "count-test-live" });
 		seedSessionAlive(provider, task);
 		mockIsTmuxPaneAgentAlive.mockImplementation(() => true);
@@ -374,7 +375,7 @@ describe("dead-process-running detection (slice 2)", () => {
 		provider.reload();
 
 		const label = getSummaryLabel(provider);
-		expect(label).toContain("working");
-		expect(label).not.toContain("⏹");
+		expect(label).toContain("Live 1");
+		expect(label).not.toContain("Action 1");
 	});
 });

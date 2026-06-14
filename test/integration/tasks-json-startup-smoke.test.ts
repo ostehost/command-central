@@ -51,9 +51,9 @@ function expectedEmptyAgentStatusChildren(
 			: []),
 		{
 			type: "summary",
-			label: "Symphony Status Surface: no projected runs",
+			label: "Sources",
 			tooltip:
-				"Open the top-level Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, Workstreams, and Run Attempts.",
+				"Sources — read-only provenance feed. Symphony workstreams and run attempts contribute to Agent Status as a source; they do not compete as a separate status denominator. Open the Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, and Workstreams.",
 		},
 		{
 			type: "state",

@@ -41,13 +41,34 @@ export const V2_LANE_SECTION_ORDER: readonly V2LaneSection[] = [
 	"history",
 ];
 
-/** Human-facing section headers (used by the V2 render path / M3). */
+/**
+ * Human-facing section headers (used by the V2 render path / M3).
+ *
+ * CENTRALIZED on purpose: section wording is still being sanity-checked against
+ * VS Code tree conventions, so every user-facing section label flows from this
+ * one map. Rename here to re-word the whole tree — do not inline section strings
+ * at call sites.
+ */
 export const V2_SECTION_HEADERS: Record<V2Section, string> = {
-	live: "Live · Current",
+	live: "Live",
 	review: "Needs Review",
 	action: "Action Required",
-	history: "History · Revisit",
-	sources: "Sources & Diagnostics",
+	history: "History",
+	sources: "Sources",
+};
+
+/**
+ * Short count-word for each lane section, used in the root/project count
+ * vocabulary (`Live N · Review N · Action N · History N`). Centralized alongside
+ * the headers so a wording refinement is a one-line change. These intentionally
+ * differ from the section headers — terser ("Review" vs "Needs Review",
+ * "Action" vs "Action Required") because they appear inline in a dense count.
+ */
+export const V2_SECTION_COUNT_WORDS: Record<V2LaneSection, string> = {
+	live: "Live",
+	review: "Review",
+	action: "Action",
+	history: "History",
 };
 
 /**
@@ -71,9 +92,7 @@ export const AGENT_STATUS_GROUP_TO_SECTION: Record<
 	done: "history",
 };
 
-export function sectionFromStatusGroup(
-	group: AgentStatusGroup,
-): V2LaneSection {
+export function sectionFromStatusGroup(group: AgentStatusGroup): V2LaneSection {
 	return AGENT_STATUS_GROUP_TO_SECTION[group];
 }
 
@@ -106,34 +125,16 @@ export function countV2Sections(
 }
 
 /**
- * Full root summary: every section always shown, including explicit zeros. This
- * is the "no none active" rule — `live: 0` is stated, history is retained.
+ * The unified count vocabulary used for both the root summary and per-project
+ * rows: every section always shown, including explicit zeros. This is the "no
+ * none active" rule — `Live 0` is stated, the full history count is retained.
  *
- *   `live: 2 · review: 1 · action: 1 · history: 47`
+ *   `Live 2 · Review 1 · Action 1 · History 47`
  */
 export function formatV2Summary(counts: UnifiedCounts): string {
-	return [
-		`live: ${counts.live}`,
-		`review: ${counts.review}`,
-		`action: ${counts.action}`,
-		`history: ${counts.history}`,
-	].join(" · ");
-}
-
-/**
- * Compact summary for dense rows (e.g. per-project group descriptions). `live`
- * is ALWAYS shown explicitly (so a project with no live lane reads `live: 0`,
- * keeping the live surface honest); the remaining sections appear only when
- * non-zero so a long history backlog doesn't bury the live signal.
- *
- *   `live: 1 · action: 1 · history: 5`  /  `live: 0 · history: 12`
- */
-export function formatV2SummaryCompact(counts: UnifiedCounts): string {
-	const parts = [`live: ${counts.live}`];
-	if (counts.review > 0) parts.push(`review: ${counts.review}`);
-	if (counts.action > 0) parts.push(`action: ${counts.action}`);
-	if (counts.history > 0) parts.push(`history: ${counts.history}`);
-	return parts.join(" · ");
+	return V2_LANE_SECTION_ORDER.map(
+		(section) => `${V2_SECTION_COUNT_WORDS[section]} ${counts[section]}`,
+	).join(" · ");
 }
 
 /**

@@ -358,12 +358,22 @@ describe("OpenClaw task nodes", () => {
 
 		const root = provider.getChildren();
 		expect(root.some((node) => node.type === "symphony")).toBe(false);
-		expect(root).toContainEqual({
-			type: "summary",
-			label: "Symphony Status Surface: 1 standalone run attempt · 1 running",
-			tooltip:
-				"Open the top-level Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, Workstreams, and Run Attempts.",
-		});
+		// V2: the former "Symphony Status Surface" row is folded into a read-only
+		// Sources provenance feed — Symphony contributes run attempts as a source,
+		// not as a competing top-level status denominator.
+		const summary = root.find(
+			(node) => node.type === "summary" && node.label.startsWith("Sources"),
+		);
+		expect(summary).toBeDefined();
+		if (summary?.type === "summary") {
+			expect(summary.label).toContain("Sources · Symphony");
+			expect(summary.label).toContain("run attempts 1");
+			expect(summary.label).toContain("1 running");
+			expect(summary.label).not.toContain("standalone run attempts");
+			expect(String(summary.tooltip ?? "")).toContain(
+				"read-only provenance feed",
+			);
+		}
 	});
 
 	test("Symphony Run Attempts container remains visible when empty", async () => {
