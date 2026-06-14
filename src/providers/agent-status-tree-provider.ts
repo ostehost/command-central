@@ -816,6 +816,17 @@ const TASK_STATUS_PRIORITY: Record<AgentStatusGroup, number> = {
 
 // PORT_LOADING_LABEL removed — ports row only renders with real data
 const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * Needs Review (limbo) status groups auto-expand only while they hold a review
+ * item from the active working window. Older review backlog — review-receipt-
+ * missing or completed-dirty/stale lanes left over from a prior session — stays
+ * collapsed-but-counted so it does not dominate the tree as noise. Tuned below
+ * the overnight gap so 21h–1d-old review lanes (operator-reported noise)
+ * collapse while a just-completed needs-review lane stays expanded. The bucket
+ * header keeps its full count, so nothing is hidden — only auto-expansion is
+ * suppressed.
+ */
+const LIMBO_RECENT_THRESHOLD_MS = 8 * 60 * 60 * 1000;
 
 const STATUS_GROUP_LABELS: Record<AgentStatusGroup, string> = {
 	running: "Running",
@@ -1236,6 +1247,13 @@ export class AgentStatusTreeProvider
 	private pendingGlobalRefresh = false;
 	private pendingElementRefreshes = new Map<string, AgentNode>();
 	private previousStatuses = new Map<string, string>();
+	/**
+	 * Tracks the terminal-run key (`<status>::<started_at>`) we last fired a
+	 * completion/failure notification for, per task id. Guards against
+	 * registry read-race flaps re-firing duplicate toasts/sounds for the same
+	 * run — see {@link shouldNotifyTerminalTransition}.
+	 */
+	private notifiedTerminalRuns = new Map<string, string>();
 	private _agentRegistry: AgentRegistry | null = null;
 	private _discoveredAgents: DiscoveredAgent[] = [];
 	private _allDiscoveredAgents: DiscoveredAgent[] = [];
@@ -2910,8 +2928,23 @@ export class AgentStatusTreeProvider
 			if (masterEnabled && prev === "running") {
 				const elapsed = formatElapsed(task.started_at);
 				const backend = this.getBackendLabel(task);
+				const isTerminalTransition =
+					task.status === "completed" ||
+					task.status === "completed_dirty" ||
+					task.status === "failed" ||
+					task.status === "stopped" ||
+					task.status === "killed";
 
 				if (
+					isTerminalTransition &&
+					!this.shouldNotifyTerminalTransition(task)
+				) {
+					// Duplicate terminal notification for the same run — suppress.
+					// A registry read-race (primary registry momentarily unreadable
+					// while the lanes projection still reports the task running) can
+					// flap raw status completed→running→completed and would otherwise
+					// re-fire the toast/sound/reveal for an already-notified run.
+				} else if (
 					(task.status === "completed" || task.status === "completed_dirty") &&
 					onCompletion
 				) {
@@ -3042,6 +3075,23 @@ export class AgentStatusTreeProvider
 			type: "task" as const,
 			task,
 		});
+	}
+
+	/**
+	 * Returns true the first time a given terminal run should fire a
+	 * notification, false for subsequent duplicates of the same run.
+	 *
+	 * Keyed by `<status>::<started_at>` so a genuine re-run (new `started_at`)
+	 * still notifies, while a registry read-race flap — which reuses the same
+	 * `started_at` — is suppressed. This is the source-level guard behind the
+	 * frequent duplicate completion toasts/sounds operators can see when a
+	 * busy launcher rewrites the registry mid-read.
+	 */
+	private shouldNotifyTerminalTransition(task: AgentTask): boolean {
+		const key = `${task.status}::${task.started_at ?? ""}`;
+		if (this.notifiedTerminalRuns.get(task.id) === key) return false;
+		this.notifiedTerminalRuns.set(task.id, key);
+		return true;
 	}
 
 	private playNotificationSound(enabled: boolean): void {
@@ -4386,6 +4436,10 @@ export class AgentStatusTreeProvider
 	private getStatusGroupRecentThresholdMs(status: AgentStatusGroup): number {
 		if (status === "running") return Number.POSITIVE_INFINITY;
 		if (status === "attention") return 2 * DAY_MS;
+		// Needs Review (limbo) collapses overnight review backlog while keeping
+		// freshly-completed review items expanded; Done is always collapsed and
+		// never consults this threshold.
+		if (status === "limbo") return LIMBO_RECENT_THRESHOLD_MS;
 		return DAY_MS;
 	}
 
@@ -6414,6 +6468,13 @@ export class AgentStatusTreeProvider
 			running > 0 ? `${running} running` : null,
 			retryQueued > 0 ? `${retryQueued} RetryQueued` : null,
 		].filter((part): part is string => part !== null);
+		// When nothing is actively running or retrying, mark the surface idle so
+		// a large historical attempt count reads as read-only history rather than
+		// an actionable backlog (operators flagged a bare "N standalone run
+		// attempts" count as alarming).
+		if (runs.length > 0 && running === 0 && retryQueued === 0) {
+			parts.push("none active");
+		}
 		return parts.join(" · ");
 	}
 

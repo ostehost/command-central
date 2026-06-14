@@ -1036,4 +1036,83 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 			);
 		});
 	});
+
+	describe("RC layout polish — Needs Review collapse & idle Symphony summary", () => {
+		const vscode = require("vscode") as typeof import("vscode");
+
+		function statusGroupItem(
+			status: "limbo" | "attention",
+			task: ReturnType<typeof createMockTask>,
+		) {
+			return provider.getTreeItem({
+				type: "statusGroup",
+				status,
+				nodes: [{ type: "task", task }],
+			});
+		}
+
+		test("Needs Review collapses overnight review backlog (>8h old)", () => {
+			const task = createMockTask({
+				id: "stale-review",
+				status: "completed_dirty",
+				started_at: new Date(Date.now() - 11 * 60 * 60_000).toISOString(),
+				completed_at: new Date(Date.now() - 10 * 60 * 60_000).toISOString(),
+			});
+			expect(statusGroupItem("limbo", task).collapsibleState).toBe(
+				vscode.TreeItemCollapsibleState.Collapsed,
+			);
+		});
+
+		test("Needs Review stays expanded for a freshly-completed review item (<8h old)", () => {
+			const task = createMockTask({
+				id: "fresh-review",
+				status: "completed_dirty",
+				started_at: new Date(Date.now() - 90 * 60_000).toISOString(),
+				completed_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+			});
+			expect(statusGroupItem("limbo", task).collapsibleState).toBe(
+				vscode.TreeItemCollapsibleState.Expanded,
+			);
+		});
+
+		test("Failed & Stopped still expands a 10h-old blocker — limbo tightening is bucket-scoped", () => {
+			const task = createMockTask({
+				id: "stale-failure",
+				status: "failed",
+				started_at: new Date(Date.now() - 11 * 60 * 60_000).toISOString(),
+				completed_at: new Date(Date.now() - 10 * 60 * 60_000).toISOString(),
+			});
+			expect(statusGroupItem("attention", task).collapsibleState).toBe(
+				vscode.TreeItemCollapsibleState.Expanded,
+			);
+		});
+
+		test("idle Symphony summary appends 'none active' so a historical count is not alarming", () => {
+			const fmt = (
+				provider as unknown as {
+					formatSymphonyRootDescription: (
+						runs: unknown[],
+						flows: unknown[],
+					) => string;
+				}
+			).formatSymphonyRootDescription.bind(provider);
+			expect(fmt([{ status: "succeeded" }, { status: "succeeded" }], [])).toBe(
+				"2 standalone run attempts · none active",
+			);
+		});
+
+		test("live Symphony summary omits 'none active' when a run is running", () => {
+			const fmt = (
+				provider as unknown as {
+					formatSymphonyRootDescription: (
+						runs: unknown[],
+						flows: unknown[],
+					) => string;
+				}
+			).formatSymphonyRootDescription.bind(provider);
+			expect(fmt([{ status: "running" }], [])).toBe(
+				"1 standalone run attempt · 1 running",
+			);
+		});
+	});
 });

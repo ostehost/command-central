@@ -350,6 +350,82 @@ describe("AgentStatusTreeProvider — diffs & notifications", () => {
 			expect(warningMessages.some((m) => m.includes("💀 k killed"))).toBe(true);
 		});
 
+		test("duplicate completion notification suppressed on registry read-race flap", () => {
+			provider.getDiffSummary = () => null;
+			const startedAt = new Date(Date.now() - 5 * 60_000).toISOString();
+			const running = () =>
+				createMockRegistry({
+					flap: createMockTask({
+						id: "flap",
+						status: "running",
+						started_at: startedAt,
+					}),
+				});
+			const completed = () =>
+				createMockRegistry({
+					flap: createMockTask({
+						id: "flap",
+						status: "completed",
+						started_at: startedAt,
+						exit_code: 0,
+					}),
+				});
+
+			provider.readRegistry = running;
+			provider.reload();
+			// running → completed: fires once
+			provider.readRegistry = completed;
+			provider.reload();
+			// spurious flap back to running (primary registry momentarily unreadable
+			// while the lanes projection still reports the task running)
+			provider.readRegistry = running;
+			provider.reload();
+			// completed again, same run (same started_at): must NOT re-notify
+			provider.readRegistry = completed;
+			provider.reload();
+
+			const infoCalls = (
+				vscodeMock.window.showInformationMessage as ReturnType<typeof mock>
+			).mock.calls as unknown[][];
+			const completedCalls = infoCalls.filter((c) =>
+				String(c[0]).includes("✅ flap completed"),
+			);
+			expect(completedCalls).toHaveLength(1);
+		});
+
+		test("genuine re-run with a new started_at notifies again", () => {
+			provider.getDiffSummary = () => null;
+			const firstRun = new Date(Date.now() - 10 * 60_000).toISOString();
+			const secondRun = new Date(Date.now() - 2 * 60_000).toISOString();
+			const snapshot = (status: AgentTask["status"], startedAt: string) => () =>
+				createMockRegistry({
+					rerun: createMockTask({
+						id: "rerun",
+						status,
+						started_at: startedAt,
+						exit_code: 0,
+					}),
+				});
+
+			provider.readRegistry = snapshot("running", firstRun);
+			provider.reload();
+			provider.readRegistry = snapshot("completed", firstRun);
+			provider.reload();
+			// genuine restart: a new run with a fresh started_at
+			provider.readRegistry = snapshot("running", secondRun);
+			provider.reload();
+			provider.readRegistry = snapshot("completed", secondRun);
+			provider.reload();
+
+			const infoCalls = (
+				vscodeMock.window.showInformationMessage as ReturnType<typeof mock>
+			).mock.calls as unknown[][];
+			const completedCalls = infoCalls.filter((c) =>
+				String(c[0]).includes("✅ rerun completed"),
+			);
+			expect(completedCalls).toHaveLength(2);
+		});
+
 		test("completed transition requests Dock attention on macOS", () => {
 			withDarwinPlatform(() => {
 				const runningTask = createMockTask({ id: "dock-c", status: "running" });
