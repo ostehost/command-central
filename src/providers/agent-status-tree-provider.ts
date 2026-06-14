@@ -1616,12 +1616,7 @@ export class AgentStatusTreeProvider
 			case "backgroundTasks":
 				return "backgroundTasks";
 			case "olderRuns":
-				return [
-					"olderRuns",
-					element.parentGroupKey ?? "",
-					element.parentProjectDir ?? "",
-					element.label,
-				].join(":");
+				return this.getOlderRunsStableId(element);
 			case "summary":
 				return "summary";
 			case "state":
@@ -3671,14 +3666,30 @@ export class AgentStatusTreeProvider
 	 * NOTE: this is intentionally distinct from {@link getRefreshElementKey},
 	 * whose `statusGroup` key is project-agnostic (fine for refresh coalescing,
 	 * but NOT globally unique — reusing it as an id would collide one project's
-	 * History header with another's and crash the tree). Nodes whose only
-	 * distinguishing field is a count-bearing display label (`olderRuns` →
-	 * "Show N older…", transient `state` rows) are deliberately NOT given an id
-	 * here: a label-derived id would re-introduce the very count dependency this
-	 * fix removes, and a count-free id would risk colliding with a sibling. They
-	 * keep VS Code's derived handle, which is harmless — they were never part of
-	 * the resolve-storm and never targeted by reveal().
+	 * History header with another's and crash the tree). Count-bearing
+	 * `olderRuns` rows get a count-independent id derived from their hidden
+	 * children; transient `state` rows keep VS Code's derived parent-relative
+	 * handle because their labels can repeat under many parents.
 	 */
+	private getOlderRunsStableId(element: OlderRunsNode): string {
+		const parentScope =
+			element.parentProjectDir ??
+			element.parentProjectName ??
+			element.parentGroupKey ??
+			"root";
+		const hiddenIds = element.hiddenNodes
+			.map((node) => {
+				if (node.type === "task") return `task:${node.task.id}`;
+				if (node.type === "openclawTask") {
+					return `openclaw:${node.task.taskId}`;
+				}
+				return `discovered:${node.agent.pid}`;
+			})
+			.sort()
+			.join(",");
+		return `olderRuns:${parentScope}:${hiddenIds}`;
+	}
+
 	private getStableTreeItemId(element: AgentNode): string | undefined {
 		switch (element.type) {
 			case "task":
@@ -3700,6 +3711,8 @@ export class AgentStatusTreeProvider
 				// provenance). Tag the Sources node so the two never collide into a
 				// duplicate id (a hard "already registered" tree crash).
 				return element.kind === "sources" ? "summary:sources" : "summary";
+			case "olderRuns":
+				return this.getOlderRunsStableId(element);
 			default:
 				return undefined;
 		}

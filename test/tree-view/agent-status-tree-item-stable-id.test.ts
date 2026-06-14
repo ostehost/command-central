@@ -248,17 +248,34 @@ describe("Agent Status — stable TreeItem.id identity", () => {
 
 	// ── deliberate omissions (stable-and-unique beats comprehensive) ─────────
 
-	test("count-bearing / parent-ambiguous rows are intentionally left without a global id", () => {
-		const older: OlderRunsNode = {
+	test("olderRuns uses hidden task identity instead of its count-bearing label", () => {
+		const makeOlder = (label: string): OlderRunsNode => ({
 			type: "olderRuns",
-			label: "Show 3 older completed...",
-			hiddenNodes: [],
-		};
+			label,
+			parentProjectDir: PROJ_A_DIR,
+			hiddenNodes: [
+				{
+					type: "task",
+					task: completedTask("older-1", PROJ_A_DIR, "Proj A"),
+				},
+				{
+					type: "task",
+					task: completedTask("older-2", PROJ_A_DIR, "Proj A"),
+				},
+			],
+		});
+		expect(
+			provider.getTreeItem(makeOlder("Show 2 older completed...")).id,
+		).toBe(provider.getTreeItem(makeOlder("Show 99 older completed...")).id);
+		expect(
+			provider.getTreeItem(makeOlder("Show 2 older completed...")).id,
+		).toBe(`olderRuns:${PROJ_A_DIR}:task:older-1,task:older-2`);
+	});
+
+	test("parent-ambiguous state rows are intentionally left without a global id", () => {
 		const state: StateNode = { type: "state", label: "Waiting for agents..." };
-		// olderRuns label embeds a count; state labels can repeat under multiple
-		// parents — neither has a safe count-free, collision-free global id, so we
-		// leave VS Code's derived (parent-relative) handle in place.
-		expect(provider.getTreeItem(older).id).toBeUndefined();
+		// State labels can repeat under multiple parents, so leave VS Code's
+		// derived (parent-relative) handle in place.
 		expect(provider.getTreeItem(state).id).toBeUndefined();
 	});
 
