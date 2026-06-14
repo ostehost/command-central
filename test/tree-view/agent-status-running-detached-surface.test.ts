@@ -58,12 +58,15 @@ mock.module("../../src/utils/port-detector.js", () => ({
 }));
 
 import {
+	type AgentNode,
 	type AgentStatusGroup,
 	AgentStatusTreeProvider,
 	type AgentTask,
 	classifyCompletionRouting,
+	isLivenessUnobservableRunningLane,
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
+import { __setCurrentMachineHostOverrideForTests } from "../../src/providers/agent-task-classification.js";
 import type { ReviewTracker } from "../../src/services/review-tracker.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
@@ -135,6 +138,24 @@ function displayTask(
 	id: string,
 ): AgentTask | undefined {
 	return provider.getTasks().find((task) => task.id === id);
+}
+
+function taskItemFor(
+	provider: AgentStatusTreeProvider,
+	id: string,
+): import("vscode").TreeItem {
+	const node = provider
+		.getChildren()
+		.find(
+			(child): child is Extract<AgentNode, { type: "task" }> =>
+				child.type === "task" && child.task.id === id,
+		);
+	if (!node) throw new Error(`task node ${id} not found in getChildren()`);
+	return provider.getTreeItem(node);
+}
+
+function iconIdOf(item: import("vscode").TreeItem): string | undefined {
+	return (item.iconPath as { id?: string } | undefined)?.id;
 }
 
 class InMemoryReviewTracker {
@@ -334,5 +355,241 @@ describe("Agent Status — Current/Live surface & detached classification", () =
 		expect(
 			groupOf(provider, displayTask(provider, "hist-failed") as AgentTask),
 		).toBe("attention");
+	});
+});
+
+/**
+ * Liveness-unobservable running lanes (cc-installed-vsix-dogfood-proof-20260614).
+ *
+ * A `running` lane CC cannot prove is doing live work must NOT render the
+ * animated `sync~spin` spinner. Two truth sources feed
+ * {@link isLivenessUnobservableRunningLane}: explicit launcher attach/visibility
+ * evidence projected on the `lane_ref_update` envelope (task 3 — CC consuming
+ * the launcher's own probe), and the structural fallback of a session-less
+ * Work System projection row with nothing to probe (task 2 — local truth).
+ * "Detached" here is a visibility badge, not a lifecycle state: status stays
+ * `running`. Remote-node lanes are deliberately fail-open (never flipped).
+ */
+describe("isLivenessUnobservableRunningLane (pure classifier)", () => {
+	afterEach(() => {
+		__setCurrentMachineHostOverrideForTests(null);
+	});
+
+	test("session-less Work System projection running lane → unobservable", () => {
+		expect(
+			isLivenessUnobservableRunningLane(
+				makeTask({
+					lane_projection: true,
+					// laneRefUpdateToTaskRecord falls a session-less envelope back to
+					// `launcher:<task_id>`, which fails isValidSessionId by construction.
+					session_id: "launcher:proj-task",
+				}),
+			),
+		).toBe(true);
+	});
+
+	test("launcher attach.available === false → unobservable (no attachable terminal)", () => {
+		expect(
+			isLivenessUnobservableRunningLane(
+				makeTask({
+					session_id: "agent-valid-session",
+					launcher_attach_available: false,
+					launcher_attach_reason: "tmux-session-not-found",
+				}),
+			),
+		).toBe(true);
+	});
+
+	test("launcher visibility.degraded === true → unobservable (visible lane failed verification)", () => {
+		expect(
+			isLivenessUnobservableRunningLane(
+				makeTask({
+					session_id: "agent-valid-session",
+					launcher_visibility_degraded: true,
+					launcher_visibility_reason:
+						"ax_error_osascript_is_not_allowed_assistive_access",
+				}),
+			),
+		).toBe(true);
+	});
+
+	test("ordinary session-backed running lane → observable (keeps spinner)", () => {
+		expect(
+			isLivenessUnobservableRunningLane(
+				makeTask({ session_id: "agent-valid-session" }),
+			),
+		).toBe(false);
+	});
+
+	test("projection lane WITH a real session → observable (there is a channel to probe)", () => {
+		expect(
+			isLivenessUnobservableRunningLane(
+				makeTask({
+					lane_projection: true,
+					session_id: "agent-real-session",
+				}),
+			),
+		).toBe(false);
+	});
+
+	test("confirmed-remote session-less projection lane → observable (remote fail-open)", () => {
+		__setCurrentMachineHostOverrideForTests("hub-machine");
+		expect(
+			isLivenessUnobservableRunningLane(
+				makeTask({
+					lane_projection: true,
+					session_id: "launcher:remote-proj",
+					exec_mode: "node",
+					exec_host: "some-other-node",
+				}),
+			),
+		).toBe(false);
+	});
+
+	test("non-running status is never unobservable", () => {
+		expect(
+			isLivenessUnobservableRunningLane(
+				makeTask({
+					status: "completed",
+					lane_projection: true,
+					session_id: "launcher:proj-task",
+				}),
+			),
+		).toBe(false);
+	});
+});
+
+describe("Agent Status — liveness-unobservable rendering", () => {
+	let provider: AgentStatusTreeProvider;
+
+	beforeEach(() => {
+		mock.restore();
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const [cmd, args] = fnArgs as [string, string[] | undefined];
+			if (cmd === "tmux" && args?.includes("has-session")) return "";
+			if (cmd === "git") return "";
+			if (
+				cmd === "openclaw" &&
+				args?.[0] === "tasks" &&
+				args[1] === "audit" &&
+				args[2] === "--json"
+			) {
+				return JSON.stringify({
+					summary: { total: 0, warnings: 0, errors: 0, byCode: {} },
+					findings: [],
+				});
+			}
+			return realChildProcess.execFileSync(
+				cmd,
+				args,
+				fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+			);
+		});
+		mockIsTmuxPaneAgentAlive.mockImplementation(() => true);
+		// "unknown" pane evidence: CC cannot positively confirm liveness, which is
+		// exactly when the structural/launcher signals must decide the visual.
+		mockInspectTmuxPaneAgent.mockImplementation(() => "unknown");
+
+		const vscodeMock = setupVSCodeMock();
+		const getConfigurationMock = mock((_section?: string) => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return false;
+				if (_key === "discovery.enabled") return false;
+				if (_key === "laneRegistry.files") return [];
+				return defaultValue;
+			}),
+			inspect: mock((_key: string) => undefined),
+			has: mock((_key: string) => true),
+		}));
+		vscodeMock.workspace.getConfiguration =
+			getConfigurationMock as unknown as typeof vscodeMock.workspace.getConfiguration;
+		const runtimeVscode = require("vscode") as typeof import("vscode");
+		runtimeVscode.workspace.getConfiguration =
+			getConfigurationMock as unknown as typeof runtimeVscode.workspace.getConfiguration;
+		vscodeMock.window.showInformationMessage = mock(() =>
+			Promise.resolve(undefined),
+		);
+		vscodeMock.window.showWarningMessage = mock(() =>
+			Promise.resolve(undefined),
+		);
+
+		provider = new AgentStatusTreeProvider({
+			getIconForProject: mock(() => "🧩"),
+			setCustomIcon: mock(() => Promise.resolve()),
+		} as unknown as ConstructorParameters<typeof AgentStatusTreeProvider>[0]);
+		provider.setReviewTracker(
+			new InMemoryReviewTracker() as unknown as ReviewTracker,
+		);
+		provider.readRegistry = () => makeRegistry({});
+		provider.reload();
+	});
+
+	afterEach(() => {
+		const p = provider as unknown as { _agentRegistry: unknown };
+		if (
+			p._agentRegistry &&
+			typeof (p._agentRegistry as { dispose?: unknown }).dispose !== "function"
+		) {
+			p._agentRegistry = null;
+		}
+		provider.dispose();
+		mockInspectTmuxPaneAgent.mockImplementation(() => "unknown");
+		mockIsTmuxPaneAgentAlive.mockImplementation(() => true);
+	});
+
+	test("session-less projection running lane renders debug-disconnect, not the spinner", () => {
+		const task = makeTask({
+			id: "render-projection-sessionless",
+			lane_projection: true,
+			session_id: "launcher:render-projection-sessionless",
+			// Recent start so the stale/stuck timer does not pre-empt with a
+			// completed_stale overlay — we want the live `running` render path.
+			started_at: new Date().toISOString(),
+		});
+		provider.readRegistry = () => makeRegistry({ [task.id]: task });
+		provider.reload();
+
+		expect(displayTask(provider, task.id)?.status).toBe("running");
+		const item = taskItemFor(provider, task.id);
+		expect(iconIdOf(item)).toBe("debug-disconnect");
+		expect(iconIdOf(item)).not.toBe("sync~spin");
+		expect(String(item.description ?? "")).toContain("(detached)");
+	});
+
+	test("launcher-projected attach.available === false flips the spinner to detached", () => {
+		const task = makeTask({
+			id: "render-attach-unavailable",
+			lane_projection: true,
+			session_id: "agent-render-attach-unavailable",
+			tmux_session: "agent-render-attach-unavailable",
+			launcher_attach_available: false,
+			launcher_attach_reason: "tmux-session-not-found",
+			started_at: new Date().toISOString(),
+		});
+		provider.readRegistry = () => makeRegistry({ [task.id]: task });
+		provider.reload();
+
+		expect(displayTask(provider, task.id)?.status).toBe("running");
+		const item = taskItemFor(provider, task.id);
+		expect(iconIdOf(item)).toBe("debug-disconnect");
+		expect(String(item.description ?? "")).toContain("(detached)");
+	});
+
+	test("ordinary running lane with unknown pane evidence keeps the spinner (no regression)", () => {
+		const task = makeTask({
+			id: "render-ordinary-running",
+			session_id: "agent-render-ordinary-running",
+			tmux_session: "agent-render-ordinary-running",
+			started_at: new Date().toISOString(),
+		});
+		seedSession(provider, task, true);
+		provider.readRegistry = () => makeRegistry({ [task.id]: task });
+		provider.reload();
+
+		expect(displayTask(provider, task.id)?.status).toBe("running");
+		const item = taskItemFor(provider, task.id);
+		expect(iconIdOf(item)).toBe("sync~spin");
+		expect(String(item.description ?? "")).not.toContain("(detached)");
 	});
 });

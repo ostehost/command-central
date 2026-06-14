@@ -310,6 +310,77 @@ describe("Work System lanes projection ingest (transitional bridge)", () => {
 		expect(fallbackWarnings()).toEqual([]);
 	});
 
+	test("launcher attach/visibility evidence is ingested onto the row (consumer contract)", async () => {
+		// cc-installed-vsix-dogfood-proof-20260614: CC must consume the launcher's
+		// own attach/visibility probe (schema §attach, §visibility) so a row's
+		// liveness/visibility truth comes from the executor, not from a session id
+		// merely existing. These envelope-level objects were previously dropped.
+		const projectionFile = writeProjection(
+			"lanes.json",
+			createProjectionDocument({
+				"launcher:cc-detached-20260614": createLaneRefUpdate(
+					"cc-detached-20260614",
+					// Session-less running row — nothing for CC to probe locally.
+					{ status: "running", session: null },
+					{
+						attach: {
+							backend: "tmux",
+							session: null,
+							available: false,
+							verified_at: "2026-06-14T10:00:00Z",
+							reason_if_unavailable: "tmux-session-not-found",
+						},
+						visibility: {
+							verified: false,
+							degraded: true,
+							reason: "ax_error_osascript_is_not_allowed_assistive_access",
+							receipt_present: false,
+						},
+					},
+				),
+			}),
+		);
+
+		const treeProvider = await createProvider({
+			laneRegistryFiles: [projectionFile],
+		});
+		const task = treeProvider.readRegistry().tasks["cc-detached-20260614"];
+		expect(task?.status).toBe("running");
+		expect(task?.launcher_attach_available).toBe(false);
+		expect(task?.launcher_attach_reason).toBe("tmux-session-not-found");
+		expect(task?.launcher_visibility_degraded).toBe(true);
+		expect(task?.launcher_visibility_reason).toBe(
+			"ax_error_osascript_is_not_allowed_assistive_access",
+		);
+		// Session-less envelope falls back to launcher:<task_id>, which fails
+		// isValidSessionId by construction (the structural unobservable signal).
+		expect(task?.session_id).toBe("launcher:cc-detached-20260614");
+		expect(isValidSessionId(task?.session_id ?? "")).toBe(false);
+		expect(fallbackWarnings()).toEqual([]);
+	});
+
+	test("absence of attach/visibility is forward-compatible (null fields, no fallback)", async () => {
+		const projectionFile = writeProjection(
+			"lanes.json",
+			createProjectionDocument({
+				"launcher:cc-plain-20260614": createLaneRefUpdate("cc-plain-20260614", {
+					status: "running",
+				}),
+			}),
+		);
+
+		const treeProvider = await createProvider({
+			laneRegistryFiles: [projectionFile],
+		});
+		const task = treeProvider.readRegistry().tasks["cc-plain-20260614"];
+		expect(task?.status).toBe("running");
+		expect(task?.launcher_attach_available).toBeNull();
+		expect(task?.launcher_attach_reason).toBeNull();
+		expect(task?.launcher_visibility_degraded).toBeNull();
+		expect(task?.launcher_visibility_reason).toBeNull();
+		expect(fallbackWarnings()).toEqual([]);
+	});
+
 	test("projection rows render grouped by project_ref.id", async () => {
 		const projectionFile = writeProjection(
 			"lanes.json",

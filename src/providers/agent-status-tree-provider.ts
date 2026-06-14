@@ -233,6 +233,31 @@ export interface AgentTask {
 	 * wins the merge over a projection row (see `readRegistry`).
 	 */
 	lane_projection?: boolean;
+	/**
+	 * Launcher-projected attach affordance, mapped from a `lane_ref_update`
+	 * `attach` object (ghostty-launcher `scripts/laneref-update-schema.json`):
+	 * the writer-host `tmux has-session` probe result at emission time.
+	 * `false` means the executor could not attach (no session recorded /
+	 * session not found); `null` (or absent) when the backend was not probed.
+	 * The schema is explicit that consumers gate attach affordances on this,
+	 * never on a session id merely existing — so a `running` row reporting
+	 * `false` here has no live terminal to imply ongoing work in.
+	 */
+	launcher_attach_available?: boolean | null;
+	/** `attach.reason_if_unavailable` verbatim (e.g. `no-session-recorded`,
+	 *  `tmux-session-not-found`, `unprobed-backend:<backend>`). */
+	launcher_attach_reason?: string | null;
+	/**
+	 * Launcher-projected visibility verification, mapped from a
+	 * `lane_ref_update` `visibility` object: `degraded === true` means a
+	 * visible-bundle lane could not confirm an on-screen, focusable window
+	 * (e.g. AX/assistive-access denied); `null` (or absent) when the lane made
+	 * no visibility claim (tmux/headless lanes).
+	 */
+	launcher_visibility_degraded?: boolean | null;
+	/** `visibility.reason` verbatim (e.g. `ax_error_…`,
+	 *  `tmux_no_attached_clients`); null when no claim was made. */
+	launcher_visibility_reason?: string | null;
 	source_authority?: string | null;
 	owner_kind?: string | null;
 	owner_actions?: unknown[] | null;
@@ -313,6 +338,40 @@ export interface AgentTask {
 	rate_limit_summary?: string | null;
 	rate_limits?: unknown;
 	symphony_runtime_snapshot?: unknown;
+}
+
+/**
+ * A `running` lane whose live work CC cannot substantiate, so it must NOT
+ * render the animated `sync~spin` spinner (which asserts active work is
+ * happening right now). This is a VISIBILITY judgement, not a lifecycle one —
+ * the row stays `running` and in its status group; only the icon/description
+ * become honest. Two truth sources, in order:
+ *
+ *  1. Launcher-projected evidence (preferred — the executor's own probe):
+ *     `attach.available === false` (no attachable terminal at emission) or
+ *     `visibility.degraded === true` (a visible lane that failed its on-screen
+ *     verification). These ride the `lane_ref_update` envelope and are the
+ *     launcher's authoritative statement about the writer host.
+ *  2. Structural fallback (local, when the launcher projected nothing): a
+ *     non-authoritative projection row (`lane_projection`) emitted session-less
+ *     — `laneRefUpdateToTaskRecord` falls the session id back to
+ *     `launcher:<task_id>`, which fails {@link isValidSessionId} by
+ *     construction — so there is no tmux session/pane/pid for CC to probe and
+ *     the `running` state is a bare projection assertion plus one timestamp.
+ *
+ * Remote-node lanes are ALWAYS excluded: their host can't be verified locally
+ * and they are deliberately fail-open (never demoted by a local probe — see
+ * {@link isRemoteNodeTaskForCurrentHost}). This is a STATIC check; callers
+ * additionally gate on the runtime liveness probe (`hasPositiveLivenessEvidence`)
+ * so a projection row whose worktree actually hosts a discovered live agent —
+ * or a launcher-flagged row CC can locally confirm is alive — keeps its spinner.
+ */
+export function isLivenessUnobservableRunningLane(task: AgentTask): boolean {
+	if (task.status !== "running") return false;
+	if (isRemoteNodeTaskForCurrentHost(task)) return false;
+	if (task.launcher_attach_available === false) return true;
+	if (task.launcher_visibility_degraded === true) return true;
+	return task.lane_projection === true && !isValidSessionId(task.session_id);
 }
 
 export type AgentStatusTreeViewMode = "agentStatus" | "symphony";
@@ -894,6 +953,18 @@ function asNullableNumber(value: unknown): number | null | undefined {
 	return value;
 }
 
+function asNullableBoolean(value: unknown): boolean | null | undefined {
+	if (value === null) return null;
+	if (typeof value !== "boolean") return undefined;
+	return value;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
 /**
  * A registry-backed LaneRef record carries the Work Registry resolution
  * (`project_ref.id`) stamped by the launcher at spawn time. Stale
@@ -962,6 +1033,13 @@ function normalizeTask(
 			: null,
 		execution_dir: asString(raw["execution_dir"]) ?? null,
 		...(explicitProjectName ? {} : { project_name_derived: true }),
+		launcher_attach_available:
+			asNullableBoolean(raw["launcher_attach_available"]) ?? null,
+		launcher_attach_reason: asString(raw["launcher_attach_reason"]) ?? null,
+		launcher_visibility_degraded:
+			asNullableBoolean(raw["launcher_visibility_degraded"]) ?? null,
+		launcher_visibility_reason:
+			asString(raw["launcher_visibility_reason"]) ?? null,
 		source_authority: asString(raw["source_authority"]) ?? null,
 		owner_kind: asString(raw["owner_kind"]) ?? null,
 		owner_actions: Array.isArray(raw["owner_actions"])
@@ -1167,6 +1245,13 @@ function laneRefUpdateToTaskRecord(
 			: null;
 	const worktree = asString(laneRef["worktree"]);
 	const updatedAt = asString(laneRef["updatedAt"]);
+	// Evidence-backed attach/visibility affordances (schema §attach, §visibility):
+	// the launcher's own writer-host probe of whether a terminal is attachable
+	// and a visible-bundle window was confirmed. These were previously dropped on
+	// ingest; CC now consumes them as authoritative liveness/visibility truth for
+	// the row (see isLivenessUnobservableRunningLane).
+	const attach = asRecord(envelope["attach"]);
+	const visibility = asRecord(envelope["visibility"]);
 	return {
 		id: taskId,
 		task_id: taskId,
@@ -1183,6 +1268,14 @@ function laneRefUpdateToTaskRecord(
 		started_at: updatedAt,
 		updated_at: updatedAt,
 		source_authority: asString(laneRef["provider"]),
+		launcher_attach_available: attach ? attach["available"] : undefined,
+		launcher_attach_reason: attach
+			? attach["reason_if_unavailable"]
+			: undefined,
+		launcher_visibility_degraded: visibility
+			? visibility["degraded"]
+			: undefined,
+		launcher_visibility_reason: visibility ? visibility["reason"] : undefined,
 		provenance: {
 			source_ref: laneId,
 			adapter_kind: WORK_SYSTEM_LANES_PROJECTION_KIND,
@@ -9169,6 +9262,23 @@ export class AgentStatusTreeProvider
 		// no positive liveness evidence. Live launcher-managed interactive
 		// Claude lanes get the more honest "(interactive)" hint instead.
 		const isStuck = stuckRaw && !interactiveAwaiting;
+		// A `running` lane whose live work CC cannot prove (launcher projected
+		// attach-unavailable / visibility-degraded, or a session-less projection
+		// row with no probe channel) must not imply ongoing work with the
+		// animated spinner. Gate on the live probe so a worktree-discovered live
+		// agent — or a launcher-flagged row CC can locally confirm alive — still
+		// wins and keeps its spinner. "Detached" here is a visibility badge, not
+		// a lifecycle state: the row stays `running` and in its status group.
+		const livenessUnobservable =
+			isLivenessUnobservableRunningLane(task) &&
+			!this.hasPositiveLivenessEvidence(task);
+		const livenessUnobservableReason = livenessUnobservable
+			? (task.launcher_visibility_reason ??
+				task.launcher_attach_reason ??
+				(task.lane_projection
+					? "projection-reported running; no session to attach or probe"
+					: "no attach or liveness evidence"))
+			: null;
 		const diffSummaryInline = this.getCachedDiffSummaryForTask(task);
 		const descriptionParts: string[] = [];
 		if (!this.isProjectGroupingEnabled()) {
@@ -9273,11 +9383,13 @@ export class AgentStatusTreeProvider
 		if (claudeUuid) {
 			descriptionParts.push(`🔗 ${claudeUuid.slice(0, 8)}`);
 		}
-		const rawDescription = isStuck
-			? `${descriptionParts.join(" · ")} (possibly stuck)`
-			: interactiveAwaiting
-				? `${descriptionParts.join(" · ")} (interactive)`
-				: descriptionParts.join(" · ");
+		const rawDescription = livenessUnobservable
+			? `${descriptionParts.join(" · ")} (detached)`
+			: isStuck
+				? `${descriptionParts.join(" · ")} (possibly stuck)`
+				: interactiveAwaiting
+					? `${descriptionParts.join(" · ")} (interactive)`
+					: descriptionParts.join(" · ");
 		const description =
 			rawDescription.length > 80
 				? `${rawDescription.slice(0, 79)}…`
@@ -9309,11 +9421,17 @@ export class AgentStatusTreeProvider
 			lifecycleConflict.kind === "live-process-conflict"
 				? `**$(warning) Lifecycle conflict:** ${lifecycleConflict.detail}`
 				: null;
+		const detachedLivenessLine = livenessUnobservable
+			? `**$(debug-disconnect) Liveness:** Detached — running state not locally observable${
+					livenessUnobservableReason ? ` (${livenessUnobservableReason})` : ""
+				}`
+			: null;
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${task.id}**`,
 				`Status: ${getStatusDisplayLabel(task.status)}`,
 				lifecycleConflictLine,
+				detachedLivenessLine,
 				codexRunNote,
 				fallback
 					? `Model: ${fallback.actualFull} (fallback from ${fallback.requestedFull})`
@@ -9339,27 +9457,37 @@ export class AgentStatusTreeProvider
 						"warning",
 						new vscode.ThemeColor("charts.orange"),
 					)
-				: task.status === "completed_stale" || isStuck
-					? new vscode.ThemeIcon(
-							"warning",
+				: livenessUnobservable
+					? // Running, but CC has no evidence of live work (launcher
+						// reported attach-unavailable / visibility-degraded, or a
+						// session-less projection row with nothing to probe). Swap the
+						// animated sync~spin for a static "disconnected" icon so the row
+						// stops implying ongoing work it can't substantiate.
+						new vscode.ThemeIcon(
+							"debug-disconnect",
 							new vscode.ThemeColor("charts.yellow"),
 						)
-					: interactiveAwaiting
-						? // Idle interactive REPL: positive pane evidence proves the
-							// lane is alive, but the stream has been silent past the
-							// stuck threshold — so it's awaiting input, not churning.
-							// Swap the animated sync~spin for a static "chat awaiting
-							// reply" icon so the row stops implying ongoing work.
-							new vscode.ThemeIcon(
-								"comment-discussion",
+					: task.status === "completed_stale" || isStuck
+						? new vscode.ThemeIcon(
+								"warning",
 								new vscode.ThemeColor("charts.yellow"),
 							)
-						: isReviewed
-							? new vscode.ThemeIcon(
-									"pass",
-									new vscode.ThemeColor("charts.green"),
+						: interactiveAwaiting
+							? // Idle interactive REPL: positive pane evidence proves the
+								// lane is alive, but the stream has been silent past the
+								// stuck threshold — so it's awaiting input, not churning.
+								// Swap the animated sync~spin for a static "chat awaiting
+								// reply" icon so the row stops implying ongoing work.
+								new vscode.ThemeIcon(
+									"comment-discussion",
+									new vscode.ThemeColor("charts.yellow"),
 								)
-							: getStatusThemeIcon(task.status);
+							: isReviewed
+								? new vscode.ThemeIcon(
+										"pass",
+										new vscode.ThemeColor("charts.green"),
+									)
+								: getStatusThemeIcon(task.status);
 		// `.linked` contextValue suffix is added only when a Claude session
 		// UUID is recorded — mirrors the at-a-glance description indicator
 		// (presence = task-specific resume target; absence = `--continue`).
