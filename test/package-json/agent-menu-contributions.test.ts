@@ -44,6 +44,24 @@ async function getViewTitleMenu(): Promise<MenuContribution[]> {
 	return pkg.contributes?.menus?.["view/title"] ?? [];
 }
 
+const DEAD_STATUSES = [
+	"stopped",
+	"killed",
+	"completed",
+	"completed_dirty",
+	"completed_stale",
+	"failed",
+	"contract_failure",
+] as const;
+
+function viewItemRegex(when: string | undefined): RegExp {
+	const pattern = when?.match(/viewItem =~ \/(.+?)\//)?.[1];
+	if (!pattern) {
+		throw new Error(`not a viewItem regex when-clause: ${when}`);
+	}
+	return new RegExp(pattern);
+}
+
 async function getCommands(): Promise<Array<{ command?: string }>> {
 	const raw = await Bun.file(
 		new URL("../../package.json", import.meta.url),
@@ -244,6 +262,42 @@ describe("package.json agent menu contributions", () => {
 				item.group === "inline",
 		);
 		expect(inlineDiff).toBeDefined();
+	});
+
+	test("inline focusAgentTerminal is scoped to running rows (no dead/History rattle)", async () => {
+		const menu = await getViewItemContextMenu();
+		const inline = menu.find(
+			(item) =>
+				item.command === "commandCentral.focusAgentTerminal" &&
+				item.group === "inline",
+		);
+		expect(inline).toBeDefined();
+		const re = viewItemRegex(inline?.when);
+		expect(re.test("agentTask.running")).toBe(true);
+		expect(re.test("agentTask.running.linked")).toBe(true);
+		for (const status of DEAD_STATUSES) {
+			expect(re.test(`agentTask.${status}`)).toBe(false);
+			expect(re.test(`agentTask.${status}.reviewed`)).toBe(false);
+			expect(re.test(`agentTask.${status}.linked`)).toBe(false);
+		}
+	});
+
+	test("inline captureAgentOutput is scoped to running rows", async () => {
+		const menu = await getViewItemContextMenu();
+		const inline = menu.find(
+			(item) =>
+				item.command === "commandCentral.captureAgentOutput" &&
+				item.group === "inline",
+		);
+		expect(inline).toBeDefined();
+		const re = viewItemRegex(inline?.when);
+		expect(re.test("agentTask.running")).toBe(true);
+		expect(re.test("agentTask.running.linked")).toBe(true);
+		for (const status of DEAD_STATUSES) {
+			expect(re.test(`agentTask.${status}`)).toBe(false);
+			expect(re.test(`agentTask.${status}.reviewed`)).toBe(false);
+			expect(re.test(`agentTask.${status}.linked`)).toBe(false);
+		}
 	});
 
 	test("adds context-menu kill action for running agents", async () => {

@@ -1380,12 +1380,12 @@
         },
         {
           "command": "commandCentral.focusAgentTerminal",
-          "when": "viewItem =~ /^agentTask\\./",
+          "when": "viewItem =~ /^agentTask\\.running/",
           "group": "inline"
         },
         {
           "command": "commandCentral.captureAgentOutput",
-          "when": "viewItem =~ /^agentTask\\./",
+          "when": "viewItem =~ /^agentTask\\.running/",
           "group": "inline"
         },
         {
