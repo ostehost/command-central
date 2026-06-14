@@ -3626,12 +3626,72 @@ export class AgentStatusTreeProvider
 	getTreeItem(element: AgentNode): vscode.TreeItem {
 		const timingStart = performance.now();
 		try {
-			return this.getTreeItemImpl(element);
+			const item = this.getTreeItemImpl(element);
+			// Anchor every node to a stable, globally-unique TreeItem.id. Without
+			// one, VS Code derives a node's handle from its parent's handle +
+			// position + label. The project-first tree re-sorts project groups by
+			// activity and embeds a live "(N)" count in their header label, so
+			// those derived handles change on every refresh — which orphans deep
+			// descendants (notably the History `status-group:done` rows) and makes
+			// VS Code spam "Failed to resolve tree node" errors with audible alert
+			// feedback whenever the History surface is clicked or refreshed.
+			// Self-id'd nodes (status groups / time groups already set their own
+			// project-qualified id) are left untouched.
+			if (item.id === undefined) {
+				const stableId = this.getStableTreeItemId(element);
+				if (stableId !== undefined) {
+					item.id = stableId;
+				}
+			}
+			return item;
 		} finally {
 			defaultTimingRecorder.record(
 				`tree.getTreeItem.${element.type}`,
 				performance.now() - timingStart,
 			);
+		}
+	}
+
+	/**
+	 * Globally-unique, render-stable identity for a tree node — the value used
+	 * for `TreeItem.id`. MUST NOT depend on tree index, display label, a live
+	 * count, or the current sort position (those all change across refreshes and
+	 * are exactly what breaks VS Code's node resolution). Returns `undefined` for
+	 * nodes that already set their own id in their create method (status groups,
+	 * time groups) or for which no stable global id is known (e.g. symphony
+	 * dashboard/run-group rows), leaving their handling unchanged.
+	 *
+	 * NOTE: this is intentionally distinct from {@link getRefreshElementKey},
+	 * whose `statusGroup` key is project-agnostic (fine for refresh coalescing,
+	 * but NOT globally unique — reusing it as an id would collide one project's
+	 * History header with another's and crash the tree). Nodes whose only
+	 * distinguishing field is a count-bearing display label (`olderRuns` →
+	 * "Show N older…", transient `state` rows) are deliberately NOT given an id
+	 * here: a label-derived id would re-introduce the very count dependency this
+	 * fix removes, and a count-free id would risk colliding with a sibling. They
+	 * keep VS Code's derived handle, which is harmless — they were never part of
+	 * the resolve-storm and never targeted by reveal().
+	 */
+	private getStableTreeItemId(element: AgentNode): string | undefined {
+		switch (element.type) {
+			case "task":
+				return `task:${element.task.id}`;
+			case "discovered":
+				return `discovered:${element.agent.pid}`;
+			case "openclawTask":
+				return `openclaw:${element.task.taskId}`;
+			case "projectGroup":
+				return element.unregistered
+					? "project:__unregistered__"
+					: `project:${element.projectDir ?? element.projectName}`;
+			case "folderGroup":
+				return `folder:${element.groupKey}`;
+			case "backgroundTasks":
+				return "backgroundTasks";
+			case "summary":
+				return "summary";
+			default:
+				return undefined;
 		}
 	}
 
