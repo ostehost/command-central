@@ -2240,9 +2240,21 @@ export class AgentStatusTreeProvider
 		// still says "healthy", keep the task as running.
 		if (this.isRunningTaskHealthy(task)) return task;
 
-		// Tier 4 — Last-resort inference. The process is gone; we have no
-		// receipt, no stream terminal event, no launcher completion evidence,
-		// and liveness signals say dead.  Commit history is the final fallback.
+		// Tier 3b — Detached ≠ dead. `isRunningTaskHealthy()` returning false
+		// only means we could NOT positively confirm the lane is alive (stale
+		// heuristic, silent JSONL, an unrecognized pane command, or a host whose
+		// tmux we cannot probe). That is a *visibility* signal, not a terminal
+		// one. A registry-`running` lane is only demoted out of the live surface
+		// once its session is POSITIVELY confirmed dead — the same gate
+		// `getStaleTransitionReason()` already applies before marking a task
+		// stale. Otherwise keep it `running` (the renderer badges it detached /
+		// possibly-stuck) so a live-but-detached lane never lands in Failed &
+		// Stopped. See research/RESULT-cc-current-running-surface-fix-20260613.md.
+		if (!this.isTaskSessionConfirmedDead(task)) return task;
+
+		// Tier 4 — Last-resort inference. The session is positively confirmed
+		// dead; we have no receipt, no stream terminal event, and no launcher
+		// completion evidence.  Commit history is the final fallback.
 
 		// Dirty-exit tasks lack exit_code and completed_at, but may have
 		// produced commits.  Check git history as a last-resort signal
@@ -3294,6 +3306,13 @@ export class AgentStatusTreeProvider
 
 	private isTaskSessionConfirmedDead(task: AgentTask): boolean {
 		if (isRemoteNodeTaskForCurrentHost(task)) return false;
+		// A local tmux/persist probe can only CONFIRM DEATH for a task that
+		// demonstrably executed on this host. For a node-origin task whose host
+		// we cannot verify as local, the absence of a local session here is not
+		// evidence of anything — mirror `isLocalFileProbeAuthoritative` so we
+		// never demote another machine's still-live lane to stopped/stale.
+		// (cc-current-running-surface-fix-20260613)
+		if (!isLocalFileProbeAuthoritative(task)) return false;
 
 		if (task.terminal_backend === "persist") {
 			return !this.isPersistTaskAlive(task);
