@@ -132,9 +132,22 @@ write dogfood NO_GO) are **launcher/review-infra and dogfood-env**, not CC code.
 |---|---|
 | `src/providers/agent-status-tree-provider.ts` | `warnTaskRegistryFallback` → instance method with per-`(path→reason)` dedup (`_lastWarnedRegistryFallback`); 7 call sites routed through it. |
 | `test/tree-view/agent-status-tree-provider-read-registry.test.ts` | +2 tests: repeated unchanged reads warn once (history still readable); distinct reasons each warn once. |
+| `src/providers/agent-status-tree-provider.ts` | Idle Symphony root summary: replaced absence-implying `"none active"` with history-preserving `"0 live now"` (`formatSymphonyRootDescription`). |
+| `test/tree-view/agent-status-tree-provider-rendering.test.ts` | Updated idle-summary test: historical count retained + `"0 live now"` + no `"none active"`; clarified the live-summary test name. |
 
-Committed as `05af4109`. (The P1 notification-flap guard + its 2 tests are in HEAD via the
-concurrent `72216ce1`, as noted above.)
+Committed as `05af4109` (log-spam dedup) and `add9b0fc` ("none active" → "0 live now").
+(The P1 notification-flap guard + its 2 tests are in HEAD via the concurrent `72216ce1`,
+as noted above.)
+
+### Follow-up steer addressed — "none active" UX (history-preserving)
+Mike flagged that the idle Symphony/Agent Status summary phrase **"none active"** reads like
+an empty/absent state and conflicts with showing all history. Replaced with **"0 live now"** so
+the label distinguishes live vs historical without implying history is gone:
+- idle label now reads e.g. `2 standalone run attempts · 0 live now` — the historical attempt
+  **count is retained** in the label;
+- every run remains **shown and navigable** in the tree (the Symphony "Run Attempts" children are
+  unchanged; navigability is covered by `test/tree-view/openclaw-task-nodes.test.ts`);
+- no run history is hidden — only the live state is clarified.
 
 **Doctrine compliance:** neither change hides or drops any lane/terminal. Both only suppress
 *repeated, unchanged* noise (a duplicate toast for the same run; a duplicate warning for the same
