@@ -3689,6 +3689,25 @@ export class AgentStatusTreeProvider
 				return `olderRuns:${element.parentStatus ?? ""}:${
 					element.parentProjectDir ?? element.parentProjectName ?? ""
 				}:${element.parentGroupKey ?? ""}`;
+			// Symphony root containers are singletons per render (getSymphonyChildren
+			// pushes exactly one of each, and the run-group `kind` is unique among
+			// running/retryQueued/released). Without a content-free stable id they
+			// fall back to VS Code's parent-handle + position + label scheme, so the
+			// conditional `released` group shifting the position of `taskflows` /
+			// `codexRuns` — or a count changing in their labels on the 30s global
+			// refresh — silently re-keys them and collapses any expanded subtree.
+			// NOTE: `codexRun` / `symphonySnapshotEntry` intentionally stay undefined
+			// (fall through to default): the same run renders as a `codexRun` under
+			// BOTH its run-group and the `codexRuns` container, so a per-run id would
+			// be a duplicate-id ("already registered") tree crash.
+			case "symphonyDashboard":
+				return "symphony:dashboard";
+			case "symphonyRunGroup":
+				return `symphony:run-group:${element.kind}`;
+			case "taskflows":
+				return "symphony:taskflows";
+			case "codexRuns":
+				return "symphony:codexRuns";
 			default:
 				return undefined;
 		}

@@ -384,6 +384,96 @@ describe("Agent Status — stable TreeItem.id identity", () => {
 		}
 	});
 
+	// ── symphony root containers (always-on symphony view) ──────────────────
+
+	test("symphony root containers carry content-free, collision-free, render-stable ids", () => {
+		const stableId = (
+			provider as unknown as {
+				getStableTreeItemId(n: AgentNode): string | undefined;
+			}
+		).getStableTreeItemId.bind(provider);
+
+		const dashboard: AgentNode = {
+			type: "symphonyDashboard",
+			runs: [],
+			flows: [],
+		};
+		const running: AgentNode = {
+			type: "symphonyRunGroup",
+			kind: "running",
+			runs: [],
+		};
+		const retryQueued: AgentNode = {
+			type: "symphonyRunGroup",
+			kind: "retryQueued",
+			runs: [],
+		};
+		const released: AgentNode = {
+			type: "symphonyRunGroup",
+			kind: "released",
+			runs: [],
+		};
+		const taskflows: AgentNode = { type: "taskflows", flows: [] };
+		const codexRuns: AgentNode = { type: "codexRuns", runs: [] };
+
+		const ids = [
+			stableId(dashboard),
+			stableId(running),
+			stableId(retryQueued),
+			stableId(released),
+			stableId(taskflows),
+			stableId(codexRuns),
+		];
+
+		// Every container is identified, and all are globally unique — the
+		// conditional `released` group must never collide with its siblings
+		// (a duplicate id is a hard "already registered" tree crash).
+		expect(ids.every((id) => typeof id === "string" && id.length > 0)).toBe(
+			true,
+		);
+		expect(new Set(ids).size).toBe(ids.length);
+
+		// Run groups are distinguished by `kind`, not by membership or label.
+		expect(stableId(running)).not.toBe(stableId(retryQueued));
+
+		// Content-free: the id must not move with the count-bearing runs/flows
+		// payload (the exact failure that re-keyed these nodes on every refresh).
+		expect(
+			stableId({ type: "codexRuns", runs: [{}, {}] } as unknown as AgentNode),
+		).toBe(stableId(codexRuns));
+		expect(
+			stableId({ type: "taskflows", flows: [{}] } as unknown as AgentNode),
+		).toBe(stableId(taskflows));
+		expect(
+			stableId({
+				type: "symphonyRunGroup",
+				kind: "running",
+				runs: [{}],
+			} as unknown as AgentNode),
+		).toBe(stableId(running));
+
+		// The provider wires the canonical id onto the rendered TreeItem.
+		expect(provider.getTreeItem(codexRuns).id).toBe("symphony:codexRuns");
+		expect(provider.getTreeItem(dashboard).id).toBe("symphony:dashboard");
+	});
+
+	test("codexRun keeps an undefined id (renders under two parents — a per-run id would collide)", () => {
+		const stableId = (
+			provider as unknown as {
+				getStableTreeItemId(n: AgentNode): string | undefined;
+			}
+		).getStableTreeItemId.bind(provider);
+		// The same run is a child of BOTH its symphonyRunGroup and the codexRuns
+		// container, so a `codexRun:<id>` would be registered twice. Leaving it
+		// undefined (VS Code parent-relative handle) is the correct, crash-free
+		// choice and must not regress into a "stable" per-run id.
+		const codexRun = {
+			type: "codexRun",
+			run: { id: "run-1" },
+		} as unknown as AgentNode;
+		expect(stableId(codexRun)).toBeUndefined();
+	});
+
 	// ── full-tree uniqueness guard (no duplicate id → no "already registered") ──
 
 	test("a full grouped render assigns globally-unique ids to every structural node", () => {
