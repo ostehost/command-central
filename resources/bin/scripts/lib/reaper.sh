@@ -510,6 +510,13 @@ _reap_finalize_task() {
 	fi
 	unlock_tasks
 
+	# Project the reaper-settled terminal state into the lanes read-model.
+	# Without this, reaper-settled lanes stayed `running` in the projection
+	# forever — a dead lane has no other writer left to converge it.
+	# shellcheck source=work-system-bridge.sh
+	source "${SCRIPT_DIR}/lib/work-system-bridge.sh"
+	work_system_emit_lane_ref_for_task "$TASKS_FILE" "$task_id" "$target_status" || true
+
 	if [[ "$notify" == "true" ]]; then
 		_write_recovery_marker "$task_id" "$target_status" "$exit_code" "$completed_at" "$reason" "$detail"
 

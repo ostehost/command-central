@@ -178,6 +178,72 @@ bundle_visibility_receipt() {
 		'{task_id:$task_id,tasks_file:$tasks_file,bundle_id:$bundle_id,verified:$verified,degraded:$degraded,reason:$reason,tmux_attached:$tmux_attached,process_alive:$process_alive,focusable_windows:$focusable_windows,onscreen_windows:$onscreen_windows,pid:(if $pid == "" then null else ($pid|tonumber) end)}'
 }
 
+# Persist the spawn-time visibility receipt path + degraded state into the
+# durable tasks.json row. register_task() runs BEFORE the receipt exists (the
+# probe reads the registered row), so the durable row would otherwise keep
+# visibility_receipt_path=null while only the /tmp exec receipt and the spawn
+# stdout carried it. This is the canonical, cross-host visibility truth the
+# lanes projection (work-system-bridge.sh) and the release gate both read.
+#
+# Serializes through the authoritative tasks lock when tasks-lock.sh is sourced
+# (the spawn path), and degrades to a best-effort atomic write otherwise (unit
+# tests that source bundle-runtime.sh alone). Fail-soft: always returns 0 and
+# never corrupts tasks.json — the staged write replaces the file only when jq
+# produced a non-empty document. TASKS_FILE is shadowed locally so lock_tasks /
+# unlock_tasks act on the requested file without mutating the caller's global.
+persist_task_visibility_receipt() {
+	local task_id="$1"
+	local receipt_path="$2"
+	local receipt_json="$3"
+	# shellcheck disable=SC2034  # consumed via dynamic scope by lock_tasks
+	local TASKS_FILE="${4:-${TASKS_FILE:-${HOME}/.config/ghostty-launcher/tasks.json}}"
+
+	[[ -n "$task_id" ]] || return 0
+	[[ -f "$TASKS_FILE" ]] || return 0
+	[[ -n "$receipt_json" ]] || return 0
+	jq -e 'type == "object"' >/dev/null 2>&1 <<<"$receipt_json" || return 0
+
+	local verified degraded reason
+	verified=$(jq -r '.verified // false' <<<"$receipt_json" 2>/dev/null || echo false)
+	degraded=$(jq -r '.degraded // true' <<<"$receipt_json" 2>/dev/null || echo true)
+	reason=$(jq -r '.reason // "unknown"' <<<"$receipt_json" 2>/dev/null || echo unknown)
+	[[ "$verified" == "true" || "$verified" == "false" ]] || verified="false"
+	[[ "$degraded" == "true" || "$degraded" == "false" ]] || degraded="true"
+
+	local _locked=0
+	if declare -F lock_tasks >/dev/null 2>&1; then
+		lock_tasks || return 0
+		_locked=1
+	fi
+
+	local tmp
+	tmp=$(mktemp)
+	if jq --arg id "$task_id" \
+		--arg path "$receipt_path" \
+		--arg reason "$reason" \
+		--argjson verified "$verified" \
+		--argjson degraded "$degraded" \
+		'if .tasks[$id] then
+			.tasks[$id].visibility_receipt_path = (if $path == "" then null else $path end)
+			| .tasks[$id].visibility = {
+				verified: $verified,
+				degraded: $degraded,
+				reason: $reason,
+				receipt_path: (if $path == "" then null else $path end)
+			}
+		 else . end' \
+		"$TASKS_FILE" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+		mv "$tmp" "$TASKS_FILE"
+	else
+		rm -f "$tmp"
+	fi
+
+	if [[ "$_locked" == "1" ]]; then
+		unlock_tasks || true
+	fi
+	return 0
+}
+
 bundle_read_identifier() {
 	local bundle_path="$1"
 	local plist="${bundle_path}/Contents/Info.plist"

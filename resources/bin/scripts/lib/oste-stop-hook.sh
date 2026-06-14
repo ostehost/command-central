@@ -421,15 +421,24 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) turn task=${task_id}" >>"/tmp/oste-progress
 # than a generic handoff artifact because it records the agent's declared final
 # status. Success reports require a clean tree and any handoff contract to be
 # present; failure reports finalize with exit 1 so failed work is surfaced.
+#
+# A report owned by a DIFFERENT task (stale leftover from a previous lane in
+# the same cwd — agents can rewrite .oste-report.yaml after their completion
+# already fired, so the finalizer's stage-and-remove cannot catch every copy)
+# must not gate THIS task's completion: fall through to the artifact-contract
+# and final-message paths below instead of exiting. Live failure 2026-06-12:
+# a foreign report ate a review lane's only Stop event and the lane stayed
+# `running` everywhere despite a committed handoff.
 report_file="${cwd}/.oste-report.yaml"
 if [[ "${OSTE_STOP_DETERMINISTIC_COMPLETE:-1}" != "0" && -f "$report_file" ]]; then
 	report_task_id=$(_report_field "$report_file" "task_id")
 	report_status=$(_report_field "$report_file" "status")
 	if [[ -n "$report_task_id" && "$report_task_id" != "$task_id" ]]; then
-		_log_debug "report-task-id-mismatch"
-		exit 0
+		_log_debug "report-task-id-mismatch-fallthrough"
+		report_status="__foreign_report__"
 	fi
 	case "$report_status" in
+		__foreign_report__) : ;; # fall through to contract paths below
 		failure | failed)
 			if _finalize_completion_report "$task_id" 1; then
 				_log_debug "completion-report-failure-fired"

@@ -33,7 +33,8 @@ else
 fi
 unset _ghostty_plist
 
-readonly PROJECTS_DIR="/Applications/Projects"
+# GHL_PROJECTS_DIR override exists for tests; production callers leave it unset.
+readonly PROJECTS_DIR="${GHL_PROJECTS_DIR:-/Applications/Projects}"
 readonly ELIGIBLE_PROJECTS_ROOT="${GHL_ELIGIBLE_PROJECTS_ROOT:-${HOME}/projects}"
 
 local_visible_launcher_host() {
@@ -1463,7 +1464,10 @@ main() {
 					exit 2
 					;;
 			esac
-			send_bundle="${PROJECTS_DIR}/${send_name}.app"
+			# Bundles are created at the sanitized name (create_bundle uses
+			# safe_name), so the existence check and open must use send_safe —
+			# send_name is the display name and can contain spaces/capitals.
+			send_bundle="${PROJECTS_DIR}/${send_safe}.app"
 			# Recreate only when missing. We used to always recreate so a
 			# launcher upgrade reached users without manual bundle deletion,
 			# but unconditional create_bundle adds ~3-4s (codesign, plist,
