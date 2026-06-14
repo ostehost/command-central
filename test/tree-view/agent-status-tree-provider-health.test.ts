@@ -88,22 +88,38 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			);
 		});
 
-		test("still downgrades running tmux task when tmux session is unhealthy", () => {
+		test("keeps a session-alive but quiet/stale running tmux task in running (detached ≠ dead)", () => {
+			// Updated contract (cc-current-running-surface-fix-20260613): a
+			// registry-`running` lane whose tmux session is still alive must NOT be
+			// demoted to a terminal status just because the stream looks stale and the
+			// pane command is unrecognized ("unknown" evidence). Unconfirmable liveness
+			// is a *visibility* signal, not death — the lane stays in the Live/Current
+			// surface (the renderer badges it possibly-stuck) so it can be revisited.
+			// Confirmed-dead evidence (dead pane / dead session) still demotes — see the
+			// dead-session and dead-process tests below.
 			const task = createMockTask({
-				id: "live-running",
+				id: "quiet-but-alive",
 				status: "running",
 				terminal_backend: "tmux",
 				started_at: new Date(Date.now() - 5 * 60 * 60_000).toISOString(),
 			});
+			// Session is alive; pane evidence stays "unknown" (the real inspector
+			// cannot classify the fake session → fail-open). Not confirmed dead.
 			(
 				provider as unknown as {
-					_allDiscoveredAgents: Array<{ sessionId?: string }>;
+					_tmuxSessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
 				}
-			)._allDiscoveredAgents = [{ sessionId: task.session_id }];
+			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+				alive: true,
+				checkedAt: Date.now(),
+			});
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
-			expect(provider.getTasks()[0]?.status).toBe("stopped");
+			expect(provider.getTasks()[0]?.status).toBe("running");
 		});
 
 		test("getStaleLauncherTasks returns the display-overlay stale tasks", () => {

@@ -829,7 +829,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const LIMBO_RECENT_THRESHOLD_MS = 8 * 60 * 60 * 1000;
 
 const STATUS_GROUP_LABELS: Record<AgentStatusGroup, string> = {
-	running: "Running",
+	// "Current · Live" makes the live/working surface unmistakable per the
+	// product doctrine ("current/live should be obvious"). This group always
+	// sorts first and auto-expands, and now also holds registry-`running` lanes
+	// whose visibility is merely detached/unconfirmable rather than dead.
+	running: "Current · Live",
 	done: "Completed",
 	attention: "Failed & Stopped",
 	limbo: "Needs Review",

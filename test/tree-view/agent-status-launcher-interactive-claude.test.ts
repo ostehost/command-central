@@ -15,7 +15,10 @@
  *
  * These tests pin the behaviour:
  *   • positive pane evidence + stale stream → `running` with "(interactive)"
- *   • "unknown" pane evidence + stale stream → downgraded (status leaves running)
+ *   • "unknown" pane evidence + stale stream + live session → stays `running`,
+ *     honestly badged "(possibly stuck)" (detached/unconfirmable ≠ dead —
+ *     cc-current-running-surface-fix-20260613)
+ *   • "dead" pane evidence → drops out of running (confirmed death still demotes)
  *   • positive pane evidence + fresh stream → `running` with no hint
  */
 
@@ -284,11 +287,13 @@ describe("launcher-managed interactive Claude visibility (regression guard)", ()
 		expect(description).not.toContain("(interactive)");
 	});
 
-	test("unknown pane evidence + stale stream → downgraded out of running", () => {
-		// Counterpoint: with no positive evidence (e.g. tmux unavailable, malformed
-		// output), the existing fail-open + staleness path still applies. Status
-		// leaves "running" — proves the "alive" branch above is doing real work and
-		// not just suppressing every downgrade.
+	test("unknown pane evidence + stale stream but live session → stays running, badged possibly-stuck", () => {
+		// Updated contract (cc-current-running-surface-fix-20260613): a launcher lane
+		// whose tmux session is still alive is NOT demoted out of running just because
+		// pane evidence is "unknown" and the stream is stale. Detached / unconfirmable
+		// liveness is a visibility signal — the lane stays in the Live/Current surface,
+		// but is honestly badged "(possibly stuck)" so the row never overclaims health.
+		// (Confirmed-dead evidence still demotes — see the "dead pane evidence" test.)
 		const task = makeLauncherTask({
 			id: "interactive-claude-unknown",
 			stream_file: "/nonexistent/path/to/stream.jsonl",
@@ -300,7 +305,14 @@ describe("launcher-managed interactive Claude visibility (regression guard)", ()
 		provider.reload();
 
 		const displayed = provider.getTasks()[0];
-		expect(displayed?.status).not.toBe("running");
+		expect(displayed?.status).toBe("running");
+
+		const taskNode = provider
+			.getChildren()
+			.find((n) => n.type === "task" && n.task.id === task.id);
+		if (!taskNode) throw new Error("task node missing from getChildren()");
+		const item = provider.getTreeItem(taskNode);
+		expect(String(item.description ?? "")).toContain("(possibly stuck)");
 	});
 
 	test("dead pane evidence → drops out of running ('dead' evidence overrides silence)", () => {
