@@ -219,14 +219,42 @@ describe("AgentStatusTreeProvider — pending-review receipt overlay", () => {
 		}
 	});
 
-	test("no receipt + running task + no liveness evidence falls back to honest inference", () => {
-		// When every Tier 1/2 signal is silent and Tier 3 liveness can't
-		// prove the lane is alive, we drop into Tier 4 inference rather than
-		// making up a status. For a stale-but-launcher-managed task with no
-		// receipt, no stream, no live pane, no discovered session, and no
-		// commits, the default is `stopped` — a recognized terminal state,
-		// not the fake-running lie that caused the original disappearing-
-		// tasks bug.
+	test("no receipt + running task + CONFIRMED-DEAD session falls back to honest inference", () => {
+		// When every Tier 1/2 signal is silent and the session is POSITIVELY
+		// confirmed dead (tmux reports it gone), we drop into Tier 4 inference
+		// rather than making up a status. For a stale launcher task with no
+		// receipt, no stream, a dead session, and no commits, the outcome is a
+		// recognized terminal state (stopped / completed_stale).
+		//
+		// Note (cc-current-running-surface-fix-20260613): a merely *unconfirmable*
+		// lane (live or unprobeable session) is NOT demoted here — that case stays
+		// `running` in the Live/Current surface. This guard now uses a genuinely
+		// dead session so it keeps exercising the Tier-4 terminal path.
+		const realChildProcess = (globalThis as Record<string, unknown>)[
+			"__realNodeChildProcess"
+		] as typeof import("node:child_process");
+		h.execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const [cmd, args] = fnArgs as [string, string[] | undefined];
+			if (cmd === "tmux" && args?.includes("has-session")) {
+				throw new Error("can't find session: definitely-gone");
+			}
+			if (
+				cmd === "openclaw" &&
+				args?.[0] === "tasks" &&
+				args[1] === "audit" &&
+				args[2] === "--json"
+			) {
+				return JSON.stringify({
+					summary: { total: 0, warnings: 0, errors: 0, byCode: {} },
+					findings: [],
+				});
+			}
+			return realChildProcess.execFileSync(
+				cmd,
+				args,
+				fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+			);
+		});
 		const task = createMockTask({
 			id: "tier4-fallback",
 			status: "running",

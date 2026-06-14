@@ -325,9 +325,9 @@ describe("Agent Status — Current/Live surface & detached classification", () =
 		expect(ids.has("hist-completed")).toBe(true);
 		expect(ids.has("hist-failed")).toBe(true);
 
-		expect(groupOf(provider, displayTask(provider, "hist-live") as AgentTask)).toBe(
-			"running",
-		);
+		expect(
+			groupOf(provider, displayTask(provider, "hist-live") as AgentTask),
+		).toBe("running");
 		expect(
 			groupOf(provider, displayTask(provider, "hist-completed") as AgentTask),
 		).toBe("done");
