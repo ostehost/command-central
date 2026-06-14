@@ -99,14 +99,26 @@ Proof manifest (gitignored, in `logs/`):
 | `research/prerelease-gate/latest.json` | cross-repo gate provenance (this run) |
 | `research/prerelease-gate/prerelease-gate-2026-06-14T14-33-56.010Z.json` | dated gate provenance |
 
-Staged by explicit path (no `git add -A`) per the concurrent-lane rule. The
-sibling lane's `research/RESULT-cc-ghostty-final-integration-audit-20260614.md`
-was deliberately left untracked (not this lane's deliverable). Working tree is
-otherwise clean (`*.vsix` and `logs/` are gitignored; the rc.58 VSIX pruned by
-`cleanupOldReleases` is gitignored, so no git delta). Branch `main` is **18
-commits ahead of `origin/main`, unpushed** (out of scope).
+The cut was staged by explicit path (no `git add -A`). `*.vsix` and `logs/` are
+gitignored; the rc.58 VSIX pruned by `cleanupOldReleases` is gitignored, so no
+git delta.
 
-This handoff itself is recorded in a follow-up `docs(research)` commit.
+**Handoff docs commit:** `21892f6f` — `docs(research): record next-RC final local
+gate (rc.61) result`.
+
+> **Concurrent-lane note (honest disclosure):** this repo's working copy + git
+> index are shared with a sibling Claude Code lane
+> (`cc-ghostty-final-integration-audit-20260614`). Despite staging only this
+> lane's RESULT by explicit path, the shared index already held 3 REVIEW docs the
+> sibling had staged, so the docs commit `21892f6f` also swept
+> `research/REVIEW-cc-agent-status-v2-implementation-20260613.md`,
+> `research/REVIEW-cc-agent-status-v2-recovery-20260613.md`, and
+> `research/REVIEW-cc-current-running-surface-fix-20260613.md`. **No content was
+> lost** — all files are committed and the tree is clean. The sibling's own audit
+> handoff committed separately as `de2db65c`
+> (`docs(research): record final integration audit`). History was left intact (no
+> rewrite) because the sibling lane is active and unrequested history rewrites are
+> disallowed. The rc.61 cut commit (`19ea6c9f`) is unaffected and correct.
 
 ---
 
@@ -196,8 +208,8 @@ cleanly and no hacks. The local RC is good.
 
 | | |
 | --- | --- |
-| Repo status | clean for this lane (`git status --porcelain` shows only the sibling audit lane's own untracked RESULT) |
-| HEAD | `19ea6c9f` (rc.61 cut) + follow-up docs commit for this handoff |
+| Repo status | clean (`git status --porcelain` empty) |
+| HEAD | `21892f6f` (handoff docs commit); rc.61 cut at `19ea6c9f`; sibling audit at `de2db65c` |
 | `package.json` | `0.6.0-rc.61` |
 | Installed VSIX | `oste.command-central@0.6.0-rc.61`, sha `83d3ed54…`, loaded from VSIX |
 | `just test-unit` | **641 pass / 0 fail** (exit 0) |
