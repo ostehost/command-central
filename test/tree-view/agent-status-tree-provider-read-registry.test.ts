@@ -379,6 +379,79 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 		}
 	});
 
+	test("repeated empty/unchanged registry reads warn at most once (no log-spam rattle)", () => {
+		const provider = makeProvider();
+		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
+		const tasksFile = path.join(tmpDir, "tasks.json");
+		// Whitespace-only content → "tasks.json is empty" fallback every read.
+		fs.writeFileSync(tasksFile, "   \n");
+
+		const originalWarn = console.warn;
+		const warnings: string[] = [];
+		console.warn = (...args: unknown[]) => {
+			warnings.push(args.map((a) => String(a)).join(" "));
+		};
+
+		try {
+			setProviderTaskFiles(provider, [tasksFile]);
+			// Simulate many reload cycles over the same unchanged empty state.
+			for (let i = 0; i < 6; i++) {
+				realReadRegistry.call(provider);
+			}
+
+			const emptyWarnings = warnings.filter((w) =>
+				w.includes("tasks.json is empty"),
+			);
+			expect(emptyWarnings).toHaveLength(1);
+
+			// History is still fully readable — the unchanged empty state yields an
+			// empty registry without dropping or hiding anything.
+			const registry = realReadRegistry.call(provider);
+			expect(registry.tasks).toEqual({});
+		} finally {
+			console.warn = originalWarn;
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+			provider.dispose();
+		}
+	});
+
+	test("distinct fallback reasons each still warn (dedup is per-reason, not global silence)", () => {
+		const provider = makeProvider();
+		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
+		const tasksFile = path.join(tmpDir, "tasks.json");
+
+		const originalWarn = console.warn;
+		const warnings: string[] = [];
+		console.warn = (...args: unknown[]) => {
+			warnings.push(args.map((a) => String(a)).join(" "));
+		};
+
+		try {
+			setProviderTaskFiles(provider, [tasksFile]);
+
+			// State 1: empty → warns "tasks.json is empty"
+			fs.writeFileSync(tasksFile, "");
+			realReadRegistry.call(provider);
+			realReadRegistry.call(provider); // repeat unchanged: suppressed
+
+			// State 2: array root → a genuinely different fallback reason
+			fs.writeFileSync(tasksFile, "[]");
+			realReadRegistry.call(provider);
+			realReadRegistry.call(provider); // repeat unchanged: suppressed
+
+			expect(
+				warnings.filter((w) => w.includes("tasks.json is empty")),
+			).toHaveLength(1);
+			expect(
+				warnings.filter((w) => w.includes("not a JSON object")),
+			).toHaveLength(1);
+		} finally {
+			console.warn = originalWarn;
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+			provider.dispose();
+		}
+	});
+
 	test("canonicalizes symlinked project_dir values from tasks.json", () => {
 		const provider = makeProvider();
 		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");

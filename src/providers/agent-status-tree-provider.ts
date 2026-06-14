@@ -1196,12 +1196,6 @@ function normalizeProjectionLanes(
 	return normalized;
 }
 
-function warnTaskRegistryFallback(filePath: string, reason: string): void {
-	console.warn(
-		`[Command Central] Falling back to an empty tasks registry for ${filePath}: ${reason}`,
-	);
-}
-
 // ── Provider ─────────────────────────────────────────────────────────
 
 export interface GitInfo {
@@ -1276,6 +1270,15 @@ export class AgentStatusTreeProvider
 	private _lastLoggedTasksFilePath: string | null = null;
 	private _lastLoggedRegistryState: string | null = null;
 	private _lastLoggedLaneQuarantine: string | null = null;
+	/**
+	 * Last registry-fallback reason logged per source path. A busy launcher
+	 * that rewrites the registry can produce transient empty/partial reads on
+	 * many consecutive reloads; without this guard each one re-emits an
+	 * identical `console.warn`, spamming the log for an unchanged state. We
+	 * warn once per distinct (path → reason) and stay quiet until the reason
+	 * actually changes — the same "log on change" doctrine as the lines above.
+	 */
+	private _lastWarnedRegistryFallback = new Map<string, string>();
 	/**
 	 * Whether the deprecated `legacyLauncherTasks.enabled` diagnostics escape
 	 * hatch is on — surfaces a warning row at the tree root so full launcher
@@ -3448,6 +3451,21 @@ export class AgentStatusTreeProvider
 		return candidate;
 	}
 
+	/**
+	 * Emit a registry-fallback warning, but only when the reason for this
+	 * source path differs from the last one logged. Repeated identical
+	 * fallbacks (e.g. a registry that stays empty across many reloads) warn
+	 * once instead of rattling the log on every reload. The full task history
+	 * is never affected — this is purely about log output.
+	 */
+	private warnTaskRegistryFallback(filePath: string, reason: string): void {
+		if (this._lastWarnedRegistryFallback.get(filePath) === reason) return;
+		this._lastWarnedRegistryFallback.set(filePath, reason);
+		console.warn(
+			`[Command Central] Falling back to an empty tasks registry for ${filePath}: ${reason}`,
+		);
+	}
+
 	private readRegistryFile(
 		filePath: string,
 		ingest: TaskRegistryIngest = "all",
@@ -3464,7 +3482,7 @@ export class AgentStatusTreeProvider
 				return createEmptyTaskRegistry();
 			}
 
-			warnTaskRegistryFallback(
+			this.warnTaskRegistryFallback(
 				filePath,
 				err instanceof Error ? err.message : "Failed to read tasks.json",
 			);
@@ -3472,14 +3490,14 @@ export class AgentStatusTreeProvider
 		}
 
 		if (content.trim().length === 0) {
-			warnTaskRegistryFallback(filePath, "tasks.json is empty");
+			this.warnTaskRegistryFallback(filePath, "tasks.json is empty");
 			return createEmptyTaskRegistry();
 		}
 
 		try {
 			const parsed = JSON.parse(content) as unknown;
 			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-				warnTaskRegistryFallback(
+				this.warnTaskRegistryFallback(
 					filePath,
 					"tasks.json root is not a JSON object",
 				);
@@ -3498,7 +3516,7 @@ export class AgentStatusTreeProvider
 			// lane registry may admit.
 			if (parsedRegistry["kind"] === WORK_SYSTEM_LANES_PROJECTION_KIND) {
 				if (version !== 1) {
-					warnTaskRegistryFallback(
+					this.warnTaskRegistryFallback(
 						filePath,
 						`unsupported ${WORK_SYSTEM_LANES_PROJECTION_KIND} version: ${String(version)}`,
 					);
@@ -3508,7 +3526,7 @@ export class AgentStatusTreeProvider
 					parsedRegistry["lanes"],
 				);
 				if (!normalizedLanes) {
-					warnTaskRegistryFallback(
+					this.warnTaskRegistryFallback(
 						filePath,
 						`${WORK_SYSTEM_LANES_PROJECTION_KIND} is missing a valid lanes collection`,
 					);
@@ -3528,7 +3546,7 @@ export class AgentStatusTreeProvider
 				};
 			}
 
-			warnTaskRegistryFallback(
+			this.warnTaskRegistryFallback(
 				filePath,
 				version !== 1 && version !== 2
 					? `unsupported tasks.json version: ${String(version)}`
@@ -3536,7 +3554,7 @@ export class AgentStatusTreeProvider
 			);
 			return createEmptyTaskRegistry();
 		} catch (err) {
-			warnTaskRegistryFallback(
+			this.warnTaskRegistryFallback(
 				filePath,
 				err instanceof Error ? err.message : "Failed to parse tasks.json",
 			);
