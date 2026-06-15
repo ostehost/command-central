@@ -7709,10 +7709,12 @@ export class AgentStatusTreeProvider
 			}
 
 			if (element.type === "statusGroup") {
+				const targetId = this.getStableTreeItemId(element);
 				return findProjectParent((project) =>
 					this.getProjectGroupChildren(project).some(
 						(node) =>
-							node.type === "statusGroup" && node.status === element.status,
+							node.type === "statusGroup" &&
+							this.getStableTreeItemId(node) === targetId,
 					),
 				);
 			}
@@ -7726,16 +7728,17 @@ export class AgentStatusTreeProvider
 				for (const statusGroup of statusGroups) {
 					const statusChildren = this.getStatusGroupChildren(statusGroup);
 
-					if (
-						element.type === "statusTimeGroup" &&
-						statusChildren.some(
-							(node) =>
-								node.type === "statusTimeGroup" &&
-								node.status === element.status &&
-								node.period === element.period,
-						)
-					) {
-						return statusGroup;
+					if (element.type === "statusTimeGroup") {
+						const targetId = this.getStableTreeItemId(element);
+						if (
+							statusChildren.some(
+								(node) =>
+									node.type === "statusTimeGroup" &&
+									this.getStableTreeItemId(node) === targetId,
+							)
+						) {
+							return statusGroup;
+						}
 					}
 
 					if (

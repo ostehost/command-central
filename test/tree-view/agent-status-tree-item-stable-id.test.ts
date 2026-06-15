@@ -474,6 +474,46 @@ describe("Agent Status — stable TreeItem.id identity", () => {
 		expect(stableId(codexRun)).toBeUndefined();
 	});
 
+	test("getParent resolves statusGroup by canonical stable id, not status alone", () => {
+		setAgentStatusConfig(h.vscodeMock, { groupByProject: true });
+
+		const registry: Record<string, AgentTask> = {};
+		for (let i = 1; i <= 6; i++) {
+			registry[`a-done-${i}`] = completedTask(
+				`a-done-${i}`,
+				PROJ_A_DIR,
+				"Proj A",
+			);
+			registry[`b-done-${i}`] = completedTask(
+				`b-done-${i}`,
+				PROJ_B_DIR,
+				"Proj B",
+			);
+		}
+		provider.readRegistry = () => createMockRegistry(registry);
+		provider.reload();
+
+		const roots = provider.getChildren();
+		const projB = roots.find(
+			(node): node is ProjectGroupNode =>
+				node.type === "projectGroup" && node.projectDir === PROJ_B_DIR,
+		);
+		if (!projB) throw new Error("Expected Proj B root");
+		const projBHistory = provider
+			.getChildren(projB)
+			.find(
+				(node): node is StatusGroupNode =>
+					node.type === "statusGroup" && node.status === "done",
+			);
+		if (!projBHistory) throw new Error("Expected Proj B History status group");
+
+		const parent = provider.getParent(projBHistory);
+		expect(parent?.type).toBe("projectGroup");
+		expect((parent as ProjectGroupNode | undefined)?.projectDir).toBe(
+			PROJ_B_DIR,
+		);
+	});
+
 	// ── full-tree uniqueness guard (no duplicate id → no "already registered") ──
 
 	test("a full grouped render assigns globally-unique ids to every structural node", () => {
