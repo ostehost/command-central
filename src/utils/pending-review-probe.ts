@@ -18,6 +18,15 @@ import * as path from "node:path";
 export const DEFAULT_PENDING_REVIEW_DIR = "/tmp/oste-pending-review";
 const DEFAULT_CACHE_TTL_MS = 5_000;
 
+/**
+ * Subdirectory under the pending-review dir where the launcher snapshots a
+ * receipt once it is marked reviewed. `pending_review_mark_reviewed` (see
+ * ghostty-launcher scripts/lib/pending-review.sh) updates the active file in
+ * place AND copies it to `<dir>/reviewed/<task_id>.json`, so a reviewed task
+ * leaves a durable artifact even after the active queue entry is consumed.
+ */
+export const REVIEWED_ARCHIVE_SUBDIR = "reviewed";
+
 function resolveDefaultDir(): string {
 	const override = process.env["CC_PENDING_REVIEW_DIR"];
 	return override && override.length > 0
@@ -37,6 +46,16 @@ export interface PendingReviewReceipt {
 	managerCommit: string | null;
 	agentSummary: string | null;
 	filesChanged: string[];
+	/**
+	 * Launcher review-lifecycle string on the receipt itself: pending /
+	 * reviewing / reviewed / awaiting_fixup / blocked / no_review_expected.
+	 * This is the receipt's own truth — it can lead the tasks.json task-row
+	 * projection when auto-review dispatch failed and a manual review later
+	 * updated the receipt.
+	 */
+	reviewState: string | null;
+	/** `reviewed: true` flag the launcher sets alongside review_state. */
+	reviewed: boolean;
 }
 
 interface CacheEntry {
@@ -75,6 +94,40 @@ export function readPendingReviewReceipt(
 	const receipt = parseReceiptFile(taskId, filePath);
 	cache.set(cacheKey, { checkedAt: now, receipt });
 	return receipt;
+}
+
+/**
+ * Read the review-resolution receipt for a task, preferring the active
+ * pending-review file but falling back to the `reviewed/` archive snapshot
+ * when the active entry has been consumed/relocated. Used to recover the
+ * launcher's reviewed truth for a task whose tasks.json row went stale (the
+ * Symphony dogfood gap: auto-review dispatch failed, a manual review later
+ * marked the SOURCE receipt reviewed, but the task-row projection never
+ * refreshed).
+ */
+export function readReviewedReceipt(
+	taskId: string,
+	opts: PendingReviewProbeOptions = {},
+): PendingReviewReceipt | null {
+	const active = readPendingReviewReceipt(taskId, opts);
+	if (active) return active;
+
+	const baseDir = opts.baseDir ?? resolveDefaultDir();
+	return readPendingReviewReceipt(taskId, {
+		...opts,
+		baseDir: path.join(baseDir, REVIEWED_ARCHIVE_SUBDIR),
+	});
+}
+
+/**
+ * Whether the receipt records the task's review as reviewed — i.e. a manual
+ * or automated review passed. Narrow on purpose: `reviewing`, `awaiting_fixup`
+ * and `blocked` are NOT reviewed, so true pending/fixup/blocker states are
+ * preserved.
+ */
+export function isReceiptReviewed(receipt: PendingReviewReceipt): boolean {
+	if (receipt.reviewed) return true;
+	return receipt.reviewState?.trim().toLowerCase() === "reviewed";
 }
 
 export function clearPendingReviewCache(): void {
@@ -116,6 +169,8 @@ function parseReceiptFile(
 		managerCommit: asString(parsed["manager_commit"]),
 		agentSummary: asString(parsed["agent_summary"]),
 		filesChanged: asStringArray(parsed["files_changed"]),
+		reviewState: asString(parsed["review_state"]),
+		reviewed: parsed["reviewed"] === true,
 	};
 }
 

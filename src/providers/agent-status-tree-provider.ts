@@ -77,7 +77,9 @@ import {
 } from "../utils/handoff-file-health.js";
 import { getModelAlias } from "../utils/model-aliases.js";
 import {
+	isReceiptReviewed,
 	readPendingReviewReceipt,
+	readReviewedReceipt,
 	receiptToOverlay,
 } from "../utils/pending-review-probe.js";
 import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
@@ -2211,9 +2213,52 @@ export class AgentStatusTreeProvider
 	 */
 	private isReviewQueueReceiptMissing(task: AgentTask): boolean {
 		if (isReviewLifecycleResolved(task)) return false;
+		if (!task.pending_review_path) return false;
+		if (this.getPendingReviewQueueState(task) !== "missing") return false;
+		// The active receipt is gone — but before flagging a queue gap, honor the
+		// reviewed archive: a manual review may have marked the SOURCE receipt
+		// reviewed (and the launcher snapshots it under reviewed/) even though
+		// this task's tasks.json row never refreshed its review_state.
+		if (this.isPendingReviewReceiptReviewed(task)) return false;
+		return true;
+	}
+
+	/**
+	 * Whether the launcher's pending-review receipt records THIS task's review
+	 * as reviewed — ground truth that OVERRIDES a stale tasks.json review_state.
+	 *
+	 * Symphony dogfood gap (2026-06-16): auto-review dispatch failed
+	 * (spawn_failed) leaving review_state="reviewing" on the receipt AND the
+	 * task row; a separate manual review lane later marked the SOURCE receipt
+	 * reviewed (review_state="reviewed", reviewed:true) and the launcher
+	 * snapshotted it to the reviewed/ archive — but the tasks.json task-row
+	 * projection never refreshed. The receipt (active file, else the reviewed/
+	 * archive snapshot) is authoritative, so a reviewed receipt resolves the
+	 * review lifecycle even when the row still says reviewing/pending.
+	 *
+	 * Gated on a declared pending_review_path (no review expected → nothing to
+	 * reconcile) and isLocalFileProbeAuthoritative (a receipt path under
+	 * /tmp/oste-pending-review is only meaningful on the host that ran the
+	 * task — see TODO(work-system) in agent-task-classification.ts).
+	 */
+	private isPendingReviewReceiptReviewed(task: AgentTask): boolean {
+		if (!task.pending_review_path) return false;
+		if (!isLocalFileProbeAuthoritative(task)) return false;
+		const receipt = readReviewedReceipt(task.id);
+		return receipt ? isReceiptReviewed(receipt) : false;
+	}
+
+	/**
+	 * A task counts as reviewed when the local ReviewTracker sidecar marked it
+	 * OR the launcher's pending-review receipt records it reviewed. The receipt
+	 * is the cross-machine source of truth a separate manual-review lane writes,
+	 * so it surfaces the ✓ badge and clears the Attention bucket even when this
+	 * hub never ran "Mark Agent Reviewed" and the task row is stale.
+	 */
+	private isTaskReviewed(task: AgentTask): boolean {
 		return (
-			Boolean(task.pending_review_path) &&
-			this.getPendingReviewQueueState(task) === "missing"
+			this._reviewTracker.isReviewed(task.id) ||
+			this.isPendingReviewReceiptReviewed(task)
 		);
 	}
 
@@ -4932,7 +4977,7 @@ export class AgentStatusTreeProvider
 				node.type === "task" &&
 				(node.task.review_status === "pending" ||
 					node.task.review_status === "changes_requested") &&
-				!this._reviewTracker.isReviewed(node.task.id)
+				!this.isTaskReviewed(node.task)
 			) {
 				return "attention";
 			}
@@ -9682,7 +9727,7 @@ export class AgentStatusTreeProvider
 			task.status === "contract_failure" ||
 			task.status === "stopped" ||
 			task.status === "killed";
-		const isReviewed = isDoneStatus && this._reviewTracker.isReviewed(task.id);
+		const isReviewed = isDoneStatus && this.isTaskReviewed(task);
 		if (task.status === "running") {
 			if (descriptionParts.length === 0) {
 				descriptionParts.push(this.getTaskActivityDescription(task));
