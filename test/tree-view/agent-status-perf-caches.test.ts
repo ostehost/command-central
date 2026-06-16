@@ -95,6 +95,17 @@ function callGetDisplayLauncherTasks(p: AgentStatusTreeProvider): AgentTask[] {
 	).getDisplayLauncherTasks();
 }
 
+function callReadLastNonEmptyStreamLine(
+	p: AgentStatusTreeProvider,
+	streamFile: string,
+): string | null {
+	return (
+		p as unknown as {
+			readLastNonEmptyStreamLine: (f: string) => string | null;
+		}
+	).readLastNonEmptyStreamLine(streamFile);
+}
+
 // ── helper: expire cache entries ─────────────────────────────────────────
 
 function expireStreamFilePathCache(p: AgentStatusTreeProvider, taskId: string) {
@@ -597,6 +608,118 @@ describe("AgentStatusTreeProvider — perf caches", () => {
 			// time toDisplayTask() runs, inside the first getDisplayLauncherTasks
 			// call in the burst).
 			expect(gitRevListCalls).toBeLessThanOrEqual(1);
+		});
+	});
+
+	// ── stream-file last-line tail read (bounded I/O) ────────────────────
+	//
+	// A behavior-preserving tail read is, by construction, output-identical to
+	// the original full read, so the bounded-I/O property is not observable
+	// through return values alone (and the harness's node:fs namespace mock
+	// makes fd-level spying unreliable). These tests instead pin correctness
+	// across every shape — including the two tail-miss fallbacks that a naive
+	// "read only the last 64 KiB" implementation would get wrong.
+
+	describe("readLastNonEmptyStreamLine — bounded tail read", () => {
+		test("small file: returns the last non-empty line", () => {
+			const file = nodePath.join(
+				os.tmpdir(),
+				`cc-tail-small-${Date.now()}.jsonl`,
+			);
+			fs.writeFileSync(file, 'noise\n\n{"type":"turn.completed"}\n');
+			try {
+				expect(callReadLastNonEmptyStreamLine(provider, file)).toBe(
+					'{"type":"turn.completed"}',
+				);
+			} finally {
+				try {
+					fs.unlinkSync(file);
+				} catch {}
+			}
+		});
+
+		test("large file (>64 KiB): finds the final event line from the tail window", () => {
+			const file = nodePath.join(
+				os.tmpdir(),
+				`cc-tail-large-${Date.now()}.jsonl`,
+			);
+			// ~240 KiB of filler, then the real final event (trailing newline).
+			const filler = `${JSON.stringify({ type: "turn.failed" })}\n`.repeat(
+				8000,
+			);
+			fs.writeFileSync(file, `${filler}{"type":"turn.completed"}\n`);
+			try {
+				expect(callReadLastNonEmptyStreamLine(provider, file)).toBe(
+					'{"type":"turn.completed"}',
+				);
+			} finally {
+				try {
+					fs.unlinkSync(file);
+				} catch {}
+			}
+		});
+
+		test("large file with a blank tail window: falls back and finds the earlier real line", () => {
+			const file = nodePath.join(
+				os.tmpdir(),
+				`cc-tail-blank-${Date.now()}.jsonl`,
+			);
+			// Real line, then >64 KiB of blank lines pushing it out of the window.
+			// A naive tail-only read would return null here; the fallback must
+			// recover the original full-read answer.
+			const realLine = '{"type":"turn.completed"}';
+			fs.writeFileSync(file, `${realLine}\n${"\n".repeat(80 * 1024)}`);
+			try {
+				expect(callReadLastNonEmptyStreamLine(provider, file)).toBe(realLine);
+			} finally {
+				try {
+					fs.unlinkSync(file);
+				} catch {}
+			}
+		});
+
+		test("oversized final line longer than the window: falls back to a full read", () => {
+			const file = nodePath.join(
+				os.tmpdir(),
+				`cc-tail-oversized-${Date.now()}.jsonl`,
+			);
+			// A single line with no newline at all, larger than the 64 KiB window.
+			const huge = `{"type":"turn.completed","pad":"${"y".repeat(100 * 1024)}"}`;
+			fs.writeFileSync(file, huge);
+			try {
+				expect(callReadLastNonEmptyStreamLine(provider, file)).toBe(huge);
+			} finally {
+				try {
+					fs.unlinkSync(file);
+				} catch {}
+			}
+		});
+
+		test("getStreamTerminalState resolves a large stream file's final event (behavior preserved)", () => {
+			const file = nodePath.join(
+				os.tmpdir(),
+				`cc-tail-e2e-${Date.now()}.jsonl`,
+			);
+			const filler = `${JSON.stringify({ type: "agent.message" })}\n`.repeat(
+				8000,
+			);
+			fs.writeFileSync(file, `${filler}{"type":"turn.completed"}\n`);
+
+			const task = createMockTask({
+				id: "tail-e2e",
+				status: "running",
+				stream_file: file,
+			});
+			try {
+				const state = callGetStreamTerminalState(provider, task) as {
+					status?: string;
+				} | null;
+				expect(state?.status).toBe("completed");
+			} finally {
+				try {
+					fs.unlinkSync(file);
+				} catch {}
+			}
 		});
 	});
 });

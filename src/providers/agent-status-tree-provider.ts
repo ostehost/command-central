@@ -1482,6 +1482,13 @@ export class AgentStatusTreeProvider
 	private static readonly STUCK_THRESHOLD_MAX_MINUTES = 60;
 	private static readonly MAX_VISIBLE_AGENTS_DEFAULT = 50;
 	private static readonly COMPLETED_TASK_LIMIT_DEFAULT = 10;
+	/**
+	 * Tail window used when resolving a stream file's last event line. Agent
+	 * stream JSONL files grow without bound while a task runs, so large files are
+	 * read from this bounded window instead of in full (see
+	 * {@link readLastNonEmptyStreamLine}).
+	 */
+	private static readonly STREAM_TAIL_BYTES = 64 * 1024;
 	private static readonly STREAM_BACKEND_PREFIXES = [
 		"claude",
 		"codex",
@@ -2718,12 +2725,7 @@ export class AgentStatusTreeProvider
 		if (!streamFile) return null;
 
 		try {
-			const lastEventLine = fs
-				.readFileSync(streamFile, "utf-8")
-				.split("\n")
-				.map((line) => line.trim())
-				.filter((line) => line.length > 0)
-				.at(-1);
+			const lastEventLine = this.readLastNonEmptyStreamLine(streamFile);
 			if (!lastEventLine) return null;
 
 			const event = JSON.parse(lastEventLine) as Record<string, unknown>;
@@ -2767,6 +2769,62 @@ export class AgentStatusTreeProvider
 		}
 
 		return null;
+	}
+
+	/**
+	 * Return the last non-empty line of a stream file without reading the whole
+	 * file. Agent stream JSONL files grow without bound while a task runs, and
+	 * this read sits on the per-running-task classification hot path
+	 * ({@link toDisplayTask} → {@link getStreamTerminalState}, 5 s TTL); reading
+	 * megabytes just to take the final line blocked the extension host on every
+	 * reload/auto-refresh. Large files are read from a bounded tail window
+	 * instead. The result is identical to a full read: a single stream event is
+	 * far smaller than the window, so the final non-empty line is always inside
+	 * it — and the rare oversized-final-line case (a window with no line break)
+	 * falls back to a full read so an outsized event still parses exactly as
+	 * before.
+	 */
+	private readLastNonEmptyStreamLine(streamFile: string): string | null {
+		const size = fs.statSync(streamFile).size;
+		const tailBytes = AgentStatusTreeProvider.STREAM_TAIL_BYTES;
+		let content: string;
+		if (size <= tailBytes) {
+			content = fs.readFileSync(streamFile, "utf-8");
+		} else {
+			content = this.readFileTailUtf8(streamFile, size, tailBytes);
+			// Fall back to a full read when the tail window can't answer the
+			// question: no line break means a single final line longer than the
+			// window, and an all-blank window means the last non-empty line sits
+			// further back. Both fully preserve the original full-read result.
+			// Neither shape occurs for real agent streams (which end with the
+			// latest event line), so the fast path is the norm.
+			if (!content.includes("\n") || content.trim().length === 0) {
+				content = fs.readFileSync(streamFile, "utf-8");
+			}
+		}
+
+		let lastNonEmpty: string | null = null;
+		for (const line of content.split("\n")) {
+			const trimmed = line.trim();
+			if (trimmed.length > 0) lastNonEmpty = trimmed;
+		}
+		return lastNonEmpty;
+	}
+
+	/** Read the final `tailBytes` of a file as UTF-8 (helper for the tail read). */
+	private readFileTailUtf8(
+		filePath: string,
+		size: number,
+		tailBytes: number,
+	): string {
+		const fd = fs.openSync(filePath, "r");
+		try {
+			const buffer = Buffer.alloc(tailBytes);
+			const bytesRead = fs.readSync(fd, buffer, 0, tailBytes, size - tailBytes);
+			return buffer.toString("utf-8", 0, bytesRead);
+		} finally {
+			fs.closeSync(fd);
+		}
 	}
 
 	private getTaskStartedAtMs(task: AgentTask): number {
