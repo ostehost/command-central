@@ -8,6 +8,7 @@ import {
 	collectTaskIdPresence,
 	expandedDefaultLaneRegistryPaths,
 	findSpecBoundaryViolations,
+	labelContainsTaskIdToken,
 	parseTaskIdListEnv,
 } from "./installed-vsix-proof-shared.js";
 import {
@@ -258,6 +259,112 @@ describe("installed VSIX Agent Status proof harness", () => {
 		]);
 		expect(hits).toHaveLength(1);
 		expect(hits[0]?.reason).toBe("nodeKind=task");
+	});
+
+	describe("boundary-safe task id matching", () => {
+		const staleId = "ghostty-project-ref-laneref-20260611";
+
+		test("matches a forbidden id that surfaces as its own whole token", () => {
+			// Genuinely present: after emoji prefixes, after a space, standalone,
+			// and at the very end of the label.
+			expect(labelContainsTaskIdToken(staleId, staleId)).toBe(true);
+			expect(labelContainsTaskIdToken(`🧊 ${staleId}`, staleId)).toBe(true);
+			expect(labelContainsTaskIdToken(`🧊 🔍 ${staleId}`, staleId)).toBe(true);
+			expect(labelContainsTaskIdToken(`${staleId} — completed`, staleId)).toBe(
+				true,
+			);
+		});
+
+		test("does not flag a lane-backed derivative that only contains the id", () => {
+			// `review-<id>` (and other id-char-glued derivatives) are distinct ids
+			// whose label merely contains the stale base id as a substring.
+			expect(labelContainsTaskIdToken(`🧊 🔍 review-${staleId}`, staleId)).toBe(
+				false,
+			);
+			expect(labelContainsTaskIdToken(`${staleId}-review`, staleId)).toBe(
+				false,
+			);
+			expect(labelContainsTaskIdToken(`retry_${staleId}_2`, staleId)).toBe(
+				false,
+			);
+		});
+
+		test("forbidden sweep ignores a lane-backed review derivative", () => {
+			// Reproduces the rc.66 false-positive: a legitimately-surfaced
+			// `review-<staleId>` launcher node must NOT count as the forbidden
+			// base id leaking back in.
+			const snapshot: AgentStatusProofTreeSnapshot = {
+				rootChildrenCount: 1,
+				taskCount: 1,
+				roots: [
+					{
+						label: `🧊 🔍 review-${staleId}`,
+						nodeKind: "task",
+						ownerFields: { taskId: `review-${staleId}` },
+					},
+				],
+				selected: { requiredLabels: {} },
+			};
+			expect(collectLauncherAttributedTaskIdHits(snapshot, [staleId])).toEqual(
+				[],
+			);
+		});
+
+		test("forbidden sweep still catches the stale id when it truly surfaces", () => {
+			const snapshot: AgentStatusProofTreeSnapshot = {
+				rootChildrenCount: 2,
+				taskCount: 2,
+				roots: [
+					{
+						label: `🧊 ${staleId}`,
+						nodeKind: "task",
+					},
+					{
+						label: `🧊 🔍 review-${staleId}`,
+						nodeKind: "task",
+						ownerFields: { taskId: `review-${staleId}` },
+					},
+				],
+				selected: { requiredLabels: {} },
+			};
+			const hits = collectLauncherAttributedTaskIdHits(snapshot, [staleId]);
+			expect(hits).toHaveLength(1);
+			expect(hits[0]?.taskId).toBe(staleId);
+			expect(hits[0]?.label).toBe(`🧊 ${staleId}`);
+			expect(hits[0]?.reason).toBe("nodeKind=task");
+		});
+
+		test("presence detection is unaffected for ordinary task ids", () => {
+			const snapshot: AgentStatusProofTreeSnapshot = {
+				rootChildrenCount: 2,
+				taskCount: 2,
+				roots: [
+					{
+						label: "installed-proof-legacy-alpha — running",
+						nodeKind: "codexRun",
+						ownerFields: { taskId: "installed-proof-legacy-alpha" },
+					},
+					{
+						// Surfaced only via owner field; label omits the raw id.
+						label: "Installed Proof codex",
+						nodeKind: "codexRun",
+						ownerFields: { taskId: "installed-proof-legacy-beta" },
+					},
+				],
+				selected: { requiredLabels: {} },
+			};
+			expect(
+				collectTaskIdPresence(snapshot, [
+					"installed-proof-legacy-alpha",
+					"installed-proof-legacy-beta",
+					"installed-proof-legacy-absent",
+				]),
+			).toEqual({
+				"installed-proof-legacy-alpha": true,
+				"installed-proof-legacy-beta": true,
+				"installed-proof-legacy-absent": false,
+			});
+		});
 	});
 
 	test("rejects scheduler-owned commands under the Symphony surface", () => {

@@ -119,11 +119,50 @@ export function parseTaskIdListEnv(value: string | undefined): string[] {
 	return parsed.map((entry) => entry.trim()).filter((entry) => entry !== "");
 }
 
+/** Characters that can appear inside a launcher/lane task id token. */
+const ID_TOKEN_CHAR = /[A-Za-z0-9_-]/;
+
+function isIdTokenChar(char: string | undefined): boolean {
+	return char !== undefined && ID_TOKEN_CHAR.test(char);
+}
+
+/**
+ * Whether `taskId` occurs in `label` as a whole id token — delimited by a
+ * non-id-token character (or a string boundary) on each side — rather than
+ * embedded inside a larger id.
+ *
+ * This is the boundary-safe replacement for a naive `label.includes(taskId)`.
+ * A substring match falsely flags a lane-backed derivative whose own id merely
+ * *contains* a forbidden base id: the stale id `ghostty-…-20260611` is a
+ * substring of the distinct, legitimate lane id `review-ghostty-…-20260611`,
+ * so a substring sweep reports a false-positive quarantine breach. Because the
+ * derivative prefix/suffix is glued on with an id character (`-`/`_`), treating
+ * those as token characters lets the matcher reject the embedded case while
+ * still matching the id when it surfaces on its own (after an emoji, a space,
+ * or at the start/end of the label).
+ */
+export function labelContainsTaskIdToken(
+	label: string,
+	taskId: string,
+): boolean {
+	if (taskId === "") return false;
+	for (
+		let idx = label.indexOf(taskId);
+		idx !== -1;
+		idx = label.indexOf(taskId, idx + 1)
+	) {
+		const before = idx > 0 ? label[idx - 1] : undefined;
+		const after = label[idx + taskId.length];
+		if (!isIdTokenChar(before) && !isIdTokenChar(after)) return true;
+	}
+	return false;
+}
+
 function nodeMatchesTaskId(
 	node: AgentStatusProofTreeNode,
 	taskId: string,
 ): boolean {
-	if (node.label.includes(taskId)) return true;
+	if (labelContainsTaskIdToken(node.label, taskId)) return true;
 	const ownerTaskId = node.ownerFields?.["taskId"];
 	return typeof ownerTaskId === "string" && ownerTaskId === taskId;
 }
