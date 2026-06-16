@@ -85,6 +85,17 @@ The setting and its read-path are present in **both** the built VSIX and the ins
 ## 5. Remaining risks
 
 ### R1 — Passive installed-VSIX proof false-positive (NOT a release blocker)
+
+> **✅ RESOLVED 2026-06-16 — superseded by `d742777a`.** The "Recommended
+> follow-ups" below (tighten the forbidden sweep so a quarantined id that is a
+> substring of a lane-backed id does not hit) were implemented as a
+> boundary-safe token matcher (`labelContainsTaskIdToken`) in
+> `test/integration/installed-vsix-proof-shared.ts`. The passive proof now
+> reports **0 forbidden hits** against the same live registry that still holds
+> the triggering residue. See `research/CC-INSTALLED-PROOF-SUBSTRING-FIX-2026-06-16.md`
+> and the re-validation in `research/CC-NEXT-RC-PREP-2026-06-16.md`. The
+> original analysis below is retained as the point-in-time record.
+
 `just test-installed-vsix-agent-status` (passive mode, real VS Code) reported:
 
 ```
