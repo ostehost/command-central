@@ -78,6 +78,7 @@ import {
 	classifyLifecycleConflict,
 	isAgentTeamLead,
 	isRegistryBackedLaneTask,
+	isSupersededByReleaseReset,
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
 import type { ReviewTracker } from "../../src/services/review-tracker.js";
@@ -497,5 +498,184 @@ describe("live-terminal-state — provider grouping + row badge", () => {
 		mockInspectTmuxPaneById.mockImplementation(() => "dead");
 		expect(rowDescription(provider, task)).not.toContain("lifecycle conflict");
 		expect(groupOf(provider, task)).toBe("attention");
+	});
+});
+
+// ── Pure predicate — release-reset supersession ─────────────────────────────
+
+describe("isSupersededByReleaseReset", () => {
+	const gen = (release_generation: string | null) =>
+		makeTerminalTmuxTask({ release_generation });
+
+	test("known different generations → superseded", () => {
+		expect(isSupersededByReleaseReset(gen("rc.64"), "rc.65")).toBe(true);
+	});
+	test("matching generation → not superseded", () => {
+		expect(isSupersededByReleaseReset(gen("rc.65"), "rc.65")).toBe(false);
+	});
+	test("unknown on either side → not judged (no behavior change)", () => {
+		expect(isSupersededByReleaseReset(gen(null), "rc.65")).toBe(false);
+		expect(isSupersededByReleaseReset(gen("rc.64"), null)).toBe(false);
+		expect(isSupersededByReleaseReset(gen(null), null)).toBe(false);
+		expect(isSupersededByReleaseReset(gen("  "), "rc.65")).toBe(false);
+		expect(isSupersededByReleaseReset(gen("rc.64"), "  ")).toBe(false);
+	});
+});
+
+// ── Release hygiene: pre-reset stale vs post-release recreated terminals ─────
+
+describe("release hygiene — stale pre-reset terminals vs recreated terminals", () => {
+	let provider: AgentStatusTreeProvider;
+
+	function setCurrentGeneration(
+		provider: AgentStatusTreeProvider,
+		gen: string,
+	) {
+		(
+			provider as unknown as {
+				_currentReleaseGenerationOverride: string | null;
+			}
+		)._currentReleaseGenerationOverride = gen;
+	}
+
+	beforeEach(() => {
+		mock.module("node:fs", () => realFs);
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFileSync: execFileSyncMock,
+		}));
+		mock.module("../../src/utils/port-detector.js", () => ({
+			detectListeningPorts: mock(() => []),
+			detectListeningPortsAsync: mock(async () => []),
+		}));
+
+		execFileSyncMock.mockReset();
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const [cmd, args] = fnArgs as [string, string[] | undefined];
+			if (cmd === "tmux") return "";
+			if (
+				cmd === "openclaw" &&
+				args?.[0] === "tasks" &&
+				args[1] === "audit" &&
+				args[2] === "--json"
+			) {
+				return JSON.stringify({
+					summary: { total: 0, warnings: 0, errors: 0, byCode: {} },
+					findings: [],
+				});
+			}
+			return realChildProcess.execFileSync(
+				cmd,
+				args,
+				fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+			);
+		});
+
+		mockInspectTmuxPaneAgent.mockReset();
+		mockInspectTmuxPaneAgent.mockImplementation(() => "unknown");
+		mockInspectTmuxPaneById.mockReset();
+		mockInspectTmuxPaneById.mockImplementation(() => "unknown");
+
+		const vscodeMock = setupVSCodeMock();
+		const getConfigurationMock = mock((_section?: string) => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return false;
+				if (_key === "discovery.enabled") return false;
+				if (_key === "laneRegistry.files") return [];
+				return defaultValue;
+			}),
+			inspect: mock((_key: string) => undefined),
+			has: mock((_key: string) => true),
+		}));
+		vscodeMock.workspace.getConfiguration =
+			getConfigurationMock as unknown as typeof vscodeMock.workspace.getConfiguration;
+		(require("vscode") as typeof import("vscode")).workspace.getConfiguration =
+			getConfigurationMock as unknown as typeof import("vscode").workspace.getConfiguration;
+
+		provider = new AgentStatusTreeProvider({
+			getIconForProject: mock(() => "🎭"),
+			setCustomIcon: mock(() => Promise.resolve()),
+		} as unknown as ConstructorParameters<typeof AgentStatusTreeProvider>[0]);
+		provider.setReviewTracker(
+			new InMemoryReviewTracker() as unknown as ReviewTracker,
+		);
+		provider.readRegistry = () => makeRegistry({});
+		provider.getDiffSummary = () => null;
+		provider.reload();
+		__setCurrentMachineHostOverrideForTests("Mike’s MacBook Pro");
+	});
+
+	afterEach(() => {
+		__setCurrentMachineHostOverrideForTests(null);
+		const p = provider as unknown as { _agentRegistry: unknown };
+		if (
+			p._agentRegistry &&
+			typeof (p._agentRegistry as { dispose?: unknown }).dispose !== "function"
+		) {
+			p._agentRegistry = null;
+		}
+		provider.dispose();
+	});
+
+	test("pre-reset stale pane: session_live:true is NOT mistaken for a current live agent", () => {
+		setCurrentGeneration(provider, "rc.65");
+		const stale = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: "rc.64", // recreated by a later reset
+		});
+		const desc = rowDescription(provider, stale);
+		expect(desc).toContain("stale (pre-release)");
+		expect(desc).not.toContain("⚠ live · lifecycle conflict");
+	});
+
+	test("even a still-alive orphan pane (live probe) from a prior generation reads as stale, not live", () => {
+		setCurrentGeneration(provider, "rc.65");
+		const stale = makeTerminalTmuxTask({
+			status: "contract_failure",
+			release_generation: "rc.64",
+		});
+		mockInspectTmuxPaneById.mockImplementation(() => "alive");
+		const desc = rowDescription(provider, stale);
+		expect(desc).toContain("stale (pre-release)");
+		expect(desc).not.toContain("lifecycle conflict");
+	});
+
+	test("post-release recreated terminal (current generation) keeps the live-attention badge", () => {
+		setCurrentGeneration(provider, "rc.65");
+		const current = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: "rc.65",
+		});
+		const desc = rowDescription(provider, current);
+		expect(desc).toContain("⚠ live · lifecycle conflict");
+		expect(desc).not.toContain("stale (pre-release)");
+	});
+
+	test("grouping: superseded completed_dirty + session_live:true → limbo, not promoted to attention", () => {
+		setCurrentGeneration(provider, "rc.65");
+		const stale = makeTerminalTmuxTask({
+			status: "completed_dirty",
+			session_live: true,
+			release_generation: "rc.64",
+		});
+		// Without supersession this would be promoted to attention (live conflict);
+		// a pre-reset leftover must keep its plain terminal bucket instead.
+		expect(groupOf(provider, stale)).toBe("limbo");
+	});
+
+	test("backward-compatible: no current generation known → nothing judged stale (pre-steer behavior)", () => {
+		// Default override is null — the guard is inert and the lane behaves exactly
+		// as it did before release hygiene was added.
+		const task = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: "rc.64",
+		});
+		const desc = rowDescription(provider, task);
+		expect(desc).not.toContain("stale (pre-release)");
+		expect(desc).toContain("⚠ live · lifecycle conflict");
 	});
 });

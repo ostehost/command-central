@@ -76,6 +76,15 @@ terminal-but-live/anomalous"). This diverges from the unwired V2
   / `team`) so the otherwise-invisible fan-out (teammates are subagents of the
   lead's Claude session, not sibling launcher tasks) is legible at a glance.
 - **Expand detail builder:** passes `session_live` to the same classifier.
+- **Release-hygiene guard (responds to Mike's steer — see §6):** added
+  `release_generation?` (alias `source_version`) to `AgentTask` + normalizer, a
+  pure `isSupersededByReleaseReset(task, currentGeneration)` predicate, a
+  provider `getCurrentReleaseGeneration()` seam (null today) and
+  `effectiveLauncherSessionLive(task)` that suppresses a pre-reset lane's
+  recorded `session_live`. A lane whose Ghostty app/window belongs to a prior
+  generation is badged **`stale (pre-release)`** (row) / **Stale terminal app**
+  (detail) and is never promoted to live-attention — even if its tmux pane is
+  still a live orphan.
 
 ### `test/tree-view/agent-status-live-terminal-state.test.ts` (new, 19 tests)
 Covers every requested fixture class:
@@ -103,9 +112,9 @@ Covers every requested fixture class:
 ## 3. Tests / verification run
 
 ```
-bun test test/tree-view/agent-status-live-terminal-state.test.ts   # 19 pass
-bun test test/tree-view/                                            # 515 pass
-just test                                                          # 2163 pass / 1 skip / 0 fail
+bun test test/tree-view/agent-status-live-terminal-state.test.ts   # 27 pass
+bun test test/tree-view/                                            # all green
+just test                                                          # 2171 pass / 1 skip / 0 fail
 just check                                                         # biome+tsc clean (8 pre-existing knip/style warnings in other files)
 bun run build                                                     # ok
 bunx tsc --noEmit                                                  # exit 0
@@ -132,6 +141,10 @@ eyeball it on a real node:
    terminal"; a launcher-record-only signal reads "recorded the session as still
    live (session_live) — verify on host".
 4. A team lead row additionally shows `team: <template>`.
+5. Release-hygiene (§6) cannot be eyeballed until `getCurrentReleaseGeneration()`
+   is wired; it is exercised only by the unit tests today (inject a current
+   generation + a differing `release_generation` → the row shows
+   `stale (pre-release)` instead of the live badge).
 
 ---
 
@@ -139,15 +152,92 @@ eyeball it on a real node:
 
 - CC repo only. No launcher / OpenClaw / Symphony source touched. No VS Code
   settings or installed-extension mutation. No marketplace/release/push.
-- No broad refactor: four call-sites + one classifier arg + two type fields.
+- No broad refactor: the lifecycle-conflict call-sites + one classifier arg +
+  three type fields (`session_live`, `team_requested`, `release_generation`) +
+  two pure predicates + the release-hygiene guard.
+- The release-hygiene guard (§6) is a **gated no-op today**: with no
+  current-generation source wired, `getCurrentReleaseGeneration()` returns null,
+  so nothing is judged stale and behavior is unchanged. It activates only once
+  the launcher stamps generations and CC has a current-generation source.
 - Truthful status preserved over pretty status: a real-time `dead` probe always
   beats a stale `session_live`; launcher-record-only verdicts are worded as
-  such.
+  such; a superseded-generation lane reads "stale", never "live".
 - Working tree after commit: only the two source files + the new test file.
 
 ---
 
-## 6. Remaining config / mirroring risks (not in scope here)
+## 6. Release hygiene — stale pre-reset Ghostty apps vs recreated terminals
+
+**Steer (Mike):** after significant changes / on release, terminals are cleared
+and recreated automatically. The unit recreated is the **actual Ghostty
+`.app` / application window / bundle — not the tmux pane**. A live tmux pane
+*inside a pre-release Ghostty app* may be stale even though it is alive. CC must
+distinguish an old Ghostty app/window generation from the current one so a stale
+app's pane is not mistaken for a current running agent. (CC does **not** kill
+anything — representation/data handling only.)
+
+### Why this matters to the fix above
+The §2 fix makes "terminal status + alive" loud. Without a generation guard that
+loudness would *backfire* on release: a `contract_failure` (or even `running`)
+lane whose Ghostty app was superseded by a release, but whose pane is still a
+live orphan, would be badged **"live · lifecycle conflict"** as if it were
+current work. The guard closes that hole.
+
+### Data handling (what CC compares)
+- **Marker:** `release_generation` (alias `source_version`) — an opaque token
+  identifying the **Ghostty app/window generation** a lane was created in. The
+  per-app identity is the existing `ghostty_bundle_id` / `bundle_path`; the
+  generation token is the cross-lane value those share within one release/reset.
+- **Current generation:** `getCurrentReleaseGeneration()` — the active
+  generation. **Not yet sourced** (returns null → guard inert). Candidate
+  sources, in order of preference:
+  1. The launcher/reset routine writes a `current_generation` (release version
+     or reset epoch) to a state file CC reads — authoritative and cross-host.
+  2. CC's own installed release version (`package.json`), matched against the
+     launcher's per-lane `release_generation` stamped at spawn.
+  3. The Ghostty app instance identity (e.g. the bundle generation / app launch
+     epoch of the currently-live launcher Ghostty app) compared to the lane's.
+- **Predicate:** `isSupersededByReleaseReset` compares the two tokens for
+  **inequality** (tokens may be versions/epochs/uuids with no reliable order;
+  `currentGeneration` is assumed authoritative/latest). Judged only when **both**
+  are known → safe no-op otherwise.
+
+### UI representation (two explicit, distinct states)
+| Lane | Today (no generation source) | With generation wired |
+|------|------------------------------|-----------------------|
+| **Current-generation** terminal-but-alive | `⚠ live · lifecycle conflict`, Action Required | unchanged |
+| **Pre-reset stale** (Ghostty app from a prior generation, pane maybe alive) | (treated as current — the gap) | row `stale (pre-release)`; detail **Stale terminal app** explaining the Ghostty app/window predates the current release and the pane is a non-current orphan; **never** promoted to live-attention; keeps its plain terminal bucket |
+
+The two are mutually exclusive in the render path: a superseded lane shows the
+stale badge and its live-conflict badge is suppressed — even when the live tmux
+probe says the pane is alive (proven by the test "even a still-alive orphan pane
+… reads as stale, not live").
+
+### Tests (added, all green)
+- pure `isSupersededByReleaseReset`: differ→stale, match→current, unknown-either-
+  side→not judged, whitespace.
+- provider: pre-reset `session_live:true` not mistaken for live; live-orphan pane
+  of a prior generation reads stale; current-generation lane keeps the live
+  badge; superseded `completed_dirty` stays `limbo` (not promoted); backward-
+  compatible no-op when no current generation is known.
+
+### Follow-up (not done here — needs a cross-repo contract)
+1. **Wire `getCurrentReleaseGeneration()`** to a real source (preferably the
+   launcher's `current_generation` state file). Until then the guard is dormant.
+2. **Launcher must stamp `release_generation`** on each lane from the Ghostty
+   app/release generation at spawn (and re-stamp/retire lanes whose app is
+   recreated on reset). This is the launcher half of the contract.
+3. **Running-status stale apps.** This change guards the *terminal*-status
+   conflict path. A `running`-status lane whose Ghostty app was superseded but
+   whose pane is a live orphan is a related case to handle in the running-liveness
+   path (out of scope for "smallest safe fix"; same predicate applies).
+4. **Optional grouping move:** route superseded terminal lanes to **History**
+   rather than leaving them in their plain terminal bucket, once the generation
+   source is trustworthy.
+
+---
+
+## 7. Remaining config / mirroring risks (not in scope here)
 
 1. **Launcher premature finalization (PRIMARY, owner: ghostty-launcher).** The
    root cause is unchanged: the launcher stamps an Agent Teams lead terminal

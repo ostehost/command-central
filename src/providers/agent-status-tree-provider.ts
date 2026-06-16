@@ -332,6 +332,23 @@ export interface AgentTask {
 	 * this recorded belief — see {@link classifyLifecycleConflict}.
 	 */
 	session_live?: boolean | null;
+	/**
+	 * Release-hygiene marker: an opaque token identifying the GHOSTTY TERMINAL
+	 * APP / window generation this lane was created in (the launcher stamps it
+	 * from the active release version or reset epoch; `source_version` is accepted
+	 * as an alias). The unit recreated on release is the actual Ghostty
+	 * `.app`/window/bundle — NOT the tmux pane — so a lane's tmux pane can be
+	 * alive while its host Ghostty app belongs to a prior release. When a CURRENT
+	 * generation is known and a lane carries a DIFFERENT one, its Ghostty
+	 * app/window is a pre-reset leftover: the pane inside it may still be a live
+	 * orphan, but it is NOT current work. CC uses this to keep stale app/windows
+	 * from being mistaken for current running agents (it never kills them — see
+	 * {@link isSupersededByReleaseReset}). The lane's per-app identity is
+	 * `ghostty_bundle_id`/`bundle_path`; this token is the cross-lane generation
+	 * they share. Absent on either side → not judged (no current behavior change
+	 * until the launcher + a current-generation source are both wired).
+	 */
+	release_generation?: string | null;
 	exec_cwd?: string | null;
 	callback_url?: string | null;
 	session_key?: string | null;
@@ -1013,6 +1030,34 @@ export function isAgentTeamLead(
 	return task.team_requested === true || Boolean(task.team_template?.trim());
 }
 
+/**
+ * Release-hygiene guard: a lane whose GHOSTTY TERMINAL APP / window belongs to a
+ * PRIOR release/reset generation than the one now current. On release the actual
+ * Ghostty `.app`/window is recreated, so a lane created in the old app is a
+ * leftover — its tmux pane may still be alive as an orphan inside the
+ * superseded app, but it is NOT current work, and that liveness (a real-time
+ * probe OR the launcher's recorded `session_live`) must not be read as a current
+ * running agent.
+ *
+ * Treated as an opaque token compared for INEQUALITY rather than ordering:
+ * generation tokens may be release versions, reset epochs, or uuids with no
+ * reliable order, and `currentGeneration` is assumed authoritative/latest, so a
+ * lane carrying any different non-empty generation predates the current reset.
+ * Judged ONLY when BOTH sides are known — absent on either side returns false
+ * (no behavior change), so this is a safe no-op until the launcher stamps
+ * generations and CC has a current-generation source. CC never kills the
+ * app/pane; this only changes how the lane is represented.
+ */
+export function isSupersededByReleaseReset(
+	task: Pick<AgentTask, "release_generation">,
+	currentGeneration: string | null | undefined,
+): boolean {
+	const current = currentGeneration?.trim();
+	const laneGeneration = task.release_generation?.trim();
+	if (!current || !laneGeneration) return false;
+	return laneGeneration !== current;
+}
+
 function normalizeTaskProjectRef(value: unknown): AgentTaskProjectRef | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 	const raw = value as Record<string, unknown>;
@@ -1158,6 +1203,8 @@ function normalizeTask(
 			typeof raw["exec_visible"] === "boolean" ? raw["exec_visible"] : null,
 		session_live:
 			typeof raw["session_live"] === "boolean" ? raw["session_live"] : null,
+		release_generation:
+			asString(raw["release_generation"] ?? raw["source_version"]) ?? null,
 		exec_cwd: asString(raw["exec_cwd"]) ?? null,
 		callback_url: asString(raw["callback_url"]) ?? null,
 		session_key: asString(raw["session_key"]) ?? null,
@@ -1516,6 +1563,14 @@ export class AgentStatusTreeProvider
 	private _acpSessionService: AcpSessionService | null = null;
 	private _taskFlowService: TaskFlowService | null = null;
 	private _reviewTracker: ReviewTracker = new ReviewTracker();
+	/**
+	 * Active release/reset generation, or null when unknown. Null today: no
+	 * production source is wired yet, so the release-hygiene staleness guard
+	 * ({@link isSupersededByReleaseReset}) is a safe no-op. Tests set this seam to
+	 * exercise the guard. TODO(release-hygiene): source from the launcher's reset
+	 * epoch / active release version — see getCurrentReleaseGeneration.
+	 */
+	private _currentReleaseGenerationOverride: string | null = null;
 	private codexRunObserverService: CodexRunObserverService;
 	private readonly viewMode: AgentStatusTreeViewMode;
 	private readonly projectRefResolver: ProjectRefResolver;
@@ -2276,6 +2331,34 @@ export class AgentStatusTreeProvider
 			return cached.evidence;
 		}
 		return "not-checked";
+	}
+
+	/**
+	 * The active release/reset generation, or null when unknown.
+	 *
+	 * TODO(release-hygiene): wire to a real source — e.g. the launcher writing a
+	 * `current_generation` to a state file CC reads, the reset routine's epoch,
+	 * or CC's own installed release version matched against the launcher's
+	 * per-lane `release_generation`. Until then this returns null and the
+	 * staleness guard is inert (no current-behavior change).
+	 */
+	private getCurrentReleaseGeneration(): string | null {
+		return this._currentReleaseGenerationOverride;
+	}
+
+	/**
+	 * The launcher's recorded `session_live` to TRUST for liveness — suppressed
+	 * (→ null) when the lane belongs to a superseded Ghostty-app/release
+	 * generation. A pre-reset app's `session_live: true` was recorded under the
+	 * OLD generation and must not corroborate a "current live" verdict. A
+	 * real-time tmux probe is unaffected here (it is gated separately at the
+	 * render site) — this only governs the cheap recorded-belief fallback.
+	 */
+	private effectiveLauncherSessionLive(task: AgentTask): boolean | null {
+		if (isSupersededByReleaseReset(task, this.getCurrentReleaseGeneration())) {
+			return null;
+		}
+		return task.session_live ?? null;
 	}
 
 	/**
@@ -4624,11 +4707,23 @@ export class AgentStatusTreeProvider
 		// subprocess on the hot path) OR — when the cache is cold or the lane is a
 		// node-origin row we cannot probe locally — the launcher's own
 		// `session_live` corroboration.
-		if (node.type === "task") {
+		//
+		// A lane from a superseded Ghostty-app/release generation is skipped: its
+		// app/window is a pre-reset leftover (the pane inside may still be a live
+		// orphan), not current work, so it never promotes into the live-attention
+		// bucket — the lane keeps its plain terminal bucket and is badged
+		// "stale (pre-release)" on the row instead.
+		if (
+			node.type === "task" &&
+			!isSupersededByReleaseReset(node.task, this.getCurrentReleaseGeneration())
+		) {
 			const liveness = this.getCachedTerminalTaskLivenessEvidence(node.task);
 			if (
-				classifyLifecycleConflict(node.task, liveness, node.task.session_live)
-					.kind === "live-process-conflict"
+				classifyLifecycleConflict(
+					node.task,
+					liveness,
+					this.effectiveLauncherSessionLive(node.task),
+				).kind === "live-process-conflict"
 			) {
 				return "attention";
 			}
@@ -5709,9 +5804,17 @@ export class AgentStatusTreeProvider
 
 		// ── 8. Lifecycle conflict — launcher vs live process ─────────────
 		const isTerminalStatus = t.status !== "running";
-		if (isTerminalStatus) {
+		const supersededByReset = isSupersededByReleaseReset(
+			t,
+			this.getCurrentReleaseGeneration(),
+		);
+		if (isTerminalStatus && !supersededByReset) {
 			const liveness = this.getTerminalTaskLivenessEvidence(t);
-			const conflict = classifyLifecycleConflict(t, liveness, t.session_live);
+			const conflict = classifyLifecycleConflict(
+				t,
+				liveness,
+				this.effectiveLauncherSessionLive(t),
+			);
 			if (conflict.kind === "live-process-conflict") {
 				details.push({
 					type: "detail",
@@ -5723,6 +5826,20 @@ export class AgentStatusTreeProvider
 					iconColor: conflict.iconColor,
 				});
 			}
+		} else if (isTerminalStatus && supersededByReset) {
+			// Pre-reset stale terminal app: this lane's Ghostty app/window predates
+			// the current release/reset generation. Surface it as superseded (not
+			// live, not killed) so the operator knows it is a leftover app whose
+			// pane — even if still alive — is not a current running agent.
+			details.push({
+				type: "detail",
+				label: "Stale terminal app",
+				value: "",
+				description: `Ghostty app/window belongs to a superseded release generation (${t.release_generation}); recreated on a later release — the tmux pane may still be alive but is not a current running agent`,
+				taskId: t.id,
+				icon: "history",
+				iconColor: "disabledForeground",
+			});
 		}
 
 		return details;
@@ -9391,9 +9508,20 @@ export class AgentStatusTreeProvider
 		) {
 			descriptionParts.push("⚠ detached");
 		}
-		const lifecycleLiveness = isDoneStatus
-			? this.getTerminalTaskLivenessEvidence(task)
-			: ("not-checked" as const);
+		// Release-hygiene: a lane whose Ghostty app/window is from a superseded
+		// generation is a pre-reset leftover (its pane may still be a live orphan).
+		// It must not read as a current live agent, so its liveness-conflict badge
+		// is suppressed in favour of an explicit "stale (pre-release)" badge below.
+		// No-op until a current generation is known (getCurrentReleaseGeneration
+		// null today).
+		const supersededByReset = isSupersededByReleaseReset(
+			task,
+			this.getCurrentReleaseGeneration(),
+		);
+		const lifecycleLiveness =
+			isDoneStatus && !supersededByReset
+				? this.getTerminalTaskLivenessEvidence(task)
+				: ("not-checked" as const);
 		const lifecycleConflict = classifyLifecycleConflict(
 			task,
 			lifecycleLiveness,
@@ -9401,9 +9529,14 @@ export class AgentStatusTreeProvider
 			// alive lane is badged even when the live probe could not decide
 			// (remote-node lane we cannot probe locally, cold cache). The probe
 			// still wins when it has a verdict — see classifyLifecycleConflict.
-			isDoneStatus ? task.session_live : null,
+			// Suppressed for superseded lanes (effectiveLauncherSessionLive).
+			isDoneStatus ? this.effectiveLauncherSessionLive(task) : null,
 		);
-		if (lifecycleConflict.kind === "live-process-conflict") {
+		if (supersededByReset) {
+			// Pre-reset stale terminal — leftover from before the release recreated
+			// terminals. Explicitly distinct from a current running/live lane.
+			descriptionParts.push("stale (pre-release)");
+		} else if (lifecycleConflict.kind === "live-process-conflict") {
 			// "live attention required" — the launcher marked this lane terminal
 			// but it is still alive. Loud, un-buried, and distinct from a genuine
 			// `running` lane (which renders Live with a spinner, never this badge).
