@@ -393,6 +393,84 @@ describe("OpenClaw task nodes", () => {
 		});
 	});
 
+	test("Symphony nodes expose stable TreeItem ids for refresh/reveal", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "running-openclaw",
+				childSessionKey: "session:agent-my-app",
+				runId: "run-101",
+				status: "running",
+			}),
+		]);
+		const symphonyChildren = getSymphonyChildren(provider);
+		const dashboard = symphonyChildren.find(
+			(node) => node.type === "symphonyDashboard",
+		);
+		const runningGroup = getSymphonyRunGroupNode(provider, "running");
+		const runsContainer = getCodexRunsNode(provider);
+		const runNode = getCodexRunNodes(provider)[0];
+		if (!dashboard || !runningGroup || !runNode) {
+			throw new Error(
+				"Expected Symphony dashboard, running group, and run node",
+			);
+		}
+
+		const items = [dashboard, runningGroup, runsContainer, runNode].map(
+			(node) => provider.getTreeItem(node) as { id?: string },
+		);
+
+		expect(items.map((item) => item.id)).toEqual([
+			"symphony:dashboard",
+			"symphony:run-group:running",
+			"symphony:codex-runs",
+			"symphony:codex-run:run-101",
+		]);
+	});
+
+	test("Symphony getParent resolves projected containers and run attempts", async () => {
+		const flow = createFlow({ flowId: "flow-1" });
+		const provider = await createProvider(
+			[
+				createTask({
+					taskId: "running-openclaw",
+					childSessionKey: "session:agent-my-app",
+					runId: "run-101",
+					status: "running",
+				}),
+			],
+			[flow],
+		);
+		const symphonyChildren = getSymphonyChildren(provider);
+		const dashboard = symphonyChildren.find(
+			(node) => node.type === "symphonyDashboard",
+		);
+		const runningGroup = getSymphonyRunGroupNode(provider, "running");
+		const runsContainer = getCodexRunsNode(provider);
+		const runNode = getCodexRunNodes(provider)[0];
+		const flowsContainer = getTaskFlowsNode(provider);
+		const flowNode = provider
+			.getChildren(flowsContainer)
+			.find((node) => node.type === "taskFlowGroup");
+		if (!dashboard || !runningGroup || !runNode || !flowNode) {
+			throw new Error("Expected projected Symphony nodes");
+		}
+
+		expect(provider.getParent(dashboard)?.type).toBe("symphony");
+		expect(provider.getParent(runningGroup)?.type).toBe("symphony");
+		expect(provider.getParent(runsContainer)?.type).toBe("symphony");
+		const runParent = provider.getParent(runNode);
+		expect(runParent?.type).toBe("codexRuns");
+		if (runParent?.type !== "codexRuns") {
+			throw new Error("Expected Codex Runs parent");
+		}
+		expect(runParent.runs.some((run) => run.runId === "run-101")).toBe(true);
+		expect(provider.getParent(flowsContainer)?.type).toBe("symphony");
+		expect(provider.getParent(flowNode)).toEqual({
+			type: "taskflows",
+			flows: [flow],
+		});
+	});
+
 	test("Symphony root exposes Operations Dashboard and read-only kanban groups", async () => {
 		const provider = await createProvider([
 			createTask({

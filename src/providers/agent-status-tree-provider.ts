@@ -343,6 +343,7 @@ export type AgentNode =
 	| TaskFlowGroupNode
 	| TaskFlowChildNode
 	| TaskFlowsContainerNode
+	| TaskFlowSingleNode
 	| CodexRunsContainerNode
 	| CodexRunNode
 	| StatusTimeGroupNode
@@ -457,6 +458,37 @@ export interface FolderGroupNode {
 	groupName: string;
 	projectCount: number;
 	projects: ProjectGroupNode[];
+}
+
+function projectGroupNodeKey(
+	node: Pick<ProjectGroupNode, "projectDir" | "projectName">,
+): string {
+	return node.projectDir ?? `name:${node.projectName}`;
+}
+
+function folderGroupNodeKey(node: Pick<FolderGroupNode, "groupKey">): string {
+	return node.groupKey;
+}
+
+function symphonyRunIdentity(run: CodexRunView): string {
+	return encodeURIComponent(run.runId);
+}
+
+function taskFlowIdentity(flow: TaskFlow): string {
+	return encodeURIComponent(flow.flowId);
+}
+
+function symphonySnapshotEntryIdentity(
+	node: SymphonySnapshotEntryNode,
+): string {
+	const issue = node.entry.issueIdentifier ?? node.entry.issueId ?? "unknown";
+	const session =
+		node.kind === "running"
+			? ((node.entry as SymphonyRunningEntryView).sessionId ?? "")
+			: "";
+	return encodeURIComponent(
+		[node.kind, session, issue, String(node.index)].join(":"),
+	);
 }
 
 export type AgentStatusGroup = "running" | "done" | "attention" | "limbo";
@@ -2713,6 +2745,20 @@ export class AgentStatusTreeProvider
 		});
 	}
 
+	private getVisibleCodexRuns(): CodexRunView[] {
+		let runs = this.getCodexRuns(
+			this.getScopedLauncherTasks(),
+			this.getAllOpenClawTaskSources(),
+			this.getVisibleTaskFlows(),
+		);
+		if (this._projectFilter) {
+			runs = runs.filter((run) =>
+				this.isCodexRunInProject(run, this._projectFilter ?? ""),
+			);
+		}
+		return runs;
+	}
+
 	private isCodexRunInProject(run: CodexRunView, filterDir: string): boolean {
 		if (!run.workspacePath) return false;
 		return (
@@ -3568,6 +3614,9 @@ export class AgentStatusTreeProvider
 			return this.createSymphonySnapshotEntryItem(element);
 		}
 		if (element.type === "taskFlowGroup") {
+			return this.createTaskFlowItem(element.flow);
+		}
+		if (element.type === "taskflow") {
 			return this.createTaskFlowItem(element.flow);
 		}
 		if (element.type === "taskflows") {
@@ -7344,6 +7393,59 @@ export class AgentStatusTreeProvider
 			return { type: "openclawTask", task: node.task };
 		};
 
+		if (element.type === "symphonyDashboard") {
+			return { type: "symphony", runs: element.runs, flows: element.flows };
+		}
+		if (element.type === "symphonyRunGroup") {
+			return {
+				type: "symphony",
+				runs: element.runs,
+				flows: this.getVisibleTaskFlows(),
+			};
+		}
+		if (element.type === "symphonySnapshotEntry") {
+			const runs = this.getVisibleCodexRuns();
+			const snapshot = this.getSymphonyRuntimeSnapshot(runs);
+			return {
+				type: "symphonyRunGroup",
+				kind: element.kind,
+				runs:
+					element.kind === "running"
+						? this.getSymphonyRunningSessionRuns(runs)
+						: this.getSymphonyRetryQueuedRuns(runs),
+				...(snapshot ? { snapshot } : {}),
+			};
+		}
+		if (element.type === "taskflows") {
+			return {
+				type: "symphony",
+				runs: this.getVisibleCodexRuns(),
+				flows: element.flows,
+			};
+		}
+		if (element.type === "taskFlowGroup") {
+			return { type: "taskflows", flows: this.getVisibleTaskFlows() };
+		}
+		if (element.type === "taskflow") {
+			return { type: "taskflows", flows: this.getVisibleTaskFlows() };
+		}
+		if (element.type === "taskFlowChild") {
+			const flow = this.getVisibleTaskFlows().find(
+				(candidate) => candidate.flowId === element.flowId,
+			);
+			if (flow) return { type: "taskFlowGroup", flow };
+		}
+		if (element.type === "codexRuns") {
+			return {
+				type: "symphony",
+				runs: element.runs,
+				flows: this.getVisibleTaskFlows(),
+			};
+		}
+		if (element.type === "codexRun") {
+			return { type: "codexRuns", runs: this.getVisibleCodexRuns() };
+		}
+
 		if (this.isProjectGroupingEnabled()) {
 			const openclawTasks = this.getVisibleOpenClawTasks();
 			const groupedRoots = this.buildGroupedRootNodes(
@@ -8211,6 +8313,7 @@ export class AgentStatusTreeProvider
 			node.runs,
 			node.flows,
 		);
+		item.id = "symphony:root";
 		item.contextValue = "symphony";
 		item.iconPath = new vscode.ThemeIcon("server-process");
 		item.tooltip = new vscode.MarkdownString(
@@ -8231,6 +8334,7 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = this.formatSymphonyDashboardDescription(node.runs);
+		item.id = "symphony:dashboard";
 		item.contextValue = "symphonyDashboard";
 		item.iconPath = new vscode.ThemeIcon("dashboard");
 		item.tooltip = new vscode.MarkdownString(
@@ -8253,6 +8357,7 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = this.getSymphonyRunGroupSpecStatus(node.kind);
+		item.id = `symphony:run-group:${node.kind}`;
 		item.contextValue = `symphonyRunGroup.${node.kind}`;
 		item.iconPath = this.getSymphonyRunGroupIcon(node.kind);
 		item.tooltip = new vscode.MarkdownString(
@@ -8281,6 +8386,7 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = issue;
+		item.id = `symphony:snapshot-entry:${symphonySnapshotEntryIdentity(node)}`;
 		item.contextValue = `symphonySnapshotEntry.${node.kind}`;
 		item.iconPath = running
 			? new vscode.ThemeIcon("pulse", new vscode.ThemeColor("charts.blue"))
@@ -8328,6 +8434,7 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = count === 1 ? "1 task" : `${count} tasks`;
+		item.id = "agent-status:background-tasks";
 		item.contextValue = "backgroundTasks";
 		item.iconPath = new vscode.ThemeIcon("pulse");
 		return item;
@@ -8351,6 +8458,7 @@ export class AgentStatusTreeProvider
 				: count === 1
 					? "1 workstream"
 					: `${count} workstreams`;
+		item.id = "symphony:taskflows";
 		item.contextValue = "taskflows";
 		item.iconPath = new vscode.ThemeIcon("layers");
 		return item;
@@ -8364,6 +8472,7 @@ export class AgentStatusTreeProvider
 		);
 		item.description = this.formatCodexRunsDescription(node.runs);
 		item.tooltip = this.createCodexRunsTooltip(node.runs);
+		item.id = "symphony:codex-runs";
 		item.contextValue = "codexRuns";
 		item.iconPath = new vscode.ThemeIcon("run-all");
 		return item;
@@ -8385,6 +8494,7 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = descriptionParts.join(" · ");
+		item.id = `symphony:codex-run:${symphonyRunIdentity(run)}`;
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${run.title}**`,
@@ -8467,6 +8577,7 @@ export class AgentStatusTreeProvider
 				.join("\n\n"),
 		);
 		item.iconPath = taskflowStatusToIcon(flow.status);
+		item.id = `symphony:taskflow:${taskFlowIdentity(flow)}`;
 		item.contextValue = `taskflow.${flow.status}`;
 		item.resourceUri = vscode.Uri.parse(`taskflow:${flow.flowId}`);
 		return item;
@@ -8709,6 +8820,7 @@ export class AgentStatusTreeProvider
 			return item;
 		}
 		item.description = description;
+		item.id = `project:${projectGroupNodeKey(node)}`;
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${node.projectName}**`,
@@ -8729,6 +8841,7 @@ export class AgentStatusTreeProvider
 			`📁 ${node.groupName} · ${node.projectCount}`,
 			vscode.TreeItemCollapsibleState.Expanded,
 		);
+		item.id = `folder-group:${folderGroupNodeKey(node)}`;
 		item.contextValue = "folderGroup";
 		return item;
 	}

@@ -12,6 +12,10 @@ export interface FormatCountSummaryOptions {
 	includeAttention?: boolean;
 }
 
+export interface FormatAgentStatusHeaderSummaryOptions {
+	includeLiveWhenZero?: boolean;
+}
+
 export interface CountAgentStatusesOptions {
 	/**
 	 * Task IDs the user has manually marked reviewed (ReviewTracker sidecar).
@@ -83,5 +87,19 @@ export function formatCountSummary(
 		parts.push(`${attention} attention`);
 	}
 	if (doneTotal > 0) parts.push(`${doneTotal} done`);
+	return parts.join(" · ") || "No agents";
+}
+
+export function formatAgentStatusHeaderSummary(
+	counts: AgentCounts,
+	options: FormatAgentStatusHeaderSummaryOptions = {},
+): string {
+	const parts: string[] = [];
+	if (counts.working > 0 || options.includeLiveWhenZero) {
+		parts.push(`Live ${counts.working}`);
+	}
+	if (counts.attention > 0) parts.push(`Action ${counts.attention}`);
+	if (counts.limbo > 0) parts.push(`Review ${counts.limbo}`);
+	if (counts.done > 0) parts.push(`History ${counts.done}`);
 	return parts.join(" · ") || "No agents";
 }
