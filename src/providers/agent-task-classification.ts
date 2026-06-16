@@ -381,27 +381,56 @@ const CONFLICT_ELIGIBLE_STATUSES = new Set<AgentTaskStatus>([
 	"killed",
 ]);
 
+/**
+ * Detect a "terminal status but provably alive" lane.
+ *
+ * Two evidence sources are consulted, in strict precedence:
+ *
+ *  1. `livenessEvidence` — a REAL-TIME tmux-pane probe verdict. When it is
+ *     conclusive ("alive"/"dead") it always wins: a positively-dead pane
+ *     overrides a stale `session_live: true`, and a live pane is ground truth.
+ *  2. `launcherSessionLive` — the launcher's own `session_live` field recorded
+ *     on the task. Consulted ONLY when the probe could not decide
+ *     ("unknown"/"not-checked": cold hot-path cache, remote-node lane whose
+ *     host we cannot probe, or an unrecognized pane command). `true` here on a
+ *     terminal-status row is the launcher contradicting itself — it finalized
+ *     the lane while recording the session as live.
+ *
+ * The detail wording is provenance-honest: a live probe says the process "is
+ * still alive in terminal"; a launcher-record-only verdict says the launcher
+ * "recorded the session as still live" and to verify on the host — so a stale
+ * `session_live` never masquerades as a real-time confirmation (truthful status
+ * over pretty status).
+ */
 export function classifyLifecycleConflict(
 	task: Pick<AgentTask, "status" | "error_message">,
 	livenessEvidence: "alive" | "dead" | "unknown" | "not-checked",
+	launcherSessionLive?: boolean | null,
 ): LifecycleConflictInfo {
-	if (
-		CONFLICT_ELIGIBLE_STATUSES.has(task.status) &&
-		livenessEvidence === "alive"
-	) {
-		const reason = task.error_message ? ` (${task.error_message})` : "";
-		return {
-			kind: "live-process-conflict",
-			label: "Lifecycle conflict",
-			detail: `Launcher marked ${task.status}${reason} but process is still alive in terminal`,
-			icon: "warning",
-			iconColor: "charts.orange",
-		};
+	if (!CONFLICT_ELIGIBLE_STATUSES.has(task.status)) {
+		return { kind: "none", label: "", detail: "", icon: "" };
 	}
+
+	const probeAlive = livenessEvidence === "alive";
+	// The launcher's recorded liveness only fills the gap when the live probe
+	// has no verdict — a confirmed-dead pane (probe "dead") beats a stale
+	// session_live:true.
+	const launcherAlive =
+		!probeAlive && livenessEvidence !== "dead" && launcherSessionLive === true;
+
+	if (!probeAlive && !launcherAlive) {
+		return { kind: "none", label: "", detail: "", icon: "" };
+	}
+
+	const reason = task.error_message ? ` (${task.error_message})` : "";
+	const evidenceClause = probeAlive
+		? "but process is still alive in terminal"
+		: "but the launcher recorded the session as still live (session_live) — verify on host";
 	return {
-		kind: "none",
-		label: "",
-		detail: "",
-		icon: "",
+		kind: "live-process-conflict",
+		label: "Lifecycle conflict",
+		detail: `Launcher marked ${task.status}${reason} ${evidenceClause}`,
+		icon: "warning",
+		iconColor: "charts.orange",
 	};
 }

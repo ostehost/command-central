@@ -274,6 +274,15 @@ export interface AgentTask {
 	workflow_name?: string | null;
 	team?: string | null;
 	team_template?: string | null;
+	/**
+	 * Launcher flag: this lane was spawned as an Agent Teams lead (the launcher
+	 * passed `--team`). The teammates run as subagents of the lead's Claude
+	 * session (`--parent-session-id`), NOT as independent launcher tasks, so the
+	 * team never appears as sibling rows — only the lead carries this marker.
+	 * Used to badge the lead row as an Agent Team so an operator can tell a
+	 * solo lane from a fan-out lead at a glance.
+	 */
+	team_requested?: boolean | null;
 	agent_mode?: string | null;
 	orchestration_mode?: string | null;
 	status: AgentTaskStatus;
@@ -310,6 +319,19 @@ export interface AgentTask {
 	exec_node?: string | null;
 	exec_host?: string | null;
 	exec_visible?: boolean | null;
+	/**
+	 * Launcher-recorded liveness of the lane's terminal session at the moment
+	 * the launcher last wrote this record (it writes `tmux has-session` / window
+	 * presence here). The signal that matters most: a TERMINAL-status row
+	 * (`contract_failure`, `failed`, …) that still carries `session_live: true`
+	 * is the launcher contradicting itself — it finalized the lane while its
+	 * session was provably alive (premature/ races-the-handoff finalization).
+	 * CC consumes this as a CHEAP, host-agnostic corroboration of a lifecycle
+	 * conflict when no live tmux probe verdict is available (remote-node lanes,
+	 * cold hot-path cache). A real-time probe ("alive"/"dead") always wins over
+	 * this recorded belief — see {@link classifyLifecycleConflict}.
+	 */
+	session_live?: boolean | null;
 	exec_cwd?: string | null;
 	callback_url?: string | null;
 	session_key?: string | null;
@@ -976,6 +998,21 @@ export function isRegistryBackedLaneTask(
 	return Boolean(task.project_ref?.id?.trim());
 }
 
+/**
+ * An Agent Teams *lead* lane — spawned with `--team`, with its teammates
+ * running as subagents of the lead's Claude session (`--parent-session-id`)
+ * rather than as independent launcher tasks. Only the lead carries this
+ * metadata, so the fan-out is otherwise invisible in the tree; the lead row
+ * uses this to badge itself as a team. Metadata-only by construction (no live
+ * pane probe), so it is safe on the render hot path. Accepts either the boolean
+ * `team_requested` flag or a declared `team_template`.
+ */
+export function isAgentTeamLead(
+	task: Pick<AgentTask, "team_requested" | "team_template">,
+): boolean {
+	return task.team_requested === true || Boolean(task.team_template?.trim());
+}
+
 function normalizeTaskProjectRef(value: unknown): AgentTaskProjectRef | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 	const raw = value as Record<string, unknown>;
@@ -1064,6 +1101,8 @@ function normalizeTask(
 		workflow_name: asString(raw["workflow_name"]) ?? null,
 		team: asString(raw["team"]) ?? null,
 		team_template: asString(raw["team_template"]) ?? null,
+		team_requested:
+			typeof raw["team_requested"] === "boolean" ? raw["team_requested"] : null,
 		agent_mode: asString(raw["agent_mode"]) ?? null,
 		orchestration_mode: asString(raw["orchestration_mode"]) ?? null,
 		status,
@@ -1117,6 +1156,8 @@ function normalizeTask(
 		exec_host: asString(raw["exec_host"]) ?? null,
 		exec_visible:
 			typeof raw["exec_visible"] === "boolean" ? raw["exec_visible"] : null,
+		session_live:
+			typeof raw["session_live"] === "boolean" ? raw["session_live"] : null,
 		exec_cwd: asString(raw["exec_cwd"]) ?? null,
 		callback_url: asString(raw["callback_url"]) ?? null,
 		session_key: asString(raw["session_key"]) ?? null,
@@ -4570,21 +4611,24 @@ export class AgentStatusTreeProvider
 		const status = this.getNodeStatus(node);
 		if (status === "running") return "running";
 
-		// Lifecycle conflict: launcher says completed but pane still has a live
-		// agent process. Surface in attention so the user sees the mismatch.
-		// Uses cache-only lookup to avoid triggering tmux subprocess calls on the
-		// hot path — the evidence cache is warmed by getTreeItem rendering;
-		// subsequent refresh cycles will have correct grouping.
-		if (
-			node.type === "task" &&
-			(status === "completed" ||
-				status === "completed_dirty" ||
-				status === "completed_stale")
-		) {
+		// Lifecycle conflict: the launcher recorded a TERMINAL status but the
+		// session is provably alive — surface in attention ("live attention
+		// required") so the contradiction is visible, never silently grouped as a
+		// dead failure or aged into History.
+		//
+		// The gate spans every conflict-eligible status — not just `completed*`.
+		// `classifyLifecycleConflict` itself filters by CONFLICT_ELIGIBLE_STATUSES,
+		// so a `contract_failure`/`failed`/`stopped`/`killed`-but-alive lane is now
+		// detected here too (previously these skipped the liveness check and fell
+		// through as plain dead failures). Liveness is the cache-only probe (no
+		// subprocess on the hot path) OR — when the cache is cold or the lane is a
+		// node-origin row we cannot probe locally — the launcher's own
+		// `session_live` corroboration.
+		if (node.type === "task") {
 			const liveness = this.getCachedTerminalTaskLivenessEvidence(node.task);
 			if (
-				classifyLifecycleConflict(node.task, liveness).kind ===
-				"live-process-conflict"
+				classifyLifecycleConflict(node.task, liveness, node.task.session_live)
+					.kind === "live-process-conflict"
 			) {
 				return "attention";
 			}
@@ -5667,7 +5711,7 @@ export class AgentStatusTreeProvider
 		const isTerminalStatus = t.status !== "running";
 		if (isTerminalStatus) {
 			const liveness = this.getTerminalTaskLivenessEvidence(t);
-			const conflict = classifyLifecycleConflict(t, liveness);
+			const conflict = classifyLifecycleConflict(t, liveness, t.session_live);
 			if (conflict.kind === "live-process-conflict") {
 				details.push({
 					type: "detail",
@@ -9353,9 +9397,24 @@ export class AgentStatusTreeProvider
 		const lifecycleConflict = classifyLifecycleConflict(
 			task,
 			lifecycleLiveness,
+			// Corroborate with the launcher's own session_live so a terminal-but-
+			// alive lane is badged even when the live probe could not decide
+			// (remote-node lane we cannot probe locally, cold cache). The probe
+			// still wins when it has a verdict — see classifyLifecycleConflict.
+			isDoneStatus ? task.session_live : null,
 		);
 		if (lifecycleConflict.kind === "live-process-conflict") {
-			descriptionParts.push("⚠ lifecycle conflict");
+			// "live attention required" — the launcher marked this lane terminal
+			// but it is still alive. Loud, un-buried, and distinct from a genuine
+			// `running` lane (which renders Live with a spinner, never this badge).
+			descriptionParts.push("⚠ live · lifecycle conflict");
+		}
+		// Agent Team lead badge: teammates are subagents of this lead's Claude
+		// session (not sibling launcher tasks), so the fan-out is invisible unless
+		// the lead row says so. Metadata-only (no pane probe) — cheap and truthful.
+		if (isAgentTeamLead(task)) {
+			const template = task.team_template?.trim();
+			descriptionParts.push(template ? `team: ${template}` : "team");
 		}
 		const surfaceSummary = classifyTaskSurface(task);
 		// Surface tags are the loudest signal for running tasks — a click
