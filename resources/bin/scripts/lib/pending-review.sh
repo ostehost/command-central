@@ -150,8 +150,18 @@ pending_review_collect_committed_files_json() {
 
 	{
 		if [[ -n "$start_sha" && -n "$end_commit" ]] && pending_review_commit_exists "$project_dir" "$start_sha" && pending_review_commit_exists "$project_dir" "$end_commit"; then
+			# Validated baseline → precise, provably-this-task attribution.
 			git -C "$project_dir" diff --name-only --relative "${start_sha}..${end_commit}" 2>/dev/null || true
-		elif [[ -n "$end_commit" ]] && pending_review_commit_exists "$project_dir" "$end_commit"; then
+		elif [[ -n "$end_commit" ]] && [[ "${OSTE_ATTRIBUTE_HEAD_WITHOUT_BASELINE:-0}" == "1" ]] && pending_review_commit_exists "$project_dir" "$end_commit"; then
+			# Provenance-unsafe legacy fallback (opt-in only). Without a validated
+			# baseline start_sha we cannot prove HEAD's commit belongs to THIS
+			# task; attributing it leaks an UNRELATED task's committed files when
+			# HEAD happens to be another lane's commit (symphony/ackwake
+			# cross-attribution incident, 2026-06-15). Off by default: emit no
+			# committed files when the baseline is missing/invalid. Live
+			# working-tree changes are still captured by
+			# pending_review_collect_live_files_json, which appends uncommitted,
+			# staged, and untracked paths.
 			git -C "$project_dir" show --pretty='' --name-only --relative "$end_commit" 2>/dev/null || true
 		fi
 	} | awk 'NF { print }' | jq -Rcs 'split("\n")[:-1]' | pending_review_normalize_files_json

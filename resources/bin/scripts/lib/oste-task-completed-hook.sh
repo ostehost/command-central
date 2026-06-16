@@ -95,6 +95,32 @@ if [[ -f "/tmp/oste-complete-${oste_task_id}" ]]; then
 	exit 0
 fi
 
+# Agent Team lead intermediate-completion guard (symphony team incident
+# 2026-06-15). A lead's TaskCompleted hook can fire while teammates are still
+# working and before the lead has written its declared handoff. Finalizing here
+# would stamp a premature terminal contract_failure / missing_handoff. Defer:
+# allow the Claude task to complete, but do NOT fire launcher completion. The
+# real terminal completion comes from the lead's process-exit / SessionEnd hook
+# once the session actually ends (oste-complete.sh's intermediate-deferral guard
+# is the second line of defence for the non-team and live-session cases).
+if [[ -n "${TASKS_FILE:-}" && -f "${TASKS_FILE:-}" ]]; then
+	team_requested=$(jq -r --arg id "$oste_task_id" '.tasks[$id].team_requested // false' "$TASKS_FILE" 2>/dev/null || echo "false")
+	handoff_decl=$(jq -r --arg id "$oste_task_id" '.tasks[$id].handoff_file // empty' "$TASKS_FILE" 2>/dev/null || true)
+	if [[ "$team_requested" == "true" && -n "$handoff_decl" && "$handoff_decl" != "null" ]]; then
+		handoff_abs="$handoff_decl"
+		case "$handoff_decl" in
+			/*) ;;
+			*) [[ -n "$project_dir" ]] && handoff_abs="${project_dir%/}/${handoff_decl}" ;;
+		esac
+		if [[ ! -s "$handoff_abs" ]]; then
+			hook_trace_append "task-completed-hook-deferred-team-lead" "$input" "$(jq -cn \
+				--arg task_id "$oste_task_id" --arg handoff "$handoff_decl" \
+				'{task_id: $task_id, handoff_file: $handoff, reason: "team_lead_handoff_missing"}')"
+			exit 0
+		fi
+	fi
+fi
+
 complete_script="${OSTE_COMPLETE_SCRIPT:-${SCRIPT_DIR}/oste-complete.sh}"
 review_script="${SCRIPT_DIR}/oste-review-agent.sh"
 review_marker="/tmp/oste-review-fired-${oste_task_id}"
@@ -111,14 +137,14 @@ if [[ -x "$complete_script" ]]; then
 		[[ ! -f "$review_marker" ]] &&
 		[[ -n "$cwd" ]]; then
 		(
-			bash "$complete_script" "$oste_task_id" "0"
+			OSTE_COMPLETION_TRIGGER=task-completed-hook bash "$complete_script" "$oste_task_id" "0"
 			touch "$review_marker"
 			bash "$review_script" "$cwd" --source-task-id "$oste_task_id" \
 				>>"/tmp/oste-review-${oste_task_id}.log" 2>&1
 		) &
 		disown $! 2>/dev/null || true
 	else
-		bash "$complete_script" "$oste_task_id" "0" &
+		OSTE_COMPLETION_TRIGGER=task-completed-hook bash "$complete_script" "$oste_task_id" "0" &
 		disown $! 2>/dev/null || true
 	fi
 fi

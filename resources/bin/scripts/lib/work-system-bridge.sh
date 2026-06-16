@@ -295,6 +295,15 @@ _work_system_bridge_transport() {
 #                                                  affordance (tmux probed
 #                                                  via has-session; other
 #                                                  backends report unprobed)
+#   generation.{app_stamp,release_generation,
+#               source_version}                    spawn-time launcher app
+#                                                  generation (visible lanes
+#                                                  only); app_stamp is the full
+#                                                  drift identity, the two flat
+#                                                  fields are stable aliases.
+#                                                  All null when the lane made no
+#                                                  generation claim (tmux/headless
+#                                                  or pre-stamping lanes).
 #   visibility.{verified,degraded,reason,
 #               receipt_path,receipt_present}      spawn-time visible-terminal
 #                                                  verification; null fields
@@ -396,6 +405,11 @@ work_system_lane_ref_enrich() {
 			reason: $row.visibility.reason,
 			receipt_path: ($row.visibility_receipt_path // $row.visibility.receipt_path // null),
 			receipt_present: $vis_receipt_present
+		 } |
+		 .generation = {
+			app_stamp: ($row.app_stamp // null),
+			release_generation: ($row.app_stamp.git_sha // null),
+			source_version: ($row.app_stamp.launcher_version // null)
 		 } |
 		 .origin_host = ($row.exec_host // str($writer_host)) |
 		 .writer_host = str($writer_host) |

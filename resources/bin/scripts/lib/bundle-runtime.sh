@@ -163,6 +163,14 @@ bundle_visibility_receipt() {
 	local tasks_file="${2:-${TASKS_FILE:-${HOME}/.config/ghostty-launcher/tasks.json}}"
 	local verified degraded reason resolved_tasks_file bundle_id tmux_attached focusable_count onscreen_count process_alive pid
 	IFS='|' read -r verified degraded reason resolved_tasks_file bundle_id tmux_attached focusable_count onscreen_count process_alive pid <<<"$(bundle_visibility_fields "$task_id" "$tasks_file" || true)"
+	# Spawn-time launcher app generation recorded on the row (visible lanes only).
+	# Carried into the receipt so Command Central can decide reuse/rebuild from the
+	# receipt alone, without re-reading tasks.json on the writer host. The full
+	# app_stamp is the authoritative drift identity; release_generation (build
+	# hash) and source_version (launcher describe) are stable convenience aliases.
+	local app_stamp
+	app_stamp=$(jq -c --arg id "$task_id" '.tasks[$id].app_stamp // null' "$tasks_file" 2>/dev/null || echo null)
+	jq -e . >/dev/null 2>&1 <<<"$app_stamp" || app_stamp="null"
 	jq -n \
 		--arg task_id "$task_id" \
 		--arg tasks_file "$resolved_tasks_file" \
@@ -175,7 +183,8 @@ bundle_visibility_receipt() {
 		--argjson focusable_windows "${focusable_count:-0}" \
 		--argjson onscreen_windows "${onscreen_count:-0}" \
 		--argjson process_alive "${process_alive:-false}" \
-		'{task_id:$task_id,tasks_file:$tasks_file,bundle_id:$bundle_id,verified:$verified,degraded:$degraded,reason:$reason,tmux_attached:$tmux_attached,process_alive:$process_alive,focusable_windows:$focusable_windows,onscreen_windows:$onscreen_windows,pid:(if $pid == "" then null else ($pid|tonumber) end)}'
+		--argjson app_stamp "$app_stamp" \
+		'{task_id:$task_id,tasks_file:$tasks_file,bundle_id:$bundle_id,verified:$verified,degraded:$degraded,reason:$reason,tmux_attached:$tmux_attached,process_alive:$process_alive,focusable_windows:$focusable_windows,onscreen_windows:$onscreen_windows,pid:(if $pid == "" then null else ($pid|tonumber) end),generation:{app_stamp:$app_stamp,release_generation:($app_stamp.git_sha // null),source_version:($app_stamp.launcher_version // null)}}'
 }
 
 # Persist the spawn-time visibility receipt path + degraded state into the
