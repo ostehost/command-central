@@ -333,20 +333,23 @@ export interface AgentTask {
 	 */
 	session_live?: boolean | null;
 	/**
-	 * Release-hygiene marker: an opaque token identifying the GHOSTTY TERMINAL
-	 * APP / window generation this lane was created in (the launcher stamps it
-	 * from the active release version or reset epoch; `source_version` is accepted
-	 * as an alias). The unit recreated on release is the actual Ghostty
-	 * `.app`/window/bundle — NOT the tmux pane — so a lane's tmux pane can be
-	 * alive while its host Ghostty app belongs to a prior release. When a CURRENT
-	 * generation is known and a lane carries a DIFFERENT one, its Ghostty
-	 * app/window is a pre-reset leftover: the pane inside it may still be a live
-	 * orphan, but it is NOT current work. CC uses this to keep stale app/windows
-	 * from being mistaken for current running agents (it never kills them — see
-	 * {@link isSupersededByReleaseReset}). The lane's per-app identity is
-	 * `ghostty_bundle_id`/`bundle_path`; this token is the cross-lane generation
-	 * they share. Absent on either side → not judged (no current behavior change
-	 * until the launcher + a current-generation source are both wired).
+	 * Release-hygiene marker: the canonical token identifying the GHOSTTY TERMINAL
+	 * APP / window generation this lane was created in. Normalized by
+	 * {@link canonicalGenerationToken} from, in order of preference, the
+	 * launcher's real per-lane `app_stamp` OBJECT (launcher_version / git_sha /
+	 * rc_version / template_generation — see
+	 * `ghostty-launcher/scripts/oste-terminal-generation.sh`), or the simpler
+	 * `release_generation` / `source_version` string forms. The unit recreated on
+	 * release is the actual Ghostty `.app`/window/bundle — NOT the tmux pane — so
+	 * a lane's tmux pane can be alive while its host Ghostty app belongs to a
+	 * prior release. When the CURRENT generation is known (the launcher's
+	 * `release-generation.json` baseline) and a lane carries a DIFFERENT token,
+	 * its Ghostty app/window is a pre-reset leftover: the pane inside it may still
+	 * be a live orphan, but it is NOT current work. CC uses this to keep stale
+	 * app/windows from being mistaken for current running agents (it never kills
+	 * them — see {@link isSupersededByReleaseReset}). The lane's per-app identity
+	 * is `ghostty_bundle_id`/`bundle_path`; this token is the cross-lane
+	 * generation they share. Absent on either side → not judged.
 	 */
 	release_generation?: string | null;
 	exec_cwd?: string | null;
@@ -981,6 +984,13 @@ function asString(value: unknown): string | undefined {
 		: undefined;
 }
 
+/** Expand a leading `~` / `~/` to the user's home directory. */
+function expandHomePath(p: string): string {
+	if (p === "~") return os.homedir();
+	if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
+	return p;
+}
+
 function asNumber(value: unknown, fallback: number): number {
 	if (typeof value !== "number" || Number.isNaN(value)) return fallback;
 	return value;
@@ -1056,6 +1066,52 @@ export function isSupersededByReleaseReset(
 	const laneGeneration = task.release_generation?.trim();
 	if (!current || !laneGeneration) return false;
 	return laneGeneration !== current;
+}
+
+/** The launcher app_stamp identity fields, in canonical-token order. */
+const APP_STAMP_IDENTITY_FIELDS = [
+	"launcher_version",
+	"git_sha",
+	"rc_version",
+	"template_generation",
+] as const;
+
+/**
+ * Reduce a launcher generation value to one comparable token, matching the
+ * field contract of `ghostty-launcher/scripts/oste-terminal-generation.sh`.
+ *
+ * Two input shapes are accepted (field compatibility with the launcher):
+ *  - A plain string token (`release_generation` / `source_version`): trimmed;
+ *    blank → null.
+ *  - An `app_stamp` OBJECT — the launcher's real per-lane stamp, also the shape
+ *    of the `release-generation.json` baseline — carrying the four identity
+ *    fields {@link APP_STAMP_IDENTITY_FIELDS}. ALL four must be present and
+ *    non-blank, exactly the launcher's own "unknown" gate
+ *    (`($s.launcher_version and $s.git_sha and $s.rc_version and
+ *    $s.template_generation) | not → "unknown"`). A complete stamp collapses to
+ *    a canonical `launcher_version|git_sha|rc_version|template_generation` join
+ *    (so all-four-equal ⇒ equal tokens ⇒ "reuse"/current, any drift ⇒ unequal
+ *    ⇒ "rebuild"/superseded); any missing field ⇒ null ⇒ "unknown" ⇒ not judged.
+ *    Extra fields on the baseline (e.g. `stamped_at`) are ignored.
+ *
+ * Returns null for any other value, so an absent or malformed source is inert.
+ */
+export function canonicalGenerationToken(value: unknown): string | null {
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		return trimmed.length > 0 ? trimmed : null;
+	}
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return null;
+	}
+	const stamp = value as Record<string, unknown>;
+	const parts: string[] = [];
+	for (const field of APP_STAMP_IDENTITY_FIELDS) {
+		const part = asString(stamp[field]);
+		if (!part) return null;
+		parts.push(part);
+	}
+	return parts.join("|");
 }
 
 function normalizeTaskProjectRef(value: unknown): AgentTaskProjectRef | null {
@@ -1203,8 +1259,15 @@ function normalizeTask(
 			typeof raw["exec_visible"] === "boolean" ? raw["exec_visible"] : null,
 		session_live:
 			typeof raw["session_live"] === "boolean" ? raw["session_live"] : null,
+		// The launcher's real per-lane stamp is an `app_stamp` OBJECT
+		// (launcher_version/git_sha/rc_version/template_generation); the
+		// `release_generation`/`source_version` string forms are accepted as a
+		// simpler fallback. Both collapse to one comparable token.
 		release_generation:
-			asString(raw["release_generation"] ?? raw["source_version"]) ?? null,
+			canonicalGenerationToken(raw["app_stamp"]) ??
+			canonicalGenerationToken(
+				raw["release_generation"] ?? raw["source_version"],
+			),
 		exec_cwd: asString(raw["exec_cwd"]) ?? null,
 		callback_url: asString(raw["callback_url"]) ?? null,
 		session_key: asString(raw["session_key"]) ?? null,
@@ -1564,13 +1627,22 @@ export class AgentStatusTreeProvider
 	private _taskFlowService: TaskFlowService | null = null;
 	private _reviewTracker: ReviewTracker = new ReviewTracker();
 	/**
-	 * Active release/reset generation, or null when unknown. Null today: no
-	 * production source is wired yet, so the release-hygiene staleness guard
-	 * ({@link isSupersededByReleaseReset}) is a safe no-op. Tests set this seam to
-	 * exercise the guard. TODO(release-hygiene): source from the launcher's reset
-	 * epoch / active release version — see getCurrentReleaseGeneration.
+	 * In-memory override for the active release/reset generation. Null in
+	 * production (the real source is the launcher state file — see
+	 * {@link getCurrentReleaseGeneration}); tests set this seam to exercise the
+	 * guard without an on-disk baseline.
 	 */
 	private _currentReleaseGenerationOverride: string | null = null;
+	/**
+	 * Short-lived memo of the canonical current-generation token read from the
+	 * launcher baseline file. The baseline only changes on release, so a small
+	 * TTL is ample and keeps the per-render hot path off the filesystem.
+	 */
+	private _currentGenerationCache: {
+		path: string | null;
+		token: string | null;
+		checkedAt: number;
+	} | null = null;
 	private codexRunObserverService: CodexRunObserverService;
 	private readonly viewMode: AgentStatusTreeViewMode;
 	private readonly projectRefResolver: ProjectRefResolver;
@@ -2333,17 +2405,80 @@ export class AgentStatusTreeProvider
 		return "not-checked";
 	}
 
+	private static readonly RELEASE_GENERATION_CACHE_TTL_MS = 5_000;
+
 	/**
-	 * The active release/reset generation, or null when unknown.
+	 * The active release/reset generation token, or null when unknown.
 	 *
-	 * TODO(release-hygiene): wire to a real source — e.g. the launcher writing a
-	 * `current_generation` to a state file CC reads, the reset routine's epoch,
-	 * or CC's own installed release version matched against the launcher's
-	 * per-lane `release_generation`. Until then this returns null and the
-	 * staleness guard is inert (no current-behavior change).
+	 * Source of truth: the launcher's `release-generation.json` baseline written
+	 * by `ghostty-launcher/scripts/oste-terminal-generation.sh stamp`, reduced to
+	 * a canonical token by {@link canonicalGenerationToken}. A lane carrying a
+	 * different generation token is a pre-reset leftover (see
+	 * {@link isSupersededByReleaseReset}). When no source is configured/present
+	 * the token is null and the staleness guard is a safe no-op. The in-memory
+	 * override short-circuits the file read for tests.
 	 */
 	private getCurrentReleaseGeneration(): string | null {
-		return this._currentReleaseGenerationOverride;
+		if (this._currentReleaseGenerationOverride !== null) {
+			return this._currentReleaseGenerationOverride;
+		}
+		return this.readCurrentReleaseGenerationFromState();
+	}
+
+	/**
+	 * Resolve the launcher release-generation baseline file path, or null when no
+	 * source is configured. Config-less hosts (unit-test mocks) resolve null, so
+	 * the operator's real $HOME baseline never leaks into hermetic tests — the
+	 * same discipline as the lane-registry default.
+	 *
+	 * Precedence (env first, matching the launcher tool's own override so CC and
+	 * the launcher agree on relocated state):
+	 *   1. `OSTE_RELEASE_GENERATION_FILE` env var — the launcher tool's override.
+	 *   2. `commandCentral.releaseGeneration.file` setting — operator override.
+	 * The well-known default (`~/.config/ghostty-launcher/release-generation.json`)
+	 * is contributed in package.json, so no user-specific absolute path lives in
+	 * code and real VS Code surfaces it through the setting.
+	 */
+	private getReleaseGenerationFilePath(): string | null {
+		const envPath = asString(process.env["OSTE_RELEASE_GENERATION_FILE"]);
+		if (envPath) return expandHomePath(envPath);
+		const configured = asString(
+			vscode.workspace
+				.getConfiguration("commandCentral")
+				.get<string>("releaseGeneration.file", ""),
+		);
+		if (configured) return expandHomePath(configured);
+		return null;
+	}
+
+	/**
+	 * Read and canonicalize the current generation from the launcher baseline.
+	 * Missing file or malformed JSON → null (no throw, guard stays inert).
+	 * Memoized briefly so the per-render hot path does not re-stat the file.
+	 */
+	private readCurrentReleaseGenerationFromState(): string | null {
+		const filePath = this.getReleaseGenerationFilePath();
+		if (!filePath) return null;
+		const now = Date.now();
+		const cached = this._currentGenerationCache;
+		if (
+			cached &&
+			cached.path === filePath &&
+			now - cached.checkedAt <
+				AgentStatusTreeProvider.RELEASE_GENERATION_CACHE_TTL_MS
+		) {
+			return cached.token;
+		}
+		let token: string | null = null;
+		try {
+			const raw = fs.readFileSync(filePath, "utf-8");
+			token = canonicalGenerationToken(JSON.parse(raw));
+		} catch {
+			// Missing file or malformed JSON → no current generation known.
+			token = null;
+		}
+		this._currentGenerationCache = { path: filePath, token, checkedAt: now };
+		return token;
 	}
 
 	/**

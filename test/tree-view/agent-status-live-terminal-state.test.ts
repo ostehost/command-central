@@ -75,6 +75,7 @@ import {
 	type AgentStatusGroup,
 	AgentStatusTreeProvider,
 	type AgentTask,
+	canonicalGenerationToken,
 	classifyLifecycleConflict,
 	isAgentTeamLead,
 	isRegistryBackedLaneTask,
@@ -538,7 +539,14 @@ describe("release hygiene — stale pre-reset terminals vs recreated terminals",
 		)._currentReleaseGenerationOverride = gen;
 	}
 
+	// These tests drive the guard through the in-memory override seam, so the
+	// real launcher state file must never be consulted — pin the env override off
+	// so an ambient OSTE_RELEASE_GENERATION_FILE cannot leak a current generation.
+	let savedGenEnv: string | undefined;
+
 	beforeEach(() => {
+		savedGenEnv = process.env["OSTE_RELEASE_GENERATION_FILE"];
+		delete process.env["OSTE_RELEASE_GENERATION_FILE"];
 		mock.module("node:fs", () => realFs);
 		mock.module("node:child_process", () => ({
 			...realChildProcess,
@@ -616,6 +624,11 @@ describe("release hygiene — stale pre-reset terminals vs recreated terminals",
 			p._agentRegistry = null;
 		}
 		provider.dispose();
+		if (savedGenEnv === undefined) {
+			delete process.env["OSTE_RELEASE_GENERATION_FILE"];
+		} else {
+			process.env["OSTE_RELEASE_GENERATION_FILE"] = savedGenEnv;
+		}
 	});
 
 	test("pre-reset stale pane: session_live:true is NOT mistaken for a current live agent", () => {
@@ -669,6 +682,310 @@ describe("release hygiene — stale pre-reset terminals vs recreated terminals",
 	test("backward-compatible: no current generation known → nothing judged stale (pre-steer behavior)", () => {
 		// Default override is null — the guard is inert and the lane behaves exactly
 		// as it did before release hygiene was added.
+		const task = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: "rc.64",
+		});
+		const desc = rowDescription(provider, task);
+		expect(desc).not.toContain("stale (pre-release)");
+		expect(desc).toContain("⚠ live · lifecycle conflict");
+	});
+});
+
+// ── Launcher generation-field compatibility (string / app_stamp object) ──────
+//
+// The launcher's `oste-terminal-generation.sh` stamps an app_stamp OBJECT
+// (launcher_version, git_sha, rc_version, template_generation) per lane, and
+// writes a release-generation.json BASELINE of the same shape. CC reduces both
+// shapes to one comparable token so its supersession check mirrors the
+// launcher's own reuse/rebuild/unknown verdict (all-four-equal → current; any
+// drift → superseded; any field missing → unknown → not judged).
+describe("canonicalGenerationToken — launcher generation field compatibility", () => {
+	const APP_STAMP = {
+		launcher_version: "v0.6.0-rc.65-3-gabc1234",
+		git_sha: "abc1234",
+		rc_version: "0.6.0",
+		template_generation: "deadbeef0000",
+	};
+	const TOKEN = "v0.6.0-rc.65-3-gabc1234|abc1234|0.6.0|deadbeef0000";
+
+	test("plain string token (release_generation / source_version) passes through trimmed", () => {
+		expect(canonicalGenerationToken("rc.65")).toBe("rc.65");
+		expect(canonicalGenerationToken("  rc.65  ")).toBe("rc.65");
+	});
+
+	test("empty / blank / non-string-non-object → null (unknown, not judged)", () => {
+		expect(canonicalGenerationToken("")).toBeNull();
+		expect(canonicalGenerationToken("   ")).toBeNull();
+		expect(canonicalGenerationToken(null)).toBeNull();
+		expect(canonicalGenerationToken(undefined)).toBeNull();
+		expect(canonicalGenerationToken(42)).toBeNull();
+		// An array is not a stamp object.
+		expect(canonicalGenerationToken([APP_STAMP])).toBeNull();
+	});
+
+	test("complete app_stamp object collapses to a canonical lv|gs|rc|tg token", () => {
+		expect(canonicalGenerationToken(APP_STAMP)).toBe(TOKEN);
+	});
+
+	test("baseline file shape (app_stamp + stamped_at) ignores extra fields → same token", () => {
+		expect(
+			canonicalGenerationToken({
+				...APP_STAMP,
+				stamped_at: "2026-06-16T00:00:00Z",
+			}),
+		).toBe(TOKEN);
+	});
+
+	test("incomplete app_stamp (any identity field missing or blank) → null (launcher 'unknown' gate)", () => {
+		for (const key of [
+			"launcher_version",
+			"git_sha",
+			"rc_version",
+			"template_generation",
+		] as const) {
+			const blank: Record<string, string> = { ...APP_STAMP, [key]: "  " };
+			expect(canonicalGenerationToken(blank)).toBeNull();
+			const missing: Record<string, string> = { ...APP_STAMP };
+			delete missing[key];
+			expect(canonicalGenerationToken(missing)).toBeNull();
+		}
+	});
+
+	test("a complete app_stamp and a drifted baseline supersede via the shared token", () => {
+		const laneToken = canonicalGenerationToken(APP_STAMP);
+		const driftedCurrent = canonicalGenerationToken({
+			...APP_STAMP,
+			rc_version: "0.7.0",
+		});
+		expect(laneToken).not.toBeNull();
+		expect(driftedCurrent).not.toBeNull();
+		expect(
+			isSupersededByReleaseReset(
+				{ release_generation: laneToken },
+				driftedCurrent,
+			),
+		).toBe(true);
+		expect(
+			isSupersededByReleaseReset({ release_generation: laneToken }, laneToken),
+		).toBe(false);
+	});
+});
+
+// ── Current-generation source wired to the launcher state file ───────────────
+//
+// `getCurrentReleaseGeneration()` resolves the launcher's release-generation
+// baseline from OSTE_RELEASE_GENERATION_FILE (the launcher tool's own env) or
+// the `commandCentral.releaseGeneration.file` setting, with the well-known path
+// supplied by the package.json default. Config-less hosts (these mocks) resolve
+// no path, so the operator's real $HOME baseline never leaks into the suite.
+describe("getCurrentReleaseGeneration — launcher release-generation state file", () => {
+	let provider: AgentStatusTreeProvider;
+	let savedGenEnv: string | undefined;
+	let tmpDir: string | null = null;
+
+	const APP_STAMP = {
+		launcher_version: "v0.6.0-rc.65-3-gabc1234",
+		git_sha: "abc1234",
+		rc_version: "0.6.0",
+		template_generation: "deadbeef0000",
+	};
+	const CURRENT_TOKEN = canonicalGenerationToken(APP_STAMP) as string;
+
+	function writeBaseline(content: string): string {
+		tmpDir = realFs.mkdtempSync("/tmp/cc-release-generation-");
+		const file = `${tmpDir}/release-generation.json`;
+		realFs.writeFileSync(file, content);
+		return file;
+	}
+
+	function pointAtBaseline(file: string) {
+		process.env["OSTE_RELEASE_GENERATION_FILE"] = file;
+		// Drop any memoized read so the freshly-pointed file is consulted.
+		(
+			provider as unknown as { _currentGenerationCache: unknown }
+		)._currentGenerationCache = null;
+	}
+
+	beforeEach(() => {
+		savedGenEnv = process.env["OSTE_RELEASE_GENERATION_FILE"];
+		delete process.env["OSTE_RELEASE_GENERATION_FILE"];
+		tmpDir = null;
+
+		mock.module("node:fs", () => realFs);
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFileSync: execFileSyncMock,
+		}));
+		mock.module("../../src/utils/port-detector.js", () => ({
+			detectListeningPorts: mock(() => []),
+			detectListeningPortsAsync: mock(async () => []),
+		}));
+
+		execFileSyncMock.mockReset();
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const [cmd, args] = fnArgs as [string, string[] | undefined];
+			if (cmd === "tmux") return "";
+			if (
+				cmd === "openclaw" &&
+				args?.[0] === "tasks" &&
+				args[1] === "audit" &&
+				args[2] === "--json"
+			) {
+				return JSON.stringify({
+					summary: { total: 0, warnings: 0, errors: 0, byCode: {} },
+					findings: [],
+				});
+			}
+			return realChildProcess.execFileSync(
+				cmd,
+				args,
+				fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+			);
+		});
+
+		mockInspectTmuxPaneAgent.mockReset();
+		mockInspectTmuxPaneAgent.mockImplementation(() => "unknown");
+		mockInspectTmuxPaneById.mockReset();
+		mockInspectTmuxPaneById.mockImplementation(() => "unknown");
+
+		const vscodeMock = setupVSCodeMock();
+		const getConfigurationMock = mock((_section?: string) => ({
+			update: mock(),
+			get: mock((_key: string, defaultValue?: unknown) => {
+				if (_key === "agentStatus.groupByProject") return false;
+				if (_key === "discovery.enabled") return false;
+				if (_key === "laneRegistry.files") return [];
+				// releaseGeneration.file is intentionally NOT special-cased: a
+				// config-less host returns the passed "" default → no source.
+				return defaultValue;
+			}),
+			inspect: mock((_key: string) => undefined),
+			has: mock((_key: string) => true),
+		}));
+		vscodeMock.workspace.getConfiguration =
+			getConfigurationMock as unknown as typeof vscodeMock.workspace.getConfiguration;
+		(require("vscode") as typeof import("vscode")).workspace.getConfiguration =
+			getConfigurationMock as unknown as typeof import("vscode").workspace.getConfiguration;
+
+		provider = new AgentStatusTreeProvider({
+			getIconForProject: mock(() => "🎭"),
+			setCustomIcon: mock(() => Promise.resolve()),
+		} as unknown as ConstructorParameters<typeof AgentStatusTreeProvider>[0]);
+		provider.setReviewTracker(
+			new InMemoryReviewTracker() as unknown as ReviewTracker,
+		);
+		provider.readRegistry = () => makeRegistry({});
+		provider.getDiffSummary = () => null;
+		provider.reload();
+		__setCurrentMachineHostOverrideForTests("Mike’s MacBook Pro");
+		// NB: the in-memory _currentReleaseGenerationOverride is left null on
+		// purpose so the guard's current generation is sourced from the real
+		// (env-pointed) state file, exercising the production read path.
+	});
+
+	afterEach(() => {
+		__setCurrentMachineHostOverrideForTests(null);
+		const p = provider as unknown as { _agentRegistry: unknown };
+		if (
+			p._agentRegistry &&
+			typeof (p._agentRegistry as { dispose?: unknown }).dispose !== "function"
+		) {
+			p._agentRegistry = null;
+		}
+		provider.dispose();
+		if (tmpDir) {
+			realFs.rmSync(tmpDir, { recursive: true, force: true });
+			tmpDir = null;
+		}
+		if (savedGenEnv === undefined) {
+			delete process.env["OSTE_RELEASE_GENERATION_FILE"];
+		} else {
+			process.env["OSTE_RELEASE_GENERATION_FILE"] = savedGenEnv;
+		}
+	});
+
+	test("reads the current generation from the env-pointed baseline: a matching lane keeps the live badge", () => {
+		const file = writeBaseline(
+			JSON.stringify({ ...APP_STAMP, stamped_at: "2026-06-16T00:00:00Z" }),
+		);
+		pointAtBaseline(file);
+		const current = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: CURRENT_TOKEN,
+		});
+		const desc = rowDescription(provider, current);
+		expect(desc).toContain("⚠ live · lifecycle conflict");
+		expect(desc).not.toContain("stale (pre-release)");
+	});
+
+	test("a lane from a different generation than the baseline reads as stale (pre-release)", () => {
+		const file = writeBaseline(
+			JSON.stringify({ ...APP_STAMP, stamped_at: "2026-06-16T00:00:00Z" }),
+		);
+		pointAtBaseline(file);
+		const stale = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: "v0.5.0-rc.40|oldsha0|0.5.0|cafe00000000",
+		});
+		const desc = rowDescription(provider, stale);
+		expect(desc).toContain("stale (pre-release)");
+		expect(desc).not.toContain("⚠ live · lifecycle conflict");
+	});
+
+	test("missing baseline file → no current generation → guard inert (live badge preserved)", () => {
+		tmpDir = realFs.mkdtempSync("/tmp/cc-release-generation-");
+		pointAtBaseline(`${tmpDir}/release-generation.json`); // never written
+		const task = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: "rc.64",
+		});
+		const desc = rowDescription(provider, task);
+		expect(desc).not.toContain("stale (pre-release)");
+		expect(desc).toContain("⚠ live · lifecycle conflict");
+	});
+
+	test("malformed baseline JSON → null with no crash → guard inert", () => {
+		const file = writeBaseline("{ this is not valid json ");
+		pointAtBaseline(file);
+		const task = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: "rc.64",
+		});
+		expect(() => rowDescription(provider, task)).not.toThrow();
+		const desc = rowDescription(provider, task);
+		expect(desc).not.toContain("stale (pre-release)");
+		expect(desc).toContain("⚠ live · lifecycle conflict");
+	});
+
+	test("baseline present but incomplete (missing identity fields) → unknown → guard inert", () => {
+		// Mirrors the launcher's 'unknown' verdict: an incomplete stamp is never
+		// treated as an authoritative current generation, so nothing is judged stale.
+		const file = writeBaseline(
+			JSON.stringify({
+				launcher_version: "v0.6.0",
+				stamped_at: "2026-06-16T00:00:00Z",
+			}),
+		);
+		pointAtBaseline(file);
+		const task = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: "rc.64",
+		});
+		const desc = rowDescription(provider, task);
+		expect(desc).not.toContain("stale (pre-release)");
+		expect(desc).toContain("⚠ live · lifecycle conflict");
+	});
+
+	test("config-less host (no env, no setting) → operator's real $HOME baseline is never read", () => {
+		// OSTE_RELEASE_GENERATION_FILE was deleted in beforeEach and the config
+		// mock returns "" for releaseGeneration.file → no source resolved → inert.
 		const task = makeTerminalTmuxTask({
 			status: "contract_failure",
 			session_live: true,

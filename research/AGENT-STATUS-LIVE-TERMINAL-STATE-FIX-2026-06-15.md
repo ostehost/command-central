@@ -86,7 +86,7 @@ terminal-but-live/anomalous"). This diverges from the unwired V2
   (detail) and is never promoted to live-attention — even if its tmux pane is
   still a live orphan.
 
-### `test/tree-view/agent-status-live-terminal-state.test.ts` (new, 19 tests)
+### `test/tree-view/agent-status-live-terminal-state.test.ts` (new, **27 tests** across both predecessor commits — see §8 correction; "19" in an earlier draft was wrong)
 Covers every requested fixture class:
 - **terminal + session_live (cold cache/missing stream):** row shows
   `⚠ live · lifecycle conflict`, group `attention`, tooltip cites `session_live`.
@@ -111,13 +111,20 @@ Covers every requested fixture class:
 
 ## 3. Tests / verification run
 
+> **Provenance qualifier (added 2026-06-16, see §8):** the broad `just test` /
+> `just check` / `bun run build` figures below were taken in the author's **main
+> working checkout** (deps already installed). They do **not** reproduce in a
+> fresh isolated worktree that lacks `bun install` + `@types/vscode` — there only
+> the **focused** test reliably runs, and it passed in the follow-up review. Treat
+> the focused-test line as the portable, independently-confirmed evidence.
+
 ```
-bun test test/tree-view/agent-status-live-terminal-state.test.ts   # 27 pass
-bun test test/tree-view/                                            # all green
-just test                                                          # 2171 pass / 1 skip / 0 fail
-just check                                                         # biome+tsc clean (8 pre-existing knip/style warnings in other files)
-bun run build                                                     # ok
-bunx tsc --noEmit                                                  # exit 0
+bun test test/tree-view/agent-status-live-terminal-state.test.ts   # 27 pass  (portable — confirmed in review)
+bun test test/tree-view/                                            # all green (main checkout)
+just test                                                          # 2171 pass / 1 skip / 0 fail (main checkout w/ deps)
+just check                                                         # biome+tsc clean (8 pre-existing knip/style warnings in other files; main checkout)
+bun run build                                                     # ok (main checkout)
+bunx tsc --noEmit                                                  # exit 0 (main checkout)
 ```
 
 Regression focus confirmed green: `agent-status-completed-tmux-regression`,
@@ -264,3 +271,57 @@ probe says the pane is alive (proven by the test "even a still-alive orphan pane
    A very old terminal row that still carries `session_live: true` and cannot be
    locally probed (remote) will show the badge on the launcher's word alone —
    which is the correct, honest surfacing of the launcher's own self-contradiction.
+
+---
+
+## 8. Addendum (2026-06-16) — verification & provenance corrections
+
+Authored under follow-up task `cc-generation-source-and-verification-cleanup-20260616`
+in response to the review of this work. The review found **no feature blockers**;
+these are honesty/precision corrections plus a note that the dormant guard is now
+wired. Nothing below changes the predecessor's runtime behavior.
+
+1. **Two-commit provenance (was implied to be one).** The work shipped in **two**
+   commits, not one. §2's change list is the *cumulative* set:
+   - `eb28320d fix(agent-status): surface terminal-but-alive lanes as live attention required`
+     — the `classifyLifecycleConflict` third-arg + `session_live`/`team_requested`
+     fields + grouping/badge + the first tranche of tests. **This** is the commit
+     that touched `src/providers/agent-task-classification.ts` (the §2 attribution
+     of the classifier change to that file is correct, but the change landed here,
+     not in `56709213`).
+   - `56709213 feat(agent-status): guard stale pre-reset Ghostty apps …` — the
+     release-hygiene guard (`release_generation`, `isSupersededByReleaseReset`,
+     the `getCurrentReleaseGeneration()` seam, `effectiveLauncherSessionLive`) +
+     §6 + the remaining tests. Its stat touched **only** the provider, the test
+     file, and this handoff — **not** `agent-task-classification.ts`.
+
+2. **Test count.** §2 originally said "(new, 19 tests)". The file actually held
+   **27 tests** after both commits (fixed inline above). The follow-up adds 12
+   more (→ **39**); see the 2026-06-16 handoff.
+
+3. **Verification-claim scope.** §3's broad `just test` / `just check` /
+   `bun run build` numbers were produced in the author's **main checkout with deps
+   installed**. They are **not** reproducible in a fresh isolated worktree lacking
+   `bun install` + matching `@types/vscode` — which is why the review's isolated
+   re-run could only confirm the **focused** test. §3 now labels each line with its
+   environment; the focused-test line is the portable evidence.
+
+4. **Release-hygiene one-liner — corrected scope.** The predecessor commit
+   message said "No production behavior change until a current-generation source
+   is wired," and §6 called the guard a "gated no-op today." Precise restatement:
+   the guard was **inert only because no current-generation source existed**, and
+   it has **always applied solely to the terminal-status lifecycle-conflict path**
+   (a `running`-status lane whose Ghostty app was superseded is still unguarded —
+   §6 follow-up #3). The 2026-06-16 follow-up wires the source (launcher
+   `release-generation.json` baseline via `OSTE_RELEASE_GENERATION_FILE` /
+   `commandCentral.releaseGeneration.file`), so the guard now **activates when
+   that baseline is present**, while keeping the same terminal-path-only scope.
+
+5. **Schema correction (the launcher's real field is `app_stamp`, not a string).**
+   §2/§6 modeled the per-lane marker as a single string `release_generation`
+   (alias `source_version`). The launcher's accepted
+   `scripts/oste-terminal-generation.sh` actually stamps an **`app_stamp` object**
+   (`launcher_version`, `git_sha`, `rc_version`, `template_generation`) and writes
+   a `release-generation.json` baseline of the same shape. The follow-up makes CC
+   compatible with both shapes (object preferred, string fallback) via
+   `canonicalGenerationToken()`. Full schema + contract in the 2026-06-16 handoff.
