@@ -189,4 +189,48 @@ describe("AgentStatusTreeProvider — project_ref grouping", () => {
 			UNREGISTERED_PROJECT_GROUP_NAME,
 		]);
 	});
+
+	test("identity groups with no project_dir get distinct TreeItem ids", () => {
+		// Registry-backed lanes that carry a project_ref.id but no project_dir,
+		// canonical_project_dir, or exec dirs produce project groups with
+		// projectDir: "". A `??`-based id key would collapse every such group
+		// onto the same `project:` TreeItem id; VS Code then loses correct
+		// refresh/reveal/expanded-state for all but one. Keys must stay unique.
+		const dirlessA = createMockTask({
+			id: "dirless-a",
+			project_dir: "",
+			project_name: "",
+			canonical_project_dir: undefined,
+			execution_dir: undefined,
+			exec_cwd: undefined,
+			project_ref: { id: "proj-a", displayName: "Project A" },
+			session_id: "agent-proj-a",
+			tmux_session: "agent-proj-a",
+		});
+		const dirlessB = createMockTask({
+			id: "dirless-b",
+			project_dir: "",
+			project_name: "",
+			canonical_project_dir: undefined,
+			execution_dir: undefined,
+			exec_cwd: undefined,
+			project_ref: { id: "proj-b", displayName: "Project B" },
+			session_id: "agent-proj-b",
+			tmux_session: "agent-proj-b",
+		});
+		h.provider.readRegistry = () =>
+			createMockRegistry({
+				[dirlessA.id]: dirlessA,
+				[dirlessB.id]: dirlessB,
+			});
+		h.provider.reload();
+
+		const groups = getProjectGroups(h.provider.getChildren());
+		expect(groups).toHaveLength(2);
+		const ids = groups.map(
+			(group) => (h.provider.getTreeItem(group) as { id?: string }).id,
+		);
+		expect(ids.every((id): id is string => Boolean(id))).toBe(true);
+		expect(new Set(ids).size).toBe(2);
+	});
 });

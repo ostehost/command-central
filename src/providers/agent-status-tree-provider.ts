@@ -498,7 +498,13 @@ export interface FolderGroupNode {
 function projectGroupNodeKey(
 	node: Pick<ProjectGroupNode, "projectDir" | "projectName">,
 ): string {
-	return node.projectDir ?? `name:${node.projectName}`;
+	// Treat a blank/whitespace projectDir as absent: buildProjectNodes stores
+	// projectDir: "" for the Unregistered bucket and any group lacking a
+	// canonical dir, so `??` (which only falls back on null/undefined) would
+	// collapse every such group onto the same `project:` TreeItem id. VS Code
+	// requires unique ids for correct refresh/reveal/expanded-state behavior.
+	const dir = node.projectDir?.trim();
+	return dir ? dir : `name:${node.projectName}`;
 }
 
 function folderGroupNodeKey(node: Pick<FolderGroupNode, "groupKey">): string {
