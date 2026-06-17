@@ -70,6 +70,7 @@ import {
 import {
 	extractSourceTaskId,
 	isAutoReviewLane,
+	isReviewOnlyLane,
 } from "../utils/auto-review-lane.js";
 import {
 	checkDeclaredHandoff,
@@ -2213,6 +2214,12 @@ export class AgentStatusTreeProvider
 	 */
 	private isReviewQueueReceiptMissing(task: AgentTask): boolean {
 		if (isReviewLifecycleResolved(task)) return false;
+		// A reviewer lane is never owed a review of ITSELF (no_review_expected):
+		// its handoff IS the review artifact. A stale row may still carry a
+		// self-referential pending_review_path whose receipt is absent — that
+		// absence is the expected steady state for a reviewer lane, not a
+		// review-queue gap, so it must not surface as "review receipt missing".
+		if (isReviewOnlyLane(task)) return false;
 		if (!task.pending_review_path) return false;
 		if (this.getPendingReviewQueueState(task) !== "missing") return false;
 		// The active receipt is gone — but before flagging a queue gap, honor the
@@ -2603,6 +2610,21 @@ export class AgentStatusTreeProvider
 			if (overlay) {
 				return this.applyRuntimeStatusOverlay(task, overlay);
 			}
+
+			// Tier 1c — Reviewer-lane delivery. A reviewer lane's job is to
+			// PRODUCE a review (its handoff IS the review artifact), not to be
+			// reviewed itself (review_state: no_review_expected). When such a lane
+			// still reads `running` but has already delivered its review artifact
+			// / commit, the launcher's completion hook simply failed to finalize
+			// the row — the lane is done. This is launcher-authoritative delivery
+			// evidence, so it beats the staleness cache and the liveness inference
+			// below (the reviewing agent often lingers at its prompt after
+			// finishing, keeping the pane "alive"). Resolves the Symphony dogfood
+			// gap where a completed review lane stayed under Live/running.
+			const reviewOverlay = this.getDeliveredReviewLaneOverlay(task);
+			if (reviewOverlay) {
+				return reviewOverlay;
+			}
 		}
 
 		// Tier 2a — Staleness cache (sticky CC-local decision).
@@ -2707,6 +2729,61 @@ export class AgentStatusTreeProvider
 					? (task.error_message ?? overlay.reason ?? null)
 					: task.error_message,
 		};
+	}
+
+	/**
+	 * Reconcile a `running` reviewer-lane row that has already delivered its
+	 * review, returning a display task finalized to `completed` /
+	 * `no_review_expected` — or null when the lane is NOT a reviewer lane, is
+	 * not locally probe-able, or has produced no review yet (so a genuinely
+	 * in-flight reviewer is preserved as running).
+	 *
+	 * Why this exists (Symphony dogfood gap, 2026-06-16): review lane
+	 * `review-symphony-visible-claude-entrypoint-20260616` finished — it wrote
+	 * and committed its `research/REVIEW-…md` artifact and the source task was
+	 * marked reviewed — but Command Central kept showing the REVIEW LANE itself
+	 * under Live/running. Its lifecycle hook never finalized the row
+	 * (status=running, completed_at=null, end_commit=null) and the agent process
+	 * lingered at its prompt, so the cheap liveness probe read the pane as
+	 * "alive" and every demotion tier was skipped. `oste-complete.sh` later
+	 * repaired the projection to completed / no_review_expected.
+	 *
+	 * Authoritative evidence a reviewer lane is DONE (any one suffices):
+	 *  - its declared review handoff artifact exists on disk
+	 *    (the reviewer-specific deliverable; "the handoff IS the review"), or
+	 *  - it recorded a review commit (`end_commit`).
+	 *
+	 * Gates:
+	 *  - {@link isReviewOnlyLane}: only reviewer lanes are `no_review_expected`.
+	 *  - {@link isLocalFileProbeAuthoritative}: a remote node's lane is judged
+	 *    by its own metadata, never by a hub-local file probe — so a genuine
+	 *    running reviewer on another machine is never demoted from here.
+	 *  - a genuinely PRESENT self pending-review receipt aborts the override:
+	 *    reviewer lanes are never owed a review of themselves, so a present
+	 *    active receipt is anomalous and we defer rather than force-complete.
+	 *
+	 * Does NOT mutate tasks.json — it only shapes the in-memory display row,
+	 * exactly like every other {@link toDisplayTask} overlay.
+	 */
+	private getDeliveredReviewLaneOverlay(task: AgentTask): AgentTask | null {
+		if (task.status !== "running") return null;
+		if (!isReviewOnlyLane(task)) return null;
+		if (!isLocalFileProbeAuthoritative(task)) return null;
+		if (this.getPendingReviewQueueState(task) === "present") return null;
+
+		const artifactDelivered = this.getDeclaredHandoffState(task) === "present";
+		const committed = Boolean(task.end_commit) && task.end_commit !== "unknown";
+		if (!artifactDelivered && !committed) return null;
+
+		const base = this.applyRuntimeStatusOverlay(task, {
+			status: "completed",
+			reason:
+				"Reviewer lane delivered its review artifact; finalizing stale running row (no_review_expected).",
+		});
+		// Recover the reviewer-lane disposition the stale row never projected:
+		// a reviewer lane is no_review_expected, which also clears the
+		// review-receipt-missing limbo gate (isReviewQueueReceiptMissing).
+		return { ...base, review_state: "no_review_expected" };
 	}
 
 	/**

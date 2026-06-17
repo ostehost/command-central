@@ -3,6 +3,7 @@ import type { AgentTask } from "../../src/providers/agent-status-tree-provider.j
 import {
 	extractSourceTaskId,
 	isAutoReviewLane,
+	isReviewOnlyLane,
 	partitionAutoReviewLanes,
 } from "../../src/utils/auto-review-lane.js";
 
@@ -165,6 +166,50 @@ describe("isAutoReviewLane", () => {
 			role: "developer",
 		});
 		expect(isAutoReviewLane(tmpDirOnly)).toBe(false);
+	});
+});
+
+describe("isReviewOnlyLane", () => {
+	test("flags a reviewer-role lane in a REAL project dir (unlike isAutoReviewLane)", () => {
+		// The defining contrast: a reviewer lane that ran in the real repo is
+		// never an auto-review lane (not hidden), but IS a review-only lane (its
+		// lifecycle is no_review_expected).
+		expect(isAutoReviewLane(manualReviewerTask)).toBe(false);
+		expect(isReviewOnlyLane(manualReviewerTask)).toBe(true);
+	});
+
+	test("flags a lane_kind=review lane with no role field", () => {
+		const laneKindOnly = makeTask({
+			id: "review-symphony-visible-claude-entrypoint-20260616",
+			project_dir: "/Users/ostehost/projects/symphony-daemon",
+			lane_kind: "review",
+		});
+		expect(isReviewOnlyLane(laneKindOnly)).toBe(true);
+	});
+
+	test("flags review- id corroborated by a /REVIEW- handoff artifact", () => {
+		const idPlusHandoff = makeTask({
+			id: "review-symphony-visible-claude-entrypoint-20260616",
+			project_dir: "/Users/ostehost/projects/symphony-daemon",
+			role: "developer",
+			handoff_file:
+				"research/REVIEW-symphony-visible-claude-entrypoint-20260616.md",
+		});
+		expect(isReviewOnlyLane(idPlusHandoff)).toBe(true);
+	});
+
+	test("does NOT flag a normal developer task", () => {
+		expect(isReviewOnlyLane(normalDeveloperTask)).toBe(false);
+	});
+
+	test("review- id ALONE (no review handoff) is not enough — avoids misclassifying impl tasks", () => {
+		const implNamedReview = makeTask({
+			id: "review-queue-health-refactor-20260616",
+			project_dir: "/Users/ostehost/projects/command-central",
+			role: "developer",
+			handoff_file: "research/QUEUE-HEALTH-REFACTOR.md",
+		});
+		expect(isReviewOnlyLane(implNamedReview)).toBe(false);
 	});
 });
 

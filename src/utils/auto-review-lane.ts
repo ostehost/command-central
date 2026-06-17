@@ -22,6 +22,35 @@ export function isAutoReviewLane(task: AgentTask): boolean {
 }
 
 /**
+ * Detects a review-ONLY lane regardless of where it executed.
+ *
+ * Unlike {@link isAutoReviewLane} (which is deliberately narrow — it only
+ * matches launcher-spawned review worktrees under `/tmp/*-review`, so that
+ * reviewer lanes running in real project dirs are never *hidden* as
+ * disposable auto-review noise), this predicate identifies any lane whose JOB
+ * is to produce a review. It exists for lifecycle reconciliation, not
+ * filtering: a reviewer lane is `no_review_expected` by disposition — its
+ * handoff IS the review artifact and it is never itself reviewed — so callers
+ * use this to (a) finalize a stale `running` reviewer row that already
+ * delivered its artifact, and (b) suppress a false "review receipt missing"
+ * gap for a lane that was never owed a receipt of itself.
+ *
+ * Signals, strongest first:
+ *  - `role === "reviewer"` — the launcher's explicit role.
+ *  - `lane_kind === "review"` — the Work System canonical lane kind.
+ *  - `review-` id prefix CORROBORATED by a `/REVIEW-` handoff artifact — the
+ *    weaker heuristics are required together so an implementation task that
+ *    merely starts with `review-` is not misclassified as a reviewer lane.
+ */
+export function isReviewOnlyLane(task: AgentTask): boolean {
+	if (task.role === "reviewer") return true;
+	if (task.lane_kind?.trim().toLowerCase() === "review") return true;
+	const hasReviewIdPrefix = task.id.startsWith(AUTO_REVIEW_ID_PREFIX);
+	const hasReviewHandoff = task.handoff_file?.includes("/REVIEW-") ?? false;
+	return hasReviewIdPrefix && hasReviewHandoff;
+}
+
+/**
  * Extracts the source task ID from an auto-review lane.
  * Convention: review lane id is `review-<sourceTaskId>`.
  * Returns null if the task is not an auto-review lane or has no prefix.
