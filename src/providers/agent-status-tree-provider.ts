@@ -440,6 +440,14 @@ export interface CodexRunsContainerNode {
 export interface CodexRunNode {
 	type: "codexRun";
 	run: CodexRunView;
+	/**
+	 * Which projected container rendered this run. The same run can appear both
+	 * under a run-group fallback (when the group has no runtime snapshot
+	 * entries) and under the Run Attempts container, so the container
+	 * disambiguates the TreeItem id and the getParent target. Defaults to the
+	 * Run Attempts container when absent.
+	 */
+	container?: SymphonyRunGroupKind | "runs";
 }
 
 export interface TaskFlowSingleNode {
@@ -3076,7 +3084,7 @@ export class AgentStatusTreeProvider
 			return this.createCodexRunsItem(element);
 		}
 		if (element.type === "codexRun") {
-			return this.createCodexRunItem(element.run);
+			return this.createCodexRunItem(element);
 		}
 		if (element.type === "projectGroup") {
 			return this.createProjectGroupItem(element);
@@ -3353,7 +3361,11 @@ export class AgentStatusTreeProvider
 				];
 			}
 			return element.runs.map(
-				(run): CodexRunNode => ({ type: "codexRun", run }),
+				(run): CodexRunNode => ({
+					type: "codexRun",
+					run,
+					container: element.kind,
+				}),
 			);
 		}
 
@@ -3397,7 +3409,7 @@ export class AgentStatusTreeProvider
 				];
 			}
 			return element.runs.map(
-				(run): CodexRunNode => ({ type: "codexRun", run }),
+				(run): CodexRunNode => ({ type: "codexRun", run, container: "runs" }),
 			);
 		}
 
@@ -6843,15 +6855,20 @@ export class AgentStatusTreeProvider
 			return { type: "openclawTask", task: node.task };
 		};
 
-		if (element.type === "symphonyDashboard") {
-			return { type: "symphony", runs: element.runs, flows: element.flows };
-		}
-		if (element.type === "symphonyRunGroup") {
-			return {
-				type: "symphony",
-				runs: element.runs,
-				flows: this.getVisibleTaskFlows(),
-			};
+		// The Symphony dashboard, run groups, Workstreams, and Run Attempts
+		// containers are the top-level items in symphony viewMode
+		// (getSymphonyChildren is returned directly from the root) and are not
+		// rendered at all in agentStatus mode (which surfaces a summary row
+		// instead). The `{ type: "symphony" }` root node is never itself a tree
+		// child, so reporting it as a parent would point reveal/refresh at a
+		// node absent from the tree. Root items must report no parent.
+		if (
+			element.type === "symphonyDashboard" ||
+			element.type === "symphonyRunGroup" ||
+			element.type === "taskflows" ||
+			element.type === "codexRuns"
+		) {
+			return undefined;
 		}
 		if (element.type === "symphonySnapshotEntry") {
 			const runs = this.getVisibleCodexRuns();
@@ -6866,13 +6883,6 @@ export class AgentStatusTreeProvider
 				...(snapshot ? { snapshot } : {}),
 			};
 		}
-		if (element.type === "taskflows") {
-			return {
-				type: "symphony",
-				runs: this.getVisibleCodexRuns(),
-				flows: element.flows,
-			};
-		}
 		if (element.type === "taskFlowGroup") {
 			return { type: "taskflows", flows: this.getVisibleTaskFlows() };
 		}
@@ -6885,15 +6895,24 @@ export class AgentStatusTreeProvider
 			);
 			if (flow) return { type: "taskFlowGroup", flow };
 		}
-		if (element.type === "codexRuns") {
-			return {
+		if (element.type === "codexRun") {
+			const container = element.container ?? "runs";
+			const runs = this.getVisibleCodexRuns();
+			if (container === "runs") {
+				return { type: "codexRuns", runs };
+			}
+			// Run-group fallback rendering: the run is a child of its matching
+			// run group, not the Run Attempts container. Reconstruct the exact
+			// run-group node the tree built so reveal walks a present parent.
+			const root: SymphonyRootNode = {
 				type: "symphony",
-				runs: element.runs,
+				runs,
 				flows: this.getVisibleTaskFlows(),
 			};
-		}
-		if (element.type === "codexRun") {
-			return { type: "codexRuns", runs: this.getVisibleCodexRuns() };
+			return this.getSymphonyChildren(root).find(
+				(child): child is SymphonyRunGroupNode =>
+					child.type === "symphonyRunGroup" && child.kind === container,
+			);
 		}
 
 		if (this.isProjectGroupingEnabled()) {
@@ -7928,7 +7947,9 @@ export class AgentStatusTreeProvider
 		return item;
 	}
 
-	private createCodexRunItem(run: CodexRunView): vscode.TreeItem {
+	private createCodexRunItem(node: CodexRunNode): vscode.TreeItem {
+		const { run } = node;
+		const container = node.container ?? "runs";
 		const activity = this.getCodexRunActivityTimeMs(run);
 		const descriptionParts = [
 			this.formatCodexRunStatus(run.status),
@@ -7944,7 +7965,7 @@ export class AgentStatusTreeProvider
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = descriptionParts.join(" · ");
-		item.id = `symphony:codex-run:${symphonyRunIdentity(run)}`;
+		item.id = `symphony:codex-run:${container}:${symphonyRunIdentity(run)}`;
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${run.title}**`,
