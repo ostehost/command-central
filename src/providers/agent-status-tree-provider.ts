@@ -18,10 +18,7 @@ import {
 	resolveResumeBackend,
 } from "../commands/resume-session.js";
 import { AgentRegistry } from "../discovery/agent-registry.js";
-import type {
-	ProcessScanDiagnosticEntry,
-	ProcessScanFilterReason,
-} from "../discovery/process-scanner.js";
+import type { ProcessScanDiagnosticEntry } from "../discovery/process-scanner.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
 import type { AcpSessionService } from "../services/acp-session-service.js";
@@ -228,6 +225,12 @@ import {
 	parsePerFileStatusesFromNameStatus,
 	shortenCommitHash,
 } from "./diff-format.js";
+// Pure process-discovery diagnostics formatting was extracted to
+// discovery-format.ts.
+import {
+	formatRetainedDiscoveryEntry,
+	summarizeFilteredDiscoveryMatches,
+} from "./discovery-format.js";
 // Stateless git-diff execution was extracted to git-diff.ts; the diff-summary
 // cache stays here and calls computeDiffSummaryAsync as its compute function.
 import {
@@ -6060,7 +6063,7 @@ export class AgentStatusTreeProvider
 		const sessionFileAgentCount = discoveredAgents.filter(
 			(agent) => agent.source === "session-file",
 		).length;
-		const filteredGroups = this.summarizeFilteredDiscoveryMatches(
+		const filteredGroups = summarizeFilteredDiscoveryMatches(
 			processDiagnostics.filtered,
 		);
 
@@ -6088,7 +6091,7 @@ export class AgentStatusTreeProvider
 			lines.push("");
 			lines.push(`Active agents (${processDiagnostics.retained.length}):`);
 			for (const entry of processDiagnostics.retained) {
-				lines.push(`  ${this.formatRetainedDiscoveryEntry(entry, now)}`);
+				lines.push(`  ${formatRetainedDiscoveryEntry(entry, now)}`);
 			}
 		}
 
@@ -6308,127 +6311,6 @@ export class AgentStatusTreeProvider
 		).length;
 		const archivedCount = tasks.length - runningCount;
 		return `${runningCount} running, ${archivedCount} completed`;
-	}
-
-	private summarizeFilteredDiscoveryMatches(
-		entries: ProcessScanDiagnosticEntry[],
-	): Array<{ label: string; count: number; names: string; note?: string }> {
-		const groups = new Map<
-			string,
-			{
-				label: string;
-				note?: string;
-				count: number;
-				nameCounts: Map<string, number>;
-			}
-		>();
-
-		for (const entry of entries) {
-			const category = this.getDiscoveryFilterCategory(entry.reason);
-			const group = groups.get(category.key) ?? {
-				label: category.label,
-				note: category.note,
-				count: 0,
-				nameCounts: new Map<string, number>(),
-			};
-			group.count += 1;
-			const name = this.getDiscoveryDiagnosticName(entry);
-			group.nameCounts.set(name, (group.nameCounts.get(name) ?? 0) + 1);
-			groups.set(category.key, group);
-		}
-
-		return [...groups.values()]
-			.sort((left, right) => right.count - left.count)
-			.map((group) => ({
-				label: group.label,
-				count: group.count,
-				names: this.formatDiscoveryNameCounts(group.nameCounts),
-				note: group.note,
-			}));
-	}
-
-	private getDiscoveryFilterCategory(
-		reason: ProcessScanFilterReason | undefined,
-	): { key: string; label: string; note?: string } {
-		switch (reason) {
-			case "excluded-binary":
-				return {
-					key: "helper-binaries",
-					label: "Helper binaries",
-					note: "consider killing stale processes",
-				};
-			case "interactive-process":
-			case "shell-process":
-				return {
-					key: "interactive-cli",
-					label: "Interactive CLIs",
-					note: "idle sessions, not agents",
-				};
-			case "noise-process":
-				return {
-					key: "ui-noise",
-					label: "UI/helper noise",
-					note: "renderer/helper processes",
-				};
-			case "stale-process":
-				return {
-					key: "stale-processes",
-					label: "Stale processes",
-					note: "inactive streams or long-idle shells",
-				};
-			case "cwd-unresolved":
-				return {
-					key: "cwd-unresolved",
-					label: "CWD lookup failures",
-					note: "missing usable project directories",
-				};
-			case "internal-tool-dir":
-				return {
-					key: "internal-tools",
-					label: "Internal tool directories",
-					note: "internal tooling, not user agents",
-				};
-			default:
-				return { key: "other", label: "Other filtered matches" };
-		}
-	}
-
-	private getDiscoveryDiagnosticName(
-		entry: ProcessScanDiagnosticEntry,
-	): string {
-		const binaryName = entry.binaryName?.trim().toLowerCase();
-		if (binaryName) return binaryName;
-		const detected = detectAgentType({
-			process_name: entry.binaryName,
-			command: entry.command,
-		});
-		return detected === "unknown" ? "unknown" : detected;
-	}
-
-	private formatDiscoveryNameCounts(nameCounts: Map<string, number>): string {
-		const entries = [...nameCounts.entries()].sort((left, right) =>
-			right[1] === left[1]
-				? left[0].localeCompare(right[0])
-				: right[1] - left[1],
-		);
-		return entries
-			.slice(0, 3)
-			.map(([name, count]) => (count > 1 ? `${count} ${name}` : name))
-			.join(", ");
-	}
-
-	private formatRetainedDiscoveryEntry(
-		entry: ProcessScanDiagnosticEntry,
-		now = new Date(),
-	): string {
-		const agentType = detectAgentType({
-			process_name: entry.binaryName,
-			command: entry.command,
-		});
-		const projectName = entry.projectDir
-			? path.basename(entry.projectDir) || entry.projectDir
-			: "unknown";
-		return `${agentType === "unknown" ? (entry.binaryName ?? "unknown") : agentType} · ${projectName} · PID ${entry.pid} · running ${formatElapsed(entry.startTime.toISOString(), now)}`;
 	}
 
 	private getDiscoveryRecommendationLines(args: {
