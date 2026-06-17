@@ -188,7 +188,12 @@ import {
 } from "./agent-task-normalize.js";
 // Agent-type detection/icon helpers were extracted to agent-type-detection.ts;
 // imported for internal use and re-exported so existing import sites stay stable.
-import { detectAgentType } from "./agent-type-detection.js";
+import {
+	detectAgentType,
+	formatAgentTypeSummary,
+	getBackendLabel,
+	getTaskAgentIdentities,
+} from "./agent-type-detection.js";
 // Pure Codex-run presentation/predicate helpers were extracted to
 // codex-run-format.ts; the provider calls them as free functions.
 import {
@@ -2207,7 +2212,7 @@ export class AgentStatusTreeProvider
 			}
 			if (masterEnabled && prev === "running") {
 				const elapsed = formatElapsed(task.started_at);
-				const backend = this.getBackendLabel(task);
+				const backend = getBackendLabel(task);
 
 				if (
 					(task.status === "completed" || task.status === "completed_dirty") &&
@@ -2351,25 +2356,12 @@ export class AgentStatusTreeProvider
 		}
 	}
 
-	private getBackendLabel(task: AgentTask): string {
-		const detected = detectAgentType(task);
-		if (detected !== "unknown") return detected;
-		const explicit = (task.agent_backend ?? task.cli_name ?? "").trim();
-		return explicit.length > 0 ? explicit.toLowerCase() : "unknown";
-	}
-
-	private getTaskAgentIdentities(task: AgentTask): string[] {
-		return [task.role, task.agent_backend, task.cli_name]
-			.map((value) => value?.trim())
-			.filter((value): value is string => Boolean(value));
-	}
-
 	private resolveInheritedTaskModel(
 		task: AgentTask,
 	): OpenClawAgentModel | null {
 		if (!this._openclawConfigService) return null;
 
-		for (const agentId of this.getTaskAgentIdentities(task)) {
+		for (const agentId of getTaskAgentIdentities(task)) {
 			const model = this._openclawConfigService.getAgentModel(agentId);
 			if (model?.model?.trim()) return model;
 		}
@@ -6267,7 +6259,7 @@ export class AgentStatusTreeProvider
 
 		lines.push(`Agent Discovery Health: ${healthStatus}`);
 		lines.push(
-			`  Running agents: ${runningAgentSubjects.length} (${this.formatAgentTypeSummary(runningAgentSubjects)})`,
+			`  Running agents: ${runningAgentSubjects.length} (${formatAgentTypeSummary(runningAgentSubjects)})`,
 		);
 		lines.push(
 			`  Background tasks: ${backgroundTasks.length} (${this.formatBackgroundTaskSummary(backgroundRunningCount, backgroundSucceededCount, backgroundOtherCount)})`,
@@ -6513,28 +6505,6 @@ export class AgentStatusTreeProvider
 					: err.message;
 			return { summary: emptySummary, error: detail };
 		}
-	}
-
-	private formatAgentTypeSummary(
-		agents: Array<DiscoveredAgent | AgentTask>,
-	): string {
-		if (agents.length === 0) return "none";
-
-		const counts = new Map<string, number>();
-		for (const agent of agents) {
-			const type = detectAgentType(agent);
-			const label = type === "unknown" ? "unknown" : type;
-			counts.set(label, (counts.get(label) ?? 0) + 1);
-		}
-
-		return [...counts.entries()]
-			.sort((left, right) =>
-				right[1] === left[1]
-					? left[0].localeCompare(right[0])
-					: right[1] - left[1],
-			)
-			.map(([label, count]) => `${count} ${label}`)
-			.join(", ");
 	}
 
 	private formatBackgroundTaskSummary(

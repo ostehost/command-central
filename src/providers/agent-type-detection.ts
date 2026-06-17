@@ -100,3 +100,38 @@ export function getAgentTypeIcon(
 			return new vscode.ThemeIcon("hubot");
 	}
 }
+
+export function getBackendLabel(task: AgentTask): string {
+	const detected = detectAgentType(task);
+	if (detected !== "unknown") return detected;
+	const explicit = (task.agent_backend ?? task.cli_name ?? "").trim();
+	return explicit.length > 0 ? explicit.toLowerCase() : "unknown";
+}
+
+export function getTaskAgentIdentities(task: AgentTask): string[] {
+	return [task.role, task.agent_backend, task.cli_name]
+		.map((value) => value?.trim())
+		.filter((value): value is string => Boolean(value));
+}
+
+export function formatAgentTypeSummary(
+	agents: Array<DiscoveredAgent | AgentTask>,
+): string {
+	if (agents.length === 0) return "none";
+
+	const counts = new Map<string, number>();
+	for (const agent of agents) {
+		const type = detectAgentType(agent);
+		const label = type === "unknown" ? "unknown" : type;
+		counts.set(label, (counts.get(label) ?? 0) + 1);
+	}
+
+	return [...counts.entries()]
+		.sort((left, right) =>
+			right[1] === left[1]
+				? left[0].localeCompare(right[0])
+				: right[1] - left[1],
+		)
+		.map(([label, count]) => `${count} ${label}`)
+		.join(", ");
+}

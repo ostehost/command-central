@@ -20,6 +20,11 @@ import {
 	getAgentTypeIcon,
 	getStatusThemeIcon,
 } from "../../src/providers/agent-status-tree-provider.js";
+import {
+	formatAgentTypeSummary,
+	getBackendLabel,
+	getTaskAgentIdentities,
+} from "../../src/providers/agent-type-detection.js";
 import { createMockTask } from "./_helpers/agent-status-tree-provider-test-base.js";
 
 describe("formatElapsed", () => {
@@ -360,5 +365,46 @@ describe("classifyLifecycleConflict", () => {
 		expect(conflict.kind).toBe("live-process-conflict");
 		expect(conflict.detail).not.toContain("(");
 		expect(conflict.detail).toContain("failed");
+	});
+});
+
+describe("agent-type labeling helpers", () => {
+	test("getBackendLabel prefers detected type, falls back to explicit backend", () => {
+		expect(getBackendLabel(createMockTask({ model: "claude-opus-4" }))).toBe(
+			"claude",
+		);
+		expect(
+			getBackendLabel(
+				createMockTask({ model: "", agent_backend: "MyBackend", cli_name: "" }),
+			),
+		).toBe("mybackend");
+		expect(
+			getBackendLabel(
+				createMockTask({ model: "", agent_backend: "", cli_name: "" }),
+			),
+		).toBe("unknown");
+	});
+
+	test("getTaskAgentIdentities collects trimmed role/backend/cli identity strings", () => {
+		expect(
+			getTaskAgentIdentities(
+				createMockTask({
+					role: "developer",
+					agent_backend: " codex ",
+					cli_name: "",
+				}),
+			),
+		).toEqual(["developer", "codex"]);
+	});
+
+	test("formatAgentTypeSummary counts agent types, ordered by frequency", () => {
+		expect(formatAgentTypeSummary([])).toBe("none");
+		expect(
+			formatAgentTypeSummary([
+				createMockTask({ id: "a", model: "claude-opus-4" }),
+				createMockTask({ id: "b", model: "claude-sonnet-4" }),
+				createMockTask({ id: "c", model: "gpt-5.1" }),
+			]),
+		).toBe("2 claude, 1 codex");
 	});
 });
