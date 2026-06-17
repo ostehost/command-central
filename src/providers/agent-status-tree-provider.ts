@@ -36,7 +36,6 @@ import { ProjectIconManager } from "../services/project-icon-manager.js";
 import { ReviewTracker } from "../services/review-tracker.js";
 import type { TaskFlowService } from "../services/taskflow-service.js";
 import type {
-	CodexRunStatus,
 	CodexRunView,
 	SymphonyRetryEntryView,
 	SymphonyRunningEntryView,
@@ -112,20 +111,6 @@ import {
 	isLocalFileProbeAuthoritative,
 	isRemoteNodeTaskForCurrentHost,
 } from "./agent-task-classification.js";
-
-const CODEX_RUN_STATUS_ORDER: CodexRunStatus[] = [
-	"running",
-	"queued",
-	"waiting",
-	"blocked",
-	"failed",
-	"timed_out",
-	"lost",
-	"cancelled",
-	"stopped",
-	"unknown",
-	"succeeded",
-];
 
 export type { AgentEvent } from "../events/agent-events.js";
 export type {
@@ -208,6 +193,7 @@ import { detectAgentType } from "./agent-type-detection.js";
 // Pure Codex-run presentation/predicate helpers were extracted to
 // codex-run-format.ts; the provider calls them as free functions.
 import {
+	createCodexRunsTooltip,
 	formatCodexRunAuthority,
 	formatCodexRunAutomationSource,
 	formatCodexRunFieldSourceDetails,
@@ -218,6 +204,7 @@ import {
 	formatCodexRunRuntime,
 	formatCodexRunSource,
 	formatCodexRunStatus,
+	formatCodexRunsDescription,
 	formatCodexRunTokens,
 	formatCodexRunTrackerSource,
 	formatCodexRunTurns,
@@ -225,8 +212,6 @@ import {
 	getCodexRunActivityTimeMs,
 	getCodexRunEvidenceIcon,
 	getCodexRunStatusIcon,
-	isActiveCodexRunStatus,
-	isAttentionCodexRunStatus,
 } from "./codex-run-format.js";
 // Pure Symphony projection/run-group presentation helpers were extracted to
 // symphony-projection.ts; the provider calls them as free functions.
@@ -5490,100 +5475,6 @@ export class AgentStatusTreeProvider
 		};
 	}
 
-	private formatCodexRunsDescription(runs: CodexRunView[]): string {
-		const count = runs.length;
-		const workingCount = runs.filter((run) =>
-			isActiveCodexRunStatus(run.status),
-		).length;
-		const attentionCount = runs.filter((run) =>
-			isAttentionCodexRunStatus(run.status),
-		).length;
-		const stoppedCount = runs.filter((run) => run.status === "stopped").length;
-		const cancelledCount = runs.filter(
-			(run) => run.status === "cancelled",
-		).length;
-		const unknownCount = runs.filter((run) => run.status === "unknown").length;
-		const completedCount = runs.filter(
-			(run) => run.status === "succeeded",
-		).length;
-		const retryingCount = runs.filter(
-			(run) => run.retryAttempt != null || run.retryDueAt != null,
-		).length;
-		const tokenTotal = runs.reduce(
-			(total, run) => total + (run.totalTokens ?? 0),
-			0,
-		);
-
-		const parts = [
-			workingCount > 0 ? `${workingCount} working` : null,
-			retryingCount > 0 ? `${retryingCount} retrying` : null,
-			attentionCount > 0 ? `${attentionCount} needs attention` : null,
-			stoppedCount > 0 ? `${stoppedCount} stopped` : null,
-			cancelledCount > 0 ? `${cancelledCount} cancelled` : null,
-			unknownCount > 0 ? `${unknownCount} unknown` : null,
-			completedCount > 0 ? `${completedCount} completed` : null,
-			tokenTotal > 0 ? `${tokenTotal} tokens` : null,
-		].filter((part): part is string => part !== null);
-
-		if (parts.length > 0) {
-			return parts.join(" · ");
-		}
-
-		if (count === 0) {
-			return "no projected runs";
-		}
-
-		return count === 1 ? "1 run" : `${count} runs`;
-	}
-
-	private createCodexRunsTooltip(runs: CodexRunView[]): vscode.MarkdownString {
-		const statusCounts = new Map<CodexRunStatus, number>();
-		for (const run of runs) {
-			statusCounts.set(run.status, (statusCounts.get(run.status) ?? 0) + 1);
-		}
-
-		const statusLine = CODEX_RUN_STATUS_ORDER.filter((status) =>
-			statusCounts.has(status),
-		)
-			.map(
-				(status) =>
-					`${formatCodexRunStatus(status)}: ${statusCounts.get(status)}`,
-			)
-			.join(" · ");
-		const ownedCount = runs.filter(
-			(run) => run.source.kind !== "launcher",
-		).length;
-		const launcherOnlyCount = runs.length - ownedCount;
-		const retryingCount = runs.filter(
-			(run) => run.retryAttempt != null || run.retryDueAt != null,
-		).length;
-		const tokenTotal = runs.reduce(
-			(total, run) => total + (run.totalTokens ?? 0),
-			0,
-		);
-		const runtimeTotal = runs.reduce(
-			(total, run) => total + (run.runtimeSeconds ?? 0),
-			0,
-		);
-
-		return new vscode.MarkdownString(
-			[
-				"**Symphony / Run Attempts**",
-				`${runs.length} read-only projected ${runs.length === 1 ? "run attempt" : "run attempts"}`,
-				statusLine,
-				retryingCount > 0 ? `Retry queue rows: ${retryingCount}` : "",
-				tokenTotal > 0 ? `Total tokens: ${tokenTotal}` : "",
-				runtimeTotal > 0 ? `Runtime seconds: ${Math.round(runtimeTotal)}` : "",
-				runs.length > 0
-					? `${ownedCount} source-owned · ${launcherOnlyCount} launcher-only`
-					: "No source rows are currently projected into this view.",
-				"Lifecycle ownership stays with the source owner (OpenClaw, TaskFlow, or launcher).",
-			]
-				.filter((part) => part.length > 0)
-				.join("\n\n"),
-		);
-	}
-
 	private formatCodexRunLegacyOpenClawNote(task: OpenClawTask): string {
 		return `Also shown in Symphony / Run Attempts as OpenClaw task ${task.taskId}.`;
 	}
@@ -7285,8 +7176,8 @@ export class AgentStatusTreeProvider
 			count === 1 ? "Run Attempts · 1" : `Run Attempts · ${count}`,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
-		item.description = this.formatCodexRunsDescription(node.runs);
-		item.tooltip = this.createCodexRunsTooltip(node.runs);
+		item.description = formatCodexRunsDescription(node.runs);
+		item.tooltip = createCodexRunsTooltip(node.runs);
 		item.id = "symphony:codex-runs";
 		item.contextValue = "codexRuns";
 		item.iconPath = new vscode.ThemeIcon("run-all");

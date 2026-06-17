@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
 	codexRunRefsEqual,
+	createCodexRunsTooltip,
 	formatCodexRunIssue,
 	formatCodexRunOwnership,
 	formatCodexRunRetry,
 	formatCodexRunSource,
 	formatCodexRunStatus,
+	formatCodexRunsDescription,
 	formatCodexRunTokens,
 	isActiveCodexRunStatus,
 	isAttentionCodexRunStatus,
@@ -94,5 +96,25 @@ describe("codex-run-format", () => {
 				makeRun({ issueIdentifier: "ABC-1", issueState: "open" }),
 			),
 		).toBe("ABC-1 · open");
+	});
+
+	test("formatCodexRunsDescription aggregates status buckets and tokens", () => {
+		expect(formatCodexRunsDescription([])).toBe("no projected runs");
+		expect(
+			formatCodexRunsDescription([
+				makeRun({ runId: "a", status: "running" }),
+				makeRun({ runId: "b", status: "failed" }),
+				makeRun({ runId: "c", status: "succeeded", totalTokens: 42 }),
+			]),
+		).toBe("1 working · 1 needs attention · 1 completed · 42 tokens");
+	});
+
+	test("createCodexRunsTooltip lists status counts and ownership split", () => {
+		const tooltip = createCodexRunsTooltip([
+			makeRun({ runId: "a", status: "running" }),
+			makeRun({ runId: "b", status: "running", source: { kind: "launcher" } }),
+		]);
+		expect(tooltip.value).toContain("Running: 2");
+		expect(tooltip.value).toContain("1 source-owned · 1 launcher-only");
 	});
 });
