@@ -121,6 +121,7 @@ import {
 	getTaskExecutionHostLabel,
 	isLocalFileProbeAuthoritative,
 	isRemoteNodeTaskForCurrentHost,
+	isSymphonyLane,
 } from "./agent-task-classification.js";
 
 const CODEX_RUN_STATUS_ORDER: CodexRunStatus[] = [
@@ -155,6 +156,7 @@ export {
 	classifyTaskSurface,
 	getTaskExecutionHostLabel,
 	isRemoteNodeTaskForCurrentHost,
+	isSymphonyLane,
 } from "./agent-task-classification.js";
 
 /** Validate session ID to prevent shell injection */
@@ -9819,7 +9821,8 @@ export class AgentStatusTreeProvider
 		if (
 			taskRouting.kind === "detached" &&
 			isDoneStatus &&
-			task.role !== "reviewer"
+			task.role !== "reviewer" &&
+			!isSymphonyLane(task)
 		) {
 			descriptionParts.push("⚠ detached");
 		}

@@ -278,6 +278,27 @@ export function classifyTaskSurface(task: AgentTask): TaskSurfaceSummary {
 	};
 }
 
+// ── Symphony lane predicate ──────────────────────────────────────────
+
+/**
+ * Whether this task is a Symphony-orchestrated lane.
+ *
+ * A Symphony lane is launched by the Symphony daemon, which owns completion
+ * via the launcher wrapper / receipt / oste-complete.sh — NOT via a
+ * session_key/callback_url. So a completed Symphony lane is transport-level
+ * "detached" yet fully orchestrated; it never needs manual observation.
+ *
+ * Canonical signal: launcher id matches `symphony-<ticket>-<hash>`.
+ * Corroborating signal: `orchestration_mode === "symphony"`.
+ */
+export function isSymphonyLane(
+	task: Pick<AgentTask, "id" | "orchestration_mode">,
+): boolean {
+	if (typeof task.id === "string" && /^symphony-/.test(task.id)) return true;
+	const mode = task.orchestration_mode?.trim().toLowerCase();
+	return mode === "symphony";
+}
+
 // ── Completion routing classification ───────────────────────────────
 
 export type CompletionRoutingKind =
@@ -345,6 +366,16 @@ export function classifyCompletionRouting(
 			label: "Detached — no action needed",
 			detail:
 				"Standalone reviewer lane — launched without orchestrator callback; completion was local",
+			icon: "debug-disconnect",
+			iconColor: "disabledForeground",
+		};
+	}
+	if (isSymphonyLane(task)) {
+		return {
+			kind: "detached",
+			label: "Detached — orchestrated (no action needed)",
+			detail:
+				"Symphony-orchestrated lane — completion is reported by the launcher wrapper/finalizer (oste-complete), not a session_key/callback_url",
 			icon: "debug-disconnect",
 			iconColor: "disabledForeground",
 		};
