@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import type { AgentTask } from "../../src/providers/agent-status-tree-provider.js";
 import {
+	codexRunSessionsMatch,
 	formatOpenClawAuditStatusLabel,
 	formatOpenClawTaskDuration,
 	getOpenClawRuntimeIcon,
@@ -7,6 +9,7 @@ import {
 	getOpenClawTaskDisplayTitle,
 	isOpenClawTaskActive,
 	mapOpenClawTaskToAgentStatus,
+	openClawTaskMatchesLauncherTask,
 	toSyntheticOpenClawTask,
 } from "../../src/providers/openclaw-task-format.js";
 import type { OpenClawTask } from "../../src/types/openclaw-task-types.js";
@@ -81,5 +84,34 @@ describe("openclaw-task-format", () => {
 		expect(formatOpenClawAuditStatusLabel("orphaned", 2)).toBe(
 			"orphaned findings detected",
 		);
+	});
+
+	test("session matching correlates launcher and OpenClaw sessions across the session: prefix", () => {
+		expect(codexRunSessionsMatch("session:agent-x", "agent-x")).toBe(true);
+		expect(codexRunSessionsMatch("agent-x", "agent-x")).toBe(true);
+		expect(codexRunSessionsMatch("agent-x", "agent-y")).toBe(false);
+		expect(codexRunSessionsMatch(undefined, "agent-x")).toBe(false);
+	});
+
+	test("openClawTaskMatchesLauncherTask matches by taskId, runId, or session", () => {
+		const launcher = { id: "L1", session_id: "session:agent-z" } as AgentTask;
+		expect(
+			openClawTaskMatchesLauncherTask(makeTask({ taskId: "L1" }), launcher),
+		).toBe(true);
+		expect(
+			openClawTaskMatchesLauncherTask(
+				makeTask({ taskId: "x", runId: "L1" }),
+				launcher,
+			),
+		).toBe(true);
+		expect(
+			openClawTaskMatchesLauncherTask(
+				makeTask({ taskId: "x", childSessionKey: "agent-z" }),
+				launcher,
+			),
+		).toBe(true);
+		expect(
+			openClawTaskMatchesLauncherTask(makeTask({ taskId: "x" }), launcher),
+		).toBe(false);
 	});
 });

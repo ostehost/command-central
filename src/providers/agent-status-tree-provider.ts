@@ -243,6 +243,7 @@ import {
 	isOpenClawTaskActive,
 	isOpenClawTaskVisibleInRunningMode,
 	mapOpenClawTaskToAgentStatus,
+	openClawTaskMatchesLauncherTask,
 	toSyntheticOpenClawTask,
 } from "./openclaw-task-format.js";
 // Pure Symphony projection/run-group presentation helpers were extracted to
@@ -1969,7 +1970,7 @@ export class AgentStatusTreeProvider
 	private shouldDedupOpenClawTask(task: OpenClawTask): boolean {
 		const launcherTasks = this.getLauncherTasks();
 		return launcherTasks.some((launcherTask) =>
-			this.openClawTaskMatchesLauncherTask(task, launcherTask),
+			openClawTaskMatchesLauncherTask(task, launcherTask),
 		);
 	}
 
@@ -5388,7 +5389,7 @@ export class AgentStatusTreeProvider
 	private formatCodexRunLegacyLauncherNote(task: AgentTask): string | null {
 		const codexLauncher = detectAgentType(task) === "codex";
 		const matchedOwner = this.getAllOpenClawTaskSources().some((owner) =>
-			this.openClawTaskMatchesLauncherTask(owner, task),
+			openClawTaskMatchesLauncherTask(owner, task),
 		);
 		if (!codexLauncher && !matchedOwner) return null;
 		if (matchedOwner) {
@@ -5397,35 +5398,6 @@ export class AgentStatusTreeProvider
 		return "Also shown in Symphony / Run Attempts as a launcher-owned run attempt.";
 	}
 
-	private openClawTaskMatchesLauncherTask(
-		owner: OpenClawTask,
-		task: AgentTask,
-	): boolean {
-		return (
-			owner.taskId === task.id ||
-			owner.runId === task.id ||
-			this.codexRunSessionsMatch(owner.childSessionKey, task.session_id)
-		);
-	}
-
-	private codexRunSessionsMatch(
-		left: string | undefined,
-		right: string | null | undefined,
-	): boolean {
-		if (!left || !right) return false;
-		const leftCandidates = this.codexRunSessionCandidates(left);
-		const rightCandidates = this.codexRunSessionCandidates(right);
-		return leftCandidates.some((candidate) =>
-			rightCandidates.includes(candidate),
-		);
-	}
-
-	private codexRunSessionCandidates(value: string): string[] {
-		const trimmed = value.trim();
-		if (!trimmed) return [];
-		const withoutPrefix = trimmed.replace(/^session:/, "");
-		return [...new Set([trimmed, withoutPrefix])];
-	}
 	private getTaskDiffStartCommit(t: AgentTask): string | undefined {
 		if (t.status === "running") return undefined;
 
@@ -7191,7 +7163,7 @@ export class AgentStatusTreeProvider
 	private findLauncherTaskForFlowTask(task: TaskFlowTask): AgentTask | null {
 		return (
 			this.getLauncherTasks().find((launcherTask) =>
-				this.openClawTaskMatchesLauncherTask(task, launcherTask),
+				openClawTaskMatchesLauncherTask(task, launcherTask),
 			) ?? null
 		);
 	}

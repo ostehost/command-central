@@ -113,3 +113,38 @@ export function formatOpenClawAuditStatusLabel(
 	}
 	return count === 1 ? `${code} detected` : `${code} findings detected`;
 }
+
+/**
+ * Normalize a session key into its match candidates: the trimmed value and the
+ * same value without a leading `session:` prefix. Lets a launcher session id and
+ * an OpenClaw childSessionKey correlate whether or not either carries the prefix.
+ */
+export function codexRunSessionCandidates(value: string): string[] {
+	const trimmed = value.trim();
+	if (!trimmed) return [];
+	const withoutPrefix = trimmed.replace(/^session:/, "");
+	return [...new Set([trimmed, withoutPrefix])];
+}
+
+export function codexRunSessionsMatch(
+	left: string | undefined,
+	right: string | null | undefined,
+): boolean {
+	if (!left || !right) return false;
+	const leftCandidates = codexRunSessionCandidates(left);
+	const rightCandidates = codexRunSessionCandidates(right);
+	return leftCandidates.some((candidate) =>
+		rightCandidates.includes(candidate),
+	);
+}
+
+export function openClawTaskMatchesLauncherTask(
+	owner: OpenClawTask,
+	task: AgentTask,
+): boolean {
+	return (
+		owner.taskId === task.id ||
+		owner.runId === task.id ||
+		codexRunSessionsMatch(owner.childSessionKey, task.session_id)
+	);
+}
