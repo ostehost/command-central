@@ -15,6 +15,7 @@ const realChildProcess = (globalThis as Record<string, unknown>)[
 
 import * as path from "node:path";
 import { __setCurrentMachineHostOverrideForTests } from "../../src/providers/agent-status-tree-provider.js";
+import type { TtlCache } from "../../src/utils/ttl-cache.js";
 import {
 	type AgentStatusTreeProvider,
 	createMockRegistry,
@@ -190,15 +191,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					_persistSessionHealthCache: TtlCache<boolean>;
 				}
-			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), false);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
@@ -214,15 +209,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					_persistSessionHealthCache: TtlCache<boolean>;
 				}
-			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), false);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
@@ -238,15 +227,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					_persistSessionHealthCache: TtlCache<boolean>;
 				}
-			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), false);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
@@ -286,15 +269,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					_persistSessionHealthCache: TtlCache<boolean>;
 				}
-			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), false);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
@@ -325,15 +302,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					_persistSessionHealthCache: TtlCache<boolean>;
 				}
-			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
-				alive: true,
-				checkedAt: Date.now(),
-			});
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), true);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
@@ -361,15 +332,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			// Persist cache says dead — should be ignored for tmux tasks
 			(
 				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					_persistSessionHealthCache: TtlCache<boolean>;
 				}
-			)._persistSessionHealthCache.set(getPersistSocketPath(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			)._persistSessionHealthCache.set(getPersistSocketPath(task), false);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
@@ -407,16 +372,10 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			const persistCache = (
 				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					_persistSessionHealthCache: TtlCache<boolean>;
 				}
 			)._persistSessionHealthCache;
-			persistCache.set(getPersistSocketPath(task), {
-				alive: true,
-				checkedAt: Date.now(),
-			});
+			persistCache.set(getPersistSocketPath(task), true);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 			// First call uses cache
@@ -602,20 +561,11 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			const persistCache = (
 				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					_persistSessionHealthCache: TtlCache<boolean>;
 				}
 			)._persistSessionHealthCache;
-			persistCache.set(getPersistSocketPath(older), {
-				alive: true,
-				checkedAt: Date.now(),
-			});
-			persistCache.set(getPersistSocketPath(newer), {
-				alive: true,
-				checkedAt: Date.now(),
-			});
+			persistCache.set(getPersistSocketPath(older), true);
+			persistCache.set(getPersistSocketPath(newer), true);
 			provider.readRegistry = () =>
 				createMockRegistry({
 					[older.id]: older,
@@ -651,15 +601,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					_persistSessionHealthCache: TtlCache<boolean>;
 				}
-			)._persistSessionHealthCache.set(sharedSocket, {
-				alive: true,
-				checkedAt: Date.now(),
-			});
+			)._persistSessionHealthCache.set(sharedSocket, true);
 			provider.readRegistry = () =>
 				createMockRegistry({
 					[older.id]: older,
@@ -695,15 +639,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					_persistSessionHealthCache: TtlCache<boolean>;
 				}
-			)._persistSessionHealthCache.set(sharedSocket, {
-				alive: true,
-				checkedAt: Date.now(),
-			});
+			)._persistSessionHealthCache.set(sharedSocket, true);
 			provider.readRegistry = () =>
 				createMockRegistry({
 					[older.id]: older,

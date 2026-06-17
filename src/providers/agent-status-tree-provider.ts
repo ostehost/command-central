@@ -97,6 +97,7 @@ import {
 	inspectTmuxPaneById,
 	type TmuxPaneAgentEvidence,
 } from "../utils/tmux-pane-health.js";
+import { TtlCache } from "../utils/ttl-cache.js";
 import { asString } from "../utils/value-coercion.js";
 import {
 	classifyCompletionRouting,
@@ -643,18 +644,9 @@ export class AgentStatusTreeProvider
 		string,
 		{ evidence: TmuxPaneAgentEvidence; checkedAt: number }
 	>();
-	private _handoffFileCache = new Map<
-		string,
-		{ state: DeclaredHandoffState; checkedAt: number }
-	>();
-	private _reviewQueueCache = new Map<
-		string,
-		{ state: AdvertisedReviewQueueState; checkedAt: number }
-	>();
-	private readonly _persistSessionHealthCache = new Map<
-		string,
-		{ alive: boolean; checkedAt: number }
-	>();
+	private _handoffFileCache = new TtlCache<DeclaredHandoffState>(5_000);
+	private _reviewQueueCache = new TtlCache<AdvertisedReviewQueueState>(5_000);
+	private readonly _persistSessionHealthCache = new TtlCache<boolean>(5_000);
 	/** TTL cache for stream file path resolution, keyed by task.id (TTL 5s) */
 	private _streamFilePathCache = new Map<
 		string,
@@ -1234,15 +1226,11 @@ export class AgentStatusTreeProvider
 		// origin tasks (or node tasks whose host we can't verify) stay unknown.
 		if (!isLocalFileProbeAuthoritative(task)) return "unknown";
 
-		const cacheTtlMs = 5_000;
 		const cacheKey = `${task.project_dir}::${task.handoff_file ?? ""}`;
-		const cached = this._handoffFileCache.get(cacheKey);
-		const now = Date.now();
-		if (cached && now - cached.checkedAt < cacheTtlMs) {
-			return cached.state;
-		}
+		const cached = this._handoffFileCache.getFresh(cacheKey);
+		if (cached !== undefined) return cached;
 		const state = checkDeclaredHandoff(task);
-		this._handoffFileCache.set(cacheKey, { state, checkedAt: now });
+		this._handoffFileCache.set(cacheKey, state);
 		return state;
 	}
 
@@ -1253,15 +1241,11 @@ export class AgentStatusTreeProvider
 		// origin tasks (or node tasks whose host we can't verify) stay unknown.
 		if (!isLocalFileProbeAuthoritative(task)) return "unknown";
 
-		const cacheTtlMs = 5_000;
 		const cacheKey = `${task.project_dir}::${task.pending_review_path ?? ""}`;
-		const cached = this._reviewQueueCache.get(cacheKey);
-		const now = Date.now();
-		if (cached && now - cached.checkedAt < cacheTtlMs) {
-			return cached.state;
-		}
+		const cached = this._reviewQueueCache.getFresh(cacheKey);
+		if (cached !== undefined) return cached;
 		const state = checkAdvertisedReviewQueue(task);
-		this._reviewQueueCache.set(cacheKey, { state, checkedAt: now });
+		this._reviewQueueCache.set(cacheKey, state);
 		return state;
 	}
 
@@ -1345,18 +1329,11 @@ export class AgentStatusTreeProvider
 		const socketPath = this.getPersistSocketPath(task);
 		if (!socketPath) return false;
 
-		const cacheTtlMs = 5_000;
-		const cached = this._persistSessionHealthCache.get(socketPath);
-		const now = Date.now();
-		if (cached && now - cached.checkedAt < cacheTtlMs) {
-			return cached.alive;
-		}
+		const cached = this._persistSessionHealthCache.getFresh(socketPath);
+		if (cached !== undefined) return cached;
 
 		const alive = checkPersistSessionAlive(socketPath);
-		this._persistSessionHealthCache.set(socketPath, {
-			alive,
-			checkedAt: now,
-		});
+		this._persistSessionHealthCache.set(socketPath, alive);
 		return alive;
 	}
 
