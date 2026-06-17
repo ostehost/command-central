@@ -50,3 +50,17 @@ and is safe to keep in history as dogfood provenance.
 - No Symphony/OpenClaw config touched.
 - Change kept tiny and obvious.
 - Conventional commit; hooks honored (no `--no-verify`).
+
+---
+
+## Addendum — Second Lane: symphony-PAR-189-677888b0 (2026-06-17)
+
+- **Lane:** `symphony-PAR-189-677888b0` (visible Claude Code implementation lane, Agent Teams delegate mode)
+- **Machine:** Mike MacBook Pro (`MacBookPro`)
+- **Date:** 2026-06-17
+- **Repo:** `/Users/ostehost/projects/command-central` @ branch `main`
+- A second, independent implementation lane received PAR-189 and successfully reached
+  this repo. This addendum is the harmless marker for that lane — nothing else is touched
+  (no source, no tests, no config, no version bump).
+- The full-circle **Symphony → Command Central** dogfood path is re-confirmed by this
+  second lane's arrival and committed artifact.
