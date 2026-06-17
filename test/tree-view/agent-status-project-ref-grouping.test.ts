@@ -191,15 +191,19 @@ describe("AgentStatusTreeProvider — project_ref grouping", () => {
 	});
 
 	test("identity groups with no project_dir get distinct TreeItem ids", () => {
-		// Registry-backed lanes that carry a project_ref.id but no project_dir,
-		// canonical_project_dir, or exec dirs produce project groups with
-		// projectDir: "". A `??`-based id key would collapse every such group
-		// onto the same `project:` TreeItem id; VS Code then loses correct
-		// refresh/reveal/expanded-state for all but one. Keys must stay unique.
+		// Registry-backed lanes that carry a distinct project_ref.id but no
+		// project_dir, canonical_project_dir, or exec dirs. normalizeTask derives
+		// project_name "(unknown project)" for such rows, which buildProjectNodes
+		// then stores as the group's projectDir — a NON-blank shared placeholder.
+		// A projectDir-based id key collapses every such group onto the same
+		// `project:(unknown project)` TreeItem id even though they are separate
+		// groups keyed by project_ref.id; VS Code then loses correct
+		// refresh/reveal/expanded-state for all but one. The id must come from the
+		// authoritative grouping key, not the display dir/name.
 		const dirlessA = createMockTask({
 			id: "dirless-a",
 			project_dir: "",
-			project_name: "",
+			project_name: "(unknown project)",
 			canonical_project_dir: undefined,
 			execution_dir: undefined,
 			exec_cwd: undefined,
@@ -210,7 +214,7 @@ describe("AgentStatusTreeProvider — project_ref grouping", () => {
 		const dirlessB = createMockTask({
 			id: "dirless-b",
 			project_dir: "",
-			project_name: "",
+			project_name: "(unknown project)",
 			canonical_project_dir: undefined,
 			execution_dir: undefined,
 			exec_cwd: undefined,

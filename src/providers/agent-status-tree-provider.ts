@@ -480,6 +480,14 @@ export interface ProjectGroupNode {
 	type: "projectGroup";
 	projectName: string;
 	projectDir?: string;
+	/**
+	 * The unique grouping key buildProjectNodes keyed this group by
+	 * (`id:<project_ref.id>`, `dir:<dir>`, `name:<name>`, or the Unregistered
+	 * bucket key). The display dir/name are not unique — registry-backed lanes
+	 * with no project_dir normalize to a shared "(unknown project)" placeholder
+	 * — so this is the authoritative identity for the stable TreeItem id.
+	 */
+	groupKey?: string;
 	tasks: AgentTask[];
 	discoveredAgents?: DiscoveredAgent[];
 	parentGroupKey?: string;
@@ -504,13 +512,18 @@ export interface FolderGroupNode {
 }
 
 function projectGroupNodeKey(
-	node: Pick<ProjectGroupNode, "projectDir" | "projectName">,
+	node: Pick<ProjectGroupNode, "projectDir" | "projectName" | "groupKey">,
 ): string {
-	// Treat a blank/whitespace projectDir as absent: buildProjectNodes stores
-	// projectDir: "" for the Unregistered bucket and any group lacking a
-	// canonical dir, so `??` (which only falls back on null/undefined) would
-	// collapse every such group onto the same `project:` TreeItem id. VS Code
-	// requires unique ids for correct refresh/reveal/expanded-state behavior.
+	// Prefer the authoritative grouping key buildProjectNodes assigned: the
+	// display dir/name are not unique. Registry-backed lanes with no project_dir
+	// normalize project_name to a shared "(unknown project)" placeholder that
+	// buildProjectNodes then stores as projectDir, so two distinct project_ref.id
+	// groups would otherwise collapse onto the same `project:` TreeItem id. VS
+	// Code requires unique ids for correct refresh/reveal/expanded-state.
+	if (node.groupKey) return node.groupKey;
+	// Fallback for nodes built without a groupKey: treat blank/whitespace
+	// projectDir as absent so the Unregistered bucket and dir-less groups still
+	// get a name-based key rather than collapsing onto a bare `project:` id.
 	const dir = node.projectDir?.trim();
 	return dir ? dir : `name:${node.projectName}`;
 }
@@ -4416,11 +4429,12 @@ export class AgentStatusTreeProvider
 			}
 		}
 
-		return Array.from(grouped.values())
-			.map((group) => ({
+		return Array.from(grouped.entries())
+			.map(([groupKey, group]) => ({
 				type: "projectGroup" as const,
 				projectName: group.projectName,
 				projectDir: group.projectDir,
+				groupKey,
 				...(group.unregistered ? { unregistered: true } : {}),
 				tasks: this.sortTasks(group.tasks),
 				discoveredAgents: [...group.discoveredAgents].sort((a, b) =>
