@@ -3,6 +3,7 @@ import type { AgentTask } from "../../src/providers/agent-status-tree-provider.j
 import {
 	extractSourceTaskId,
 	isAutoReviewLane,
+	isReviewOnlyLane,
 	partitionAutoReviewLanes,
 } from "../../src/utils/auto-review-lane.js";
 
@@ -228,5 +229,36 @@ describe("partitionAutoReviewLanes", () => {
 		]);
 		expect(primary).toHaveLength(2);
 		expect(reviewLanes).toHaveLength(0);
+	});
+});
+
+describe("isReviewOnlyLane", () => {
+	test("treats real-project reviewer lanes as review-only without filtering them", () => {
+		expect(isAutoReviewLane(manualReviewerTask)).toBe(false);
+		expect(isReviewOnlyLane(manualReviewerTask)).toBe(true);
+	});
+
+	test("recognizes canonical review lane_kind", () => {
+		expect(
+			isReviewOnlyLane(
+				makeTask({
+					id: "lane-kind-review",
+					role: "developer",
+					lane_kind: "review",
+				}),
+			),
+		).toBe(true);
+	});
+
+	test("does not classify review-prefixed implementation tasks without a review handoff", () => {
+		expect(
+			isReviewOnlyLane(
+				makeTask({
+					id: "review-implementation-task",
+					role: "developer",
+					project_dir: "/Users/ostehost/projects/real-project",
+				}),
+			),
+		).toBe(false);
 	});
 });

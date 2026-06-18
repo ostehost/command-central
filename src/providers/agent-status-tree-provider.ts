@@ -59,6 +59,7 @@ import {
 import {
 	extractSourceTaskId,
 	isAutoReviewLane,
+	isReviewOnlyLane,
 } from "../utils/auto-review-lane.js";
 import {
 	checkDeclaredHandoff,
@@ -66,7 +67,9 @@ import {
 } from "../utils/handoff-file-health.js";
 import { getModelAlias } from "../utils/model-aliases.js";
 import {
+	isReceiptReviewed,
 	readPendingReviewReceipt,
+	readReviewedReceipt,
 	receiptToOverlay,
 } from "../utils/pending-review-probe.js";
 import { isPersistSessionAlive as checkPersistSessionAlive } from "../utils/persist-health.js";
@@ -100,13 +103,17 @@ import {
 import { TtlCache } from "../utils/ttl-cache.js";
 import { asString } from "../utils/value-coercion.js";
 import {
+	canonicalGenerationToken,
 	classifyCompletionRouting,
 	classifyLifecycleConflict,
 	classifyTaskSurface,
 	getTaskDisplayProjectName,
 	getTaskExecutionHostLabel,
+	isAgentTeamLead,
 	isLocalFileProbeAuthoritative,
 	isRemoteNodeTaskForCurrentHost,
+	isSupersededByReleaseReset,
+	isSymphonyLane,
 } from "./agent-task-classification.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
@@ -122,11 +129,15 @@ export type {
 // re-exported here so existing import sites stay stable.
 export {
 	__setCurrentMachineHostOverrideForTests,
+	canonicalGenerationToken,
 	classifyCompletionRouting,
 	classifyLifecycleConflict,
 	classifyTaskSurface,
 	getTaskExecutionHostLabel,
+	isAgentTeamLead,
 	isRemoteNodeTaskForCurrentHost,
+	isSupersededByReleaseReset,
+	isSymphonyLane,
 } from "./agent-task-classification.js";
 
 // Status/elapsed display formatters were extracted to agent-status-formatters.ts;
@@ -314,6 +325,12 @@ function createEmptyTaskRegistry(): TaskRegistry {
 	return { version: 2, tasks: {} };
 }
 
+function expandHomePath(p: string): string {
+	if (p === "~") return os.homedir();
+	if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
+	return p;
+}
+
 export type AgentTaskStatus =
 	| "running"
 	| "stopped"
@@ -390,6 +407,7 @@ export interface AgentTask {
 	workflow_name?: string | null;
 	team?: string | null;
 	team_template?: string | null;
+	team_requested?: boolean | null;
 	agent_mode?: string | null;
 	orchestration_mode?: string | null;
 	status: AgentTaskStatus;
@@ -422,12 +440,14 @@ export interface AgentTask {
 	role?: AgentRole | null;
 	terminal_backend?: "tmux" | "persist" | "applescript";
 	ghostty_bundle_id?: string | null;
+	release_generation?: string | null;
 	exec_mode?: string | null;
 	exec_node?: string | null;
 	exec_host?: string | null;
 	exec_visible?: boolean | null;
 	exec_cwd?: string | null;
 	callback_url?: string | null;
+	session_live?: boolean | null;
 	session_key?: string | null;
 	pending_review_path?: string | null;
 	pending_fixup_path?: string | null;
@@ -646,6 +666,12 @@ export class AgentStatusTreeProvider
 	>();
 	private _handoffFileCache = new TtlCache<DeclaredHandoffState>(5_000);
 	private _reviewQueueCache = new TtlCache<AdvertisedReviewQueueState>(5_000);
+	private _currentGenerationCache: {
+		path: string;
+		token: string | null;
+		checkedAt: number;
+	} | null = null;
+	private _currentReleaseGenerationOverride: string | null = null;
 	private readonly _persistSessionHealthCache = new TtlCache<boolean>(5_000);
 	/** TTL cache for stream file path resolution, keyed by task.id (TTL 5s) */
 	private _streamFilePathCache = new Map<
@@ -1266,9 +1292,24 @@ export class AgentStatusTreeProvider
 	 */
 	private isReviewQueueReceiptMissing(task: AgentTask): boolean {
 		if (isReviewLifecycleResolved(task)) return false;
+		if (isReviewOnlyLane(task)) return false;
+		if (!task.pending_review_path) return false;
+		if (this.getPendingReviewQueueState(task) !== "missing") return false;
+		if (this.isPendingReviewReceiptReviewed(task)) return false;
+		return true;
+	}
+
+	private isPendingReviewReceiptReviewed(task: AgentTask): boolean {
+		if (!task.pending_review_path) return false;
+		if (!isLocalFileProbeAuthoritative(task)) return false;
+		const receipt = readReviewedReceipt(task.id);
+		return receipt ? isReceiptReviewed(receipt) : false;
+	}
+
+	private isTaskReviewed(task: AgentTask): boolean {
 		return (
-			Boolean(task.pending_review_path) &&
-			this.getPendingReviewQueueState(task) === "missing"
+			this._reviewTracker.isReviewed(task.id) ||
+			this.isPendingReviewReceiptReviewed(task)
 		);
 	}
 
@@ -1460,6 +1501,76 @@ export class AgentStatusTreeProvider
 		return "not-checked";
 	}
 
+	private getDeliveredReviewLaneOverlay(task: AgentTask): AgentTask | null {
+		if (task.status !== "running") return null;
+		if (!isReviewOnlyLane(task)) return null;
+		if (!isLocalFileProbeAuthoritative(task)) return null;
+		if (this.getPendingReviewQueueState(task) === "present") return null;
+
+		const artifactDelivered = this.getDeclaredHandoffState(task) === "present";
+		const committed = Boolean(task.end_commit) && task.end_commit !== "unknown";
+		if (!artifactDelivered && !committed) return null;
+
+		const base = this.applyRuntimeStatusOverlay(task, {
+			status: "completed",
+			reason:
+				"Reviewer lane delivered its review artifact; finalizing stale running row (no_review_expected).",
+		});
+		return { ...base, review_state: "no_review_expected" };
+	}
+
+	private static readonly RELEASE_GENERATION_CACHE_TTL_MS = 5_000;
+
+	private getCurrentReleaseGeneration(): string | null {
+		if (this._currentReleaseGenerationOverride !== null) {
+			return this._currentReleaseGenerationOverride;
+		}
+		return this.readCurrentReleaseGenerationFromState();
+	}
+
+	private getReleaseGenerationFilePath(): string | null {
+		const envPath = asString(process.env["OSTE_RELEASE_GENERATION_FILE"]);
+		if (envPath) return expandHomePath(envPath);
+		const configured = asString(
+			vscode.workspace
+				.getConfiguration("commandCentral")
+				.get<string>("releaseGeneration.file", ""),
+		);
+		if (configured) return expandHomePath(configured);
+		return null;
+	}
+
+	private readCurrentReleaseGenerationFromState(): string | null {
+		const filePath = this.getReleaseGenerationFilePath();
+		if (!filePath) return null;
+		const now = Date.now();
+		const cached = this._currentGenerationCache;
+		if (
+			cached &&
+			cached.path === filePath &&
+			now - cached.checkedAt <
+				AgentStatusTreeProvider.RELEASE_GENERATION_CACHE_TTL_MS
+		) {
+			return cached.token;
+		}
+		let token: string | null = null;
+		try {
+			const raw = fs.readFileSync(filePath, "utf-8");
+			token = canonicalGenerationToken(JSON.parse(raw));
+		} catch {
+			token = null;
+		}
+		this._currentGenerationCache = { path: filePath, token, checkedAt: now };
+		return token;
+	}
+
+	private effectiveLauncherSessionLive(task: AgentTask): boolean | null {
+		if (isSupersededByReleaseReset(task, this.getCurrentReleaseGeneration())) {
+			return null;
+		}
+		return task.session_live ?? null;
+	}
+
 	/**
 	 * Reconcile a raw tasks.json record into a display-ready AgentTask.
 	 *
@@ -1515,6 +1626,8 @@ export class AgentStatusTreeProvider
 			if (overlay) {
 				return this.applyRuntimeStatusOverlay(task, overlay);
 			}
+			const deliveredReviewOverlay = this.getDeliveredReviewLaneOverlay(task);
+			if (deliveredReviewOverlay) return deliveredReviewOverlay;
 		}
 
 		// Tier 2a — Staleness cache (sticky CC-local decision).
@@ -3497,8 +3610,15 @@ export class AgentStatusTreeProvider
 		) {
 			const liveness = this.getCachedTerminalTaskLivenessEvidence(node.task);
 			if (
-				classifyLifecycleConflict(node.task, liveness).kind ===
-				"live-process-conflict"
+				!isSupersededByReleaseReset(
+					node.task,
+					this.getCurrentReleaseGeneration(),
+				) &&
+				classifyLifecycleConflict(
+					node.task,
+					liveness,
+					this.effectiveLauncherSessionLive(node.task),
+				).kind === "live-process-conflict"
 			) {
 				return "attention";
 			}
@@ -3514,7 +3634,7 @@ export class AgentStatusTreeProvider
 				node.type === "task" &&
 				(node.task.review_status === "pending" ||
 					node.task.review_status === "changes_requested") &&
-				!this._reviewTracker.isReviewed(node.task.id)
+				!this.isTaskReviewed(node.task)
 			) {
 				return "attention";
 			}
@@ -4573,9 +4693,16 @@ export class AgentStatusTreeProvider
 
 		// ── 8. Lifecycle conflict — launcher vs live process ─────────────
 		const isTerminalStatus = t.status !== "running";
-		if (isTerminalStatus) {
+		if (
+			isTerminalStatus &&
+			!isSupersededByReleaseReset(t, this.getCurrentReleaseGeneration())
+		) {
 			const liveness = this.getTerminalTaskLivenessEvidence(t);
-			const conflict = classifyLifecycleConflict(t, liveness);
+			const conflict = classifyLifecycleConflict(
+				t,
+				liveness,
+				this.effectiveLauncherSessionLive(t),
+			);
 			if (conflict.kind === "live-process-conflict") {
 				details.push({
 					type: "detail",
@@ -7142,6 +7269,20 @@ export class AgentStatusTreeProvider
 		if (task.status === "completed_stale") {
 			descriptionParts.push("stale");
 		}
+		const supersededByReleaseReset = isSupersededByReleaseReset(
+			task,
+			this.getCurrentReleaseGeneration(),
+		);
+		if (supersededByReleaseReset) {
+			descriptionParts.push("stale (pre-release)");
+		}
+		if (isAgentTeamLead(task)) {
+			descriptionParts.push(
+				task.team_template?.trim()
+					? `team: ${task.team_template.trim()}`
+					: "team",
+			);
+		}
 		const missingHandoffRelpath =
 			task.status === "completed" &&
 			task.review_status !== "pending" &&
@@ -7180,7 +7321,7 @@ export class AgentStatusTreeProvider
 			task.status === "contract_failure" ||
 			task.status === "stopped" ||
 			task.status === "killed";
-		const isReviewed = isDoneStatus && this._reviewTracker.isReviewed(task.id);
+		const isReviewed = isDoneStatus && this.isTaskReviewed(task);
 		if (task.status === "running") {
 			if (descriptionParts.length === 0) {
 				descriptionParts.push(this.getTaskActivityDescription(task));
@@ -7195,19 +7336,22 @@ export class AgentStatusTreeProvider
 		if (
 			taskRouting.kind === "detached" &&
 			isDoneStatus &&
-			task.role !== "reviewer"
+			task.role !== "reviewer" &&
+			!isSymphonyLane(task)
 		) {
 			descriptionParts.push("⚠ detached");
 		}
-		const lifecycleLiveness = isDoneStatus
-			? this.getTerminalTaskLivenessEvidence(task)
-			: ("not-checked" as const);
+		const lifecycleLiveness =
+			isDoneStatus && !supersededByReleaseReset
+				? this.getTerminalTaskLivenessEvidence(task)
+				: ("not-checked" as const);
 		const lifecycleConflict = classifyLifecycleConflict(
 			task,
 			lifecycleLiveness,
+			this.effectiveLauncherSessionLive(task),
 		);
 		if (lifecycleConflict.kind === "live-process-conflict") {
-			descriptionParts.push("⚠ lifecycle conflict");
+			descriptionParts.push("⚠ live · lifecycle conflict");
 		}
 		const surfaceSummary = classifyTaskSurface(task);
 		// Surface tags are the loudest signal for running tasks — a click

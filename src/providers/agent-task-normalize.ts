@@ -10,6 +10,7 @@ import type {
 	AgentTaskProjectRef,
 	AgentTaskStatus,
 } from "./agent-status-tree-provider.js";
+import { canonicalGenerationToken } from "./agent-task-classification.js";
 
 const VALID_TASK_STATUSES = new Set<AgentTaskStatus>([
 	"running",
@@ -114,6 +115,8 @@ export function normalizeTask(
 		workflow_name: asString(raw["workflow_name"]) ?? null,
 		team: asString(raw["team"]) ?? null,
 		team_template: asString(raw["team_template"]) ?? null,
+		team_requested:
+			typeof raw["team_requested"] === "boolean" ? raw["team_requested"] : null,
 		agent_mode: asString(raw["agent_mode"]) ?? null,
 		orchestration_mode: asString(raw["orchestration_mode"]) ?? null,
 		status,
@@ -162,6 +165,11 @@ export function normalizeTask(
 				? raw["terminal_backend"]
 				: undefined,
 		ghostty_bundle_id: asString(raw["ghostty_bundle_id"]) ?? null,
+		release_generation:
+			canonicalGenerationToken(raw["app_stamp"]) ??
+			canonicalGenerationToken(
+				raw["release_generation"] ?? raw["source_version"],
+			),
 		exec_mode: asString(raw["exec_mode"]) ?? null,
 		exec_node: asString(raw["exec_node"]) ?? null,
 		exec_host: asString(raw["exec_host"]) ?? null,
@@ -169,6 +177,8 @@ export function normalizeTask(
 			typeof raw["exec_visible"] === "boolean" ? raw["exec_visible"] : null,
 		exec_cwd: asString(raw["exec_cwd"]) ?? null,
 		callback_url: asString(raw["callback_url"]) ?? null,
+		session_live:
+			typeof raw["session_live"] === "boolean" ? raw["session_live"] : null,
 		session_key: asString(raw["session_key"]) ?? null,
 		pending_review_path: asString(raw["pending_review_path"]) ?? null,
 		pending_fixup_path: asString(raw["pending_fixup_path"]) ?? null,

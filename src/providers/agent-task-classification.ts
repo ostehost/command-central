@@ -339,12 +339,13 @@ export function classifyCompletionRouting(
 			iconColor: "charts.green",
 		};
 	}
-	if (task.role === "reviewer") {
+	if (task.role === "reviewer" || isSymphonyLane(task)) {
 		return {
 			kind: "detached",
 			label: "Detached — no action needed",
-			detail:
-				"Standalone reviewer lane — launched without orchestrator callback; completion was local",
+			detail: isSymphonyLane(task)
+				? "Symphony-orchestrated lane — completion is owned by the Symphony daemon, not a session_key/callback_url"
+				: "Standalone reviewer lane — launched without orchestrator callback; completion was local",
 			icon: "debug-disconnect",
 			iconColor: "disabledForeground",
 		};
@@ -384,16 +385,35 @@ const CONFLICT_ELIGIBLE_STATUSES = new Set<AgentTaskStatus>([
 export function classifyLifecycleConflict(
 	task: Pick<AgentTask, "status" | "error_message">,
 	livenessEvidence: "alive" | "dead" | "unknown" | "not-checked",
+	launcherSessionLive: boolean | null = null,
 ): LifecycleConflictInfo {
-	if (
-		CONFLICT_ELIGIBLE_STATUSES.has(task.status) &&
-		livenessEvidence === "alive"
-	) {
+	if (!CONFLICT_ELIGIBLE_STATUSES.has(task.status)) {
+		return {
+			kind: "none",
+			label: "",
+			detail: "",
+			icon: "",
+		};
+	}
+	if (livenessEvidence === "alive") {
 		const reason = task.error_message ? ` (${task.error_message})` : "";
 		return {
 			kind: "live-process-conflict",
 			label: "Lifecycle conflict",
 			detail: `Launcher marked ${task.status}${reason} but process is still alive in terminal`,
+			icon: "warning",
+			iconColor: "charts.orange",
+		};
+	}
+	if (
+		launcherSessionLive === true &&
+		(livenessEvidence === "unknown" || livenessEvidence === "not-checked")
+	) {
+		const reason = task.error_message ? ` (${task.error_message})` : "";
+		return {
+			kind: "live-process-conflict",
+			label: "Lifecycle conflict",
+			detail: `Launcher marked ${task.status}${reason}, but its recorded session_live:true says the lane may still be alive; verify on host`,
 			icon: "warning",
 			iconColor: "charts.orange",
 		};
@@ -404,4 +424,50 @@ export function classifyLifecycleConflict(
 		detail: "",
 		icon: "",
 	};
+}
+
+export function isSymphonyLane(
+	task: Pick<AgentTask, "id" | "orchestration_mode">,
+): boolean {
+	if (task.id.startsWith("symphony-")) return true;
+	return task.orchestration_mode?.trim().toLowerCase() === "symphony";
+}
+
+export function isAgentTeamLead(
+	task: Pick<AgentTask, "team_requested" | "team_template">,
+): boolean {
+	return task.team_requested === true || Boolean(task.team_template?.trim());
+}
+
+const APP_STAMP_IDENTITY_FIELDS = [
+	"launcher_version",
+	"git_sha",
+	"rc_version",
+	"template_generation",
+] as const;
+
+export function canonicalGenerationToken(value: unknown): string | null {
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		return trimmed.length > 0 ? trimmed : null;
+	}
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const stamp = value as Record<string, unknown>;
+	const parts: string[] = [];
+	for (const field of APP_STAMP_IDENTITY_FIELDS) {
+		const part = typeof stamp[field] === "string" ? stamp[field].trim() : "";
+		if (!part) return null;
+		parts.push(part);
+	}
+	return parts.join("|");
+}
+
+export function isSupersededByReleaseReset(
+	task: Pick<AgentTask, "release_generation">,
+	currentGeneration: string | null,
+): boolean {
+	const current = canonicalGenerationToken(currentGeneration);
+	const laneGeneration = canonicalGenerationToken(task.release_generation);
+	if (!current || !laneGeneration) return false;
+	return laneGeneration !== current;
 }

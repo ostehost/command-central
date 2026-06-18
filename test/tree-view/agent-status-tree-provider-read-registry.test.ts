@@ -266,6 +266,14 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 						orchestration_mode: "normal",
 						agent_mode: "normal",
 						team_template: "full",
+						team_requested: true,
+						session_live: true,
+						app_stamp: {
+							launcher_version: "v0.6.0-rc.66",
+							git_sha: "fed745da",
+							rc_version: "0.6.0",
+							template_generation: "abc123",
+						},
 						project_dir: "/Users/ostehost/projects/command-central",
 						project_name: "command-central",
 						session_id: "agent-command-central",
@@ -303,6 +311,11 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 			expect(task?.orchestration_mode).toBe("normal");
 			expect(task?.agent_mode).toBe("normal");
 			expect(task?.team_template).toBe("full");
+			expect(task?.team_requested).toBe(true);
+			expect(task?.session_live).toBe(true);
+			expect(task?.release_generation).toBe(
+				"v0.6.0-rc.66|fed745da|0.6.0|abc123",
+			);
 		} finally {
 			fs.rmSync(tmpDir, { recursive: true, force: true });
 			provider.dispose();

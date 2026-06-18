@@ -321,6 +321,76 @@ describe("review queue continuation gap", () => {
 		).not.toContain("review receipt missing");
 	});
 
+	test("reviewed receipt archive suppresses stale review gap metadata", () => {
+		const previous = process.env["CC_PENDING_REVIEW_DIR"];
+		const baseDir = makeTmp();
+		process.env["CC_PENDING_REVIEW_DIR"] = baseDir;
+		try {
+			const archived = path.join(baseDir, "reviewed", "archive-reviewed.json");
+			realFs.mkdirSync(path.dirname(archived), { recursive: true });
+			realFs.writeFileSync(
+				archived,
+				`${JSON.stringify({ status: "completed", review_state: "reviewed" })}\n`,
+			);
+			const task = makeTask({
+				id: "archive-reviewed",
+				project_dir: baseDir,
+				pending_review_path: path.join(baseDir, "archive-reviewed.json"),
+				review_state: "reviewing",
+			});
+
+			expect(groupOf(provider, task)).toBe("done");
+			const description = String(
+				provider.getTreeItem({ type: "task", task }).description,
+			);
+			expect(description).toContain("✓");
+			expect(description).not.toContain("review receipt missing");
+		} finally {
+			if (previous === undefined) delete process.env["CC_PENDING_REVIEW_DIR"];
+			else process.env["CC_PENDING_REVIEW_DIR"] = previous;
+		}
+	});
+
+	test("review-only lanes are not routed to limbo for their own consumed receipt", () => {
+		const dir = makeTmp();
+		const task = makeTask({
+			id: "review-only-consumed-receipt",
+			role: "reviewer",
+			project_dir: dir,
+			pending_review_path: path.join(dir, "missing-review.json"),
+		});
+
+		expect(groupOf(provider, task)).toBe("done");
+		expect(
+			String(provider.getTreeItem({ type: "task", task }).description),
+		).not.toContain("review receipt missing");
+	});
+
+	test("running reviewer lane with delivered handoff finalizes as no-review-expected", () => {
+		const dir = makeTmp();
+		const handoff = path.join(dir, "research", "REVIEW-source.md");
+		realFs.mkdirSync(path.dirname(handoff), { recursive: true });
+		realFs.writeFileSync(handoff, "# review delivered\n");
+		const task = makeTask({
+			id: "review-source",
+			status: "running",
+			role: "reviewer",
+			project_dir: dir,
+			handoff_file: handoff,
+			pending_review_path: path.join(dir, "review-source.json"),
+		});
+		provider.readRegistry = () => makeRegistry({ [task.id]: task });
+		provider.reload();
+
+		const root = provider.getChildren();
+		const displayed = root.find(
+			(node): node is Extract<typeof node, { type: "task" }> =>
+				node.type === "task" && node.task.id === task.id,
+		);
+		expect(displayed?.task.status).toBe("completed");
+		expect(displayed?.task.review_state).toBe("no_review_expected");
+	});
+
 	test("remote node-origin task never reports a local receipt gap", () => {
 		__setCurrentMachineHostOverrideForTests("Hub Mac");
 		const dir = makeTmp();

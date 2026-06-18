@@ -22,6 +22,20 @@ export function isAutoReviewLane(task: AgentTask): boolean {
 }
 
 /**
+ * A lane whose own output is the review, not an implementation artifact.
+ * Unlike isAutoReviewLane, this intentionally includes reviewer lanes in real
+ * project directories; it is used for lifecycle semantics, not hiding rows.
+ */
+export function isReviewOnlyLane(task: AgentTask): boolean {
+	if (task.role === "reviewer") return true;
+	if (task.lane_kind?.trim().toLowerCase() === "review") return true;
+	return (
+		task.id.startsWith(AUTO_REVIEW_ID_PREFIX) &&
+		(task.handoff_file?.includes("/REVIEW-") ?? false)
+	);
+}
+
+/**
  * Extracts the source task ID from an auto-review lane.
  * Convention: review lane id is `review-<sourceTaskId>`.
  * Returns null if the task is not an auto-review lane or has no prefix.

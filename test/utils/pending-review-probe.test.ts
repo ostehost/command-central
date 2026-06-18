@@ -5,7 +5,11 @@ import path from "node:path";
 
 import {
 	clearPendingReviewCache,
+	isReceiptReviewed,
+	type PendingReviewReceipt,
+	REVIEWED_ARCHIVE_SUBDIR,
 	readPendingReviewReceipt,
+	readReviewedReceipt,
 } from "../../src/utils/pending-review-probe.js";
 
 const tmpDirs: string[] = [];
@@ -77,5 +81,77 @@ describe("readPendingReviewReceipt", () => {
 				readPendingReviewReceipt(taskId, { baseDir, ttlMs: 0 }),
 			).toBeNull();
 		}
+	});
+
+	test("parses review_state and reviewed from the receipt", () => {
+		const baseDir = makeTmp();
+		fs.writeFileSync(
+			path.join(baseDir, "reviewed-task.json"),
+			`${JSON.stringify({
+				status: "completed",
+				exit_code: 0,
+				review_state: "reviewed",
+				reviewed: true,
+			})}\n`,
+		);
+
+		const receipt = readPendingReviewReceipt("reviewed-task", {
+			baseDir,
+			ttlMs: 0,
+		});
+
+		expect(receipt?.reviewState).toBe("reviewed");
+		expect(receipt?.reviewed).toBe(true);
+	});
+});
+
+describe("reviewed pending-review receipts", () => {
+	beforeEach(() => clearPendingReviewCache());
+
+	function receiptWith(
+		overrides: Partial<PendingReviewReceipt>,
+	): PendingReviewReceipt {
+		return {
+			taskId: "t",
+			status: "completed",
+			exitCode: 0,
+			completedAt: null,
+			lastCommit: null,
+			endCommit: null,
+			agentCommit: null,
+			managerCommit: null,
+			agentSummary: null,
+			filesChanged: [],
+			reviewState: null,
+			reviewed: false,
+			...overrides,
+		};
+	}
+
+	test("isReceiptReviewed accepts reviewed flag or review_state", () => {
+		expect(isReceiptReviewed(receiptWith({ reviewed: true }))).toBe(true);
+		expect(isReceiptReviewed(receiptWith({ reviewState: " Reviewed " }))).toBe(
+			true,
+		);
+		expect(isReceiptReviewed(receiptWith({ reviewState: "reviewing" }))).toBe(
+			false,
+		);
+	});
+
+	test("readReviewedReceipt falls back to reviewed archive", () => {
+		const baseDir = makeTmp();
+		const archived = path.join(
+			baseDir,
+			REVIEWED_ARCHIVE_SUBDIR,
+			"task-10.json",
+		);
+		fs.mkdirSync(path.dirname(archived), { recursive: true });
+		fs.writeFileSync(
+			archived,
+			`${JSON.stringify({ status: "completed", review_state: "reviewed" })}\n`,
+		);
+
+		const receipt = readReviewedReceipt("task-10", { baseDir, ttlMs: 0 });
+		expect(receipt?.reviewState).toBe("reviewed");
 	});
 });

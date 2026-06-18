@@ -17,6 +17,7 @@ import * as path from "node:path";
 
 export const DEFAULT_PENDING_REVIEW_DIR = "/tmp/oste-pending-review";
 const DEFAULT_CACHE_TTL_MS = 5_000;
+export const REVIEWED_ARCHIVE_SUBDIR = "reviewed";
 
 function resolveDefaultDir(): string {
 	const override = process.env["CC_PENDING_REVIEW_DIR"];
@@ -37,6 +38,8 @@ export interface PendingReviewReceipt {
 	managerCommit: string | null;
 	agentSummary: string | null;
 	filesChanged: string[];
+	reviewState: string | null;
+	reviewed: boolean;
 }
 
 interface CacheEntry {
@@ -75,6 +78,25 @@ export function readPendingReviewReceipt(
 	const receipt = parseReceiptFile(taskId, filePath);
 	cache.set(cacheKey, { checkedAt: now, receipt });
 	return receipt;
+}
+
+export function readReviewedReceipt(
+	taskId: string,
+	opts: PendingReviewProbeOptions = {},
+): PendingReviewReceipt | null {
+	const active = readPendingReviewReceipt(taskId, opts);
+	if (active) return active;
+
+	const baseDir = opts.baseDir ?? resolveDefaultDir();
+	return readPendingReviewReceipt(taskId, {
+		...opts,
+		baseDir: path.join(baseDir, REVIEWED_ARCHIVE_SUBDIR),
+	});
+}
+
+export function isReceiptReviewed(receipt: PendingReviewReceipt): boolean {
+	if (receipt.reviewed) return true;
+	return receipt.reviewState?.trim().toLowerCase() === "reviewed";
 }
 
 export function clearPendingReviewCache(): void {
@@ -116,6 +138,8 @@ function parseReceiptFile(
 		managerCommit: asString(parsed["manager_commit"]),
 		agentSummary: asString(parsed["agent_summary"]),
 		filesChanged: asStringArray(parsed["files_changed"]),
+		reviewState: asString(parsed["review_state"]),
+		reviewed: parsed["reviewed"] === true,
 	};
 }
 
