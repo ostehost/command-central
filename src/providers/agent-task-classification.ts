@@ -373,7 +373,7 @@ export function classifyCompletionRouting(
 	if (isSymphonyLane(task)) {
 		return {
 			kind: "detached",
-			label: "Detached — orchestrated (no action needed)",
+			label: "Detached — no action needed",
 			detail:
 				"Symphony-orchestrated lane — completion is reported by the launcher wrapper/finalizer (oste-complete), not a session_key/callback_url",
 			icon: "debug-disconnect",
@@ -464,4 +464,43 @@ export function classifyLifecycleConflict(
 		icon: "warning",
 		iconColor: "charts.orange",
 	};
+}
+
+export function isAgentTeamLead(
+	task: Pick<AgentTask, "team_requested" | "team_template">,
+): boolean {
+	return task.team_requested === true || Boolean(task.team_template?.trim());
+}
+
+const APP_STAMP_IDENTITY_FIELDS = [
+	"launcher_version",
+	"git_sha",
+	"rc_version",
+	"template_generation",
+] as const;
+
+export function canonicalGenerationToken(value: unknown): string | null {
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		return trimmed.length > 0 ? trimmed : null;
+	}
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const stamp = value as Record<string, unknown>;
+	const parts: string[] = [];
+	for (const field of APP_STAMP_IDENTITY_FIELDS) {
+		const part = typeof stamp[field] === "string" ? stamp[field].trim() : "";
+		if (!part) return null;
+		parts.push(part);
+	}
+	return parts.join("|");
+}
+
+export function isSupersededByReleaseReset(
+	task: Pick<AgentTask, "release_generation">,
+	currentGeneration: string | null,
+): boolean {
+	const current = canonicalGenerationToken(currentGeneration);
+	const laneGeneration = canonicalGenerationToken(task.release_generation);
+	if (!current || !laneGeneration) return false;
+	return laneGeneration !== current;
 }

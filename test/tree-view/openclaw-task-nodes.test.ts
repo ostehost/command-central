@@ -403,6 +403,124 @@ describe("OpenClaw task nodes", () => {
 		});
 	});
 
+	test("Symphony nodes expose stable TreeItem ids for refresh/reveal", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "running-openclaw",
+				childSessionKey: "session:agent-my-app",
+				runId: "run-101",
+				status: "running",
+			}),
+		]);
+		const symphonyChildren = getSymphonyChildren(provider);
+		const dashboard = symphonyChildren.find(
+			(node) => node.type === "symphonyDashboard",
+		);
+		const runningGroup = getSymphonyRunGroupNode(provider, "running");
+		const runsContainer = getCodexRunsNode(provider);
+		const runNode = getCodexRunNodes(provider)[0];
+		if (!dashboard || !runningGroup || !runNode) {
+			throw new Error(
+				"Expected Symphony dashboard, running group, and run node",
+			);
+		}
+
+		const items = [dashboard, runningGroup, runsContainer, runNode].map(
+			(node) => provider.getTreeItem(node) as { id?: string },
+		);
+
+		expect(items.map((item) => item.id)).toEqual([
+			"symphony:dashboard",
+			"symphony:run-group:running",
+			"symphony:codex-runs",
+			// Container-qualified so the same run rendered under a run-group
+			// fallback and under the Run Attempts container never collide.
+			"symphony:codex-run:runs:run-101",
+		]);
+	});
+
+	test("Codex run rendered under a run group vs the Run Attempts container gets distinct ids and parents", async () => {
+		const provider = await createProvider([
+			createTask({
+				taskId: "running-openclaw",
+				childSessionKey: "session:agent-my-app",
+				runId: "run-101",
+				status: "running",
+			}),
+		]);
+		const runsContainerNode = getCodexRunNodes(provider)[0];
+		if (!runsContainerNode) {
+			throw new Error(
+				"Expected a Codex run node under the Run Attempts container",
+			);
+		}
+		// Same run, but projected under a run-group fallback instead.
+		const runGroupNode: Extract<AgentNode, { type: "codexRun" }> = {
+			type: "codexRun",
+			run: runsContainerNode.run,
+			container: "running",
+		};
+
+		const runsId = (provider.getTreeItem(runsContainerNode) as { id?: string })
+			.id;
+		const groupId = (provider.getTreeItem(runGroupNode) as { id?: string }).id;
+		expect(runsId).toBe("symphony:codex-run:runs:run-101");
+		expect(groupId).toBe("symphony:codex-run:running:run-101");
+		expect(runsId).not.toBe(groupId);
+
+		// Each reports the container it was actually rendered under.
+		expect(provider.getParent(runsContainerNode)?.type).toBe("codexRuns");
+		expect(provider.getParent(runGroupNode)?.type).toBe("symphonyRunGroup");
+	});
+
+	test("Symphony getParent: top-level containers report no parent, nested nodes resolve to their in-tree parent", async () => {
+		const flow = createFlow({ flowId: "flow-1" });
+		const provider = await createProvider(
+			[
+				createTask({
+					taskId: "running-openclaw",
+					childSessionKey: "session:agent-my-app",
+					runId: "run-101",
+					status: "running",
+				}),
+			],
+			[flow],
+		);
+		const symphonyChildren = getSymphonyChildren(provider);
+		const dashboard = symphonyChildren.find(
+			(node) => node.type === "symphonyDashboard",
+		);
+		const runningGroup = getSymphonyRunGroupNode(provider, "running");
+		const runsContainer = getCodexRunsNode(provider);
+		const runNode = getCodexRunNodes(provider)[0];
+		const flowsContainer = getTaskFlowsNode(provider);
+		const flowNode = provider
+			.getChildren(flowsContainer)
+			.find((node) => node.type === "taskFlowGroup");
+		if (!dashboard || !runningGroup || !runNode || !flowNode) {
+			throw new Error("Expected projected Symphony nodes");
+		}
+
+		// In symphony viewMode these containers are the root items, so the
+		// synthetic Symphony root node is never in the tree — they must report
+		// no parent or reveal/refresh would chase an absent node.
+		expect(provider.getParent(dashboard)).toBeUndefined();
+		expect(provider.getParent(runningGroup)).toBeUndefined();
+		expect(provider.getParent(runsContainer)).toBeUndefined();
+		expect(provider.getParent(flowsContainer)).toBeUndefined();
+		// Nested nodes still resolve to their real, in-tree parent container.
+		const runParent = provider.getParent(runNode);
+		expect(runParent?.type).toBe("codexRuns");
+		if (runParent?.type !== "codexRuns") {
+			throw new Error("Expected Codex Runs parent");
+		}
+		expect(runParent.runs.some((run) => run.runId === "run-101")).toBe(true);
+		expect(provider.getParent(flowNode)).toEqual({
+			type: "taskflows",
+			flows: [flow],
+		});
+	});
+
 	test("Symphony root exposes Operations Dashboard and read-only kanban groups", async () => {
 		const provider = await createProvider([
 			createTask({

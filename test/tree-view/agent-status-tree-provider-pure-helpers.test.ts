@@ -13,13 +13,22 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+	canonicalGenerationToken,
 	classifyCompletionRouting,
 	classifyLifecycleConflict,
 	detectAgentType,
 	formatElapsed,
 	getAgentTypeIcon,
 	getStatusThemeIcon,
+	isAgentTeamLead,
+	isSupersededByReleaseReset,
+	isSymphonyLane,
 } from "../../src/providers/agent-status-tree-provider.js";
+import {
+	formatAgentTypeSummary,
+	getBackendLabel,
+	getTaskAgentIdentities,
+} from "../../src/providers/agent-type-detection.js";
 import { createMockTask } from "./_helpers/agent-status-tree-provider-test-base.js";
 
 describe("formatElapsed", () => {
@@ -182,6 +191,21 @@ describe("classifyCompletionRouting", () => {
 		expect(routing.detail).toContain("Standalone reviewer lane");
 	});
 
+	test("completed Symphony lane with no callback is detached but no-action-needed", () => {
+		const task = createMockTask({
+			id: "symphony-PAR-195-19fde801",
+			status: "completed",
+			role: "developer",
+			session_key: null,
+			callback_url: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(isSymphonyLane(task)).toBe(true);
+		expect(routing.kind).toBe("detached");
+		expect(routing.label).toBe("Detached — no action needed");
+		expect(routing.iconColor).toBe("disabledForeground");
+	});
+
 	test("failed reviewer task with no routing uses calmer detached copy", () => {
 		const task = createMockTask({
 			status: "failed",
@@ -289,6 +313,20 @@ describe("classifyLifecycleConflict", () => {
 		expect(conflict.kind).toBe("none");
 	});
 
+	test("terminal task with inconclusive evidence and session_live true returns conflict", () => {
+		const task = createMockTask({ status: "contract_failure" });
+		const conflict = classifyLifecycleConflict(task, "not-checked", true);
+		expect(conflict.kind).toBe("live-process-conflict");
+		expect(conflict.detail).toContain("session_live");
+		expect(conflict.detail).toContain("verify on host");
+	});
+
+	test("dead evidence overrides stale session_live true", () => {
+		const task = createMockTask({ status: "contract_failure" });
+		const conflict = classifyLifecycleConflict(task, "dead", true);
+		expect(conflict.kind).toBe("none");
+	});
+
 	test("failed task with not-checked evidence returns none", () => {
 		const task = createMockTask({ status: "failed" });
 		const conflict = classifyLifecycleConflict(task, "not-checked");
@@ -360,5 +398,83 @@ describe("classifyLifecycleConflict", () => {
 		expect(conflict.kind).toBe("live-process-conflict");
 		expect(conflict.detail).not.toContain("(");
 		expect(conflict.detail).toContain("failed");
+	});
+});
+
+describe("release generation and team metadata helpers", () => {
+	const stamp = {
+		launcher_version: "v0.6.0-rc.66",
+		git_sha: "abc1234",
+		rc_version: "0.6.0",
+		template_generation: "deadbeef0000",
+	};
+
+	test("canonicalGenerationToken accepts strings and app_stamp objects", () => {
+		expect(canonicalGenerationToken(" rc.66 ")).toBe("rc.66");
+		expect(canonicalGenerationToken(stamp)).toBe(
+			"v0.6.0-rc.66|abc1234|0.6.0|deadbeef0000",
+		);
+		expect(canonicalGenerationToken({ ...stamp, git_sha: " " })).toBeNull();
+	});
+
+	test("isSupersededByReleaseReset compares canonical generation tokens", () => {
+		expect(
+			isSupersededByReleaseReset({ release_generation: "rc.65" }, "rc.66"),
+		).toBe(true);
+		expect(
+			isSupersededByReleaseReset({ release_generation: "rc.66" }, "rc.66"),
+		).toBe(false);
+		expect(
+			isSupersededByReleaseReset({ release_generation: null }, "rc.66"),
+		).toBe(false);
+	});
+
+	test("isAgentTeamLead flags team_requested or team_template", () => {
+		expect(isAgentTeamLead({ team_requested: true })).toBe(true);
+		expect(isAgentTeamLead({ team_template: "full" })).toBe(true);
+		expect(isAgentTeamLead({ team_requested: false, team_template: " " })).toBe(
+			false,
+		);
+	});
+});
+
+describe("agent-type labeling helpers", () => {
+	test("getBackendLabel prefers detected type, falls back to explicit backend", () => {
+		expect(getBackendLabel(createMockTask({ model: "claude-opus-4" }))).toBe(
+			"claude",
+		);
+		expect(
+			getBackendLabel(
+				createMockTask({ model: "", agent_backend: "MyBackend", cli_name: "" }),
+			),
+		).toBe("mybackend");
+		expect(
+			getBackendLabel(
+				createMockTask({ model: "", agent_backend: "", cli_name: "" }),
+			),
+		).toBe("unknown");
+	});
+
+	test("getTaskAgentIdentities collects trimmed role/backend/cli identity strings", () => {
+		expect(
+			getTaskAgentIdentities(
+				createMockTask({
+					role: "developer",
+					agent_backend: " codex ",
+					cli_name: "",
+				}),
+			),
+		).toEqual(["developer", "codex"]);
+	});
+
+	test("formatAgentTypeSummary counts agent types, ordered by frequency", () => {
+		expect(formatAgentTypeSummary([])).toBe("none");
+		expect(
+			formatAgentTypeSummary([
+				createMockTask({ id: "a", model: "claude-opus-4" }),
+				createMockTask({ id: "b", model: "claude-sonnet-4" }),
+				createMockTask({ id: "c", model: "gpt-5.1" }),
+			]),
+		).toBe("2 claude, 1 codex");
 	});
 });

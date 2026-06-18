@@ -227,12 +227,14 @@
           "markdownDescription": "Lane registry files for **active Work Registry-backed lanes**. Two shapes are recognized: the launcher `tasks.json` registry (`{version, tasks: {...}}`) and the **transitional** Work System lanes read-model/projection (`{version: 1, kind: \"work-system-lanes-projection\", lanes: {...}}`) the launcher bridge writes in outbox mode. Only registry-backed LaneRef records — records carrying a Work Registry `project_ref` — are ingested from either shape; launcher-era rows without `project_ref` stay quarantined unless the deprecated `#commandCentral.legacyLauncherTasks.enabled#` diagnostics escape hatch is turned on, and projection rows are never authoritative truth (a primary registry record with the same task id wins the merge). The default reads the **transitional** Work System bridge file `~/.config/openclaw/lanes.json`, plus the **deprecated** Ghostty Launcher compatibility path `~/.config/ghostty-launcher/tasks.json` while launcher tasks.json stays the primary working record. Both defaults are file bridges, not the end state: long-term, lane state should come from an OpenClaw-native projection (plugin state/API), at which point the file defaults retire. Set an explicit empty list to read no lane registries; paths beyond the defaults are never auto-detected.",
           "scope": "machine"
         },
+
         "commandCentral.releaseGeneration.file": {
           "type": "string",
           "default": "~/.config/ghostty-launcher/release-generation.json",
           "markdownDescription": "Path to the Ghostty Launcher **release-generation baseline** written by `oste-terminal-generation.sh stamp` (`{launcher_version, git_sha, rc_version, template_generation, stamped_at}`). Agent Status reads this to learn the **current** Ghostty app/window generation: a terminal-status lane stamped with a *different* `app_stamp` generation is a pre-reset leftover (its tmux pane may still be a live orphan but is not current work), so it is badged `stale (pre-release)` instead of being promoted to a live lifecycle conflict. The `OSTE_RELEASE_GENERATION_FILE` environment variable overrides this setting (matching the launcher tool). When the file is absent, malformed, or incomplete, no current generation is known and the staleness guard is inert — the read-only default, since the file only exists once the launcher's release/reset flow stamps it.",
           "scope": "machine"
         },
+
         "commandCentral.agentStatus.autoRefreshMs": {
           "type": "number",
           "default": 5000,

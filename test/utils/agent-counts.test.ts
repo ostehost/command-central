@@ -3,6 +3,7 @@ import type { AgentTask } from "../../src/providers/agent-status-tree-provider.j
 import {
 	type AgentCounts,
 	countAgentStatuses,
+	formatAgentStatusHeaderSummary,
 	formatCountSummary,
 } from "../../src/utils/agent-counts.js";
 
@@ -239,6 +240,50 @@ describe("countAgentStatuses — review_status routing", () => {
 		expect(formatCountSummary(counts, { includeAttention: true })).toBe(
 			"1 working · 1 attention · 2 done",
 		);
+	});
+});
+
+describe("formatAgentStatusHeaderSummary", () => {
+	test("orders visible group counts to match tree order and omits zero live", () => {
+		const counts: AgentCounts = {
+			working: 0,
+			attention: 1,
+			limbo: 10,
+			done: 3,
+			total: 14,
+		};
+
+		expect(formatAgentStatusHeaderSummary(counts)).toBe(
+			"Action 1 · Review 10 · History 3",
+		);
+	});
+
+	test("includes non-zero live first, matching the running group order", () => {
+		const counts: AgentCounts = {
+			working: 2,
+			attention: 1,
+			limbo: 10,
+			done: 3,
+			total: 16,
+		};
+
+		expect(formatAgentStatusHeaderSummary(counts)).toBe(
+			"Live 2 · Action 1 · Review 10 · History 3",
+		);
+	});
+
+	test("can include zero live when the live group is explicitly visible", () => {
+		const counts: AgentCounts = {
+			working: 0,
+			attention: 1,
+			limbo: 0,
+			done: 0,
+			total: 1,
+		};
+
+		expect(
+			formatAgentStatusHeaderSummary(counts, { includeLiveWhenZero: true }),
+		).toBe("Live 0 · Action 1");
 	});
 });
 

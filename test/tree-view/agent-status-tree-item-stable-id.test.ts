@@ -453,7 +453,7 @@ describe("Agent Status — stable TreeItem.id identity", () => {
 		).toBe(stableId(running));
 
 		// The provider wires the canonical id onto the rendered TreeItem.
-		expect(provider.getTreeItem(codexRuns).id).toBe("symphony:codexRuns");
+		expect(provider.getTreeItem(codexRuns).id).toBe("symphony:codex-runs");
 		expect(provider.getTreeItem(dashboard).id).toBe("symphony:dashboard");
 	});
 

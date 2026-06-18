@@ -204,6 +204,16 @@ describe("package.json agent menu contributions", () => {
 		expect(setting?.description).toContain("Dock icon");
 	});
 
+	test("defines release-generation baseline config for launcher metadata", async () => {
+		const properties = await getConfigProperties();
+		const setting = properties["commandCentral.releaseGeneration.file"];
+		expect(setting).toBeDefined();
+		expect(setting?.default).toBe(
+			"~/.config/ghostty-launcher/release-generation.json",
+		);
+		expect(setting?.markdownDescription).toContain("release-generation");
+	});
+
 	test("has inline restart action for failed launcher-managed tasks", async () => {
 		const menu = await getViewItemContextMenu();
 		const inlineRestart = menu.find(

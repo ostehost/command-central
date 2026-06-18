@@ -12,6 +12,7 @@ import {
 	resolveAgentStatusSortMode,
 } from "../../src/providers/agent-status-tree-provider.js";
 import { AgentStatusBar } from "../../src/services/agent-status-bar.js";
+import type { TtlCache } from "../../src/utils/ttl-cache.js";
 import { PerformanceTestHelper } from "../helpers/performance-test-helper.js";
 import type { setupVSCodeMock } from "../helpers/vscode-mock.js";
 import { waitFor } from "../helpers/wait-for.js";
@@ -80,15 +81,9 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			try {
 				(
 					provider as unknown as {
-						_persistSessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
+						_persistSessionHealthCache: TtlCache<boolean>;
 					}
-				)._persistSessionHealthCache.set(getPersistSocketPath(stale), {
-					alive: false,
-					checkedAt: Date.now(),
-				});
+				)._persistSessionHealthCache.set(getPersistSocketPath(stale), false);
 				provider.readRegistry = () => fixture;
 				provider.reload();
 
@@ -270,19 +265,16 @@ describe("AgentStatusTreeProvider — discovery", () => {
 					{ alive: true, checkedAt: Date.now() },
 				]),
 			);
-			(
-				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+			{
+				const persistCache = (
+					provider as unknown as {
+						_persistSessionHealthCache: TtlCache<boolean>;
+					}
+				)._persistSessionHealthCache;
+				for (const task of persistRunning) {
+					persistCache.set(getPersistSocketPath(task), true);
 				}
-			)._persistSessionHealthCache = new Map(
-				persistRunning.map((task) => [
-					getPersistSocketPath(task),
-					{ alive: true, checkedAt: Date.now() },
-				]),
-			);
+			}
 			provider.readRegistry = () => fixture;
 			provider.reload();
 
@@ -330,19 +322,16 @@ describe("AgentStatusTreeProvider — discovery", () => {
 					{ alive: true, checkedAt: Date.now() },
 				]),
 			);
-			(
-				provider as unknown as {
-					_persistSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+			{
+				const persistCache = (
+					provider as unknown as {
+						_persistSessionHealthCache: TtlCache<boolean>;
+					}
+				)._persistSessionHealthCache;
+				for (const task of persistRunning) {
+					persistCache.set(getPersistSocketPath(task), true);
 				}
-			)._persistSessionHealthCache = new Map(
-				persistRunning.map((task) => [
-					getPersistSocketPath(task),
-					{ alive: true, checkedAt: Date.now() },
-				]),
-			);
+			}
 			provider.readRegistry = () => fixture;
 			provider.reload();
 
