@@ -56,6 +56,15 @@ function caches(p: AgentStatusTreeProvider): PrivateCaches {
 	return p as unknown as PrivateCaches;
 }
 
+function getCachedCheckedAt(
+	cache: Map<string, { checkedAt: number }>,
+	key: string,
+): number {
+	const entry = cache.get(key);
+	if (!entry) throw new Error(`Expected cache entry for ${key}`);
+	return entry.checkedAt;
+}
+
 // ── helper: call private methods through cast ────────────────────────────
 
 function callResolveStreamFilePath(
@@ -182,14 +191,16 @@ describe("AgentStatusTreeProvider — perf caches", () => {
 
 			try {
 				callResolveStreamFilePath(provider, task);
-				const checkedAt1 = caches(provider)._streamFilePathCache.get(
+				const checkedAt1 = getCachedCheckedAt(
+					caches(provider)._streamFilePathCache,
 					task.id,
-				)!.checkedAt;
+				);
 
 				callResolveStreamFilePath(provider, task);
-				const checkedAt2 = caches(provider)._streamFilePathCache.get(
+				const checkedAt2 = getCachedCheckedAt(
+					caches(provider)._streamFilePathCache,
 					task.id,
-				)!.checkedAt;
+				);
 
 				// Cache was NOT re-probed → timestamp unchanged.
 				expect(checkedAt2).toBe(checkedAt1);
@@ -216,14 +227,16 @@ describe("AgentStatusTreeProvider — perf caches", () => {
 
 				// Back-date the cache entry to simulate TTL expiry.
 				expireStreamFilePathCache(provider, task.id);
-				const staleCheckedAt = caches(provider)._streamFilePathCache.get(
+				const staleCheckedAt = getCachedCheckedAt(
+					caches(provider)._streamFilePathCache,
 					task.id,
-				)!.checkedAt;
+				);
 
 				callResolveStreamFilePath(provider, task);
-				const freshCheckedAt = caches(provider)._streamFilePathCache.get(
+				const freshCheckedAt = getCachedCheckedAt(
+					caches(provider)._streamFilePathCache,
 					task.id,
-				)!.checkedAt;
+				);
 
 				// The fresh entry must not be the stale back-dated one.
 				expect(freshCheckedAt).toBeGreaterThan(staleCheckedAt);
@@ -319,14 +332,16 @@ describe("AgentStatusTreeProvider — perf caches", () => {
 
 			try {
 				callGetStreamTerminalState(provider, task);
-				const ts1 = caches(provider)._streamTerminalStateCache.get(
+				const ts1 = getCachedCheckedAt(
+					caches(provider)._streamTerminalStateCache,
 					task.id,
-				)!.checkedAt;
+				);
 
 				callGetStreamTerminalState(provider, task);
-				const ts2 = caches(provider)._streamTerminalStateCache.get(
+				const ts2 = getCachedCheckedAt(
+					caches(provider)._streamTerminalStateCache,
 					task.id,
-				)!.checkedAt;
+				);
 
 				expect(ts2).toBe(ts1);
 			} finally {
@@ -355,14 +370,16 @@ describe("AgentStatusTreeProvider — perf caches", () => {
 
 				// Back-date the cache entry to simulate TTL expiry.
 				expireStreamTerminalStateCache(provider, task.id);
-				const staleCheckedAt = caches(provider)._streamTerminalStateCache.get(
+				const staleCheckedAt = getCachedCheckedAt(
+					caches(provider)._streamTerminalStateCache,
 					task.id,
-				)!.checkedAt;
+				);
 
 				callGetStreamTerminalState(provider, task);
-				const freshCheckedAt = caches(provider)._streamTerminalStateCache.get(
+				const freshCheckedAt = getCachedCheckedAt(
+					caches(provider)._streamTerminalStateCache,
 					task.id,
-				)!.checkedAt;
+				);
 
 				// The fresh entry must not be the stale back-dated one.
 				expect(freshCheckedAt).toBeGreaterThan(staleCheckedAt);

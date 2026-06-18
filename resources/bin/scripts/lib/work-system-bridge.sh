@@ -297,23 +297,10 @@ _work_system_bridge_transport() {
 #                                                  backends report unprobed)
 #   generation.{app_stamp,release_generation,
 #               source_version}                    spawn-time launcher app
-#                                                  generation (visible lanes
-#                                                  only); app_stamp is the full
-#                                                  drift identity, the two flat
-#                                                  fields are stable aliases.
-#                                                  All null when the lane made no
-#                                                  generation claim (tmux/headless
-#                                                  or pre-stamping lanes).
+#                                                  generation for visible lanes
 #   visibility.{verified,degraded,reason,
 #               receipt_path,receipt_present}      spawn-time visible-terminal
-#                                                  verification; null fields
-#                                                  mean the lane made no
-#                                                  visibility claim (tmux/
-#                                                  headless), degraded=true
-#                                                  with a reason means a visible
-#                                                  lane whose AX probe failed.
-#                                                  receipt_present is a
-#                                                  writer-host -f probe.
+#                                                  verification/degradation
 #   origin_host/writer_host                        hub/node provenance
 #   canonical_project_id/canonical_project_dir     registry identity echo
 work_system_lane_ref_enrich() {

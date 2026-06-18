@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-06-18T23:03:54.185Z",
+  "vsixPath": "/Users/ostemini/projects/command-central/releases/command-central-0.6.0-rc.68.vsix",
+  "vsixSha256": "5ecb81d8feb08ae62ab90c46c2bf82da79ba709adc94b8d66bcb42c62b7c9e3b",
+  "vsixIdentity": {
+    "publisher": "oste",
+    "name": "command-central",
+    "version": "0.6.0-rc.68"
+  },
+  "expectedVersion": "0.6.0-rc.68",
+  "codeBin": "code",
+  "extensionsDir": "/Users/ostemini/.vscode/extensions",
+  "installedExtensionId": "oste.command-central",
+  "installedVersionFromCode": "0.6.0-rc.68",
+  "installedPackagePath": "/Users/ostemini/.vscode/extensions/oste.command-central-0.6.0-rc.68/package.json",
+  "installedPackageVersion": "0.6.0-rc.68",
+  "success": true,
+  "errors": []
+}

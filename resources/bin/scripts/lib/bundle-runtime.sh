@@ -164,42 +164,40 @@ bundle_visibility_receipt() {
 	local verified degraded reason resolved_tasks_file bundle_id tmux_attached focusable_count onscreen_count process_alive pid
 	IFS='|' read -r verified degraded reason resolved_tasks_file bundle_id tmux_attached focusable_count onscreen_count process_alive pid <<<"$(bundle_visibility_fields "$task_id" "$tasks_file" || true)"
 	# Spawn-time launcher app generation recorded on the row (visible lanes only).
-	# Carried into the receipt so Command Central can decide reuse/rebuild from the
-	# receipt alone, without re-reading tasks.json on the writer host. The full
-	# app_stamp is the authoritative drift identity; release_generation (build
-	# hash) and source_version (launcher describe) are stable convenience aliases.
-	local app_stamp
-	app_stamp=$(jq -c --arg id "$task_id" '.tasks[$id].app_stamp // null' "$tasks_file" 2>/dev/null || echo null)
-	jq -e . >/dev/null 2>&1 <<<"$app_stamp" || app_stamp="null"
+	# Carry it into the receipt so consumers can decide reuse/rebuild from the
+	# receipt alone, without re-reading tasks.json on the writer host.
+	local app_stamp="null"
+	if [[ -f "$tasks_file" ]]; then
+		app_stamp=$(jq -c --arg id "$task_id" '.tasks[$id].app_stamp // null' "$tasks_file" 2>/dev/null || echo "null")
+	fi
+	jq -e 'type == "object" or . == null' >/dev/null 2>&1 <<<"$app_stamp" || app_stamp="null"
 	jq -n \
 		--arg task_id "$task_id" \
 		--arg tasks_file "$resolved_tasks_file" \
 		--arg bundle_id "$bundle_id" \
 		--arg reason "${reason:-unknown}" \
 		--arg pid "${pid:-}" \
+		--argjson app_stamp "$app_stamp" \
 		--argjson verified "${verified:-false}" \
 		--argjson degraded "${degraded:-true}" \
 		--argjson tmux_attached "${tmux_attached:-false}" \
 		--argjson focusable_windows "${focusable_count:-0}" \
 		--argjson onscreen_windows "${onscreen_count:-0}" \
 		--argjson process_alive "${process_alive:-false}" \
-		--argjson app_stamp "$app_stamp" \
 		'{task_id:$task_id,tasks_file:$tasks_file,bundle_id:$bundle_id,verified:$verified,degraded:$degraded,reason:$reason,tmux_attached:$tmux_attached,process_alive:$process_alive,focusable_windows:$focusable_windows,onscreen_windows:$onscreen_windows,pid:(if $pid == "" then null else ($pid|tonumber) end),generation:{app_stamp:$app_stamp,release_generation:($app_stamp.git_sha // null),source_version:($app_stamp.launcher_version // null)}}'
 }
 
 # Persist the spawn-time visibility receipt path + degraded state into the
 # durable tasks.json row. register_task() runs BEFORE the receipt exists (the
 # probe reads the registered row), so the durable row would otherwise keep
-# visibility_receipt_path=null while only the /tmp exec receipt and the spawn
-# stdout carried it. This is the canonical, cross-host visibility truth the
-# lanes projection (work-system-bridge.sh) and the release gate both read.
+# visibility_receipt_path=null while only the /tmp exec receipt and spawn stdout
+# carried it. This is the canonical cross-host visibility truth the lanes
+# projection and release gate both read.
 #
 # Serializes through the authoritative tasks lock when tasks-lock.sh is sourced
-# (the spawn path), and degrades to a best-effort atomic write otherwise (unit
-# tests that source bundle-runtime.sh alone). Fail-soft: always returns 0 and
-# never corrupts tasks.json — the staged write replaces the file only when jq
-# produced a non-empty document. TASKS_FILE is shadowed locally so lock_tasks /
-# unlock_tasks act on the requested file without mutating the caller's global.
+# (spawn path), and degrades to a best-effort atomic write otherwise (unit tests
+# that source bundle-runtime.sh alone). Fail-soft: always returns 0 and never
+# corrupts tasks.json.
 persist_task_visibility_receipt() {
 	local task_id="$1"
 	local receipt_path="$2"

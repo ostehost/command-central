@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "generatedAt": "2026-06-18T22:55:08.799Z",
+  "commandCentral": {
+    "repo": "/Users/ostemini/projects/command-central",
+    "sha": "fa2187972e79b3e02b7abd1fa2b08af6b211a8b0"
+  },
+  "ghosttyLauncher": {
+    "repo": "/Users/ostemini/projects/ghostty-launcher",
+    "sha": "3b8d24ed78a741859cba015d5da1f34752b120f0",
+    "launcherBinary": "/Users/ostemini/projects/ghostty-launcher/launcher"
+  },
+  "checks": [
+    {
+      "name": "command-central validation",
+      "status": "failed",
+      "command": "just ci",
+      "cwd": "/Users/ostemini/projects/command-central",
+      "startedAt": "2026-06-18T22:55:06.279Z",
+      "finishedAt": "2026-06-18T22:55:08.799Z",
+      "durationMs": 2520,
+      "output": "🚀 ci: strict check + test (warnings = errors)\n\n\u001b[0m\u001b[34mChecked \u001b[0m\u001b[0m\u001b[34m314\u001b[0m\u001b[0m\u001b[34m \u001b[0m\u001b[0m\u001b[34mfiles\u001b[0m\u001b[0m\u001b[34m in \u001b[0m\u001b[0m\u001b[34m133\u001b[0m\u001b[0m\u001b[2m\u001b[34mms\u001b[0m\u001b[0m\u001b[34m.\u001b[0m\u001b[0m\u001b[34m No fixes applied.\u001b[0m\nUnused files (2)\nsrc/providers/agent-task-normalize.ts  \nsrc/utils/value-coercion.ts            \nUnused exports (31)\ngetStatusThemeIcon                   function  src/providers/agent-status-formatters.ts:8:17    \ngetStatusDisplayLabel                function  src/providers/agent-status-formatters.ts:47:17   \nROLE_ICONS                                     src/providers/agent-status-formatters.ts:60:14   \nformatDurationPrecise                function  src/providers/agent-status-formatters.ts:90:17   \nformatTaskElapsedDescription         function  src/providers/agent-status-formatters.ts:118:17  \nisAgentTeamLead                      function  src/providers/agent-task-classification.ts:469:17\nisSupersededByReleaseReset           function  src/providers/agent-task-classification.ts:498:17\ngetAgentTypeIcon                     function  src/providers/agent-type-detection.ts:79:17      \ngetCodexRunEvidenceIcon              function  src/providers/codex-run-format.ts:34:17          \nformatCodexRunLastEvent              function  src/providers/codex-run-format.ts:47:17          \nformatCodexRunAuthority              function  src/providers/codex-run-format.ts:58:17          \nformatCodexRunAutomationSource       function  src/providers/codex-run-format.ts:73:17          \nformatCodexRunTrackerSource          function  src/providers/codex-run-format.ts:83:17          \nformatCodexRunWorkflow               function  src/providers/codex-run-format.ts:93:17          \nformatCodexRunTurns                  function  src/providers/codex-run-format.ts:101:17         \nformatCodexRunRuntime                function  src/providers/codex-run-format.ts:114:17         \nformatCodexRunFieldSourceDetails     function  src/providers/codex-run-format.ts:128:17         \ngetCodexRunActivityTimeMs            function  src/providers/codex-run-format.ts:159:17         \ngetCodexRunStatusIcon                function  src/providers/codex-run-format.ts:203:17         \ngetPerFileNumstatDiffs               function  src/providers/git-diff.ts:103:17                 \ncomputeDiffSummaryAsync              function  src/providers/git-diff.ts:118:23                 \nisOpenClawTaskVisibleInRunningMode   function  src/providers/openclaw-task-format.ts:61:17      \nformatSymphonyRuntimeSnapshotStatus  function  src/providers/symphony-projection.ts:73:17       \nformatSymphonySnapshotValue          function  src/providers/symphony-projection.ts:82:17       \ngetSymphonyRunGroupCount             function  src/providers/symphony-projection.ts:95:17       \ngetSymphonyRunGroupSnapshotEntries   function  src/providers/symphony-projection.ts:105:17      \ngetSymphonySnapshotEntryIssue        function  src/providers/symphony-projection.ts:129:17      \nformatSymphonyDashboardDescription   function  src/providers/symphony-projection.ts:159:17      \ngetSymphonyRunGroupSpecStatus        function  src/providers/symphony-projection.ts:191:17      \ngetSymphonyRunGroupEmptyDescription  function  src/providers/symphony-projection.ts:217:17      \ngetSymphonyRunGroupIcon              function  src/providers/symphony-projection.ts:230:17      \nUnused exported types (1)\nAgentNode  type  src/providers/agent-status-tree-nodes.ts:24:13\nerror: Recipe `ci` failed on line 242 with exit code 1",
+      "error": "Command exited with 1"
+    }
+  ],
+  "success": false
+}
