@@ -82,3 +82,32 @@ push / tag / publish** was performed (awaiting explicit approval per repo policy
 Note: `releases/digest-v0.6.0-rc.66.md` was already modified in the shared working
 tree by a concurrent lane during this work; it is unrelated to PAR-239 and was
 deliberately left untouched (not staged, not reverted).
+
+## Re-verification — visible lane `symphony-PAR-239-5f403300` (2026-06-20)
+
+A second visible Command Central lane re-spawned on PAR-239 and confirmed the
+prior lane's cross-repo implementation is fully committed and still green. No
+source change was required — the smallest safe change for this issue was already
+landed; this lane is a verification + evidence closeout (Agent Teams delegate:
+lead + Tester, Sonnet).
+
+Committed state re-confirmed:
+- Launcher `09a5ae7e` (impl) + `3e5f6716` (test) present; `oste-spawn.sh`
+  `register_task()` persists `workroom_ref`/`work_item_ref` into the spawn-time
+  row; `work-system-bridge.sh` `work_system_lane_ref_enrich()` row-backs both
+  refs on the env-less path.
+- Command Central `9f22e491`/`5679e2d2`/`1900ae06`/`69d7f57d` present; provider
+  surfaces both refs on the ingested projection row; bundled bridge byte-matches
+  canonical.
+
+Fresh verification numbers (identical to the original run):
+- Command Central `just test` → **2308 pass / 1 skip / 0 fail** (6319 expect()).
+- Command Central `just check` → green (only `noNonNullAssertion` style warnings
+  + informational Knip; no errors).
+- PAR-239 test files (`work-system-bridge-workroom` + `worksystem-lanes-projection`)
+  → 15 pass / 0 fail (82 expect()).
+- Launcher `just test work-system-bridge` → 149 assertions / 34 tests, rc=0,
+  incl. both env-less row-back cases and both env-wins non-regression cases.
+- Bundled vs canonical `work-system-bridge.sh` diff → empty (byte-for-byte).
+
+No push / tag / publish performed (repo policy: explicit approval required).
