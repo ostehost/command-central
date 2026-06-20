@@ -1341,6 +1341,8 @@ function normalizeTask(
 		rate_limits: raw["rate_limits"] ?? raw["rateLimits"],
 		symphony_runtime_snapshot:
 			raw["symphony_runtime_snapshot"] ?? raw["symphonyRuntimeSnapshot"],
+		workroom_ref: asString(raw["workroom_ref"]) ?? null,
+		work_item_ref: asString(raw["work_item_ref"]) ?? null,
 	};
 }
 

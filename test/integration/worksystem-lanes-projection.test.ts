@@ -621,4 +621,39 @@ describe("Work System lanes projection ingest (transitional bridge)", () => {
 		expect(Object.keys(registry.tasks)).toEqual(["cc-valid"]);
 		expect(fallbackWarnings()).toEqual([]);
 	});
+
+	test("workroom_ref and work_item_ref from the envelope surface on the ingested row (PAR-239)", async () => {
+		// Proves the hook-routing refs persisted into the lane_ref_update envelope
+		// (by the launcher's row-back path when env vars are absent) are carried
+		// through the projection ingest onto the CC task registry row — so Command
+		// Central can route completions to the originating workroom/work-item
+		// without re-querying the launcher.
+		const projectionFile = writeProjection(
+			"lanes.json",
+			createProjectionDocument({
+				"launcher:cc-par239": createLaneRefUpdate(
+					"cc-par239",
+					{},
+					{
+						workroom_ref: "discord:room-xyz",
+						work_item_ref: "linear:PAR-239",
+					},
+				),
+			}),
+		);
+
+		const treeProvider = await createProvider({
+			laneRegistryFiles: [projectionFile],
+		});
+
+		const registry = treeProvider.readRegistry();
+		const task = registry.tasks["cc-par239"];
+		expect(task).toBeDefined();
+		expect(task?.workroom_ref).toBe("discord:room-xyz");
+		expect(task?.work_item_ref).toBe("linear:PAR-239");
+		// Sanity: the row is otherwise well-formed.
+		expect(task?.status).toBe("completed");
+		expect(task?.lane_kind).toBe("implementation");
+		expect(fallbackWarnings()).toEqual([]);
+	});
 });
