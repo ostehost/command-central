@@ -224,6 +224,21 @@ describe("review queue continuation gap", () => {
 		expect(groupOf(provider, task)).toBe("limbo");
 	});
 
+	test("completed_stale with missing review receipt routes to attention", () => {
+		const dir = makeTmp();
+		const task = makeTask({
+			id: "stale-receipt-missing",
+			status: "completed_stale",
+			project_dir: dir,
+			pending_review_path: path.join(dir, "missing-review.json"),
+		});
+
+		expect(groupOf(provider, task)).toBe("attention");
+		expect(
+			String(provider.getTreeItem({ type: "task", task }).description),
+		).toContain("review receipt missing");
+	});
+
 	test("pending review status still wins over receipt-gap routing", () => {
 		const dir = makeTmp();
 		const task = makeTask({

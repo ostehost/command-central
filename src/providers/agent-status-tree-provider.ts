@@ -5117,6 +5117,9 @@ export class AgentStatusTreeProvider
 			return "done";
 		}
 		if (status === "completed_dirty" || status === "completed_stale") {
+			if (node.type === "task" && this.isReviewQueueReceiptMissing(node.task)) {
+				return "attention";
+			}
 			return "limbo";
 		}
 		return "attention";
@@ -9876,7 +9879,9 @@ export class AgentStatusTreeProvider
 			descriptionParts.push(`missing handoff: ${missingHandoffRelpath}`);
 		}
 		const reviewQueuePending =
-			task.status === "completed" &&
+			(task.status === "completed" ||
+				task.status === "completed_dirty" ||
+				task.status === "completed_stale") &&
 			task.review_status !== "pending" &&
 			task.review_status !== "changes_requested" &&
 			!missingHandoffRelpath &&
