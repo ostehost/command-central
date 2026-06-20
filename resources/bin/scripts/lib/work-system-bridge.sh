@@ -401,7 +401,9 @@ work_system_lane_ref_enrich() {
 		 .origin_host = ($row.exec_host // str($writer_host)) |
 		 .writer_host = str($writer_host) |
 		 .canonical_project_id = ($row.project_ref.id // $row.project_id // null) |
-		 .canonical_project_dir = ($row.canonical_project_dir // null)' \
+		 .canonical_project_dir = ($row.canonical_project_dir // null) |
+		 .work_item_ref = (.work_item_ref // ($row.work_item_ref // null)) |
+		 .workroom_ref = (.workroom_ref // ($row.workroom_ref // null))' \
 		<<<"$update" 2>/dev/null || printf '%s' "$update"
 }
 
