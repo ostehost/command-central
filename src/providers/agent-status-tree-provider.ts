@@ -263,6 +263,12 @@ export interface AgentTask {
 	/** `visibility.reason` verbatim (e.g. `ax_error_…`,
 	 *  `tmux_no_attached_clients`); null when no claim was made. */
 	launcher_visibility_reason?: string | null;
+	/** Work System workroom binding. Persisted in the task row at spawn from
+	 *  OSTE_WORKROOM_REF and row-backed at env-less emission points (hook/reaper). */
+	workroom_ref?: string | null;
+	/** Work System work-item binding. Persisted in the task row at spawn from
+	 *  OSTE_WORK_ITEM_REF and row-backed at env-less emission points (hook/reaper). */
+	work_item_ref?: string | null;
 	source_authority?: string | null;
 	owner_kind?: string | null;
 	owner_actions?: unknown[] | null;
@@ -1453,6 +1459,8 @@ function laneRefUpdateToTaskRecord(
 			? visibility["degraded"]
 			: undefined,
 		launcher_visibility_reason: visibility ? visibility["reason"] : undefined,
+		workroom_ref: asString(envelope["workroom_ref"]),
+		work_item_ref: asString(envelope["work_item_ref"]),
 		provenance: {
 			source_ref: laneId,
 			adapter_kind: WORK_SYSTEM_LANES_PROJECTION_KIND,
