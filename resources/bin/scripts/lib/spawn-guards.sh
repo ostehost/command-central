@@ -73,6 +73,28 @@ spawn_guards_local_host() {
 	printf '%s' "$name"
 }
 
+# Return a conservative comparison key for host names. This is intentionally
+# narrower than general Unicode normalization: it lowercases ASCII and removes
+# non-alphanumeric bytes so typographic apostrophes — and common mojibake forms
+# of those apostrophes inherited through launchd/env — do not poison otherwise
+# correct host allowlists. Exact string equality is still checked first.
+spawn_guards_host_token_key() {
+	local value="${1:-}"
+	printf '%s' "$value" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cd '[:alnum:]'
+}
+
+spawn_guards_host_token_matches() {
+	local actual="${1:-}"
+	local candidate="${2:-}"
+	[[ -n "$actual" && -n "$candidate" ]] || return 1
+	[[ "$actual" == "$candidate" ]] && return 0
+
+	local actual_key candidate_key
+	actual_key=$(spawn_guards_host_token_key "$actual")
+	candidate_key=$(spawn_guards_host_token_key "$candidate")
+	[[ -n "$actual_key" && "$actual_key" == "$candidate_key" ]]
+}
+
 # Read guard defaults from routing-policy.json into the OSTE_REQUIRE_* env vars.
 # Env overrides always win: if a var is already set, it is not overwritten.
 # Usage: spawn_guards_load_from_policy <role> [policy_file]
@@ -113,7 +135,7 @@ spawn_guards_enforce_node() {
 		candidate="${candidate## }"
 		candidate="${candidate%% }"
 		[[ -n "$candidate" ]] || continue
-		if [[ "$local_host" == "$candidate" ]]; then
+		if spawn_guards_host_token_matches "$local_host" "$candidate"; then
 			return 0
 		fi
 	done
@@ -222,7 +244,7 @@ spawn_guards_enforce_claude_opus_node() {
 		candidate="${candidate## }"
 		candidate="${candidate%% }"
 		[[ -n "$candidate" ]] || continue
-		if [[ "$local_host" == "$candidate" ]]; then
+		if spawn_guards_host_token_matches "$local_host" "$candidate"; then
 			return 0
 		fi
 	done
