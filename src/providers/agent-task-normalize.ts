@@ -218,6 +218,8 @@ export function normalizeTask(
 		rate_limits: raw["rate_limits"] ?? raw["rateLimits"],
 		symphony_runtime_snapshot:
 			raw["symphony_runtime_snapshot"] ?? raw["symphonyRuntimeSnapshot"],
+		workroom_ref: asString(raw["workroom_ref"]) ?? null,
+		work_item_ref: asString(raw["work_item_ref"]) ?? null,
 	};
 }
 
@@ -321,6 +323,8 @@ function laneRefUpdateToTaskRecord(
 		started_at: updatedAt,
 		updated_at: updatedAt,
 		source_authority: asString(laneRef["provider"]),
+		workroom_ref: asString(envelope["workroom_ref"]),
+		work_item_ref: asString(envelope["work_item_ref"]),
 		provenance: {
 			source_ref: laneId,
 			adapter_kind: WORK_SYSTEM_LANES_PROJECTION_KIND,

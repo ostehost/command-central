@@ -117,10 +117,14 @@ describe("extracted Agent Status helper modules", () => {
 			status: "active",
 			project_dir: "/repo",
 			project_ref: { id: "project-1", displayName: "Project One" },
+			workroom_ref: "discord:room-1",
+			work_item_ref: "linear:PAR-239",
 		};
 		const normalized = normalizeTask("task-1", rawTask);
 		expect(normalized?.status).toBe("running");
 		expect(normalized?.project_ref?.id).toBe("project-1");
+		expect(normalized?.workroom_ref).toBe("discord:room-1");
+		expect(normalized?.work_item_ref).toBe("linear:PAR-239");
 		expect(isRegistryBackedLaneTask(normalized ?? makeAgentTask())).toBe(true);
 		expect(normalizeRegistryTasks({ "task-1": rawTask })?.["task-1"]?.id).toBe(
 			"task-1",
@@ -138,9 +142,13 @@ describe("extracted Agent Status helper modules", () => {
 					updatedAt: "2026-06-18T20:00:00.000Z",
 				},
 				project_ref: { id: "project-2" },
+				workroom_ref: "discord:room-2",
+				work_item_ref: "linear:PAR-240",
 			},
 		});
 		expect(lanes?.["launcher:task-2"]?.lane_projection).toBe(true);
+		expect(lanes?.["launcher:task-2"]?.workroom_ref).toBe("discord:room-2");
+		expect(lanes?.["launcher:task-2"]?.work_item_ref).toBe("linear:PAR-240");
 		expect(WORK_SYSTEM_LANES_PROJECTION_KIND).toBe(
 			"work-system-lanes-projection",
 		);
