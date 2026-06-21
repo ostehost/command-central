@@ -434,8 +434,15 @@ describe("AgentStatusTreeProvider", () => {
 		expect(item.command?.title).toBe("Focus Terminal");
 	});
 
-	test("completed task click views changes", () => {
-		const task = createMockTask({ status: "completed" });
+	test("completed task without terminal metadata click views changes", () => {
+		const task = createMockTask({
+			status: "completed",
+			session_id: undefined,
+			tmux_window_id: undefined,
+			tmux_pane_id: undefined,
+			ghostty_bundle_id: null,
+			bundle_path: "",
+		});
 		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
 		provider.reload();
 
@@ -450,13 +457,29 @@ describe("AgentStatusTreeProvider", () => {
 		expect(item.command?.title).toBe("View Changes");
 	});
 
+	test("completed task with terminal metadata click focuses terminal", () => {
+		const task = createMockTask({ status: "completed" });
+		provider.readRegistry = () => createMockRegistry({ "test-task-1": task });
+		provider.reload();
+
+		const children = provider.getChildren();
+		const taskNode = getTaskNodes(children)[0];
+		expect(taskNode).toBeDefined();
+		if (!taskNode) {
+			throw new Error("Expected completed task node");
+		}
+		const item = provider.getTreeItem(taskNode);
+		expect(item.command?.command).toBe("commandCentral.defaultAgentAction");
+		expect(item.command?.title).toBe("Focus Terminal");
+	});
+
 	for (const status of [
 		"failed",
 		"stopped",
 		"killed",
 		"contract_failure",
 	] as const) {
-		test(`${status} task click views changes (not terminal focus)`, () => {
+		test(`${status} task with terminal metadata click focuses terminal`, () => {
 			const task = createMockTask({
 				status,
 				terminal_backend: "tmux",
@@ -473,7 +496,7 @@ describe("AgentStatusTreeProvider", () => {
 			}
 			const item = provider.getTreeItem(taskNode);
 			expect(item.command?.command).toBe("commandCentral.defaultAgentAction");
-			expect(item.command?.title).toBe("View Changes");
+			expect(item.command?.title).toBe("Focus Terminal");
 		});
 	}
 

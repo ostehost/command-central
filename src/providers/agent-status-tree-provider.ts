@@ -119,6 +119,7 @@ import {
 	classifyTaskSurface,
 	getTaskDisplayProjectName,
 	getTaskExecutionHostLabel,
+	hasFirstClassTerminalFocusSurface,
 	isLocalFileProbeAuthoritative,
 	isRemoteNodeTaskForCurrentHost,
 	isSymphonyLane,
@@ -155,6 +156,7 @@ export {
 	classifyLifecycleConflict,
 	classifyTaskSurface,
 	getTaskExecutionHostLabel,
+	hasFirstClassTerminalFocusSurface,
 	isRemoteNodeTaskForCurrentHost,
 	isSymphonyLane,
 } from "./agent-task-classification.js";
@@ -10119,15 +10121,18 @@ export class AgentStatusTreeProvider
 		// UUID is captured can gate on `viewItem =~ /\.linked$/`. No
 		// `.unlinked` is emitted: absence carries the same semantic and
 		// keeps the contextValue space tighter for non-claude rows.
-		const claudeLinkSuffix = hasClaudeUuidLink ? ".linked" : "";
-		item.contextValue = isReviewed
-			? `agentTask.${task.status}.reviewed${claudeLinkSuffix}`
-			: `agentTask.${task.status}${claudeLinkSuffix}`;
+		const contextParts = [`agentTask.${task.status}`];
+		const hasFocusSurface = hasFirstClassTerminalFocusSurface(task);
+		if (hasFocusSurface) contextParts.push("focusable");
+		if (isReviewed) contextParts.push("reviewed");
+		if (hasClaudeUuidLink) contextParts.push("linked");
+		item.contextValue = contextParts.join(".");
 		item.resourceUri = vscode.Uri.parse(`agent-task:${task.id}`);
 		const isRunning = task.status === "running";
+		const primaryActionIsFocus = isRunning || hasFocusSurface;
 		item.command = {
 			command: "commandCentral.defaultAgentAction",
-			title: isRunning ? "Focus Terminal" : "View Changes",
+			title: primaryActionIsFocus ? "Focus Terminal" : "View Changes",
 			arguments: [{ type: "task" as const, task }],
 		};
 		return item;

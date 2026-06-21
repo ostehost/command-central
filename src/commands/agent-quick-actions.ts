@@ -17,6 +17,12 @@ export interface AgentQuickActionDefinition {
 	command: string;
 }
 
+export interface AgentQuickActionOptions {
+	hasResumeSession?: boolean;
+	hasTerminalFocusSurface?: boolean;
+	includeAdvancedActions?: boolean;
+}
+
 export type OpenClawQuickActionId = "cancel" | "showDetails";
 
 const QUICK_ACTIONS: Record<AgentQuickActionId, AgentQuickActionDefinition> = {
@@ -28,7 +34,7 @@ const QUICK_ACTIONS: Record<AgentQuickActionId, AgentQuickActionDefinition> = {
 	viewTranscript: {
 		id: "viewTranscript",
 		label: "View Conversation Transcript",
-		command: "commandCentral.focusAgentTerminal",
+		command: "commandCentral.viewAgentTranscript",
 	},
 	viewDiff: {
 		id: "viewDiff",
@@ -63,38 +69,13 @@ const QUICK_ACTIONS: Record<AgentQuickActionId, AgentQuickActionDefinition> = {
 };
 
 const STATUS_ACTIONS: Partial<Record<AgentTaskStatus, AgentQuickActionId[]>> = {
-	completed: [
-		"viewTranscript",
-		"viewDiff",
-		"showOutput",
-		"focusTerminal",
-		"restart",
-	],
-	completed_dirty: [
-		"viewTranscript",
-		"viewDiff",
-		"showOutput",
-		"focusTerminal",
-		"restart",
-	],
-	completed_stale: [
-		"viewTranscript",
-		"viewDiff",
-		"showOutput",
-		"focusTerminal",
-		"markFailed",
-		"restart",
-	],
-	failed: ["viewTranscript", "showOutput", "viewDiff", "restart", "remove"],
-	contract_failure: [
-		"viewTranscript",
-		"showOutput",
-		"viewDiff",
-		"restart",
-		"remove",
-	],
-	stopped: ["viewTranscript", "showOutput", "viewDiff", "restart", "remove"],
-	killed: ["viewTranscript", "showOutput", "viewDiff", "restart", "remove"],
+	completed: ["viewTranscript", "viewDiff", "showOutput"],
+	completed_dirty: ["viewTranscript", "viewDiff", "showOutput"],
+	completed_stale: ["viewTranscript", "viewDiff", "showOutput", "markFailed"],
+	failed: ["viewTranscript", "showOutput", "viewDiff", "remove"],
+	contract_failure: ["viewTranscript", "showOutput", "viewDiff", "remove"],
+	stopped: ["viewTranscript", "showOutput", "viewDiff", "remove"],
+	killed: ["viewTranscript", "showOutput", "viewDiff", "remove"],
 };
 
 const OPENCLAW_QUICK_ACTIONS: Record<
@@ -129,13 +110,20 @@ const OPENCLAW_STATUS_ACTIONS: Record<
 
 export function getAgentQuickActions(
 	status: AgentTaskStatus,
-	hasResumeSession: boolean,
+	options: AgentQuickActionOptions | boolean,
 ): AgentQuickActionDefinition[] {
+	const normalizedOptions: AgentQuickActionOptions =
+		typeof options === "boolean" ? { hasResumeSession: options } : options;
 	const base = STATUS_ACTIONS[status] ?? [];
-	const ids =
-		hasResumeSession && status !== "running"
-			? (["resumeSession", ...base] as AgentQuickActionId[])
-			: base;
+	const ids: AgentQuickActionId[] = [];
+	if (normalizedOptions.hasTerminalFocusSurface && status !== "running") {
+		ids.push("focusTerminal");
+	}
+	ids.push(...base);
+	if (normalizedOptions.includeAdvancedActions && status !== "running") {
+		if (normalizedOptions.hasResumeSession) ids.push("resumeSession");
+		if (STATUS_ACTIONS[status]) ids.push("restart");
+	}
 	return ids.map((id) => QUICK_ACTIONS[id]);
 }
 

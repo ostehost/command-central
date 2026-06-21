@@ -2,7 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { getAgentQuickActions } from "../../src/commands/agent-quick-actions.js";
 
 describe("agent quick action options", () => {
-	test("completed tasks include transcript/diff/output/focus/restart", () => {
+	test("completed focusable tasks put Focus Terminal first without restart/resume", () => {
+		const labels = getAgentQuickActions("completed", {
+			hasTerminalFocusSurface: true,
+			hasResumeSession: true,
+		}).map((action) => action.label);
+		expect(labels).toEqual([
+			"Focus Terminal",
+			"View Conversation Transcript",
+			"View Diff",
+			"Show Output",
+		]);
+	});
+
+	test("completed non-focusable tasks keep review actions first", () => {
 		const labels = getAgentQuickActions("completed", false).map(
 			(action) => action.label,
 		);
@@ -10,26 +23,23 @@ describe("agent quick action options", () => {
 			"View Conversation Transcript",
 			"View Diff",
 			"Show Output",
-			"Focus Terminal",
-			"Restart",
 		]);
 	});
 
 	test("completed stale tasks include mark-as-failed", () => {
-		const labels = getAgentQuickActions("completed_stale", false).map(
-			(action) => action.label,
-		);
+		const labels = getAgentQuickActions("completed_stale", {
+			hasTerminalFocusSurface: true,
+		}).map((action) => action.label);
 		expect(labels).toEqual([
+			"Focus Terminal",
 			"View Conversation Transcript",
 			"View Diff",
 			"Show Output",
-			"Focus Terminal",
 			"Mark as Failed",
-			"Restart",
 		]);
 	});
 
-	test("failed tasks include transcript/output/diff/restart/remove", () => {
+	test("failed tasks include transcript/output/diff/remove", () => {
 		const labels = getAgentQuickActions("failed", false).map(
 			(action) => action.label,
 		);
@@ -37,12 +47,11 @@ describe("agent quick action options", () => {
 			"View Conversation Transcript",
 			"Show Output",
 			"View Diff",
-			"Restart",
 			"Remove",
 		]);
 	});
 
-	test("stopped tasks include transcript/output/diff/restart/remove", () => {
+	test("stopped tasks include transcript/output/diff/remove", () => {
 		const labels = getAgentQuickActions("stopped", false).map(
 			(action) => action.label,
 		);
@@ -50,12 +59,11 @@ describe("agent quick action options", () => {
 			"View Conversation Transcript",
 			"Show Output",
 			"View Diff",
-			"Restart",
 			"Remove",
 		]);
 	});
 
-	test("killed tasks include transcript/output/diff/restart/remove", () => {
+	test("killed tasks include transcript/output/diff/remove", () => {
 		const labels = getAgentQuickActions("killed", false).map(
 			(action) => action.label,
 		);
@@ -63,22 +71,24 @@ describe("agent quick action options", () => {
 			"View Conversation Transcript",
 			"Show Output",
 			"View Diff",
-			"Restart",
 			"Remove",
 		]);
 	});
 
-	test("resume session is prepended when a resumable session exists", () => {
-		const labels = getAgentQuickActions("failed", true).map(
-			(action) => action.label,
-		);
+	test("resume/restart stay behind the advanced flag and after common actions", () => {
+		const labels = getAgentQuickActions("failed", {
+			hasResumeSession: true,
+			hasTerminalFocusSurface: true,
+			includeAdvancedActions: true,
+		}).map((action) => action.label);
 		expect(labels).toEqual([
-			"Resume Claude Session…",
+			"Focus Terminal",
 			"View Conversation Transcript",
 			"Show Output",
 			"View Diff",
-			"Restart",
 			"Remove",
+			"Resume Claude Session…",
+			"Restart",
 		]);
 	});
 

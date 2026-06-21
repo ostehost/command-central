@@ -381,12 +381,12 @@ describe("completed-tmux regression", () => {
 		expect(String(item.description ?? "")).not.toContain("fresh attach");
 	});
 
-	// ── Regression guard: completed task primary action is View Changes ───────
+	// ── First-class terminal focus: completed terminal rows stay focusable ─────
 
-	test("regression: completed+tmux task → primary command title is 'View Changes' not 'Focus Terminal'", () => {
-		// The primary single-click action for a non-running task must be
-		// "View Changes" (routes to viewAgentDiff). "Focus Terminal" would
-		// attempt a fresh attach on a dead session — a dead-end interaction.
+	test("completed+tmux task → primary command title is 'Focus Terminal'", () => {
+		// Terminal focus is now the primary action whenever the row has
+		// authoritative terminal metadata. The focus command owns the liveness
+		// resolution/fallback path instead of hiding Focus behind another picker.
 		const task = makeCompletedTmuxTask();
 		seedSessionCache(provider, task, false);
 
@@ -395,8 +395,7 @@ describe("completed-tmux regression", () => {
 		provider.getDiffSummary = () => null;
 
 		const item = provider.getTreeItem({ type: "task", task });
-		expect(item.command?.title).toBe("View Changes");
-		expect(item.command?.title).not.toBe("Focus Terminal");
+		expect(item.command?.title).toBe("Focus Terminal");
 	});
 
 	// ── FAILING TEST — awaits fix in task #3 ─────────────────────────────────

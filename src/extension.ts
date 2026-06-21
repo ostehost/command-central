@@ -47,6 +47,7 @@ import {
 	type AgentTask,
 	classifyCompletionRouting,
 	getTaskExecutionHostLabel,
+	hasFirstClassTerminalFocusSurface,
 	isRemoteNodeTaskForCurrentHost,
 	isValidSessionId,
 } from "./providers/agent-status-tree-provider.js";
@@ -1018,6 +1019,29 @@ export async function activate(
 
 		context.subscriptions.push(
 			vscode.commands.registerCommand(
+				"commandCentral.viewAgentTranscript",
+				async (node?: { type: string; task?: AgentTask }) => {
+					const task = node?.task;
+					if (!task) {
+						vscode.window.showInformationMessage(
+							"No transcript available for this item.",
+						);
+						return;
+					}
+
+					const streamFile = agentStatusProvider?.resolveStreamFilePath(task);
+					const transcriptPath =
+						streamFile ?? (await resolveTaskTranscriptPath(task)) ?? null;
+					if (!transcriptPath) {
+						vscode.window.showWarningMessage(
+							"No transcript file found for this task.",
+						);
+						return;
+					}
+					await openTranscriptInEditor(transcriptPath);
+				},
+			),
+			vscode.commands.registerCommand(
 				"commandCentral.focusAgentTerminal",
 				async (node?: {
 					type: string;
@@ -1033,14 +1057,10 @@ export async function activate(
 					const hasTerminalFocusSurface =
 						task &&
 						task.status !== "running" &&
-						(task.session_id ||
-							(task.bundle_path &&
-								task.bundle_path !== "(test-mode)" &&
-								task.bundle_path !== "(tmux-mode)"));
+						hasFirstClassTerminalFocusSurface(task);
 					if (task && task.status !== "running" && !hasTerminalFocusSurface) {
-						await vscode.commands.executeCommand(
-							"commandCentral.resumeAgentSession",
-							node,
+						vscode.window.showInformationMessage(
+							"No focusable terminal surface is available for this task.",
 						);
 						return;
 					}
@@ -1252,7 +1272,24 @@ export async function activate(
 						};
 						const deadItems: DeadSessionPickItem[] = [];
 
-						// ── Primary actions ──────────────────────────────
+						// Focus Terminal is the command the caller asked for. If there is
+						// a project launcher surface, focus it directly instead of opening
+						// the old Actions picker (Transcript → Resume → Focus).
+						if (projectDir && hasBundlePath) {
+							await terminalManager?.runInProjectTerminal(projectDir);
+							return;
+						}
+
+						// ── Focus/recovery actions ───────────────────────
+						if (projectDir) {
+							deadItems.push({
+								label: "$(terminal-new) Build Project Terminal",
+								description: "Create a new project terminal + tmux pane",
+								action: "rebuild",
+							});
+						}
+
+						// ── Secondary actions ────────────────────────────
 						if (transcriptPath) {
 							deadItems.push({
 								label: "$(file) View Conversation Transcript",
@@ -1262,30 +1299,6 @@ export async function activate(
 								action: "transcript",
 							});
 						}
-						if (isResumable && projectDir) {
-							const backendHint = claudeUuid
-								? `Runs claude --resume ${claudeUuid.slice(0, 8)}…`
-								: "Runs claude --continue (project-scoped)";
-							deadItems.push({
-								label: "$(debug-start) Resume Claude Session",
-								description: `Starts a shell command · ${backendHint}`,
-								action: "resume",
-							});
-						}
-						if (projectDir) {
-							const bundlePath = resolveProjectBundlePath(task);
-							deadItems.push({
-								label: hasBundlePath
-									? "$(terminal) Focus Terminal"
-									: "$(terminal-new) Build Project Terminal",
-								description: hasBundlePath
-									? (bundlePath ?? projectDir)
-									: "Create a new project terminal + tmux pane",
-								action: hasBundlePath ? "launcher" : "rebuild",
-							});
-						}
-
-						// ── Review actions ───────────────────────────────
 						deadItems.push({
 							label: "$(diff) View Diff",
 							description: "Show the changes this task made",
@@ -1296,6 +1309,16 @@ export async function activate(
 							description: "Show stream/output file for this task",
 							action: "output",
 						});
+						if (isResumable && projectDir) {
+							const backendHint = claudeUuid
+								? `Runs claude --resume ${claudeUuid.slice(0, 8)}…`
+								: "Runs claude --continue (project-scoped)";
+							deadItems.push({
+								label: "$(debug-start) Resume Claude Session",
+								description: `Starts a shell command · ${backendHint}`,
+								action: "resume",
+							});
+						}
 
 						// ── Routing health (non-actionable separator) ────
 						deadItems.push({
@@ -1429,8 +1452,10 @@ export async function activate(
 						return;
 					}
 
-					const hasResumeSession = canShowResumeAction(task);
-					const actions = getAgentQuickActions(task.status, hasResumeSession);
+					const actions = getAgentQuickActions(task.status, {
+						hasResumeSession: canShowResumeAction(task),
+						hasTerminalFocusSurface: hasFirstClassTerminalFocusSurface(task),
+					});
 					if (actions.length === 0) {
 						await vscode.commands.executeCommand(
 							"commandCentral.focusAgentTerminal",

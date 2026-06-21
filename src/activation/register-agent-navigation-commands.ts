@@ -27,6 +27,7 @@ import type {
 	AgentTask,
 	ProjectGroupNode,
 } from "../providers/agent-status-tree-provider.js";
+import { hasFirstClassTerminalFocusSurface } from "../providers/agent-status-tree-provider.js";
 import type { LoggerService } from "../services/logger-service.js";
 import type { ProjectIconManager } from "../services/project-icon-manager.js";
 
@@ -91,8 +92,9 @@ export function registerAgentNavigationCommands(
 			);
 		}),
 		// Default single-click action for agent tree items.
-		// Running → focus terminal; non-running → view diff/review.
-		// Terminal focus for non-running tasks is in the context menu.
+		// Focus terminal is first-class whenever the row carries authoritative
+		// terminal surface metadata; rows without a focusable surface still open
+		// diff/review rather than rattling a stale History entry.
 		vscode.commands.registerCommand(
 			"commandCentral.defaultAgentAction",
 			async (node?: {
@@ -111,7 +113,10 @@ export function registerAgentNavigationCommands(
 					return;
 				}
 
-				if (task.status === "running") {
+				if (
+					task.status === "running" ||
+					hasFirstClassTerminalFocusSurface(task)
+				) {
 					await vscode.commands.executeCommand(
 						"commandCentral.focusAgentTerminal",
 						node,
@@ -119,9 +124,7 @@ export function registerAgentNavigationCommands(
 					return;
 				}
 
-				// Non-running: always show the diff/review regardless of whether
-				// a tmux session is still alive. Terminal focus for finished
-				// tasks is available via context menu / More Actions.
+				// Non-running without focusable terminal truth: show diff/review.
 				await vscode.commands.executeCommand(
 					"commandCentral.viewAgentDiff",
 					node,

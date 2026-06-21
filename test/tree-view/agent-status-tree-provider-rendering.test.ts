@@ -511,14 +511,14 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 			// Before marking reviewed — no badge
 			let item = provider.getTreeItem({ type: "task", task });
 			expect(item.description).not.toContain("✓");
-			expect(item.contextValue).toBe("agentTask.completed");
+			expect(item.contextValue).toBe("agentTask.completed.focusable");
 
 			// Mark reviewed
 			provider.markTaskReviewed("test-task-1");
 
 			item = provider.getTreeItem({ type: "task", task });
 			expect(item.description).toContain("✓");
-			expect(item.contextValue).toBe("agentTask.completed.reviewed");
+			expect(item.contextValue).toBe("agentTask.completed.focusable.reviewed");
 		});
 
 		test("reviewed completed task uses pass icon", () => {
@@ -549,7 +549,7 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 			// Running tasks don't get the reviewed badge
 			const item = provider.getTreeItem({ type: "task", task });
 			expect(item.description).not.toContain("✓");
-			expect(item.contextValue).toBe("agentTask.running");
+			expect(item.contextValue).toBe("agentTask.running.focusable");
 		});
 
 		test("setReviewTracker uses injected tracker instance", () => {
@@ -968,14 +968,14 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 				provider.getDiffSummary = () => null;
 				expect(
 					provider.getTreeItem({ type: "task", task: linked }).contextValue,
-				).toBe("agentTask.completed.linked");
+				).toBe("agentTask.completed.focusable.linked");
 				// No suffix when not linked — absence carries the semantic.
 				// This keeps the contextValue stable for the 326 pre-existing
 				// tasks (all null claude_session_id) and lets future menu
 				// gates use `viewItem =~ /\.linked$/`.
 				expect(
 					provider.getTreeItem({ type: "task", task: unlinked }).contextValue,
-				).toBe("agentTask.completed");
+				).toBe("agentTask.completed.focusable");
 			});
 
 			test("contextValue stays plain for non-claude backends regardless of UUID", () => {
@@ -986,7 +986,7 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 				});
 				provider.getDiffSummary = () => null;
 				const item = provider.getTreeItem({ type: "task", task });
-				expect(item.contextValue).toBe("agentTask.completed");
+				expect(item.contextValue).toBe("agentTask.completed.focusable");
 			});
 		});
 

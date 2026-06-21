@@ -1921,7 +1921,7 @@ describe("AgentStatusTreeProvider — discovery", () => {
 	test("contextValue includes status for tasks", () => {
 		const task = createMockTask({ status: "running" });
 		const item = provider.getTreeItem({ type: "task", task });
-		expect(item.contextValue).toBe("agentTask.running");
+		expect(item.contextValue).toBe("agentTask.running.focusable");
 	});
 
 	test("getParent returns task node for detail", () => {

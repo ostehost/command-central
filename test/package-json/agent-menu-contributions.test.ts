@@ -214,7 +214,7 @@ describe("package.json agent menu contributions", () => {
 		expect(setting?.markdownDescription).toContain("release-generation");
 	});
 
-	test("has inline restart action for failed launcher-managed tasks", async () => {
+	test("does not expose restart as an inline common-path action", async () => {
 		const menu = await getViewItemContextMenu();
 		const inlineRestart = menu.find(
 			(item) =>
@@ -222,19 +222,15 @@ describe("package.json agent menu contributions", () => {
 				item.group === "inline",
 		);
 
-		expect(inlineRestart).toBeDefined();
-		expect(inlineRestart?.when).toContain("agentTask");
-		expect(inlineRestart?.when).toContain("failed");
-		expect(inlineRestart?.when).toContain("commandCentral.hasLauncher");
-		expect(inlineRestart?.icon).toBe("$(debug-restart)");
+		expect(inlineRestart).toBeUndefined();
 	});
 
-	test("keeps context-menu restart action for completed/failed/stopped", async () => {
+	test("demotes context-menu restart to the advanced group", async () => {
 		const menu = await getViewItemContextMenu();
 		const contextRestart = menu.find(
 			(item) =>
 				item.command === "commandCentral.restartAgent" &&
-				item.group === "2_actions",
+				item.group === "9_advanced",
 		);
 
 		expect(contextRestart).toBeDefined();
@@ -274,7 +270,7 @@ describe("package.json agent menu contributions", () => {
 		expect(inlineDiff).toBeDefined();
 	});
 
-	test("inline focusAgentTerminal is scoped to running rows (no dead/History rattle)", async () => {
+	test("inline focusAgentTerminal is first-class for running and focusable rows", async () => {
 		const menu = await getViewItemContextMenu();
 		const inline = menu.find(
 			(item) =>
@@ -285,6 +281,8 @@ describe("package.json agent menu contributions", () => {
 		const re = viewItemRegex(inline?.when);
 		expect(re.test("agentTask.running")).toBe(true);
 		expect(re.test("agentTask.running.linked")).toBe(true);
+		expect(re.test("agentTask.completed.focusable")).toBe(true);
+		expect(re.test("agentTask.failed.focusable.linked")).toBe(true);
 		for (const status of DEAD_STATUSES) {
 			expect(re.test(`agentTask.${status}`)).toBe(false);
 			expect(re.test(`agentTask.${status}.reviewed`)).toBe(false);

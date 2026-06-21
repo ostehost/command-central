@@ -278,6 +278,27 @@ export function classifyTaskSurface(task: AgentTask): TaskSurfaceSummary {
 	};
 }
 
+export function hasFirstClassTerminalFocusSurface(task: AgentTask): boolean {
+	const surface = classifyTaskSurface(task);
+	if (surface.kind === "unknown" || surface.kind === "persist") return false;
+
+	const bundlePath = firstNonEmptyTaskString(task.bundle_path);
+	const hasLauncherBundle =
+		Boolean(firstNonEmptyTaskString(task.ghostty_bundle_id)) ||
+		Boolean(
+			bundlePath &&
+				bundlePath !== "(tmux-mode)" &&
+				bundlePath !== "(test-mode)",
+		);
+
+	return Boolean(
+		firstNonEmptyTaskString(task.session_id) ||
+			firstNonEmptyTaskString(task.tmux_window_id) ||
+			firstNonEmptyTaskString(task.tmux_pane_id) ||
+			hasLauncherBundle,
+	);
+}
+
 // ── Symphony lane predicate ──────────────────────────────────────────
 
 /**

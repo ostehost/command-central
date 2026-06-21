@@ -927,6 +927,12 @@
         "icon": "$(output)"
       },
       {
+        "command": "commandCentral.viewAgentTranscript",
+        "title": "View Conversation Transcript",
+        "category": "Command Central",
+        "icon": "$(file)"
+      },
+      {
         "command": "commandCentral.viewAgentDiff",
         "title": "View Agent Diff",
         "category": "Command Central",
@@ -1384,11 +1390,11 @@
           "when": "viewItem =~ /^cronJob/",
           "group": "2_cronManage@3"
         },
-        {
-          "command": "commandCentral.focusAgentTerminal",
-          "when": "viewItem =~ /^agentTask\\.running/",
-          "group": "inline"
-        },
+      {
+        "command": "commandCentral.focusAgentTerminal",
+        "when": "viewItem =~ /^agentTask\\.(running|.*\\.focusable)(\\.|$)/",
+        "group": "inline"
+      },
         {
           "command": "commandCentral.captureAgentOutput",
           "when": "viewItem =~ /^agentTask\\.running/",
@@ -1410,6 +1416,11 @@
           "group": "inline"
         },
         {
+          "command": "commandCentral.viewAgentTranscript",
+          "when": "viewItem =~ /^agentTask\\./",
+          "group": "navigation"
+        },
+        {
           "command": "commandCentral.removeAgentTask",
           "when": "viewItem =~ /agentTask\\.(failed|stopped|killed|completed|completed_dirty|completed_stale|contract_failure)/",
           "group": "inline"
@@ -1424,16 +1435,10 @@
           "when": "viewItem =~ /^agentTask\\./ || viewItem == discoveredAgent.running",
           "group": "inline"
         },
-        {
-          "command": "commandCentral.restartAgent",
-          "when": "viewItem =~ /agentTask\\.failed/ && commandCentral.hasLauncher",
-          "group": "inline",
-          "icon": "$(debug-restart)"
-        },
-        {
-          "command": "commandCentral.viewAgentDiff",
-          "when": "viewItem =~ /^agentTask\\./ || viewItem == discoveredAgent.running",
-          "group": "navigation"
+      {
+        "command": "commandCentral.viewAgentDiff",
+        "when": "viewItem =~ /^agentTask\\./ || viewItem == discoveredAgent.running",
+        "group": "navigation"
         },
         {
           "command": "commandCentral.smartOpenFile",
@@ -1455,16 +1460,11 @@
           "when": "viewItem =~ /^agentTask\\./",
           "group": "navigation"
         },
-        {
-          "command": "commandCentral.restartAgent",
-          "when": "viewItem =~ /agentTask\\.(completed|completed_dirty|failed|stopped)/ && commandCentral.hasLauncher",
-          "group": "2_actions"
-        },
-        {
-          "command": "commandCentral.resumeAgentSession",
-          "when": "viewItem =~ /agentTask\\.(completed|completed_dirty|stopped|failed|completed_stale|contract_failure)/",
-          "group": "2_actions"
-        },
+      {
+        "command": "commandCentral.restartAgent",
+        "when": "viewItem =~ /agentTask\\.(completed|completed_dirty|failed|stopped)/ && commandCentral.hasLauncher",
+        "group": "9_advanced"
+      },
         {
           "command": "commandCentral.removeAgentTask",
           "when": "viewItem =~ /agentTask\\.(failed|stopped|killed|completed|completed_dirty|completed_stale|contract_failure)/",
