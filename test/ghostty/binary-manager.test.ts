@@ -340,7 +340,7 @@ describe("BinaryManager.getLatestRelease", () => {
 				_createIfNone = false,
 			): Promise<string | undefined> {
 				tokenCallCount++;
-				return tokenCallCount <= 1 ? undefined : "ghp_test_token";
+				return tokenCallCount <= 1 ? undefined : "TEST_GITHUB_TOKEN";
 			}
 		}
 
@@ -719,7 +719,7 @@ describe("BinaryManager authentication", () => {
 		// Subclass to inject a known token
 		class AuthTestManager extends BinaryManager {
 			protected override async getGitHubToken(): Promise<string | undefined> {
-				return "ghp_test_token_123";
+				return "TEST_GITHUB_TOKEN_123";
 			}
 		}
 
@@ -739,7 +739,7 @@ describe("BinaryManager authentication", () => {
 
 		expect(capturedHeaders.length).toBeGreaterThan(0);
 		expect(capturedHeaders[0]?.["Authorization"]).toBe(
-			"Bearer ghp_test_token_123",
+			"Bearer TEST_GITHUB_TOKEN_123",
 		);
 	});
 
