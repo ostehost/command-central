@@ -8,11 +8,10 @@
  * Watches the file for changes and auto-refreshes.
  */
 
-import { execFile, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { promisify } from "node:util";
 import * as vscode from "vscode";
 import {
 	getValidClaudeSessionId,
@@ -246,7 +245,6 @@ import {
 	formatNotificationDiffSummary,
 	formatPerFileDiffSummary,
 	getFileChangePathParts,
-	parsePerFileDiffsFromNumstat,
 	parsePerFileStatusesFromNameStatus,
 	shortenCommitHash,
 } from "./diff-format.js";
@@ -255,6 +253,7 @@ import {
 	summarizeFilteredDiscoveryMatches,
 } from "./discovery-format.js";
 import {
+	computeDiffSummaryAsync,
 	getPerFileNumstatDiffs,
 	getTaskDiffEndCommit,
 	getTaskDiffStartCommit,
@@ -4339,7 +4338,7 @@ export class AgentStatusTreeProvider
 
 		if (!this._diffSummaryDetecting.has(cacheKey)) {
 			this._diffSummaryDetecting.add(cacheKey);
-			void this.computeDiffSummaryAsync(task.project_dir, task)
+			void computeDiffSummaryAsync(task.project_dir, task)
 				.then((summary) => {
 					this._diffSummaryCache.set(cacheKey, summary);
 					this.scheduleTreeRefresh(this.getTaskRefreshElement(task.id));
@@ -4369,7 +4368,7 @@ export class AgentStatusTreeProvider
 
 		if (!this._diffSummaryDetecting.has(cacheKey)) {
 			this._diffSummaryDetecting.add(cacheKey);
-			void this.computeDiffSummaryAsync(agent.projectDir, syntheticTask)
+			void computeDiffSummaryAsync(agent.projectDir, syntheticTask)
 				.then((summary) => {
 					this._diffSummaryCache.set(cacheKey, summary);
 					this.scheduleTreeRefresh({
@@ -4382,67 +4381,6 @@ export class AgentStatusTreeProvider
 				});
 		}
 		return null;
-	}
-
-	private async computeDiffSummaryAsync(
-		projectDir: string,
-		task: AgentTask,
-	): Promise<string | null> {
-		const execFileAsync = promisify(execFile);
-		const runNumstat = async (args: string[]): Promise<string> => {
-			const { stdout } = await execFileAsync("git", args, {
-				encoding: "utf-8",
-				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
-			});
-			return stdout.trim();
-		};
-
-		try {
-			const startCommit = getTaskDiffStartCommit(task);
-			const endCommit = getTaskDiffEndCommit(task);
-
-			// Non-running task with no valid end boundary — no diff available.
-			if (startCommit && !endCommit) return null;
-
-			const resolvedEnd = endCommit ?? "HEAD";
-			const primaryArgs = startCommit
-				? [
-						"-C",
-						projectDir,
-						"diff",
-						"--numstat",
-						`${startCommit}..${resolvedEnd}`,
-					]
-				: ["-C", projectDir, "diff", "--numstat"];
-
-			let output = "";
-			try {
-				output = await runNumstat(primaryArgs);
-			} catch {
-				if (!startCommit) return null;
-				output = await runNumstat([
-					"-C",
-					projectDir,
-					"diff",
-					"--numstat",
-					"HEAD~1..HEAD",
-				]);
-			}
-
-			if (!output && startCommit) {
-				output = await runNumstat([
-					"-C",
-					projectDir,
-					"diff",
-					"--numstat",
-					"HEAD~1..HEAD",
-				]);
-			}
-
-			return formatPerFileDiffSummary(parsePerFileDiffsFromNumstat(output));
-		} catch {
-			return null;
-		}
 	}
 
 	/** Get detail children for discovered agents (no task record) */
