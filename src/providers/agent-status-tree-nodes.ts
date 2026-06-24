@@ -117,6 +117,13 @@ export interface SummaryNode {
 	type: "summary";
 	label: string;
 	tooltip?: string;
+	/**
+	 * Discriminates the Sources provenance summary from the ordinary V2 count
+	 * summary. In flat root mode both render as siblings, so their stable
+	 * TreeItem.id must differ (a duplicate id is a hard "already registered"
+	 * tree crash). Only the Sources node sets this.
+	 */
+	kind?: "sources";
 }
 
 export interface TaskNode {
@@ -255,6 +262,13 @@ export interface OlderRunsNode {
 	parentProjectName?: string;
 	parentProjectDir?: string;
 	parentGroupKey?: string;
+	/**
+	 * The status group this bucket lives under, when emitted beneath a
+	 * `statusGroup` (project mode with >5 lanes). Part of the node's stable
+	 * identity so two sibling buckets under the same project never collide.
+	 * Undefined at the flat-root and background-tasks lanes.
+	 */
+	parentStatus?: AgentStatusGroup;
 }
 
 export interface StateNode {
