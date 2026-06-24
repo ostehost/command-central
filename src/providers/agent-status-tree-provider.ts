@@ -326,9 +326,7 @@ export function isValidSessionId(name: string): boolean {
 /** @deprecated Use isValidSessionId */
 export const isValidTmuxSession = isValidSessionId;
 
-// ── Task registry types ──────────────────────────────────────────────
-
-// ── Task registry & lane types ────────────────────
+// ── Task registry & lane types ───────────────────────────────────────
 // AgentTask and the registry types live in ../types/agent-task.ts (a leaf
 // module with no provider dependency, which breaks the import cycle the sibling
 // node/formatter/detection modules otherwise have with this file); re-exported

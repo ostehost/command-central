@@ -11,8 +11,8 @@
 
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
+import type { AgentTask } from "../types/agent-task.js";
 import type { PerFileDiff } from "./agent-status-tree-nodes.js";
-import type { AgentTask } from "./agent-status-tree-provider.js";
 import {
 	buildGitDiffArgs,
 	formatPerFileDiffSummary,

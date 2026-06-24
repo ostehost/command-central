@@ -8,11 +8,8 @@
  * methods. No provider state is touched.
  */
 
+import type { AgentTask, AgentTaskStatus } from "../types/agent-task.js";
 import type { OpenClawTask } from "../types/openclaw-task-types.js";
-import type {
-	AgentTask,
-	AgentTaskStatus,
-} from "./agent-status-tree-provider.js";
 
 export function mapOpenClawTaskToAgentStatus(
 	task: OpenClawTask,
