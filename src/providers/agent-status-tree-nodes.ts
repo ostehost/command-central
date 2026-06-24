@@ -10,6 +10,7 @@
 
 import type * as vscode from "vscode";
 import type { DiscoveredAgent } from "../discovery/types.js";
+import type { AgentTask } from "../types/agent-task.js";
 import type {
 	CodexRunView,
 	SymphonyRetryEntryView,
@@ -19,7 +20,6 @@ import type {
 import type { OpenClawTask } from "../types/openclaw-task-types.js";
 import type { TaskFlow } from "../types/taskflow-types.js";
 import type { TimePeriod } from "../utils/time-grouping.js";
-import type { AgentTask } from "./agent-status-tree-provider.js";
 
 export type AgentNode =
 	| SummaryNode
