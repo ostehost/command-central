@@ -62,14 +62,20 @@ Per-ticket status + caveats: `ledger.json` (worker queue) and `research/cc-work-
 
 ## Tracked follow-ups (non-blocking code health, from the review)
 
-- GC-receipt freshness gate: a stale opt-in receipt could route a since-restarted `running`
-  lane to Needs Review (`agent-status-tree-provider.ts` ~5332). Add a `generatedAt` age check.
-- Dedup the two GC reconcilers (`agent-task-normalize.ts:applyGcReceiptReconciliation`
+- ✅ **RESOLVED (commit `78c698a`)** — Cron/acp/taskflow async hygiene: the unreachable
+  generation guard was replaced with a `disposed` flag (set in `dispose()`, checked after
+  each awaited CLI read), `dispose()` now nulls `reloadInFlight`, and the same guard was
+  added to `openclaw-task-service` (which had none). +regression tests proving a reload
+  resolving after `dispose()` no longer resurrects state.
+- ✅ **RESOLVED (commit `78c698a`)** — stale doc comment claiming the recovery command is unwired.
+- ✅ **RESOLVED (commit `5c582bf`)** — credential redaction + the lone ESM `.js` import lapse.
+- Open: GC-receipt freshness gate — a stale opt-in receipt could route a since-restarted
+  `running` lane to Needs Review (`agent-status-tree-provider.ts` ~5332). Add a `generatedAt`
+  age check. (Off-by-default behind `CC_LANE_GC_RECEIPT`; recoverable.)
+- Open: dedup the two GC reconcilers (`agent-task-normalize.ts:applyGcReceiptReconciliation`
   vs the provider's private copy) so the tested code is the shipped code.
-- Cron/acp/taskflow async hygiene: the stale-result generation guard is currently
-  unreachable, and `dispose()` can be resurrected by an in-flight reload (both inert today).
-- Minor/nits: end-anchored awaiting-input regex; stale doc comment in the recovery panel;
-  a wall-clock sleep in one cron test; an untested empty-string env branch.
+- Open (nits): end-anchored awaiting-input regex; a wall-clock sleep in one cron test; an
+  untested empty-string env branch.
 
 ## Cross-cutting concern worth a ticket
 
