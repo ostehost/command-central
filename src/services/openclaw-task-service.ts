@@ -96,6 +96,7 @@ export class OpenClawTaskService implements vscode.Disposable {
 		// Mark disposed first so an in-flight reload resolving after teardown
 		// discards its result instead of resurrecting state.
 		this.disposed = true;
+		this.reloadInFlight = null;
 		if (this.watcher) {
 			this.watcher.close();
 			this.watcher = null;
@@ -106,7 +107,6 @@ export class OpenClawTaskService implements vscode.Disposable {
 		}
 		this.onChange = null;
 		this.tasks = [];
-		this.reloadInFlight = null;
 	}
 
 	private parseTasksOutput(stdout: string): OpenClawTask[] {
