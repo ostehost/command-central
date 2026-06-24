@@ -159,6 +159,12 @@ import {
 	getBackendLabel,
 	getTaskAgentIdentities,
 } from "./agent-type-detection.js";
+import {
+	cleanPromptForDisplay,
+	isPromptBoilerplateLine,
+	normalizePromptSummaryLine,
+	truncatePromptSummary,
+} from "./prompt-display.js";
 
 const CODEX_RUN_STATUS_ORDER: CodexRunStatus[] = [
 	"running",
@@ -5904,7 +5910,7 @@ export class AgentStatusTreeProvider
 		const promptValue =
 			isPromptFallback && t.prompt_summary ? t.prompt_summary : promptSummary;
 		if (promptValue && promptValue !== "---" && !promptValue.endsWith(".md")) {
-			const cleanedPrompt = this.cleanPromptForDisplay(promptValue);
+			const cleanedPrompt = cleanPromptForDisplay(promptValue);
 			if (cleanedPrompt) {
 				const truncatedPrompt =
 					cleanedPrompt.length > 80
@@ -6108,25 +6114,6 @@ export class AgentStatusTreeProvider
 	 * Strip boilerplate prefixes (ULTRATHINK, system-reminder lines, etc.)
 	 * and return the first meaningful line, trimmed.
 	 */
-	private cleanPromptForDisplay(raw: string): string | null {
-		const lines = raw.split("\n");
-		const boilerplatePrefixes = [
-			"ULTRATHINK",
-			"<system-reminder>",
-			"---",
-			"##",
-			"# Task",
-			"task_id:",
-		];
-		for (const line of lines) {
-			const trimmed = line.trim();
-			if (!trimmed) continue;
-			if (boilerplatePrefixes.some((p) => trimmed.startsWith(p))) continue;
-			return trimmed;
-		}
-		return null;
-	}
-
 	/**
 	 * If ≤3 files changed, show file names inline; otherwise keep the count summary.
 	 * Uses cached per-file data from getFileChangeChildren to avoid extra git spawns.
@@ -7639,50 +7626,6 @@ export class AgentStatusTreeProvider
 		});
 	}
 
-	private truncatePromptSummary(value: string): string {
-		return value.length > 80 ? `${value.substring(0, 80)}…` : value;
-	}
-
-	private normalizePromptSummaryLine(line: string): string | null {
-		const normalized = line
-			.trim()
-			.replace(/^[-*+]\s+/, "")
-			.replace(/^\d+\.\s+/, "")
-			.replace(/^>\s+/, "")
-			.replace(/\s+/g, " ")
-			.trim();
-		return normalized.length > 0 ? normalized : null;
-	}
-
-	private isPromptBoilerplateLine(line: string): boolean {
-		return [
-			/^At the START of your work/i,
-			/^Use the task system/i,
-			/^As you work/i,
-			/^When ALL work is complete/i,
-			/^The TaskCompleted hook/i,
-			/^This is critical/i,
-			/^\d+\.\s+\*\*Commit all changes/i,
-			/^\d+\.\s+\*\*Verify clean working tree/i,
-			/^\d+\.\s+\*\*Do not exit with uncommitted work/i,
-			/^\d+\.\s+\*\*Fix hooks, never bypass them/i,
-			/^\d+\.\s+\*\*Write the handoff file/i,
-			/^\d+\.\s+\*\*Completion is automatic/i,
-			/^You MUST write a completion report/i,
-			/^This file is checked by the orchestrator/i,
-			// rc.37: defensive skip of harness role preambles synthesized by
-			// `~/projects/ghostty-launcher/scripts/write-prompt.sh` (lines
-			// ~117-131). The launcher wraps user prompts with one of these
-			// role declarations before claude sees them, and `prompt_file` in
-			// tasks.json points at the WRAPPED file — so without this skip
-			// every task row in the tree shows the harness boilerplate
-			// instead of the user's actual prompt content.
-			/^You are the implementation agent for task_id/i,
-			/^You are the team lead for task_id/i,
-			/^You are the test agent for task_id/i,
-		].some((pattern) => pattern.test(line));
-	}
-
 	private getPromptSummaryFromPreferredSection(lines: string[]): string | null {
 		const preferredSectionPatterns = [
 			// rc.37: launcher (write-prompt.sh) emits `## User Prompt`
@@ -7705,9 +7648,9 @@ export class AgentStatusTreeProvider
 				if (!inSection) continue;
 				if (/^#{1,6}\s+/.test(trimmed)) break;
 
-				const candidate = this.normalizePromptSummaryLine(line);
-				if (!candidate || this.isPromptBoilerplateLine(candidate)) continue;
-				return this.truncatePromptSummary(candidate);
+				const candidate = normalizePromptSummaryLine(line);
+				if (!candidate || isPromptBoilerplateLine(candidate)) continue;
+				return truncatePromptSummary(candidate);
 			}
 		}
 
@@ -7741,7 +7684,7 @@ export class AgentStatusTreeProvider
 					const trimmed = line.trim();
 					if (trimmed.length === 0) continue;
 					if (trimmed.startsWith("#")) break; // next section
-					const result = this.truncatePromptSummary(trimmed);
+					const result = truncatePromptSummary(trimmed);
 					this._promptCache.set(promptFile, result);
 					return result;
 				}
@@ -7764,9 +7707,9 @@ export class AgentStatusTreeProvider
 				if (trimmed.length === 0) continue;
 				if (trimmed.startsWith("#")) continue;
 
-				const candidate = this.normalizePromptSummaryLine(line);
-				if (!candidate || this.isPromptBoilerplateLine(candidate)) continue;
-				const result = this.truncatePromptSummary(candidate);
+				const candidate = normalizePromptSummaryLine(line);
+				if (!candidate || isPromptBoilerplateLine(candidate)) continue;
+				const result = truncatePromptSummary(candidate);
 				this._promptCache.set(promptFile, result);
 				return result;
 			}
