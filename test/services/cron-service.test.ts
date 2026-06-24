@@ -61,7 +61,20 @@ mock.module("node:fs", () => ({
 	readFileSync: () => "",
 }));
 
-mock.module("vscode", () => ({}));
+// Keep this mock shape compatible with tests that may import status helpers in
+// the same Bun process. A bare `{}` leaks globally and makes ThemeColor
+// undefined when focused service suites are batched together.
+mock.module("vscode", () => ({
+	ThemeIcon: class {
+		constructor(
+			public id: string,
+			public color?: { id: string },
+		) {}
+	},
+	ThemeColor: class {
+		constructor(public id: string) {}
+	},
+}));
 
 const { CronService } = await import("../../src/services/cron-service.js");
 
