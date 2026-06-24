@@ -2,7 +2,14 @@
 
 **AI-Powered Mission Control for VS Code**
 
-Version: 0.1.7 | Last Updated: 2026-02-18
+Version: 0.6.0 | Last Updated: 2026-06-24
+
+> **Primary surface today: Agent Status.** Command Central began as a git-change
+> sorter (documented in detail below) but its dominant subsystem is now **Agent
+> Status** — a tree view that aggregates every AI coding agent (Claude, Codex,
+> Gemini, OpenClaw lanes, Symphony runs) across machines into one sidebar. See
+> [Agent Status Architecture](#agent-status-architecture) for the module layering;
+> the git-sort sections that follow remain accurate for that feature.
 
 ---
 
@@ -25,6 +32,9 @@ Command Central is a sophisticated VS Code extension that provides intelligent g
 
 ### Core Capabilities
 
+- **Agent Status**: Aggregate every AI coding agent (Claude / Codex / Gemini /
+  OpenClaw / Symphony) across machines into one tree, with liveness, diffs,
+  notifications, and per-project grouping — see [Agent Status Architecture](#agent-status-architecture)
 - **Git Sort**: Time-based change tracking with grouping
 - **Multi-Workspace**: Up to 10 workspace folders with isolation
 - **Extension Filtering**: Filter files by extension across workspaces
@@ -42,6 +52,75 @@ Command Central is a sophisticated VS Code extension that provides intelligent g
 4. **Performance First** - Sub-second activation, optimized tree rendering
 5. **Type Safety** - Full TypeScript with strict mode
 6. **Industry Standards** - Follows Google, Fowler, Beck best practices
+
+---
+
+## Agent Status Architecture
+
+Agent Status is the primary surface. Its core is one orchestrator,
+`AgentStatusTreeProvider` (`src/providers/agent-status-tree-provider.ts`), which
+owns the stateful work — reading the task registries, runtime liveness probes
+(tmux / persist / handoff / review-queue), per-render and TTL caches, completion
+/ stuck / stale notifications, and building the `TreeView`. Everything that does
+**not** need that provider state has been extracted into focused, independently
+testable modules that the provider imports and delegates to.
+
+### Module layering (single source of truth)
+
+The provider is deliberately kept a thin orchestrator over pure modules. Each
+type and each pure helper is defined in **exactly one** module; the provider
+imports them and **re-exports** the public ones so the ~80 existing import sites
+keep resolving from `agent-status-tree-provider.js` (a stable facade) — but the
+implementation lives in the leaf module, never duplicated inline.
+
+| Concern | Module (single source of truth) |
+|---------|---------------------------------|
+| Lane record + registry types (`AgentTask`, `TaskRegistry`) | `src/types/agent-task.ts` (leaf — no VS Code / provider dependency) |
+| Tree node model (`AgentNode` union + all node interfaces) | `src/providers/agent-status-tree-nodes.ts` |
+| Agent-type detection + icons | `src/providers/agent-type-detection.ts` |
+| Status icons / elapsed-time formatting | `src/providers/agent-status-formatters.ts` |
+| Prompt-summary cleaning | `src/providers/prompt-display.ts` |
+| Codex-run formatting | `src/providers/codex-run-format.ts` |
+| Symphony projection / run-group formatting | `src/providers/symphony-projection.ts` |
+| Git diff parsing / formatting | `src/providers/diff-format.ts`, `src/providers/git-diff.ts` |
+| OpenClaw task formatting | `src/providers/openclaw-task-format.ts` |
+| Discovery diagnostics | `src/providers/discovery-format.ts` |
+| Lane classification (surface / lifecycle / host) | `src/providers/agent-task-classification.ts` |
+
+**Why this matters:** these modules were previously *duplicated* inline in the
+provider (a half-finished extraction). The duplicates drifted — provider copies
+of `SummaryNode.kind`, `OlderRunsNode.parentStatus`, and the Symphony idle
+summary diverged from their sibling modules — which is a live correctness-bug
+class. The architecture rule is therefore: **define once, re-export through the
+provider; never re-declare a type or copy a pure function into the provider.**
+
+### Injected collaborators & discovery
+
+Stateful collaborators are constructed at the provider and injected (not
+imported as singletons): `CodexRunObserverService`, `OpenClawTaskService`,
+`AcpSessionService`, `TaskFlowService`, `ReviewTracker`, `ProjectIconManager`,
+plus the `src/discovery/` subsystem (`agent-registry`, `process-scanner`,
+`session-watcher`) which surfaces live agents not present in the registry files.
+
+### Data flow
+
+```
+tasks.json + lane-projection / lane-registry files   discovery (live processes)
+                 │                                              │
+                 ▼                                              ▼
+        readRegistry() ── merge ──►  registry (AgentTask[])  + discovered agents
+                 │
+                 ▼  toDisplayTask() runtime overlay (liveness, release-generation)
+        display tasks ──► sort / group (status · time · project) ──► AgentNode tree
+                 │
+                 ▼  getTreeItem() (delegates to the formatter modules above)
+              TreeView (Activity Bar + Panel)
+```
+
+The lifecycle invariant for the async CLI services (acp / cron / taskflow /
+openclaw-task) is a `disposed` flag checked after every awaited read, so a CLI
+result resolving after teardown cannot resurrect state. The provider's own
+`reload()` is fully synchronous, so it needs no such guard.
 
 ---
 
