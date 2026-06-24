@@ -19,6 +19,7 @@
 
 import * as os from "node:os";
 import * as path from "node:path";
+import type { OpenClawTask } from "../types/openclaw-task-types.js";
 import type {
 	AgentTask,
 	AgentTaskStatus,
@@ -524,4 +525,130 @@ export function isSupersededByReleaseReset(
 	const laneGeneration = canonicalGenerationToken(task.release_generation);
 	if (!current || !laneGeneration) return false;
 	return laneGeneration !== current;
+}
+
+// ── OpenClaw cross-project orchestration context ─────────────────────
+
+/**
+ * A presentation-ready row describing one facet of an OpenClaw task's
+ * cross-project / cross-machine orchestration identity. Pure data: the tree
+ * provider maps these onto `DetailNode`s (and a `vscode.open` command when a
+ * `url` is present). Kept here, free of vscode, so the projection can be tested
+ * directly and so the dogfood path renders real cross-project issues honestly.
+ */
+export interface OpenClawCrossProjectRow {
+	label: string;
+	value: string;
+	icon: string;
+	iconColor?: string;
+	/** When set, the row opens this external link (e.g. the Linear issue). */
+	url?: string;
+}
+
+function firstOpenClawString(
+	...values: Array<string | null | undefined>
+): string | null {
+	for (const value of values) {
+		const trimmed = value?.trim();
+		if (trimmed) return trimmed;
+	}
+	return null;
+}
+
+/**
+ * Derive the cross-project orchestration rows for an OpenClaw task.
+ *
+ * CC-006 dogfooding routes REAL Linear-tracked issues — often targeting a
+ * different project and/or executing on a remote node — through Command
+ * Central. The task carries that identity (tracker/issue, workspace, exec
+ * node), but the base detail rows (runtime/status/agent/duration) never showed
+ * it, so a cross-project lane looked identical to a local background task.
+ *
+ * This classifier surfaces, in priority order, the facets that make a lane a
+ * cross-project orchestration row:
+ *
+ *  1. Tracker issue identity (e.g. `linear · PAR-158 · In Progress`), with the
+ *     issue URL attached so the operator can open it. This is the canonical
+ *     signal that a lane represents a real tracked issue rather than an
+ *     ad-hoc background task.
+ *  2. Workspace / target project path — which project the lane operates on,
+ *     i.e. the "cross-project" dimension.
+ *  3. Execution node / host — the "cross-machine" dimension, including whether
+ *     the node is currently connected.
+ *  4. Workflow contract path/name driving the run.
+ *
+ * Returns an empty array for a plain local task with none of this metadata, so
+ * the common case stays noise-free.
+ */
+export function classifyOpenClawCrossProjectContext(
+	task: OpenClawTask,
+): OpenClawCrossProjectRow[] {
+	const rows: OpenClawCrossProjectRow[] = [];
+
+	const issueIdentity = firstOpenClawString(task.issueIdentifier, task.issueId);
+	if (issueIdentity) {
+		const tracker = firstOpenClawString(task.trackerKind);
+		const state = firstOpenClawString(task.issueState);
+		const value = [tracker, issueIdentity, state]
+			.filter((part): part is string => Boolean(part))
+			.join(" · ");
+		const url = firstOpenClawString(task.issueUrl);
+		rows.push({
+			label: "Tracked issue",
+			value,
+			icon: "link-external",
+			iconColor: "charts.blue",
+			...(url ? { url } : {}),
+		});
+	}
+
+	const workspace = firstOpenClawString(task.workspacePath);
+	if (workspace) {
+		rows.push({
+			label: "Project workspace",
+			value: workspace,
+			icon: "folder",
+		});
+	}
+
+	const nodeName = firstOpenClawString(
+		task.execNodeName,
+		task.execNodeId,
+		task.host,
+	);
+	const execMode = firstOpenClawString(task.execMode)?.toLowerCase();
+	const isRemoteExec =
+		Boolean(nodeName) ||
+		execMode === "spoke" ||
+		execMode === "node" ||
+		execMode === "remote";
+	if (isRemoteExec) {
+		const connected =
+			typeof task.nodeConnected === "boolean"
+				? task.nodeConnected
+					? "connected"
+					: "disconnected"
+				: null;
+		const value = [nodeName ?? "remote node", connected]
+			.filter((part): part is string => Boolean(part))
+			.join(" · ");
+		rows.push({
+			label: "Execution node",
+			value,
+			icon: "server-environment",
+			iconColor:
+				task.nodeConnected === false ? "charts.yellow" : "charts.green",
+		});
+	}
+
+	const workflow = firstOpenClawString(task.workflowName, task.workflowPath);
+	if (workflow) {
+		rows.push({
+			label: "Workflow contract",
+			value: workflow,
+			icon: "law",
+		});
+	}
+
+	return rows;
 }

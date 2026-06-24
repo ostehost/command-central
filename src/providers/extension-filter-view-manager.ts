@@ -675,7 +675,7 @@ export class ExtensionFilterViewManager implements vscode.Disposable {
 	 * Re-discovers extensions and updates TreeView while preserving filter state.
 	 *
 	 * Architecture:
-	 * - Re-collects Git changes from providers (getCurrentChanges)
+	 * - Re-collects Git changes from providers (getCurrentChangesUnfiltered)
 	 * - Re-discovers extensions (buildExtensionMetadata)
 	 * - Updates TreeView via provider.updateData()
 	 * - FilterStateManager preserves checkbox state (source of truth)
@@ -698,11 +698,19 @@ export class ExtensionFilterViewManager implements vscode.Disposable {
 				await import("../utils/extension-discovery.js");
 
 			// Collect current Git changes from all providers
+			// CRITICAL: Use getCurrentChangesUnfiltered() to re-discover ALL extensions
+			// in Git regardless of the current filter state. Using the filtered-intent
+			// getCurrentChanges() would rediscover only from already-filtered files,
+			// causing checked-away extensions to vanish from the filter view on refresh.
+			// Mirrors discoverExtensions(); falls back to getCurrentChanges() when the
+			// unfiltered method is absent.
 			const workspaceData = this.currentProviders
 				.map(({ provider, slotId }) => {
 					try {
-						// VS Code native: providers expose getCurrentChanges()
-						const changes = provider.getCurrentChanges();
+						const changes =
+							typeof provider.getCurrentChangesUnfiltered === "function"
+								? provider.getCurrentChangesUnfiltered()
+								: provider.getCurrentChanges();
 						return { workspace: slotId, changes };
 					} catch (error) {
 						// Graceful degradation: skip providers that error

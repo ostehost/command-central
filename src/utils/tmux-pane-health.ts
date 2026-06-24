@@ -25,6 +25,11 @@
  */
 
 import { execFileSync } from "node:child_process";
+import {
+	classifyPaneAttention as _classifyPaneAttention,
+	isBenignLivePane as _isBenignLivePane,
+	type PaneAttentionState,
+} from "./agent-status-sections.js";
 
 /** Known agent CLI process names (case-sensitive). */
 export const AGENT_PROCESS_NAMES = [
@@ -37,11 +42,39 @@ export const AGENT_PROCESS_NAMES = [
 
 export type TmuxPaneAgentEvidence = "alive" | "dead" | "unknown";
 
+// The live-pane attention taxonomy + pure classifier (CCSYNC-03 / PAR-228) are
+// DEFINED in the pure, mock-free `agent-status-sections` module so the provider
+// can import them from a module the tmux-health-mocking test suites do NOT shadow.
+//
+// Here we expose them as thin DELEGATING wrappers (not a `export … from` re-export)
+// for the historical importers and unit tests that reach for them on this module.
+// A re-export aliases the same export binding, which makes Bun's `mock.module`
+// for THIS module also shadow that symbol in modules importing it straight from
+// `agent-status-sections` — the exact cross-file leak this split removes. A
+// locally-defined wrapper is a distinct binding owned by this module, so mocking
+// here cannot reach the provider's sections-sourced import.
+export type { PaneAttentionState } from "./agent-status-sections.js";
+
+/** Delegates to the pure classifier in `agent-status-sections`. */
+export function classifyPaneAttention(
+	paneCommand: string | null | undefined,
+	snippet: string,
+): PaneAttentionState {
+	return _classifyPaneAttention(paneCommand, snippet);
+}
+
+/** Delegates to the pure benign-pane predicate in `agent-status-sections`. */
+export function isBenignLivePane(state: PaneAttentionState): boolean {
+	return _isBenignLivePane(state);
+}
+
 const SESSION_ID_RE = /^[a-zA-Z0-9._-]+$/;
 export const PANE_ID_RE = /^%\d+$/;
 const MAX_PIDS = 64;
 const MAX_DEPTH = 4;
 const TIMEOUT_MS = 500;
+/** How many trailing capture-pane lines the attention classifier inspects. */
+const ATTENTION_SNIPPET_LINES = 40;
 
 /**
  * Returns `true` if an agent process is alive in the given tmux session,
@@ -173,6 +206,44 @@ export function inspectTmuxPaneById(
 	if (Number.isNaN(pid) || pid <= 0) return "unknown";
 
 	return walkDescendants([pid]);
+}
+
+/**
+ * READ-ONLY capture of the trailing lines of a pane, reusing the same
+ * `tmux capture-pane -p` invocation pattern the OutputChannel streamer uses
+ * (see services/agent-output-channels.ts). Returns the snippet text, or `null`
+ * when capture is not possible (invalid target, tmux unavailable, timeout).
+ * Never writes to the terminal.
+ *
+ * `target` is either a session id or a `%NN` pane id; both are validated to
+ * prevent shell-arg injection. The `-S -<N>` start-line bounds the read to the
+ * last N lines so the classifier sees recent state, not the whole scrollback.
+ */
+export function capturePaneSnippet(
+	target: string,
+	tmuxSocket?: string | null,
+	maxLines: number = ATTENTION_SNIPPET_LINES,
+): string | null {
+	const isPane = PANE_ID_RE.test(target);
+	if (!isPane && !SESSION_ID_RE.test(target)) return null;
+	try {
+		const args: string[] = [];
+		if (tmuxSocket) args.push("-S", tmuxSocket);
+		args.push(
+			"capture-pane",
+			"-p",
+			"-t",
+			target,
+			"-S",
+			`-${Math.max(1, Math.trunc(maxLines))}`,
+		);
+		return execFileSync("tmux", args, {
+			timeout: TIMEOUT_MS,
+			encoding: "utf8",
+		});
+	} catch {
+		return null;
+	}
 }
 
 // ── Shared descendant walk (steps 3–4) ─────────────────────────────────

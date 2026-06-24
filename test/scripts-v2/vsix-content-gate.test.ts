@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import * as path from "node:path";
 import {
 	DEFAULT_BUDGET,
 	evaluateVsixEntries,
+	evaluateWorkspaceTrustManifest,
 	formatGateReport,
 	parseUnzipListing,
 	REQUIRED_ENTRIES,
+	SUBPROCESS_SPAWNING_SETTINGS,
 	type VsixEntry,
 } from "../../scripts-v2/vsix-content-gate.ts";
 
@@ -102,6 +105,28 @@ describe("evaluateVsixEntries", () => {
 			.filter((violation) => violation.rule.startsWith("forbidden directory"))
 			.map((violation) => violation.detail);
 		expect(flagged.sort()).toEqual([...leaked].sort());
+	});
+
+	test("flags the logo-concepts dev-artifact directory excluded by .vscodeignore", () => {
+		// .vscodeignore excludes `logo-concepts/**` (untracked icon explorations),
+		// so the gate — which mirrors .vscodeignore to catch a regression like the
+		// rc50 nested-dir leak — must flag it if a future ignore edit drops the line.
+		const entries = [
+			...cleanEntries(),
+			{
+				path: "extension/logo-concepts/activity-bar-v27-1.svg",
+				uncompressedBytes: 2_390,
+			},
+		];
+		const result = evaluateVsixEntries("test.vsix", entries, 450_000);
+		expect(result.ok).toBe(false);
+		expect(
+			result.violations.some(
+				(violation) =>
+					violation.rule === "forbidden directory logo-concepts/" &&
+					violation.detail === "extension/logo-concepts/activity-bar-v27-1.svg",
+			),
+		).toBe(true);
 	});
 
 	test("flags sourcemaps anywhere in the package", () => {
@@ -222,5 +247,92 @@ describe("formatGateReport", () => {
 			evaluateVsixEntries("releases/test.vsix", cleanEntries(), 450_000),
 		);
 		expect(report).toContain("✅");
+	});
+});
+
+describe("evaluateWorkspaceTrustManifest (CCSTD-03 / PAR-82)", () => {
+	test("the shipped package.json declares a valid Workspace Trust posture", async () => {
+		// Read the real manifest via the un-mocked fs so this test is a true
+		// receipt: the build's actual trust posture must satisfy the gate.
+		const fs = await import("node:fs/promises");
+		const manifestPath = path.join(process.cwd(), "package.json");
+		const manifest = JSON.parse(await fs.readFile(manifestPath, "utf-8"));
+		expect(evaluateWorkspaceTrustManifest(manifest)).toEqual([]);
+	});
+
+	test("every subprocess-spawning setting is enforced by the contributed config", async () => {
+		const fs = await import("node:fs/promises");
+		const manifestPath = path.join(process.cwd(), "package.json");
+		const manifest = JSON.parse(await fs.readFile(manifestPath, "utf-8"));
+		const cfg = manifest.contributes?.configuration;
+		const props: Record<string, unknown> = Array.isArray(cfg)
+			? Object.assign(
+					{},
+					...cfg.map((b: { properties?: object }) => b.properties),
+				)
+			: (cfg?.properties ?? {});
+		// The settings the gate restricts must actually exist as contributions —
+		// guards against a typo'd setting key silently passing the gate.
+		for (const setting of SUBPROCESS_SPAWNING_SETTINGS) {
+			expect(Object.keys(props)).toContain(setting);
+		}
+	});
+
+	test("flags a manifest missing the untrustedWorkspaces capability", () => {
+		const violations = evaluateWorkspaceTrustManifest({ capabilities: {} });
+		expect(
+			violations.some(
+				(v) => v.rule === "missing untrustedWorkspaces capability",
+			),
+		).toBe(true);
+	});
+
+	test("flags a subprocess setting dropped from restrictedConfigurations", () => {
+		const violations = evaluateWorkspaceTrustManifest({
+			capabilities: {
+				untrustedWorkspaces: {
+					supported: "limited",
+					restrictedConfigurations: [],
+				},
+			},
+		});
+		expect(
+			violations.some(
+				(v) =>
+					v.rule === "subprocess setting not trust-restricted" &&
+					v.detail.includes("commandCentral.ghostty.launcherPath"),
+			),
+		).toBe(true);
+	});
+
+	test("flags an invalid supported value", () => {
+		const violations = evaluateWorkspaceTrustManifest({
+			capabilities: {
+				untrustedWorkspaces: {
+					supported: "yes-please",
+					restrictedConfigurations: SUBPROCESS_SPAWNING_SETTINGS,
+				},
+			},
+		});
+		expect(
+			violations.some(
+				(v) => v.rule === "invalid untrustedWorkspaces.supported",
+			),
+		).toBe(true);
+	});
+
+	test("accepts the supported variants VS Code allows", () => {
+		for (const supported of [true, false, "limited"]) {
+			expect(
+				evaluateWorkspaceTrustManifest({
+					capabilities: {
+						untrustedWorkspaces: {
+							supported,
+							restrictedConfigurations: SUBPROCESS_SPAWNING_SETTINGS,
+						},
+					},
+				}),
+			).toEqual([]);
+		}
 	});
 });

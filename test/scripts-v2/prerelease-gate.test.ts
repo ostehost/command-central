@@ -4,11 +4,17 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+	evaluateDaemonSmoke,
+	evaluatePushTarget,
+	evaluateRepoParity,
 	extractFlagsFromHelp,
 	extractSessionFlagsFromTerminalManager,
 	extractSteerInvocationContract,
+	normalizeGitHubRemote,
+	runDaemonSmokeCheck,
 	runGate,
 	runNodeReadinessCheck,
+	runPushTargetCheck,
 	validateLauncherContract,
 	validateSteerContract,
 } from "../../scripts-v2/prerelease-gate.ts";
@@ -593,6 +599,355 @@ describe("node readiness prerelease check", () => {
 			expect(check.error).toContain(
 				"Failed to resolve expected OpenClaw version",
 			);
+		} finally {
+			fs.rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("evaluateDaemonSmoke (CCREL-05 daemon smoke)", () => {
+	test("passes when daemon is running with a socket", () => {
+		const out = JSON.stringify({ running: true, socket: "/tmp/openclaw.sock" });
+		expect(evaluateDaemonSmoke(out)).toEqual({ ok: true, issues: [] });
+	});
+
+	test("passes when daemon reports state=running with a pid", () => {
+		const out = JSON.stringify({ state: "running", pid: 4242 });
+		expect(evaluateDaemonSmoke(out)).toEqual({ ok: true, issues: [] });
+	});
+
+	test("fails when daemon is not running", () => {
+		const out = JSON.stringify({
+			running: false,
+			socket: "/tmp/openclaw.sock",
+		});
+		const result = evaluateDaemonSmoke(out);
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.includes("running state"))).toBe(true);
+	});
+
+	test("fails when there is no live endpoint", () => {
+		const out = JSON.stringify({ running: true });
+		const result = evaluateDaemonSmoke(out);
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.includes("live endpoint"))).toBe(true);
+	});
+
+	test("non-JSON output is a clean issue, not a throw", () => {
+		const result = evaluateDaemonSmoke("daemon: connection refused");
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.includes("not valid JSON"))).toBe(true);
+	});
+});
+
+describe("evaluateRepoParity (CCREL-05 hub repo parity)", () => {
+	test("passes for a clean repo at origin/main (0 behind / 0 ahead)", () => {
+		expect(
+			evaluateRepoParity({
+				repo: "config",
+				porcelain: "",
+				aheadBehind: "0\t0",
+			}),
+		).toEqual({ repo: "config", ok: true, issues: [] });
+	});
+
+	test("fails when the tree is dirty", () => {
+		const result = evaluateRepoParity({
+			repo: "command-central",
+			porcelain: " M src/extension.ts\n",
+			aheadBehind: "0\t0",
+		});
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.includes("uncommitted"))).toBe(true);
+	});
+
+	test("fails when ahead of origin/main", () => {
+		const result = evaluateRepoParity({
+			repo: "config",
+			porcelain: "",
+			aheadBehind: "0\t3",
+		});
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.includes("ahead"))).toBe(true);
+	});
+
+	test("fails when behind origin/main", () => {
+		const result = evaluateRepoParity({
+			repo: "ghostty-launcher",
+			porcelain: "",
+			aheadBehind: "2\t0",
+		});
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.includes("behind"))).toBe(true);
+	});
+});
+
+describe("runDaemonSmokeCheck (CCREL-05 gate runner)", () => {
+	// Reuses createGateFixture + writeExecutable already in this file.
+	test("a dead daemon is a failed check", async () => {
+		const fixture = createGateFixture();
+		try {
+			const binDir = path.join(fixture.root, "bin");
+			const openClawBinary = path.join(binDir, "openclaw");
+			writeExecutable(
+				openClawBinary,
+				`#!/bin/bash
+if [[ "$1" == "daemon" && "$2" == "status" && "$3" == "--json" ]]; then
+  echo '{"running": false}'
+  exit 0
+fi
+exit 9
+`,
+			);
+			const check = await runDaemonSmokeCheck({
+				commandCentralRepo: fixture.commandCentralRepo,
+				ghosttyLauncherRepo: fixture.ghosttyLauncherRepo,
+				launcherBinary: fixture.launcherBinary,
+				outputDir: fixture.outputDir,
+				skipCcValidation: true,
+				skipLauncherValidation: true,
+				requireNodeReadiness: false,
+				nodeReadinessGate: path.join(fixture.root, "missing-gate.mjs"),
+				openClawBinary,
+				requireDaemonSmoke: true,
+			});
+			expect(check.status).toBe("failed");
+			expect(check.error).toContain("running state");
+		} finally {
+			fs.rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("normalizeGitHubRemote (CCSTD-05 split identity)", () => {
+	test("normalizes https, ssh, scp-like, trailing .git/slash, and case", () => {
+		const slug = "ostehost/command-central";
+		expect(
+			normalizeGitHubRemote("https://github.com/ostehost/command-central"),
+		).toBe(slug);
+		expect(
+			normalizeGitHubRemote("https://github.com/ostehost/command-central.git"),
+		).toBe(slug);
+		expect(
+			normalizeGitHubRemote("https://github.com/ostehost/command-central/"),
+		).toBe(slug);
+		expect(
+			normalizeGitHubRemote("git@github.com:ostehost/command-central.git"),
+		).toBe(slug);
+		expect(
+			normalizeGitHubRemote(
+				"ssh://git@github.com/ostehost/command-central.git",
+			),
+		).toBe(slug);
+		expect(
+			normalizeGitHubRemote("https://github.com/OsteHost/Command-Central"),
+		).toBe(slug);
+	});
+
+	test("returns empty for unrecognizable remotes", () => {
+		expect(normalizeGitHubRemote("")).toBe("");
+		expect(normalizeGitHubRemote("not a url")).toBe("");
+		expect(
+			normalizeGitHubRemote("https://gitlab.com/ostehost/command-central"),
+		).toBe("");
+		expect(
+			normalizeGitHubRemote("https://evilgithub.com/ostehost/command-central"),
+		).toBe("");
+	});
+});
+
+describe("evaluatePushTarget (CCSTD-05 push-target guardrail)", () => {
+	test("passes when the remote matches package.json across url shapes", () => {
+		const result = evaluatePushTarget({
+			remote: "origin",
+			remoteUrl: "git@github.com:ostehost/command-central.git",
+			packageRepoUrl: "https://github.com/ostehost/command-central",
+		});
+		expect(result.ok).toBe(true);
+		expect(result.issues).toEqual([]);
+		expect(result.remoteSlug).toBe("ostehost/command-central");
+		expect(result.expectedSlug).toBe("ostehost/command-central");
+	});
+
+	// Regression: before CCSTD-05 there was NO push-target check at all, so a
+	// command-central checkout whose `origin` pointed at the ghostty-launcher
+	// repo (the split-identity hazard) would tag/push to the wrong repo silently.
+	test("refuses when origin points at the sibling split-identity repo", () => {
+		const result = evaluatePushTarget({
+			remote: "origin",
+			remoteUrl: "https://github.com/ostehost/ghostty-launcher.git",
+			packageRepoUrl: "https://github.com/ostehost/command-central",
+		});
+		expect(result.ok).toBe(false);
+		expect(result.remoteSlug).toBe("ostehost/ghostty-launcher");
+		expect(result.expectedSlug).toBe("ostehost/command-central");
+		expect(result.issues.some((i) => i.includes("refusing to tag/push"))).toBe(
+			true,
+		);
+	});
+
+	test("refuses a fork remote even with the same repo name", () => {
+		const result = evaluatePushTarget({
+			remote: "origin",
+			remoteUrl: "https://github.com/someforker/command-central.git",
+			packageRepoUrl: "https://github.com/ostehost/command-central",
+		});
+		expect(result.ok).toBe(false);
+		expect(
+			result.issues.some((i) => i.includes("someforker/command-central")),
+		).toBe(true);
+	});
+
+	test("fails clearly when the remote url is unparseable", () => {
+		const result = evaluatePushTarget({
+			remote: "origin",
+			remoteUrl: "/some/local/path.git",
+			packageRepoUrl: "https://github.com/ostehost/command-central",
+		});
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.includes("could not parse"))).toBe(true);
+	});
+});
+
+describe("runPushTargetCheck (CCSTD-05 gate runner)", () => {
+	function writePackageRepo(repo: string, url: string): void {
+		fs.writeFileSync(
+			path.join(repo, "package.json"),
+			`${JSON.stringify(
+				{ name: "command-central", repository: { type: "git", url } },
+				null,
+				"\t",
+			)}\n`,
+			"utf8",
+		);
+		execFileSync("git", ["add", "package.json"], { cwd: repo });
+		execFileSync("git", ["commit", "-q", "-m", "test: package.json"], {
+			cwd: repo,
+		});
+	}
+
+	test("a remote pointing at the sibling repo is a failed check", async () => {
+		const fixture = createGateFixture();
+		try {
+			writePackageRepo(
+				fixture.commandCentralRepo,
+				"https://github.com/ostehost/command-central",
+			);
+			execFileSync(
+				"git",
+				[
+					"remote",
+					"add",
+					"origin",
+					"https://github.com/ostehost/ghostty-launcher.git",
+				],
+				{ cwd: fixture.commandCentralRepo },
+			);
+
+			const check = await runPushTargetCheck({
+				commandCentralRepo: fixture.commandCentralRepo,
+				ghosttyLauncherRepo: fixture.ghosttyLauncherRepo,
+				launcherBinary: fixture.launcherBinary,
+				outputDir: fixture.outputDir,
+				skipCcValidation: true,
+				skipLauncherValidation: true,
+				requireNodeReadiness: false,
+				nodeReadinessGate: path.join(fixture.root, "missing-gate.mjs"),
+				openClawBinary: "openclaw",
+				requirePushTarget: true,
+				pushRemote: "origin",
+			});
+
+			expect(check.status).toBe("failed");
+			expect(check.error).toContain("refusing to tag/push");
+		} finally {
+			fs.rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	test("a matching remote passes the check", async () => {
+		const fixture = createGateFixture();
+		try {
+			writePackageRepo(
+				fixture.commandCentralRepo,
+				"https://github.com/ostehost/command-central",
+			);
+			execFileSync(
+				"git",
+				[
+					"remote",
+					"add",
+					"origin",
+					"git@github.com:ostehost/command-central.git",
+				],
+				{ cwd: fixture.commandCentralRepo },
+			);
+
+			const check = await runPushTargetCheck({
+				commandCentralRepo: fixture.commandCentralRepo,
+				ghosttyLauncherRepo: fixture.ghosttyLauncherRepo,
+				launcherBinary: fixture.launcherBinary,
+				outputDir: fixture.outputDir,
+				skipCcValidation: true,
+				skipLauncherValidation: true,
+				requireNodeReadiness: false,
+				nodeReadinessGate: path.join(fixture.root, "missing-gate.mjs"),
+				openClawBinary: "openclaw",
+				requirePushTarget: true,
+				pushRemote: "origin",
+			});
+
+			expect(check.status).toBe("passed");
+		} finally {
+			fs.rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	test("the integrated gate hard-blocks on a wrong push target", async () => {
+		const fixture = createGateFixture();
+		try {
+			writePackageRepo(
+				fixture.commandCentralRepo,
+				"https://github.com/ostehost/command-central",
+			);
+			execFileSync(
+				"git",
+				[
+					"remote",
+					"add",
+					"origin",
+					"https://github.com/ostehost/ghostty-launcher.git",
+				],
+				{ cwd: fixture.commandCentralRepo },
+			);
+
+			let thrown: unknown;
+			try {
+				await runGate({
+					commandCentralRepo: fixture.commandCentralRepo,
+					ghosttyLauncherRepo: fixture.ghosttyLauncherRepo,
+					launcherBinary: fixture.launcherBinary,
+					outputDir: fixture.outputDir,
+					skipCcValidation: true,
+					skipLauncherValidation: true,
+					requireNodeReadiness: false,
+					nodeReadinessGate: path.join(fixture.root, "missing-gate.mjs"),
+					openClawBinary: "openclaw",
+					requirePushTarget: true,
+					pushRemote: "origin",
+				});
+			} catch (error) {
+				thrown = error;
+			}
+
+			expect(thrown).toBeTruthy();
+			const checks =
+				(thrown as { checks?: Array<{ name: string; status: string }> })
+					.checks ?? [];
+			const pushTarget = checks.find(
+				(check) => check.name === "release push-target identity",
+			);
+			expect(pushTarget?.status).toBe("failed");
 		} finally {
 			fs.rmSync(fixture.root, { recursive: true, force: true });
 		}

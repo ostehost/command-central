@@ -239,16 +239,52 @@ describe("review queue continuation gap", () => {
 		).toContain("review receipt missing");
 	});
 
-	test("pending review status still wins over receipt-gap routing", () => {
+	test("pending review status with a present receipt routes to attention", () => {
 		const dir = makeTmp();
+		const receipt = path.join(dir, "present-review.json");
+		realFs.writeFileSync(
+			receipt,
+			`${JSON.stringify({ status: "completed", review_state: "pending" })}\n`,
+		);
 		const task = makeTask({
 			id: "review-status-wins",
+			project_dir: dir,
+			pending_review_path: receipt,
+			review_status: "pending",
+		});
+
+		expect(groupOf(provider, task)).toBe("attention");
+	});
+
+	// CCSYNC-01 regression: a completed row that still CLAIMS pending review but
+	// whose advertised receipt is MISSING locally and that has no live
+	// pane/process evidence is a stale read-model projection — reconciliation
+	// backlog, not attention-required work. It must land in Needs Review (limbo)
+	// so it never inflates the activity-bar action badge.
+	test("completed pending-review row with missing receipt and no live evidence is stale projection, not attention", () => {
+		const dir = makeTmp();
+		const task = makeTask({
+			id: "stale-pending-projection",
+			status: "completed",
 			project_dir: dir,
 			pending_review_path: path.join(dir, "missing-review.json"),
 			review_status: "pending",
 		});
 
-		expect(groupOf(provider, task)).toBe("attention");
+		expect(groupOf(provider, task)).toBe("limbo");
+	});
+
+	test("completed_stale pending-review row with missing receipt and no live evidence is stale projection, not attention", () => {
+		const dir = makeTmp();
+		const task = makeTask({
+			id: "stale-state-pending-projection",
+			status: "completed_stale",
+			project_dir: dir,
+			pending_review_path: path.join(dir, "missing-review.json"),
+			review_state: "pending",
+		});
+
+		expect(groupOf(provider, task)).toBe("limbo");
 	});
 
 	test("missing handoff wins over review receipt chip", () => {

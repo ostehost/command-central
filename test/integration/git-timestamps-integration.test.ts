@@ -7,7 +7,9 @@
  *
  * WHY THIS IS BETTER:
  * 1. Proves git integration actually works (not mocked assumptions)
- * 2. Tests real Bun.spawn behavior with git commands
+ * 2. Tests real node:child_process behavior with git commands
+ *    (the production code path in the VS Code Node extension host — NOT
+ *    Bun.spawn, which is undefined there; see PAR-64 / CP-25)
  * 3. Validates 200ms timeout (VS Code best practice)
  * 4. Locks in edge case handling (corrupted repos, missing files)
  * 5. Creates lasting value for team (reusable patterns)
@@ -229,6 +231,62 @@ describe("Git Timestamps - Integration Tests (REAL GIT)", () => {
 			const expectedTimestamp = (gitTimestamp ?? 0) * 1000;
 			const diff = Math.abs((timestamp ?? 0) - expectedTimestamp);
 			expect(diff).toBeLessThan(2000); // 2 second tolerance
+		});
+
+		// PAR-64 / CP-25 regression: exercise the production node:child_process
+		// path explicitly (the VS Code Node extension host has no globalThis.Bun).
+		// A real execFile-backed runner against a real committed file must yield a
+		// numeric millisecond timestamp — the old Bun.spawn code would throw a
+		// ReferenceError under Node and silently return undefined.
+		test("should resolve timestamp via real node:child_process execFile path", async () => {
+			const relativePath = "src/node-path.ts";
+			await commitFile(repo, {
+				relativePath,
+				content: "node child_process path",
+			});
+
+			const { execFile } = await import("node:child_process");
+			const nodeGitRunner = (
+				args: string[],
+				options: {
+					cwd: string;
+					env: NodeJS.ProcessEnv;
+					timeoutMs: number;
+				},
+			): Promise<string> =>
+				new Promise((resolve, reject) => {
+					execFile(
+						"git",
+						args,
+						{
+							cwd: options.cwd,
+							env: options.env,
+							timeout: options.timeoutMs,
+							encoding: "utf-8",
+						},
+						(err, stdout) => {
+							if (err) reject(err);
+							else resolve(String(stdout));
+						},
+					);
+				});
+
+			const absolutePath = path.join(repo.path, relativePath);
+			const timestamp = await getDeletedFileTimestamp(
+				repo.path,
+				absolutePath,
+				nodeGitRunner,
+			);
+
+			expect(timestamp).toBeDefined();
+			expect(typeof timestamp).toBe("number");
+			expect(timestamp).toBeGreaterThan(0);
+
+			// Matches git log output (seconds → ms), within timing tolerance.
+			const gitTimestamp = await getGitLogTimestamp(repo, relativePath);
+			expect(gitTimestamp).toBeDefined();
+			const diff = Math.abs((timestamp ?? 0) - (gitTimestamp ?? 0) * 1000);
+			expect(diff).toBeLessThan(2000);
 		});
 
 		test("should return undefined for file with no git history", async () => {

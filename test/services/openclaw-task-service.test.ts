@@ -6,20 +6,16 @@ import {
 } from "../../src/types/openclaw-task-types.js";
 import { waitFor } from "../helpers/wait-for.js";
 
-let execFileSyncResult: string | Error = "[]";
-let execFileSyncCalls: Array<{ cmd: string; args: string[] }> = [];
-let execFileResult: string | Error = "";
+let execFileResult: string | Error = "[]";
 let execFileCalls: Array<{ cmd: string; args: string[] }> = [];
+// Delay (ms) before the mocked execFile callback fires; lets tests assert that
+// reload() / start() return before the CLI resolves (no extension-host block).
+let execFileDelayMs = 0;
 
 let watchCallback: ((event: string, filename: string) => void) | null = null;
 let watchClosed = false;
 
 mock.module("node:child_process", () => ({
-	execFileSync: (cmd: string, args: string[], _opts?: unknown) => {
-		execFileSyncCalls.push({ cmd, args });
-		if (execFileSyncResult instanceof Error) throw execFileSyncResult;
-		return execFileSyncResult;
-	},
 	execFile: (
 		cmd: string,
 		args: string[],
@@ -27,10 +23,17 @@ mock.module("node:child_process", () => ({
 		cb: (err: Error | null, stdout: string) => void,
 	) => {
 		execFileCalls.push({ cmd, args });
-		if (execFileResult instanceof Error) {
-			cb(execFileResult, "");
+		const fire = () => {
+			if (execFileResult instanceof Error) {
+				cb(execFileResult, "");
+			} else {
+				cb(null, execFileResult);
+			}
+		};
+		if (execFileDelayMs > 0) {
+			setTimeout(fire, execFileDelayMs);
 		} else {
-			cb(null, execFileResult);
+			fire();
 		}
 	},
 }));
@@ -100,18 +103,18 @@ const sampleTasks = [
 
 describe("OpenClawTaskService", () => {
 	beforeEach(() => {
-		execFileSyncResult = "[]";
-		execFileSyncCalls = [];
-		execFileResult = "";
+		execFileResult = "[]";
 		execFileCalls = [];
+		execFileDelayMs = 0;
 		watchCallback = null;
 		watchClosed = false;
 	});
 
-	test("parses valid openclaw tasks list output", () => {
-		execFileSyncResult = JSON.stringify(sampleTasks);
+	test("parses valid openclaw tasks list output", async () => {
+		execFileResult = JSON.stringify(sampleTasks);
 		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reload();
 
 		const tasks = service.getTasks();
 		expect(tasks).toHaveLength(1);
@@ -119,37 +122,74 @@ describe("OpenClawTaskService", () => {
 		service.dispose();
 	});
 
-	test("handles ENOENT (OpenClaw not installed)", () => {
+	test("handles ENOENT (OpenClaw not installed)", async () => {
 		const err = new Error("spawn openclaw ENOENT") as NodeJS.ErrnoException;
 		err.code = "ENOENT";
-		execFileSyncResult = err;
+		execFileResult = err;
 
 		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reload();
 
 		expect(service.getTasks()).toHaveLength(0);
 		expect(service.isInstalled).toBe(false);
 		service.dispose();
 	});
 
-	test("handles non-zero exit and keeps last known state", () => {
-		execFileSyncResult = JSON.stringify(sampleTasks);
+	test("handles non-zero exit and keeps last known state", async () => {
+		execFileResult = JSON.stringify(sampleTasks);
 		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reload();
 		expect(service.getTasks()).toHaveLength(1);
 
 		const err = new Error("exit code 1") as NodeJS.ErrnoException;
 		err.code = "ERR_CHILD_PROCESS";
-		execFileSyncResult = err;
-		service.reload();
+		execFileResult = err;
+		await service.reload();
 
 		expect(service.getTasks()).toHaveLength(1);
 		expect(service.isInstalled).toBe(true);
 		service.dispose();
 	});
 
+	test("reload does not block the caller and updates tasks after the CLI resolves", async () => {
+		// Slow CLI: the mocked execFile callback fires only after a delay.
+		execFileResult = JSON.stringify(sampleTasks);
+		execFileDelayMs = 50;
+		const service = new OpenClawTaskService({ debounceMs: 1 });
+
+		// start() must return before the slow CLI resolves (no synchronous block).
+		service.start(() => {});
+		expect(service.getTasks()).toHaveLength(0);
+
+		await waitFor(() => service.getTasks().length === 1, {
+			message:
+				"OpenClaw reload should populate tasks after the async CLI resolves",
+		});
+		expect(at(service.getTasks(), 0).taskId).toBe("task-1");
+		service.dispose();
+	});
+
+	test("coalesces overlapping reloads into a single in-flight CLI read", async () => {
+		execFileResult = JSON.stringify(sampleTasks);
+		execFileDelayMs = 50;
+		const service = new OpenClawTaskService({ debounceMs: 1 });
+
+		// Three overlapping reloads while the first is still in flight.
+		const first = service.reload();
+		const second = service.reload();
+		const third = service.reload();
+		expect(first).toBe(second);
+		expect(second).toBe(third);
+
+		await Promise.all([first, second, third]);
+		expect(execFileCalls).toHaveLength(1);
+		service.dispose();
+	});
+
 	test("debounce fires only once for rapid file changes", async () => {
-		execFileSyncResult = JSON.stringify(sampleTasks);
+		execFileResult = JSON.stringify(sampleTasks);
 		let callbackCount = 0;
 		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {
@@ -169,7 +209,7 @@ describe("OpenClawTaskService", () => {
 	});
 
 	test("file watcher triggers reload callback", async () => {
-		execFileSyncResult = JSON.stringify(sampleTasks);
+		execFileResult = JSON.stringify(sampleTasks);
 		let callbackCount = 0;
 		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {
@@ -187,6 +227,9 @@ describe("OpenClawTaskService", () => {
 	test("cancelTask calls correct CLI command", async () => {
 		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reload();
+		// Ignore the startup reload's execFile call.
+		execFileCalls = [];
 
 		await service.cancelTask("task-1");
 		expect(at(execFileCalls, 0).cmd).toBe("openclaw");
@@ -197,6 +240,9 @@ describe("OpenClawTaskService", () => {
 	test("setNotifyPolicy calls correct CLI command", async () => {
 		const service = new OpenClawTaskService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reload();
+		// Ignore the startup reload's execFile call.
+		execFileCalls = [];
 
 		await service.setNotifyPolicy("task-1", "state_changes");
 		expect(at(execFileCalls, 0).args).toEqual([

@@ -6,7 +6,10 @@
 #   bash scripts-v2/post-release-digest.sh --dry-run  # Preview without posting
 #
 # Reads the CHANGELOG, generates a Discord-formatted digest, and posts it
-# via openclaw message send.
+# via openclaw message send. When digesting the current version, the digest
+# also carries the CCREL-05 release-gate evidence (daemon smoke, node
+# readiness, hub repo parity, launcher contract/sync) projected from the
+# latest research/prerelease-gate/latest.json artifact.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."

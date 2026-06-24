@@ -78,6 +78,27 @@ const EXTENSION_DISPLAY_NAMES = new Map<string, string>([
  * getDisplayName("")       // "No Extension"
  * ```
  */
+/**
+ * Reports whether an extension is a known, registered extension
+ *
+ * Used to decide whether a single-segment dotfile (e.g. ".env") should be
+ * treated as an extension rather than an extensionless file.
+ *
+ * @param extension - File extension (with or without leading dot)
+ * @returns true if the extension exists in the known display-name table
+ */
+export function isKnownExtension(extension: string): boolean {
+	if (extension === "") {
+		return false;
+	}
+
+	const normalized = extension.toLowerCase().startsWith(".")
+		? extension.toLowerCase()
+		: `.${extension.toLowerCase()}`;
+
+	return EXTENSION_DISPLAY_NAMES.has(normalized);
+}
+
 export function getDisplayName(extension: string): string {
 	// Handle empty extension
 	if (extension === "") {

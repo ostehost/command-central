@@ -12,6 +12,7 @@ export class AgentOutputChannels implements vscode.Disposable {
 	private channels = new Map<string, vscode.OutputChannel>();
 	private timers = new Map<string, NodeJS.Timeout>();
 	private lastLineCount = new Map<string, number>();
+	private sessions = new Map<string, string>();
 
 	show(taskId: string, sessionId: string): void {
 		if (!isValidSessionId(sessionId)) return;
@@ -26,8 +27,14 @@ export class AgentOutputChannels implements vscode.Disposable {
 	}
 
 	private startStreaming(taskId: string, sessionId: string): void {
-		if (this.timers.has(taskId)) return;
+		// Already streaming the same session for this task — nothing to do.
+		if (this.timers.has(taskId) && this.sessions.get(taskId) === sessionId) {
+			return;
+		}
+		// A timer exists but for a different (replacement) session — retarget it.
+		if (this.timers.has(taskId)) this.stopStreaming(taskId);
 
+		this.sessions.set(taskId, sessionId);
 		const timer = setInterval(() => {
 			try {
 				const output = execFileSync(
@@ -57,6 +64,7 @@ export class AgentOutputChannels implements vscode.Disposable {
 			this.timers.delete(taskId);
 		}
 		this.lastLineCount.delete(taskId);
+		this.sessions.delete(taskId);
 	}
 
 	getChannel(taskId: string): vscode.OutputChannel | undefined {
@@ -73,5 +81,6 @@ export class AgentOutputChannels implements vscode.Disposable {
 		this.timers.clear();
 		this.channels.clear();
 		this.lastLineCount.clear();
+		this.sessions.clear();
 	}
 }

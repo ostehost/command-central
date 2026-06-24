@@ -234,6 +234,50 @@ describe("ProjectIconService", () => {
 		service.dispose();
 	});
 
+	test("does not show status bar when showProjectIcon is false", () => {
+		// Regression for PAR-73 / CP-34: the showInStatusBar toggle was ignored,
+		// so the icon stayed visible even when the user disabled it.
+		configValues["commandCentral.project.icon"] = "🎯";
+		configValues["commandCentral.statusBar.showProjectIcon"] = false;
+
+		const vscode = require("vscode");
+		const createSpy = vscode.window.createStatusBarItem as ReturnType<
+			typeof mock
+		>;
+		createSpy.mockClear();
+
+		const service = new ProjectIconService(mockLogger, mockContext);
+
+		// When the toggle is off, the service must not create/show an item.
+		expect(createSpy).not.toHaveBeenCalled();
+
+		service.dispose();
+	});
+
+	test("hides existing status bar item when toggled true to false", () => {
+		// Regression for PAR-73 / CP-34: toggling the setting off after the
+		// icon is already shown must hide the existing item.
+		configValues["commandCentral.project.icon"] = "🎯";
+		const service = new ProjectIconService(mockLogger, mockContext);
+
+		// Sanity: the icon is shown while the toggle defaults to true.
+		expect(mockStatusBarItem.show).toHaveBeenCalled();
+
+		// Toggle the setting off and fire a config change event.
+		configValues["commandCentral.statusBar.showProjectIcon"] = false;
+		for (const listener of configChangeListeners) {
+			listener({
+				affectsConfiguration: (section: string) =>
+					section === "commandCentral.project" ||
+					section === "commandCentral.statusBar",
+			});
+		}
+
+		expect(mockStatusBarItem.hide).toHaveBeenCalled();
+
+		service.dispose();
+	});
+
 	test("dispose cleans up status bar item and listeners", () => {
 		configValues["commandCentral.project.icon"] = "🎯";
 		const service = new ProjectIconService(mockLogger, mockContext);

@@ -180,6 +180,14 @@ export interface V2SectionSignals {
 	 * The review pipeline is broken: the declared handoff artifact is missing OR
 	 * the review-queue receipt is missing. The reviewer literally cannot review,
 	 * so this is operator action, not a reading task.
+	 *
+	 * CCSYNC-01: the caller MUST exclude a stale read-model projection from this
+	 * signal. A row whose review metadata still says `pending` but whose receipt
+	 * is missing AND that has no live pane/process evidence is reconciliation
+	 * backlog (Needs Review), not a broken pipeline — feeding it here would
+	 * inflate the badge-counted `action` section with stale work. The tree's
+	 * `getNodeStatusGroup` already routes such rows to `limbo`/`review`; this
+	 * signal must agree when the M3 render engine is wired in.
 	 */
 	reviewPipelineBroken: boolean;
 }
@@ -215,4 +223,167 @@ export function sectionFromSignals(signals: V2SectionSignals): V2LaneSection {
 
 	// 4. HISTORY — terminal, succeeded/approved, or aged. Always revisitable.
 	return "history";
+}
+
+// ── Live-pane attention classifier (CCSYNC-03 / PAR-228) ─────────────────────
+//
+// Lives here — in the pure, I/O-free, mock-free section module — rather than in
+// `tmux-pane-health` so the provider can import it from a module the tmux-health-
+// mocking tree-view test suites do NOT shadow. `tmux-pane-health` exposes thin
+// DELEGATING wrappers around `classifyPaneAttention`/`isBenignLivePane` (plus a
+// `PaneAttentionState` type re-export) for its historical importers and unit
+// tests, without aliasing this module's export bindings into the mock boundary.
+// Pairing the classifier with a captured pane snippet lets the badge avoid
+// over-counting benign live shells.
+
+/**
+ * Live-pane attention taxonomy.
+ *
+ *  - "active-agent"         — an agent CLI owns the pane (or is producing
+ *                             output). Live work, not attention.
+ *  - "awaiting-user-input"  — the agent/program is asking the human a question
+ *                             (a y/N, "continue?", numbered choice, password,
+ *                             etc.). This IS attention.
+ *  - "completed-at-prompt"  — a command/test run finished and left the shell at
+ *                             its prompt (PASS/FAIL/exit summary visible above a
+ *                             bare prompt). Benign — the result is already shown.
+ *  - "empty-stale-shell"    — a bare/blank shell with no meaningful output.
+ *                             Benign — a just-spawned or long-idle shell.
+ *  - "unknown"              — not enough evidence (fail-open). Callers must not
+ *                             downgrade or suppress on this alone.
+ */
+export type PaneAttentionState =
+	| "active-agent"
+	| "awaiting-user-input"
+	| "completed-at-prompt"
+	| "empty-stale-shell"
+	| "unknown";
+
+/**
+ * Known agent CLI process names the classifier treats as "an agent owns this
+ * pane". Kept local to the pure classifier so this module stays free of the
+ * tmux-health surface (and its test mocks).
+ */
+const CLASSIFIER_AGENT_COMMANDS: readonly string[] = [
+	"claude",
+	"codex",
+	"cursor-agent",
+	"aider",
+	"ollama",
+];
+
+/**
+ * Lines that are pure shell prompts — the pane is idling, waiting for the NEXT
+ * command, not for an answer to a question. Matches the common bare prompt
+ * suffixes ($, %, #, ❯, ➜, →, ») optionally followed by trailing whitespace,
+ * and the bracketed `[user@host dir]$` form.
+ */
+const SHELL_PROMPT_RE = /(?:^|\n)[^\n]*[$%#❯➜→»]\s*$/;
+const BRACKET_PROMPT_RE = /(?:^|\n)\[[^\]\n]+\][$%#]\s*$/;
+
+/**
+ * Strong "a program is asking the human something" cues. Kept conservative —
+ * a false "awaiting-user-input" badges a benign pane as attention, the exact
+ * over-count CCSYNC-03 removes, so only unambiguous interactive prompts match.
+ */
+const AWAITING_INPUT_RES: readonly RegExp[] = [
+	/\([yY]\/[nN]\)\s*[?:]?\s*$/, // (y/n)? / (Y/n):
+	/\[[yY]\/[nN]\]\s*[?:]?\s*$/, // [y/N]
+	/\bpassword\b\s*[:?]\s*$/i,
+	/\bpassphrase\b.*[:?]\s*$/i,
+	/\bcontinue\?\s*$/i,
+	/\bproceed\?\s*$/i,
+	/\boverwrite\b.*\?\s*$/i,
+	/\bare you sure\b.*\?\s*$/i,
+	/\bpress\s+(?:enter|return|any key)\b/i,
+	/\bdo you want to\b.*\?\s*$/i,
+	/❯\s+\d+\.\s/, // an active numbered-choice selector row (claude/gum style)
+	/^\s*\d+\)\s.+\n[^\n]*[:?]\s*$/m, // numbered menu ending in a prompt
+];
+
+/**
+ * Signals that a finished command/test run left its result above the prompt:
+ * a benign "completed-at-prompt" pane, NOT attention. Conservative on purpose.
+ */
+const COMPLETION_SUMMARY_RES: readonly RegExp[] = [
+	/\b\d+\s+pass(?:ed|ing)?\b/i,
+	/\b\d+\s+fail(?:ed|ing|ures?)?\b/i,
+	/\ball tests? passed\b/i,
+	/\btests?:?\s+\d+\b/i,
+	/\b\d+\s+(?:tests?|specs?|files?)\b.*\b\d+\s+(?:pass|fail)/i,
+	/\bdone in\b/i,
+	/\bexit(?:ed)?\s+(?:code\s+)?\d+\b/i,
+	/\bbuild (?:succeeded|failed|complete)\b/i,
+	/\bcompiled (?:successfully|with)\b/i,
+	/[✓✗✔✘]\s/,
+];
+
+function lastNonEmptyLine(snippet: string): string {
+	const lines = snippet.split("\n");
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const trimmed = (lines[i] ?? "").replace(/\s+$/, "");
+		if (trimmed.trim().length > 0) return trimmed;
+	}
+	return "";
+}
+
+function endsAtShellPrompt(snippet: string): boolean {
+	const tail = snippet.replace(/\n+$/, "");
+	return SHELL_PROMPT_RE.test(tail) || BRACKET_PROMPT_RE.test(tail);
+}
+
+/**
+ * PURE classifier: given a pane's `pane_current_command` (may be undefined when
+ * unavailable) and a recent `capture-pane` snippet (the trailing lines of the
+ * pane), decide whether the pane needs human attention.
+ *
+ * Precedence (first match wins):
+ *  1. active-agent       — the pane command IS an agent CLI.
+ *  2. awaiting-user-input— the tail contains an unambiguous interactive prompt.
+ *  3. completed-at-prompt— a command result/summary sits above a bare prompt.
+ *  4. empty-stale-shell  — a bare shell prompt (or blank), no meaningful output.
+ *  5. unknown            — no usable evidence (no command + empty snippet).
+ *
+ * No I/O — safe to unit-test in isolation and safe on a render hot path once the
+ * caller has the snippet in hand.
+ */
+export function classifyPaneAttention(
+	paneCommand: string | null | undefined,
+	snippet: string,
+): PaneAttentionState {
+	const cmd = paneCommand?.trim();
+	if (cmd && CLASSIFIER_AGENT_COMMANDS.includes(cmd)) {
+		return "active-agent";
+	}
+
+	const text = snippet.replace(/\s+$/, "");
+	const hasMeaningfulText = text.trim().length > 0;
+	if (!cmd && !hasMeaningfulText) return "unknown";
+
+	const tail = lastNonEmptyLine(text);
+	if (AWAITING_INPUT_RES.some((re) => re.test(text) || re.test(tail))) {
+		return "awaiting-user-input";
+	}
+
+	const atPrompt = endsAtShellPrompt(text);
+	if (atPrompt && COMPLETION_SUMMARY_RES.some((re) => re.test(text))) {
+		return "completed-at-prompt";
+	}
+
+	// A bare/blank shell at a prompt with no completion summary and no question
+	// is just an idle shell — benign.
+	if (atPrompt || !hasMeaningfulText) return "empty-stale-shell";
+
+	// Output present, not a recognizable prompt/question/summary — we cannot
+	// safely call this benign, so fail-open as unknown (caller must not suppress).
+	return "unknown";
+}
+
+/**
+ * True for live panes that are BENIGN — a finished command sitting at its prompt
+ * or a bare/idle shell. Callers use this to keep such panes OUT of the attention
+ * badge while still surfacing genuine "awaiting-user-input" prompts.
+ */
+export function isBenignLivePane(state: PaneAttentionState): boolean {
+	return state === "completed-at-prompt" || state === "empty-stale-shell";
 }

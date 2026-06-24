@@ -35,6 +35,12 @@ export type SinceSection = {
 	commits: CommitRef[];
 	omitted: number;
 };
+export type GateCheckEvidence = { label: string; status: string };
+export type GateEvidence = {
+	generatedAt: string;
+	success: boolean;
+	checks: GateCheckEvidence[];
+};
 
 /** Commit subjects that are release-process bookkeeping, not partner-facing changes. */
 export const RELEASE_NOISE_PATTERNS: readonly RegExp[] = [
@@ -193,6 +199,80 @@ export function collectSinceSection(
 	}
 }
 
+// --- CCREL-05 release-gate evidence ---
+
+/**
+ * Gate check names whose status is partnership-relevant CCREL-05 evidence:
+ * daemon smoke, node readiness, hub repo parity, launcher contract/sync.
+ * The base-validation checks ("command-central validation", launcher cli sanity)
+ * are deliberately excluded — they are gate plumbing, not the integrated-parity
+ * signals CCREL-05 asks the digest to record.
+ */
+export const GATE_EVIDENCE_LABELS: ReadonlyMap<string, string> = new Map([
+	["openclaw daemon smoke", "Daemon smoke"],
+	["openclaw node readiness", "Node readiness"],
+	["hub repo parity", "Hub repo parity"],
+	["cross-repo launcher contract", "Launcher contract / sync"],
+]);
+
+const STATUS_EMOJI: Record<string, string> = {
+	passed: "✅",
+	failed: "❌",
+	skipped: "⏭️",
+};
+
+/**
+ * Read the latest prerelease-gate artifact and project it down to the CCREL-05
+ * evidence checks. Best-effort by design (mirrors collectSinceSection): a
+ * missing or malformed artifact yields null and the digest omits the section
+ * rather than failing. The artifact path is the durable `latest.json` the gate
+ * always writes alongside the dated copy.
+ */
+export function collectGateEvidence(repoRoot: string): GateEvidence | null {
+	const artifactPath = path.join(
+		repoRoot,
+		"research",
+		"prerelease-gate",
+		"latest.json",
+	);
+	try {
+		const parsed = JSON.parse(fs.readFileSync(artifactPath, "utf8")) as {
+			generatedAt?: unknown;
+			success?: unknown;
+			checks?: unknown;
+		};
+		if (!Array.isArray(parsed.checks)) return null;
+		const checks: GateCheckEvidence[] = [];
+		for (const raw of parsed.checks) {
+			if (typeof raw !== "object" || raw === null) continue;
+			const record = raw as { name?: unknown; status?: unknown };
+			if (typeof record.name !== "string") continue;
+			const label = GATE_EVIDENCE_LABELS.get(record.name);
+			if (!label) continue;
+			checks.push({
+				label,
+				status: typeof record.status === "string" ? record.status : "unknown",
+			});
+		}
+		if (checks.length === 0) return null;
+		return {
+			generatedAt:
+				typeof parsed.generatedAt === "string" ? parsed.generatedAt : "",
+			success: parsed.success === true,
+			checks,
+		};
+	} catch {
+		return null;
+	}
+}
+
+function gateEvidenceBullets(evidence: GateEvidence): string[] {
+	return evidence.checks.map((check) => {
+		const emoji = STATUS_EMOJI[check.status] ?? "•";
+		return `${emoji} ${check.label}: ${check.status}`;
+	});
+}
+
 // --- Formatting ---
 
 function sinceBullets(since: SinceSection): string[] {
@@ -212,6 +292,7 @@ export function formatDiscord(
 	categories: Map<string, string[]>,
 	currentVersion: string,
 	since: SinceSection | null,
+	gate: GateEvidence | null = null,
 ): string {
 	const lines: string[] = [];
 	lines.push(`## 🚀 Command Central ${currentVersion}`);
@@ -243,6 +324,14 @@ export function formatDiscord(
 		lines.push("");
 	}
 
+	if (gate) {
+		lines.push("🛡️ **Release gate evidence**");
+		for (const bullet of gateEvidenceBullets(gate)) {
+			lines.push(`  • ${bullet}`);
+		}
+		lines.push("");
+	}
+
 	// Add a highlight if there are performance items
 	const allItems = [...categories.values()].flat().join(" ").toLowerCase();
 	if (
@@ -260,16 +349,25 @@ export function formatDiscord(
 export function formatMarkdown(
 	sectionContent: string,
 	since: SinceSection | null,
+	gate: GateEvidence | null = null,
 ): string {
-	if (!since) return sectionContent;
-	const lines = [
-		sectionContent,
-		"",
-		`### Since previous prerelease cut (${since.baseLabel})`,
-		"",
-	];
-	for (const bullet of sinceBullets(since)) {
-		lines.push(`- ${bullet}`);
+	if (!since && !gate) return sectionContent;
+	const lines = [sectionContent];
+	if (since) {
+		lines.push(
+			"",
+			`### Since previous prerelease cut (${since.baseLabel})`,
+			"",
+		);
+		for (const bullet of sinceBullets(since)) {
+			lines.push(`- ${bullet}`);
+		}
+	}
+	if (gate) {
+		lines.push("", "### Release gate evidence", "");
+		for (const bullet of gateEvidenceBullets(gate)) {
+			lines.push(`- ${bullet}`);
+		}
 	}
 	return lines.join("\n");
 }
@@ -278,6 +376,7 @@ export function formatPlain(
 	categories: Map<string, string[]>,
 	currentVersion: string,
 	since: SinceSection | null,
+	gate: GateEvidence | null = null,
 ): string {
 	const lines: string[] = [];
 	lines.push(`Command Central ${currentVersion}`);
@@ -294,6 +393,13 @@ export function formatPlain(
 		lines.push(`\nSince previous prerelease cut (${since.baseLabel}):`);
 		for (const bullet of sinceBullets(since)) {
 			lines.push(`  - ${bullet.replace(/`/g, "")}`);
+		}
+	}
+
+	if (gate) {
+		lines.push("\nRelease gate evidence:");
+		for (const bullet of gateEvidenceBullets(gate)) {
+			lines.push(`  - ${bullet}`);
 		}
 	}
 
@@ -346,17 +452,21 @@ function main(): void {
 		? collectSinceSection(projectRoot, pkg.version)
 		: null;
 
+	// The gate artifact describes the latest cut (HEAD), so only attach it when
+	// digesting the current version — same guard as the git-derived section.
+	const gate = includeSince ? collectGateEvidence(projectRoot) : null;
+
 	const categories = parseSection(targetSection.content);
 
 	switch (formatArg) {
 		case "discord":
-			console.log(formatDiscord(categories, currentVersion, since));
+			console.log(formatDiscord(categories, currentVersion, since, gate));
 			break;
 		case "markdown":
-			console.log(formatMarkdown(targetSection.content, since));
+			console.log(formatMarkdown(targetSection.content, since, gate));
 			break;
 		case "plain":
-			console.log(formatPlain(categories, currentVersion, since));
+			console.log(formatPlain(categories, currentVersion, since, gate));
 			break;
 		default:
 			console.error(`Unknown format: ${formatArg}`);

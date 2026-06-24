@@ -3,6 +3,7 @@
  * Uses git's internal timestamps to survive checkout/stash/rebase operations
  */
 
+import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -16,6 +17,41 @@ function buildIsolatedGitEnv(): NodeJS.ProcessEnv {
 }
 const MAX_FILES = 500; // Increased to handle larger repositories
 const TIMEOUT_MS = 200;
+
+/**
+ * Runs a git command and resolves with its stdout. Injectable so the production
+ * Node extension host and tests share one code path.
+ *
+ * The default implementation uses node:child_process.execFile — NOT Bun.spawn,
+ * which is undefined in the VS Code Node extension host (globalThis.Bun absent)
+ * and would throw a ReferenceError. See PAR-64 / CP-25.
+ */
+export type GitRunner = (
+	args: string[],
+	options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number },
+) => Promise<string>;
+
+// Calls execFile fresh each invocation so test mocks of node:child_process.execFile
+// take effect even after mock.restore() runs between tests. (A module-load
+// promisify(execFile) would cache the reference and break under bun's mock
+// lifecycle.) The timeout option makes child_process kill a hung git process.
+const defaultGitRunner: GitRunner = (args, options) =>
+	new Promise((resolve, reject) => {
+		execFile(
+			"git",
+			args,
+			{
+				cwd: options.cwd,
+				env: options.env,
+				timeout: options.timeoutMs,
+				encoding: "utf-8",
+			},
+			(err, stdout) => {
+				if (err) reject(err);
+				else resolve(String(stdout));
+			},
+		);
+	});
 
 export async function getGitAwareTimestamps(
 	_workspaceRoot: string,
@@ -68,33 +104,22 @@ async function getFileTimestamp(filepath: string): Promise<number | undefined> {
 export async function getDeletedFileTimestamp(
 	workspaceRoot: string,
 	filepath: string,
+	gitRunner: GitRunner = defaultGitRunner,
 ): Promise<number | undefined> {
 	try {
 		// Use relative path for git command
 		const relativePath = path.relative(workspaceRoot, filepath);
 
-		// Get the last commit timestamp for this file using Bun.spawn
-		const proc = Bun.spawn(
-			["git", "log", "-1", "--format=%at", "--", relativePath],
+		// Get the last commit timestamp for this file via node:child_process.
+		// The runner's timeout kills a hung git process (200ms — VS Code guideline).
+		const result = await gitRunner(
+			["log", "-1", "--format=%at", "--", relativePath],
 			{
 				cwd: workspaceRoot,
 				env: buildIsolatedGitEnv(),
-				stdout: "pipe",
-				stderr: "pipe",
+				timeoutMs: TIMEOUT_MS,
 			},
 		);
-
-		// Wait for process with timeout
-		const timeoutPromise = new Promise<string>((_, reject) => {
-			setTimeout(() => reject(new Error("Timeout")), TIMEOUT_MS);
-		});
-
-		const resultPromise = proc.exited.then(async () => {
-			const output = await new Response(proc.stdout).text();
-			return output;
-		});
-
-		const result = await Promise.race([resultPromise, timeoutPromise]);
 		const trimmed = result.trim();
 
 		if (trimmed) {

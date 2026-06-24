@@ -247,6 +247,30 @@ describe("SessionWatcher", () => {
 			expect(watcher.getAgents()).toHaveLength(0);
 		});
 
+		test("evicts cached agent when its session file is deleted (ENOENT)", () => {
+			const onChange = mock(() => {});
+			sessionFiles["123.json"] = JSON.stringify({
+				pid: 123,
+				sessionId: "s-removed",
+				cwd: "/removed-project",
+				startedAt: 1704067200000,
+			});
+			dirContents = ["123.json"];
+			alivePids.add(123);
+			pidCommands[123] = "/usr/local/bin/claude --resume s-removed";
+
+			watcher.start(onChange);
+			expect(watcher.getAgents()).toHaveLength(1);
+			onChange.mockClear();
+
+			// File is removed; the readFileSync mock throws ENOENT for undefined.
+			delete sessionFiles["123.json"];
+			watchCallback?.("rename", "123.json");
+
+			expect(watcher.getAgents()).toHaveLength(0);
+			expect(onChange).toHaveBeenCalled();
+		});
+
 		test("ignores live shell processes left behind by completed sessions", () => {
 			sessionFiles["889.json"] = JSON.stringify({
 				pid: 889,

@@ -5,8 +5,6 @@ export type TimePeriod =
 	| "last30days"
 	| "older";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 const DEFAULT_PERIODS: TimePeriod[] = [
 	"today",
 	"yesterday",
@@ -32,14 +30,22 @@ export function classifyTimePeriod(
 	}
 
 	const now = new Date(nowMs);
-	const todayStart = new Date(
-		now.getFullYear(),
-		now.getMonth(),
-		now.getDate(),
-	).getTime();
-	const yesterdayStart = todayStart - DAY_MS;
-	const last7DaysStart = todayStart - 7 * DAY_MS;
-	const last30DaysStart = todayStart - 30 * DAY_MS;
+	// Derive each boundary as the local midnight of the corresponding calendar
+	// day (N days ago) rather than subtracting fixed 24h multiples from today's
+	// midnight. On DST transition days a calendar day is 23h or 25h long, so the
+	// 24h-multiple approach drifts and lands near-midnight timestamps in the
+	// wrong bucket. Date's normalization (getDate() - n) handles month/year
+	// rollover and DST correctly.
+	const calendarDayStart = (daysAgo: number): number =>
+		new Date(
+			now.getFullYear(),
+			now.getMonth(),
+			now.getDate() - daysAgo,
+		).getTime();
+	const todayStart = calendarDayStart(0);
+	const yesterdayStart = calendarDayStart(1);
+	const last7DaysStart = calendarDayStart(7);
+	const last30DaysStart = calendarDayStart(30);
 
 	if (timestampMs >= todayStart) return "today";
 	if (timestampMs >= yesterdayStart) return "yesterday";

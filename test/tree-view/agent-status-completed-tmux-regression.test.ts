@@ -70,6 +70,11 @@ mock.module("../../src/utils/tmux-pane-health.js", () => ({
 	),
 	inspectTmuxPaneAgent: mockInspectTmuxPaneAgent,
 	inspectTmuxPaneById: mockInspectTmuxPaneById,
+	// CCSYNC-03 (PAR-228): provider also imports the live-pane attention
+	// classifier. Behavior-neutral stubs (never benign) preserve prior grouping.
+	capturePaneSnippet: mock((_target: string, _socket?: string | null) => null),
+	classifyPaneAttention: mock(() => "unknown" as const),
+	isBenignLivePane: mock((_state: string) => false),
 	AGENT_PROCESS_NAMES: ["codex", "claude"],
 	PANE_ID_RE: /^%\d+$/,
 }));

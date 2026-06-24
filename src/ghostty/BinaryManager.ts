@@ -271,26 +271,22 @@ export class BinaryManager {
 			fs.renameSync(this.installPath, bakPath);
 		}
 
-		// Extract zip to install directory
-		await this.extractZip(zipPath, path.dirname(this.installPath));
+		// Extract + validate. If anything fails before the install is confirmed
+		// valid (extraction throwing, validation returning false), restore the
+		// backup so a failed update never leaves the user without a Ghostty.app.
+		try {
+			// Extract zip to install directory
+			await this.extractZip(zipPath, path.dirname(this.installPath));
 
-		// Validate that the app was installed
-		const installed = await this.isInstalled();
-		if (!installed) {
-			// Restore backup on failure
-			if (fs.existsSync(bakPath)) {
-				this.logger.warn(
-					"Validation failed, restoring backup",
-					"BinaryManager",
-				);
-				if (fs.existsSync(this.installPath)) {
-					fs.rmSync(this.installPath, { recursive: true, force: true });
-				}
-				fs.renameSync(bakPath, this.installPath);
+			// Validate that the app was installed
+			const installed = await this.isInstalled();
+			if (!installed) {
+				throw new Error("Ghostty app validation failed after extraction");
 			}
-			throw new Error(
-				"Ghostty app validation failed after extraction — backup restored",
-			);
+		} catch (err) {
+			this.restoreBackup(bakPath);
+			const message = err instanceof Error ? err.message : String(err);
+			throw new Error(`Ghostty install failed (${message}) — backup restored`);
 		}
 
 		// Store the installed tag for future update checks
@@ -309,6 +305,23 @@ export class BinaryManager {
 			`Successfully installed Ghostty ${tag} to: ${this.installPath}`,
 			"BinaryManager",
 		);
+	}
+
+	/**
+	 * Restores a previously-renamed backup back to the install path.
+	 * Best-effort: removes any partial install left behind by a failed
+	 * extraction before moving the backup into place. No-op when no backup
+	 * exists (e.g. a fresh install that never had a prior version to back up).
+	 */
+	private restoreBackup(bakPath: string): void {
+		if (!fs.existsSync(bakPath)) {
+			return;
+		}
+		this.logger.warn("Install failed, restoring backup", "BinaryManager");
+		if (fs.existsSync(this.installPath)) {
+			fs.rmSync(this.installPath, { recursive: true, force: true });
+		}
+		fs.renameSync(bakPath, this.installPath);
 	}
 
 	/**

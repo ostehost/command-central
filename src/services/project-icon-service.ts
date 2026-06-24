@@ -90,7 +90,12 @@ export class ProjectIconService {
 		this.logger.debug("ProjectIconService: refresh() called");
 		const config = this.getCurrentIconConfig();
 
-		if (config) {
+		if (config && config.showInStatusBar === false) {
+			this.logger.info(
+				"ProjectIconService: showInStatusBar is false, hiding status bar",
+			);
+			this.hideStatusBar();
+		} else if (config) {
 			this.logger.info(
 				`ProjectIconService: Found config, updating status bar with icon: "${config.icon}"`,
 			);

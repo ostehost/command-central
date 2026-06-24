@@ -944,12 +944,15 @@ describe("AgentRegistry launcher tasks quarantine", () => {
 	function setLauncherConfig(options: {
 		tasksFile: string;
 		legacyEnabled: boolean;
+		additionalTasksFiles?: string[];
 	}): void {
 		const runtimeVscode = require("vscode") as typeof import("vscode");
 		originalGetConfiguration ??= runtimeVscode.workspace.getConfiguration;
 		runtimeVscode.workspace.getConfiguration = ((_section?: string) => ({
 			get: (key: string, defaultValue?: unknown) => {
 				if (key === "agentTasksFile") return options.tasksFile;
+				if (key === "agentTasksFiles")
+					return options.additionalTasksFiles ?? defaultValue;
 				if (key === "legacyLauncherTasks.enabled") return options.legacyEnabled;
 				return defaultValue;
 			},
@@ -1014,5 +1017,34 @@ describe("AgentRegistry launcher tasks quarantine", () => {
 		}>;
 		expect(tasks).toHaveLength(1);
 		expect(tasks[0]?.id).toBe("fixture-task");
+	});
+
+	// CP-12 / PAR-54 regression: the default launcher provider must merge tasks
+	// from `agentTasksFiles` (additional registries) — not just the primary
+	// `agentTasksFile` — whenever legacy launcher ingestion is enabled. Before
+	// the fix, `readLauncherTasks` resolved only the singular file and dropped
+	// every additional-registry task, so stale-process matching / suppression
+	// never saw them.
+	test("default source merges additional agentTasksFiles when legacy is enabled", () => {
+		const additionalTasksFile = realPath.join(tmpDir, "extra-tasks.json");
+		realFs.writeFileSync(
+			additionalTasksFile,
+			JSON.stringify({
+				version: 2,
+				tasks: { "extra-task": createMockTask({ id: "extra-task" }) },
+			}),
+		);
+		setLauncherConfig({
+			tasksFile: fixtureTasksFile,
+			additionalTasksFiles: [additionalTasksFile],
+			legacyEnabled: true,
+		});
+		quarantineRegistry = new AgentRegistry("/tmp/test-sessions");
+
+		const tasks = readDefaultLauncherTasks(quarantineRegistry) as Array<{
+			id?: string;
+		}>;
+		const ids = tasks.map((task) => task.id).sort();
+		expect(ids).toEqual(["extra-task", "fixture-task"]);
 	});
 });

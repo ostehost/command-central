@@ -44,6 +44,7 @@ const EXPECTED_COMMAND_IDS = [
 	"commandCentral.clearCompletedAgents",
 	"commandCentral.markStaleAgentFailed",
 	"commandCentral.reapStaleAgents",
+	"commandCentral.closeoutBenignPane",
 	"commandCentral.removeAgentTask",
 	"commandCentral.markAgentReviewed",
 ];
@@ -66,6 +67,7 @@ describe("registerAgentRegistryCommands", () => {
 		appendLine: ReturnType<typeof mock>;
 		show: ReturnType<typeof mock>;
 	};
+	let capturePaneSnippet: ReturnType<typeof mock>;
 	let deps: AgentRegistryCommandDeps;
 	let tmpDirs: string[];
 
@@ -87,10 +89,14 @@ describe("registerAgentRegistryCommands", () => {
 		statusProvider = undefined;
 		terminalManager = undefined;
 		agentOutputChannel = { clear: mock(), appendLine: mock(), show: mock() };
+		// Default to an idle-shell snippet (a benign pane) so the closeout flow is
+		// testable without spawning tmux; individual tests override per case.
+		capturePaneSnippet = mock(() => "user@host project %\n");
 		deps = {
 			getAgentStatusProvider: () => statusProvider,
 			getTerminalManager: () => terminalManager,
 			agentOutputChannel,
+			capturePaneSnippet,
 		} as unknown as AgentRegistryCommandDeps;
 		tmpDirs = [];
 	});
@@ -516,6 +522,142 @@ describe("registerAgentRegistryCommands", () => {
 		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
 			"Marked 2 stale agents as failed.",
 		);
+	});
+
+	test("closeoutBenignPane warns when no node is provided", async () => {
+		registerAgentRegistryCommands(deps);
+
+		await handler("commandCentral.closeoutBenignPane")();
+
+		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+			"No agent selected. Right-click an agent in the tree.",
+		);
+	});
+
+	test("closeoutBenignPane refuses a pane that needs attention — never mutates", async () => {
+		const tasksFilePath = makeTasksFile({
+			"task-1": {
+				id: "task-1",
+				status: "running",
+				session_id: "sess-123",
+			},
+		});
+		const rawBefore = fs.readFileSync(tasksFilePath, "utf-8");
+		statusProvider = providerWithFile(tasksFilePath);
+		// A pane asking the human a question is NOT benign.
+		capturePaneSnippet = mock(() => "Continue? (y/n) ");
+		deps = {
+			...deps,
+			capturePaneSnippet,
+		} as unknown as AgentRegistryCommandDeps;
+		registerAgentRegistryCommands(deps);
+
+		await handler("commandCentral.closeoutBenignPane")({
+			type: "task",
+			task: { id: "task-1", status: "running", session_id: "sess-123" },
+		});
+
+		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+			'Agent "task-1" is not a benign pane (awaiting-user-input); nothing closed out.',
+		);
+		// No confirmation prompt and no registry write for a non-benign pane.
+		expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalled();
+		expect(fs.readFileSync(tasksFilePath, "utf-8")).toBe(rawBefore);
+		expect(fs.existsSync(`${tasksFilePath}.bak`)).toBe(false);
+		expect(statusProvider.reload).not.toHaveBeenCalled();
+	});
+
+	test("closeoutBenignPane is a no-op for a benign pane until the operator approves (declined confirmation)", async () => {
+		// Regression: the execute/mutation step MUST stay gated behind an explicit
+		// operator approval. With the modal confirmation declined (the default
+		// showWarningMessage mock resolves undefined), nothing is reconciled.
+		const tasksFilePath = makeTasksFile({
+			"task-1": {
+				id: "task-1",
+				status: "running",
+				session_id: "sess-123",
+			},
+		});
+		const rawBefore = fs.readFileSync(tasksFilePath, "utf-8");
+		statusProvider = providerWithFile(tasksFilePath);
+		// Benign idle shell — eligible for closeout, but still gated on approval.
+		capturePaneSnippet = mock(() => "user@host project %\n");
+		deps = {
+			...deps,
+			capturePaneSnippet,
+		} as unknown as AgentRegistryCommandDeps;
+		registerAgentRegistryCommands(deps);
+
+		await handler("commandCentral.closeoutBenignPane")({
+			type: "task",
+			task: { id: "task-1", status: "running", session_id: "sess-123" },
+		});
+
+		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+			'Close out benign pane for agent "task-1"? The terminal is left running; only the registry entry is reconciled.',
+			{ modal: true },
+			"Close Out",
+		);
+		// Approval declined → file untouched, no backup, no reload, no success toast.
+		expect(fs.readFileSync(tasksFilePath, "utf-8")).toBe(rawBefore);
+		expect(fs.existsSync(`${tasksFilePath}.bak`)).toBe(false);
+		expect(statusProvider.reload).not.toHaveBeenCalled();
+		expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+	});
+
+	test("closeoutBenignPane reconciles the registry entry only after approval — terminal left running", async () => {
+		const tasksFilePath = makeTasksFile({
+			"task-1": {
+				id: "task-1",
+				status: "running",
+				session_id: "sess-123",
+			},
+			"task-2": { id: "task-2", status: "running" },
+		});
+		const rawBefore = fs.readFileSync(tasksFilePath, "utf-8");
+		statusProvider = providerWithFile(tasksFilePath);
+		capturePaneSnippet = mock(() => "12 passed\nuser@host project %\n");
+		deps = {
+			...deps,
+			capturePaneSnippet,
+		} as unknown as AgentRegistryCommandDeps;
+		vscodeMock.window.showWarningMessage = mock(() =>
+			Promise.resolve("Close Out"),
+		);
+		registerAgentRegistryCommands(deps);
+
+		await handler("commandCentral.closeoutBenignPane")({
+			type: "task",
+			task: { id: "task-1", status: "running", session_id: "sess-123" },
+		});
+
+		const tasks = readTasks(tasksFilePath);
+		expect(tasks["task-1"]).toMatchObject({
+			status: "failed",
+			error_message:
+				"Closed out — benign live pane reconciled by operator after sync",
+		});
+		// Unrelated lanes are untouched and the pre-write contents are backed up.
+		expect(tasks["task-2"]).toEqual({ id: "task-2", status: "running" });
+		expect(fs.readFileSync(`${tasksFilePath}.bak`, "utf-8")).toBe(rawBefore);
+		expect(statusProvider.reload).toHaveBeenCalled();
+		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+			'Closed out benign pane for agent "task-1".',
+		);
+	});
+
+	test("closeoutBenignPane rejects an invalid session ID before capturing the pane", async () => {
+		registerAgentRegistryCommands(deps);
+
+		await handler("commandCentral.closeoutBenignPane")({
+			type: "task",
+			task: { id: "task-1", status: "running", session_id: "bad session!" },
+		});
+
+		expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith(
+			"Invalid session ID.",
+		);
+		expect(capturePaneSnippet).not.toHaveBeenCalled();
 	});
 
 	test("removeAgentTask warns when no node is provided", async () => {

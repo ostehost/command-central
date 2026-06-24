@@ -8,7 +8,7 @@
  * Pattern follows OpenClawConfigService: file watch + debounce + disposal.
  */
 
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -17,18 +17,24 @@ import type { CronJob, CronRun } from "../types/cron-types.js";
 
 const DEFAULT_DEBOUNCE_MS = 150;
 const CLI_TIMEOUT_MS = 5000;
+const DEFAULT_WATCH_RETRY_MS = 5000;
 const JOBS_FILE = path.join(os.homedir(), ".openclaw", "cron", "jobs.json");
 
 export class CronService implements vscode.Disposable {
 	private jobs: CronJob[] = [];
 	private watcher: fs.FSWatcher | null = null;
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private watchRetryTimer: ReturnType<typeof setInterval> | null = null;
 	private onChange: (() => void) | null = null;
 	private _isInstalled = true;
 	private readonly debounceMs: number;
+	private readonly watchRetryMs: number;
+	private reloadInFlight: Promise<void> | null = null;
+	private reloadGeneration = 0;
 
-	constructor(opts: { debounceMs?: number } = {}) {
+	constructor(opts: { debounceMs?: number; watchRetryMs?: number } = {}) {
 		this.debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+		this.watchRetryMs = opts.watchRetryMs ?? DEFAULT_WATCH_RETRY_MS;
 	}
 
 	get isInstalled(): boolean {
@@ -45,15 +51,40 @@ export class CronService implements vscode.Disposable {
 		return this.jobs;
 	}
 
+	/**
+	 * Fire-and-forget reload. Returns synchronously so callers (start,
+	 * watcher, tree refresh) never block the extension host on the CLI.
+	 * Concurrent calls coalesce; the awaitable promise is exposed via
+	 * {@link reloadAsync} for tests and sequencing.
+	 */
 	reload(): void {
+		void this.reloadAsync();
+	}
+
+	/**
+	 * Async reload with in-flight coalescing + stale-result protection.
+	 * - Coalescing: a second call while one is running awaits the same promise.
+	 * - Stale-result protection: each run captures a generation; if a newer
+	 *   run started meanwhile, the older run's parsed output is discarded.
+	 */
+	reloadAsync(): Promise<void> {
+		if (this.reloadInFlight) return this.reloadInFlight;
+		const generation = ++this.reloadGeneration;
+		const run = this.runReload(generation).finally(() => {
+			this.reloadInFlight = null;
+		});
+		this.reloadInFlight = run;
+		return run;
+	}
+
+	private async runReload(generation: number): Promise<void> {
 		try {
-			const stdout = execFileSync("openclaw", ["cron", "list", "--json"], {
-				encoding: "utf-8",
-				timeout: CLI_TIMEOUT_MS,
-			});
+			const stdout = await this.execCli(["cron", "list", "--json"]);
+			if (generation !== this.reloadGeneration) return;
 			this.jobs = this.parseJobsOutput(stdout);
 			this._isInstalled = true;
 		} catch (error: unknown) {
+			if (generation !== this.reloadGeneration) return;
 			this.handleReloadError(error);
 		}
 	}
@@ -107,6 +138,10 @@ export class CronService implements vscode.Disposable {
 			clearTimeout(this.debounceTimer);
 			this.debounceTimer = null;
 		}
+		if (this.watchRetryTimer) {
+			clearInterval(this.watchRetryTimer);
+			this.watchRetryTimer = null;
+		}
 		this.onChange = null;
 		this.jobs = [];
 	}
@@ -131,22 +166,65 @@ export class CronService implements vscode.Disposable {
 		// Non-zero exit or timeout — keep last known state
 	}
 
+	/**
+	 * Install the jobs.json watcher. If the cron directory is absent at
+	 * startup (fs.watch throws ENOENT, or the watcher emits an error), fall
+	 * back to polling so the watcher self-heals once OpenClaw creates the
+	 * directory later — instead of staying permanently blind until restart.
+	 */
 	private startWatching(): void {
+		if (this.tryInstallWatcher()) return;
+		this.scheduleWatchRetry();
+	}
+
+	private tryInstallWatcher(): boolean {
 		try {
 			const dir = path.dirname(JOBS_FILE);
 			const basename = path.basename(JOBS_FILE);
 
-			this.watcher = fs.watch(dir, (_event, filename) => {
+			const watcher = fs.watch(dir, (_event, filename) => {
 				if (filename === basename) {
 					this.debouncedReload();
 				}
 			});
-			this.watcher.on("error", () => {
-				// Directory may not exist — ok
+			watcher.on("error", () => {
+				// Directory was removed or became unwatchable — drop the dead
+				// watcher and poll until it can be reinstalled.
+				this.handleWatcherError();
 			});
+			this.watcher = watcher;
+			return true;
 		} catch {
-			// Cron directory doesn't exist — graceful no-op
+			// Cron directory doesn't exist yet — caller schedules a retry.
+			return false;
 		}
+	}
+
+	private scheduleWatchRetry(): void {
+		if (this.watchRetryTimer) return;
+		this.watchRetryTimer = setInterval(() => {
+			if (this.tryInstallWatcher()) {
+				this.stopWatchRetry();
+				// The directory appeared while we were blind; pick up any
+				// changes that happened before the watcher was installed.
+				this.debouncedReload();
+			}
+		}, this.watchRetryMs);
+	}
+
+	private stopWatchRetry(): void {
+		if (this.watchRetryTimer) {
+			clearInterval(this.watchRetryTimer);
+			this.watchRetryTimer = null;
+		}
+	}
+
+	private handleWatcherError(): void {
+		if (this.watcher) {
+			this.watcher.close();
+			this.watcher = null;
+		}
+		this.scheduleWatchRetry();
 	}
 
 	private debouncedReload(): void {
@@ -154,8 +232,9 @@ export class CronService implements vscode.Disposable {
 			clearTimeout(this.debounceTimer);
 		}
 		this.debounceTimer = setTimeout(() => {
-			this.reload();
-			this.onChange?.();
+			void this.reloadAsync().then(() => {
+				this.onChange?.();
+			});
 		}, this.debounceMs);
 	}
 

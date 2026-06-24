@@ -322,6 +322,29 @@ function matchesRequiredTaskId(
 	return false;
 }
 
+function matchesRequiredLabel(
+	label: string,
+	requiredLabels: string[],
+): boolean {
+	return requiredLabels.some((requiredLabel) => label.includes(requiredLabel));
+}
+
+/**
+ * Append nodes that match a required filter but fell outside the cap, mirroring
+ * the requiredTaskId escape hatch so a selection target is never hidden purely
+ * by a snapshot child/root cap. Deduplicates against the already-capped set.
+ */
+function appendCapEscapes(
+	capped: AgentNode[],
+	full: AgentNode[],
+	isRequired: (element: AgentNode) => boolean,
+): void {
+	for (const element of full) {
+		if (capped.includes(element)) continue;
+		if (isRequired(element)) capped.push(element);
+	}
+}
+
 /**
  * Project a live `AgentStatusTreeProvider` into a serializable snapshot. The
  * traversal is bounded by `maxDepth` / `maxChildrenPerNode` so the result
@@ -354,6 +377,13 @@ export function getTreeSnapshotForProvider(
 		| CommandCentralAgentStatusTreeSelectedNode
 		| undefined;
 
+	const isRequiredLabelNode = (element: AgentNode): boolean => {
+		if (requiredLabels.length === 0) return false;
+		const item = provider.getTreeItem(element);
+		const label = treeItemLabelToString(item.label);
+		return matchesRequiredLabel(label, requiredLabels);
+	};
+
 	const serializeNode = (
 		element: AgentNode,
 		depth: number,
@@ -381,6 +411,7 @@ export function getTreeSnapshotForProvider(
 			);
 			if (requiredChild) cappedChildren.push(requiredChild);
 		}
+		appendCapEscapes(cappedChildren, children, isRequiredLabelNode);
 		const node: CommandCentralAgentStatusTreeNode = {
 			label,
 			description: treeItemDescriptionToString(item.description),
@@ -424,12 +455,12 @@ export function getTreeSnapshotForProvider(
 		const label = treeItemLabelToString(item.label);
 		return rootLabelPrefixes.some((prefix) => label.startsWith(prefix));
 	});
+	const cappedRoots = roots.slice(0, maxChildrenPerNode);
+	appendCapEscapes(cappedRoots, roots, isRequiredLabelNode);
 	return {
 		rootChildrenCount: provider.getChildren().length,
 		taskCount: provider.getTasks().length,
-		roots: roots
-			.slice(0, maxChildrenPerNode)
-			.map((child) => serializeNode(child, 0, [])),
+		roots: cappedRoots.map((child) => serializeNode(child, 0, [])),
 		selected: {
 			requiredLabels: selectedRequiredLabels,
 			requiredTaskId: selectedRequiredTaskId,

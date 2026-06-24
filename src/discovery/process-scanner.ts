@@ -116,6 +116,23 @@ export interface ProcessCommandIdentity {
 type ExecFileFn = typeof defaultExecFileAsync;
 type ResolveWorktreeFn = typeof resolveWorktree;
 type NowProviderFn = () => number;
+type PidLivenessProbeFn = (pid: number) => boolean;
+
+/**
+ * Probe whether a PID is still alive by sending signal 0 (no actual signal is
+ * delivered — the kernel only performs the permission/existence check). Returns
+ * false for a dead PID (ESRCH) or any other error. This is the same liveness
+ * test AgentRegistry uses; it lets discovery keep a live external agent visible
+ * instead of expiring it on a stale age window alone (CP-18 / PAR-59).
+ */
+function defaultPidLivenessProbe(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
 
 export interface LauncherTaskSnapshot {
 	status?: string | null;
@@ -133,6 +150,7 @@ export interface ProcessScannerOptions {
 	staleProcessAgeMs?: number;
 	staleStreamThresholdMs?: number;
 	nowProvider?: NowProviderFn;
+	pidLivenessProbe?: PidLivenessProbeFn;
 	timingRecorder?: TimingRecorder;
 }
 
@@ -169,6 +187,7 @@ export class ProcessScanner {
 	private staleProcessAgeMs: number;
 	private staleStreamThresholdMs: number;
 	private nowProvider: NowProviderFn;
+	private pidLivenessProbe: PidLivenessProbeFn;
 	private timingRecorder: TimingRecorder;
 	private lastDiagnostics: ProcessScanDiagnostics = {
 		psRowCount: 0,
@@ -194,6 +213,8 @@ export class ProcessScanner {
 			options?.staleStreamThresholdMs ?? DEFAULT_STALE_STREAM_THRESHOLD_MS,
 		);
 		this.nowProvider = options?.nowProvider ?? (() => Date.now());
+		this.pidLivenessProbe =
+			options?.pidLivenessProbe ?? defaultPidLivenessProbe;
 		this.timingRecorder = options?.timingRecorder ?? defaultTimingRecorder;
 	}
 
@@ -613,9 +634,19 @@ export class ProcessScanner {
 			}
 		}
 
-		return (
-			this.nowProvider() - agent.startTime.getTime() >= this.staleProcessAgeMs
-		);
+		const isAgedOut =
+			this.nowProvider() - agent.startTime.getTime() >= this.staleProcessAgeMs;
+		if (!isAgedOut) {
+			return false;
+		}
+
+		// CP-18 / PAR-59: an external live agent (no launcher task to cross-check)
+		// used to disappear once its process age crossed the stale window, even
+		// though `ps` had just reported the PID and the process was still alive.
+		// Age alone is not evidence of staleness — long-lived interactive prompt
+		// sessions legitimately run for many hours. Only prune an aged-out
+		// process when its PID is no longer alive; a still-live PID stays visible.
+		return !this.pidLivenessProbe(agent.pid);
 	}
 
 	private findMatchingLauncherTask(

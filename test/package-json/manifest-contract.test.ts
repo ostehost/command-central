@@ -4,8 +4,17 @@ import * as path from "node:path";
 
 type PackageJsonShape = {
 	activationEvents?: string[];
+	capabilities?: {
+		untrustedWorkspaces?: {
+			supported?: boolean | "limited";
+			restrictedConfigurations?: string[];
+		};
+	};
 	contributes?: {
 		commands?: Array<{ command?: string }>;
+		configuration?: {
+			properties?: Record<string, unknown>;
+		};
 		views?: Record<
 			string,
 			Array<{ id?: string; name?: string; type?: string }>
@@ -65,6 +74,19 @@ function readSourceFiles(): SourceFile[] {
 		path: filePath,
 		text: fs.readFileSync(filePath, "utf8"),
 	}));
+}
+
+function getRestrictedConfigurations(): string[] {
+	return (
+		readPackageJson().capabilities?.untrustedWorkspaces
+			?.restrictedConfigurations ?? []
+	);
+}
+
+function getContributedConfigurationKeys(): string[] {
+	return Object.keys(
+		readPackageJson().contributes?.configuration?.properties ?? {},
+	);
 }
 
 function getManifestCommandIds(): string[] {
@@ -204,6 +226,34 @@ describe("package.json manifest contract", () => {
 		}
 
 		expect(missingImplementations).toHaveLength(0);
+	});
+
+	test("every untrusted-workspace restricted configuration is a contributed setting", () => {
+		const contributedKeys = new Set(getContributedConfigurationKeys());
+		const staleRestrictions = getRestrictedConfigurations().filter(
+			(key) => !contributedKeys.has(key),
+		);
+
+		if (staleRestrictions.length > 0) {
+			throw new Error(
+				[
+					"capabilities.untrustedWorkspaces.restrictedConfigurations names settings that are not contributed in contributes.configuration.properties:",
+					...staleRestrictions.map((key) => `- ${key}`),
+				].join("\n"),
+			);
+		}
+
+		expect(staleRestrictions).toHaveLength(0);
+	});
+
+	test("restricts the launcher process-exec path in untrusted workspaces", () => {
+		const restricted = getRestrictedConfigurations();
+
+		// The launcher path drives process execution and must be trust-gated.
+		expect(restricted).toContain("commandCentral.ghostty.launcherPath");
+		// The previously-shipped stale keys must not reappear.
+		expect(restricted).not.toContain("commandCentral.terminal.launcherPath");
+		expect(restricted).not.toContain("commandCentral.terminal.app");
 	});
 
 	test("activation events use known VS Code forms", () => {

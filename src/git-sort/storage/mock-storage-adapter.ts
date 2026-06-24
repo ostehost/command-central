@@ -4,9 +4,10 @@
  * In-memory implementation of StorageAdapter for testing.
  * Provides full interface compliance without file I/O overhead.
  *
- * Design: Write-Once Audit Log
- * - Records are inserted only on first occurrence
- * - Duplicate saves are silently skipped (no updates)
+ * Design: Full-State Sync (matches StorageAdapter.save contract)
+ * - save() replaces all existing records for the repository
+ * - removed files (absent from the new set) are dropped
+ * - changed order/timestamp on existing files is overwritten
  * - isVisible is NOT persisted (always returns true on load)
  */
 
@@ -51,15 +52,13 @@ export class MockStorageAdapter implements StorageAdapter {
 	}
 
 	async save(repoId: number, records: DeletedFileRecord[]): Promise<void> {
-		const existing = this.deletedFiles.get(repoId) || [];
-		const existingPaths = new Set(existing.map((r) => r.filePath));
-
-		// INSERT only NEW records (skip duplicates - write-once behavior)
-		const newRecords = records.filter((r) => !existingPaths.has(r.filePath));
-
-		if (newRecords.length > 0) {
-			this.deletedFiles.set(repoId, [...existing, ...newRecords]);
-		}
+		// Full-state sync: replace all records for this repository.
+		// The tracker always sends the complete current state, so removed
+		// files are dropped and changed order/timestamp overwrites prior data.
+		this.deletedFiles.set(
+			repoId,
+			records.map((r) => ({ ...r })),
+		);
 	}
 
 	async load(repoId: number): Promise<DeletedFileRecord[]> {

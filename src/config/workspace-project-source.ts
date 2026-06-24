@@ -83,18 +83,22 @@ export class WorkspaceProjectSource implements ProjectConfigSource {
 			// This is native behavior and cannot be changed
 			const folderName = path.basename(folder.uri.fsPath);
 
-			// Read custom icon from workspace-folder-specific settings
-			// Users can set "commandCentral.project.icon": "👻" in .vscode/settings.json
+			// Read custom icon and display name from workspace-folder-specific settings
+			// Users can set "commandCentral.project.icon": "👻" and
+			// "commandCentral.project.name": "My Project" in .vscode/settings.json
 			const workspaceConfig = vscode.workspace.getConfiguration(
 				"commandCentral",
 				folder.uri,
 			);
 			const customIcon = workspaceConfig.get<string>("project.icon");
 
+			// Honor the configured display name; fall back to the folder basename
+			// when the setting is unset or only whitespace.
+			const customName = workspaceConfig.get<string>("project.name")?.trim();
+			const nameBase = customName || folderName;
+
 			// Build display name with optional custom icon prefix
-			const displayName = customIcon
-				? `${customIcon} ${folderName}`
-				: folderName;
+			const displayName = customIcon ? `${customIcon} ${nameBase}` : nameBase;
 
 			// Track for debugging
 			this.slotMapping.set(slotId, displayName);

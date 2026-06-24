@@ -15,8 +15,7 @@
 {
   "commandCentral.project.icon": "🚀",
   "commandCentral.project.name": "My Project",
-  "commandCentral.terminal.launcherPath": "/path/to/custom/launcher",
-  "commandCentral.terminal.app": "/Applications/Ghostty.app"
+  "commandCentral.ghostty.launcherPath": "/path/to/ghostty-launcher/launcher"
 }
 ```
 
@@ -92,7 +91,7 @@ chmod +x resources/bin/ghostty-launcher
 ```
 
 ### Launcher not found
-- Check `commandCentral.terminal.launcherPath` setting
+- Check `commandCentral.ghostty.launcherPath` setting
 - Verify bundled script exists: `ls -la resources/bin/ghostty-launcher`
 
 ### Out of sync warning

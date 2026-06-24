@@ -67,6 +67,29 @@ function byNewestCreatedAt(
 	);
 }
 
+/**
+ * Order candidates by proximity to the task's start time so that the session
+ * created at/just after `started_at` wins over a later, unrelated session.
+ *
+ * Returns a comparator that prefers the smallest non-negative
+ * `(createdAtMs - startedAtMs)` (the earliest candidate at/after the task
+ * start). When `started_at` is unknown, falls back to newest-first ordering
+ * to preserve the previous behaviour.
+ */
+function byClosestToStart(
+	startedAtMs: number | null,
+): (a: ClaudeSessionCandidate, b: ClaudeSessionCandidate) => number {
+	if (startedAtMs === null) {
+		return byNewestCreatedAt;
+	}
+	return (a, b) =>
+		Math.abs(a.createdAtMs - startedAtMs) -
+			Math.abs(b.createdAtMs - startedAtMs) ||
+		a.createdAtMs - b.createdAtMs ||
+		a.modifiedAtMs - b.modifiedAtMs ||
+		a.sessionId.localeCompare(b.sessionId);
+}
+
 async function listClaudeSessionCandidates(
 	projectDir: string,
 	claudeBaseDir?: string,
@@ -112,6 +135,7 @@ function selectClaudeSessionCandidateForTask(
 ): ClaudeSessionCandidate | null {
 	const startedAtMs = parseIsoTimestamp(task.started_at);
 	const completedAtMs = parseIsoTimestamp(task.completed_at ?? null);
+	const closestToStart = byClosestToStart(startedAtMs);
 	const withinTaskWindow = candidates.filter((candidate) => {
 		if (startedAtMs !== null && candidate.createdAtMs < startedAtMs) {
 			return false;
@@ -122,14 +146,14 @@ function selectClaudeSessionCandidateForTask(
 		return true;
 	});
 	if (withinTaskWindow.length > 0) {
-		return withinTaskWindow[0] ?? null;
+		return [...withinTaskWindow].sort(closestToStart)[0] ?? null;
 	}
 
 	const afterTaskStarted = candidates.filter((candidate) =>
 		startedAtMs === null ? true : candidate.createdAtMs >= startedAtMs,
 	);
 	if (afterTaskStarted.length > 0) {
-		return afterTaskStarted[0] ?? null;
+		return [...afterTaskStarted].sort(closestToStart)[0] ?? null;
 	}
 
 	return candidates[0] ?? null;

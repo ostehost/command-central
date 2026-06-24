@@ -570,6 +570,24 @@ prerelease-gate *args="":
     @echo ""
     bun run scripts-v2/prerelease-gate.ts {{args}}
 
+# CCREL-05 integrated parity + daemon-smoke gate (hub-only).
+# Adds node readiness, daemon smoke, and hub repo parity (command-central +
+# ghostty-launcher + config all at origin/main, clean trees) on top of the base
+# gate, so the next RC only cuts once integrated parity AND daemon smoke are green.
+# Requires a live OpenClaw daemon + paired compute node; run on the hub.
+# See research/PAR-237-CCREL-05-RC-PARITY-DAEMON-SMOKE-GATE-2026-06-23.md.
+prerelease-gate-integrated *args="":
+    @echo "🚧 Running CCREL-05 integrated prerelease gate..."
+    @echo "   • Base gate (CC + launcher validation, launcher contract)"
+    @echo "   • OpenClaw node readiness (hub sees compute node current+connected)"
+    @echo "   • OpenClaw daemon smoke (daemon running with live endpoint)"
+    @echo "   • Hub repo parity (CC + launcher + config at origin/main)"
+    @echo ""
+    bun run scripts-v2/prerelease-gate.ts \
+        --require-node-readiness \
+        --require-daemon-smoke \
+        --require-repo-parity {{args}}
+
 # Build prerelease artifact only after gate passes
 prerelease *args="--prerelease":
     @just prerelease-gate
@@ -579,6 +597,17 @@ prerelease *args="--prerelease":
 # (defaults to newest in releases/; also runs inside `just dist` builds)
 vsix-gate *args="":
     @bun run scripts-v2/vsix-content-gate.ts {{args}}
+
+# CCSTD-01: re-runnable, NON-MUTATING preserve-before-destroy baseline audit.
+# Read-only git plumbing only — never stages/commits/stashes/resets. Enumerates
+# staged-only / unstaged / untracked / ignored-only / stash / upstream
+# divergence (or gone) / remotes / credential-in-remote and writes a
+# host-labeled receipt under research/preserve-baseline/. Run this BEFORE any
+# destructive action (reset --hard, clean -fdx, branch -D, force-push, delete).
+# See research/RESULT-ccstd-01-preserve-baseline-audit-20260623.md.
+preserve-audit *args="":
+    @echo "🛟 Preserve-before-destroy baseline audit (read-only)..."
+    @bun run scripts-v2/preserve-baseline-audit.ts {{args}}
 
 # ──────────────────────────────────────────────────────────
 # CUT PREVIEW — single-entry release flow

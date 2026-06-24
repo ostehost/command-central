@@ -135,6 +135,34 @@ describe("package.json agent menu contributions", () => {
 		).toBe(true);
 	});
 
+	test("registers closeoutBenignPane command contribution", async () => {
+		const commands = await getCommands();
+		const exists = commands.some(
+			(item) => item.command === "commandCentral.closeoutBenignPane",
+		);
+		expect(exists).toBe(true);
+	});
+
+	test("closeoutBenignPane context action targets running rows including .linked/.reviewed suffixes", async () => {
+		// CCSYNC-06: the manual closeout flow operates on a still-live lane whose
+		// pane is benign, so its affordance must match running rows (incl. the
+		// dynamic `.linked`/`.reviewed` contextValue suffixes the provider appends)
+		// and must NOT bleed onto terminal/dead statuses.
+		const menu = await getViewItemContextMenu();
+		const closeout = menu.find(
+			(item) => item.command === "commandCentral.closeoutBenignPane",
+		);
+		expect(closeout).toBeDefined();
+		const re = viewItemRegex(closeout?.when);
+		expect(re.test("agentTask.running")).toBe(true);
+		expect(re.test("agentTask.running.linked")).toBe(true);
+		expect(re.test("agentTask.running.reviewed.linked")).toBe(true);
+		for (const status of DEAD_STATUSES) {
+			expect(re.test(`agentTask.${status}`)).toBe(false);
+			expect(re.test(`agentTask.${status}.linked`)).toBe(false);
+		}
+	});
+
 	test("registers listWorktrees command contribution", async () => {
 		const commands = await getCommands();
 		const exists = commands.some(

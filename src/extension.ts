@@ -4,7 +4,10 @@
 
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { activateCronFeature } from "./activation/cron-feature.js";
+import {
+	activateCronFeature,
+	isCronFeatureEnabled,
+} from "./activation/cron-feature.js";
 import { registerAgentDiffCommands } from "./activation/register-agent-diff-commands.js";
 import { registerAgentNavigationCommands } from "./activation/register-agent-navigation-commands.js";
 import { registerAgentRegistryCommands } from "./activation/register-agent-registry-commands.js";
@@ -53,6 +56,10 @@ import {
 } from "./providers/agent-status-tree-provider.js";
 import { DiffContentProvider } from "./providers/diff-content-provider.js";
 import { ExtensionFilterViewManager } from "./providers/extension-filter-view-manager.js";
+import {
+	registerSessionHistoryRecoveryCommands,
+	SessionHistoryRecoveryPanel,
+} from "./providers/session-history-recovery-panel.js";
 import { AgentOutputChannels } from "./services/agent-output-channels.js";
 import { AgentStatusBar } from "./services/agent-status-bar.js";
 import { CodexRunObserverService } from "./services/codex-run-observer-service.js";
@@ -68,6 +75,7 @@ import { OpenClawConfigService } from "./services/openclaw-config-service.js";
 import { ProjectIconManager } from "./services/project-icon-manager.js";
 import { ProjectIconService } from "./services/project-icon-service.js";
 import { ProjectViewManager } from "./services/project-view-manager.js";
+import { SessionHistoryRecoveryService } from "./services/session-history-recovery-service.js";
 import { SessionStore } from "./services/session-store.js";
 import { TelemetryService } from "./services/telemetry-service.js";
 import type { OpenClawTask } from "./types/openclaw-task-types.js";
@@ -399,6 +407,16 @@ export async function activate(
 			}),
 		);
 
+		// Read-only OpenClaw session-history recovery-risk surface (PAR-230 / CCSYNC-05)
+		const sessionHistoryRecoveryPanel = new SessionHistoryRecoveryPanel();
+		context.subscriptions.push(sessionHistoryRecoveryPanel);
+		context.subscriptions.push(
+			...registerSessionHistoryRecoveryCommands({
+				panel: sessionHistoryRecoveryPanel,
+				service: new SessionHistoryRecoveryService(),
+			}),
+		);
+
 		// Check if Git Sort is enabled and activate
 		const isGitSortEnabled = vscode.workspace
 			.getConfiguration("commandCentral.gitSort")
@@ -432,6 +450,21 @@ export async function activate(
 		// Cron Jobs View
 		// ============================================================================
 		await activateCronFeature(context);
+
+		// Keep the cronJobs view's `when` context key in sync with the
+		// commandCentral.cron.enabled setting at runtime so toggling it
+		// shows/hides the contributed view without a reload.
+		context.subscriptions.push(
+			vscode.workspace.onDidChangeConfiguration(async (e) => {
+				if (e.affectsConfiguration("commandCentral.cron.enabled")) {
+					await vscode.commands.executeCommand(
+						"setContext",
+						"commandCentral.cron.enabled",
+						isCronFeatureEnabled(),
+					);
+				}
+			}),
+		);
 
 		mainLogger.info("Cron Jobs view initialized");
 
@@ -1488,7 +1521,8 @@ export async function activate(
 				},
 			),
 		);
-		// Agent registry mutations: capture/kill/clear/stale/reap/remove/reviewed.
+		// Agent registry mutations:
+		// capture/kill/clear/stale/reap/closeout/remove/reviewed.
 		// agentStatusProvider and terminalManager are resettable module state, so
 		// the module receives getters (late-binding contract).
 		context.subscriptions.push(

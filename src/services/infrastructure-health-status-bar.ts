@@ -17,7 +17,13 @@ const POLL_INTERVAL_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 2_500;
 const SUMMARY_FRESHNESS_MS = 10 * 60_000;
 
-type DisplayState = "ok" | "warn" | "degraded" | "stale" | "down";
+type DisplayState =
+	| "ok"
+	| "warn"
+	| "degraded"
+	| "stale"
+	| "down"
+	| "auth-failed";
 type SummarySeverity = "ok" | "warn" | "critical" | null;
 type FetchLike = (
 	input: string | URL | Request,
@@ -30,6 +36,13 @@ type ClearIntervalLike = (timer: TimerHandle) => void;
 interface GatewayReadiness {
 	reachable: boolean;
 	ready: boolean;
+	/**
+	 * The gateway process answered but rejected our credentials (HTTP 401/403).
+	 * Distinct from unreachable: API reachability is a separate health dimension
+	 * from authorization. An auth rejection means "up but locked out", never
+	 * DOWN, and it is not transient so it bypasses the reachability retry.
+	 */
+	authFailed?: boolean;
 	error?: string;
 	failing: string[];
 }
@@ -111,6 +124,11 @@ function normalizeSummarySeverity(value: unknown): SummarySeverity {
 }
 
 function formatGatewayLine(readiness: GatewayReadiness): string {
+	if (readiness.authFailed) {
+		return readiness.error
+			? `reachable, auth rejected (${readiness.error})`
+			: "reachable, auth rejected";
+	}
 	if (!readiness.reachable) {
 		return readiness.error ? `unreachable (${readiness.error})` : "unreachable";
 	}
@@ -391,6 +409,12 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 					"statusBarItem.errorBackground",
 				);
 				break;
+			case "auth-failed":
+				this.statusBarItem.text = `$(key) OpenClaw AUTH${scopeSuffix}`;
+				this.statusBarItem.backgroundColor = new vscode.ThemeColor(
+					"statusBarItem.errorBackground",
+				);
+				break;
 		}
 
 		this.statusBarItem.tooltip = buildTooltip({
@@ -420,6 +444,13 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 	 *
 	 * DOWN is reserved for: gateway unreachable/not-ready AND no fresh
 	 * evidence of life from any other channel.
+	 *
+	 * AUTH-FAILED is a distinct dimension, not a flavour of DOWN: the gateway
+	 * process answered but rejected our credentials (401/403). The fix is an
+	 * operator action (re-auth), not a restart, so it must read differently
+	 * from an outage and it outranks reachability-derived states — a healthy
+	 * task layer cannot mask the fact that our view of gateway health is
+	 * locked out.
 	 */
 	private resolveDisplayState(
 		readiness: GatewayReadiness,
@@ -427,6 +458,7 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 		summaryStale: boolean,
 		taskActivity: TaskServiceActivity | null,
 	): DisplayState {
+		if (readiness.authFailed) return "auth-failed";
 		const gatewayUp = readiness.reachable && readiness.ready;
 		const severity = summary?.overallSeverity ?? null;
 
@@ -479,6 +511,20 @@ export class InfrastructureHealthStatusBar implements vscode.Disposable {
 				headers: { Accept: "application/json" },
 				signal: controller.signal,
 			});
+			// 401/403 means the gateway process is up and the API answered, but
+			// our credentials were rejected — a separate dimension from
+			// reachability. Surface it as reachable+authFailed so the state
+			// machine renders AUTH (re-auth needed), never a false DOWN, and so
+			// it bypasses the transient-blip retry (auth rejection is not a blip).
+			if (response.status === 401 || response.status === 403) {
+				return {
+					reachable: true,
+					ready: false,
+					authFailed: true,
+					error: `HTTP ${response.status}`,
+					failing: [],
+				};
+			}
 			const data = asRecord(await response.json().catch(() => null));
 			return {
 				reachable: true,

@@ -57,6 +57,160 @@ export function isReviewLifecycleResolved(task: ReviewLifecycleShape): boolean {
 	return state !== undefined && RESOLVED_REVIEW_STATES.has(state);
 }
 
+/**
+ * CCSYNC-02 — lane-projection rebuild/GC receipt.
+ *
+ * The launcher's lane-projection GC command (`scripts/oste-lanes-gc.sh`, the
+ * producer that rewrites `~/.config/openclaw/lanes.json`) emits a timestamped,
+ * machine-readable receipt enumerating what it did to each lane row so Command
+ * Central can reconcile stale rows against an authoritative pass rather than
+ * re-deriving the verdict from live filesystem state on every render.
+ *
+ * Per-row verdicts (the GC output taxonomy):
+ *  - `kept`            — row is still live/valid; left untouched.
+ *  - `downgraded`      — receipt-missing + no live evidence; downgraded to a
+ *                        `reconcile-needed` projection-stale state (NOT removed,
+ *                        so the operator can audit/clear it).
+ *  - `archived`        — terminal + reviewed/settled; moved to the archive.
+ *  - `removed`         — orphan with no backing evidence; dropped from the
+ *                        projection.
+ *
+ * The on-disk shape is:
+ * `{version, kind: "lane-projection-gc-receipt", generated_at, mode: "dry-run"
+ *   | "apply", rows: {<lane_ref.id|task_id>: {verdict, reason?}}, counts?}`.
+ */
+export const LANE_PROJECTION_GC_RECEIPT_KIND = "lane-projection-gc-receipt";
+
+export type LaneProjectionGcVerdict =
+	| "kept"
+	| "downgraded"
+	| "archived"
+	| "removed";
+
+/**
+ * The subset of GC verdicts that reconcile a projection row OUT of the live
+ * attention/active surface (everything except `kept`). Carried on the task as
+ * the `gc_reconcile` marker.
+ */
+export type ReconciledGcVerdict = Exclude<LaneProjectionGcVerdict, "kept">;
+
+export type LaneProjectionGcMode = "dry-run" | "apply";
+
+export interface LaneProjectionGcRow {
+	verdict: LaneProjectionGcVerdict;
+	reason: string | null;
+}
+
+export interface LaneProjectionGcReceipt {
+	version: number;
+	kind: typeof LANE_PROJECTION_GC_RECEIPT_KIND;
+	generatedAt: string | null;
+	mode: LaneProjectionGcMode;
+	rows: Record<string, LaneProjectionGcRow>;
+}
+
+const GC_VERDICTS = new Set<LaneProjectionGcVerdict>([
+	"kept",
+	"downgraded",
+	"archived",
+	"removed",
+]);
+
+/**
+ * GC verdicts that mean the projection row is no longer live attention work and
+ * must be reconciled out of the active/attention surface: a `downgraded` row is
+ * receipt-missing limbo (reconcile-needed), `archived`/`removed` rows were taken
+ * out of the live read-model entirely. Only `kept` leaves the row authoritative.
+ */
+const GC_RECONCILED_VERDICTS = new Set<ReconciledGcVerdict>([
+	"downgraded",
+	"archived",
+	"removed",
+]);
+
+function isGcVerdict(value: unknown): value is LaneProjectionGcVerdict {
+	return (
+		typeof value === "string" &&
+		GC_VERDICTS.has(value as LaneProjectionGcVerdict)
+	);
+}
+
+/**
+ * Pure parser for a lane-projection GC receipt document. Returns null for any
+ * document that is not a well-formed receipt of the expected kind (fail-closed:
+ * a malformed receipt must never be mistaken for an authoritative GC pass).
+ */
+export function parseLaneProjectionGcReceipt(
+	value: unknown,
+): LaneProjectionGcReceipt | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const doc = value as Record<string, unknown>;
+	if (doc["kind"] !== LANE_PROJECTION_GC_RECEIPT_KIND) return null;
+
+	const version = typeof doc["version"] === "number" ? doc["version"] : 1;
+	const modeRaw = doc["mode"];
+	const mode: LaneProjectionGcMode = modeRaw === "apply" ? "apply" : "dry-run";
+	const generatedAt =
+		typeof doc["generated_at"] === "string" && doc["generated_at"].length > 0
+			? doc["generated_at"]
+			: null;
+
+	const rowsRaw = doc["rows"];
+	const rows: Record<string, LaneProjectionGcRow> = {};
+	if (rowsRaw && typeof rowsRaw === "object" && !Array.isArray(rowsRaw)) {
+		for (const [rowKey, rowVal] of Object.entries(rowsRaw)) {
+			if (!rowVal || typeof rowVal !== "object" || Array.isArray(rowVal)) {
+				continue;
+			}
+			const row = rowVal as Record<string, unknown>;
+			const verdict = row["verdict"];
+			if (!isGcVerdict(verdict)) continue;
+			const reason = row["reason"];
+			rows[rowKey] = {
+				verdict,
+				reason: typeof reason === "string" && reason.length > 0 ? reason : null,
+			};
+		}
+	}
+
+	return {
+		version,
+		kind: LANE_PROJECTION_GC_RECEIPT_KIND,
+		generatedAt,
+		mode,
+		rows,
+	};
+}
+
+/**
+ * Look up the GC verdict for a projection row, matching on either the
+ * provider-scoped lane id (`launcher:<task_id>`) or the bare task id — the GC
+ * producer may key rows by either, and the projection carries both.
+ */
+export function lookupGcRowVerdict(
+	receipt: LaneProjectionGcReceipt,
+	keys: { laneId?: string | null; taskId?: string | null },
+): LaneProjectionGcRow | null {
+	for (const key of [keys.laneId, keys.taskId]) {
+		if (typeof key === "string" && key.length > 0) {
+			const row = receipt.rows[key];
+			if (row) return row;
+		}
+	}
+	return null;
+}
+
+/**
+ * Whether a GC verdict means the row should be reconciled out of the live
+ * attention/active surface (downgraded to reconcile-needed limbo, archived, or
+ * removed). `kept` and an absent row leave the row authoritative.
+ */
+export function isReconciledGcVerdict(
+	verdict: LaneProjectionGcVerdict,
+): verdict is ReconciledGcVerdict {
+	return (GC_RECONCILED_VERDICTS as Set<LaneProjectionGcVerdict>).has(verdict);
+}
+
 export function checkAdvertisedReviewQueue(
 	task: ReviewQueueTaskShape,
 ): AdvertisedReviewQueueState {

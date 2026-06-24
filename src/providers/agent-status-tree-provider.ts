@@ -34,6 +34,11 @@ import type {
 import type { OpenClawTaskService } from "../services/openclaw-task-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
 import { ReviewTracker } from "../services/review-tracker.js";
+import {
+	buildUnreachableNodeCard,
+	collectHubSyncReadiness,
+	type SyncReadinessReceipt,
+} from "../services/sync-readiness-service.js";
 import type { TaskFlowService } from "../services/taskflow-service.js";
 import type {
 	CodexRunSourceRef,
@@ -57,8 +62,11 @@ import {
 } from "../types/taskflow-types.js";
 import { type AgentCounts, countAgentStatuses } from "../utils/agent-counts.js";
 import {
+	classifyPaneAttention,
 	emptyUnifiedCounts,
 	formatV2Summary,
+	isBenignLivePane,
+	type PaneAttentionState,
 	sectionFromStatusGroup,
 	type UnifiedCounts,
 	V2_SECTION_HEADERS,
@@ -79,6 +87,7 @@ import {
 import { getModelAlias } from "../utils/model-aliases.js";
 import {
 	isReceiptReviewed,
+	readLaneProjectionGcReceipt,
 	readPendingReviewReceipt,
 	readReviewedReceipt,
 	receiptToOverlay,
@@ -95,7 +104,11 @@ import { relativeTime } from "../utils/relative-time.js";
 import {
 	type AdvertisedReviewQueueState,
 	checkAdvertisedReviewQueue,
+	isReconciledGcVerdict,
 	isReviewLifecycleResolved,
+	type LaneProjectionGcReceipt,
+	lookupGcRowVerdict,
+	type ReconciledGcVerdict,
 } from "../utils/review-queue-health.js";
 import {
 	type ResolvedTaskRegistrySource,
@@ -109,6 +122,7 @@ import {
 } from "../utils/time-grouping.js";
 import { defaultTimingRecorder } from "../utils/timing-recorder.js";
 import {
+	capturePaneSnippet,
 	inspectTmuxPaneAgent,
 	inspectTmuxPaneById,
 	type TmuxPaneAgentEvidence,
@@ -116,6 +130,7 @@ import {
 import {
 	classifyCompletionRouting,
 	classifyLifecycleConflict,
+	classifyOpenClawCrossProjectContext,
 	classifyTaskSurface,
 	getTaskDisplayProjectName,
 	getTaskExecutionHostLabel,
@@ -240,6 +255,18 @@ export interface AgentTask {
 	 * wins the merge over a projection row (see `readRegistry`).
 	 */
 	lane_projection?: boolean;
+	/**
+	 * CCSYNC-02 reconciliation marker: a lane-projection GC pass
+	 * (`scripts/oste-lanes-gc.sh`) classified this row as no longer live
+	 * attention work. `downgraded` means receipt-missing + no live evidence
+	 * (reconcile-needed limbo); `archived`/`removed` mean the GC pass took the
+	 * row out of the live read-model. Stamped by
+	 * {@link applyGcReceiptReconciliation} from the GC receipt; absent when no
+	 * authoritative GC pass covered the row (the row stays authoritative).
+	 */
+	gc_reconcile?: ReconciledGcVerdict;
+	/** Verbatim GC verdict reason from the receipt (audit detail). */
+	gc_reconcile_reason?: string | null;
 	/**
 	 * Launcher-projected attach affordance, mapped from a `lane_ref_update`
 	 * `attach` object (ghostty-launcher `scripts/laneref-update-schema.json`):
@@ -1617,6 +1644,13 @@ export class AgentStatusTreeProvider
 		string,
 		{ evidence: TmuxPaneAgentEvidence; checkedAt: number }
 	>();
+	// CCSYNC-03 (PAR-228): cached live-pane attention classification, warmed by
+	// the render path (subprocess capture-pane) and read cache-only on the
+	// `getNodeStatusGroup` hot path so benign live shells are not badge-counted.
+	private _tmuxPaneAttentionCache = new Map<
+		string,
+		{ state: PaneAttentionState; checkedAt: number }
+	>();
 	private _handoffFileCache = new Map<
 		string,
 		{ state: DeclaredHandoffState; checkedAt: number }
@@ -2266,6 +2300,69 @@ export class AgentStatusTreeProvider
 	}
 
 	/**
+	 * Whether the lane has positive evidence that its pane/process is still
+	 * alive — the cache-only tmux probe says "alive", or the launcher's own
+	 * recorded `session_live` corroborates it. Cache-only / metadata-only so it
+	 * is safe on the `getNodeStatusGroup` hot path.
+	 */
+	private hasLivePaneOrProcessEvidence(task: AgentTask): boolean {
+		if (this.getCachedTerminalTaskLivenessEvidence(task) === "alive") {
+			return true;
+		}
+		return this.effectiveLauncherSessionLive(task) === true;
+	}
+
+	/**
+	 * CCSYNC-01: a terminal row whose review metadata still claims `pending`
+	 * (review_status="pending" or a `pending`-ish launcher review_state) but
+	 * whose advertised pending-review receipt is MISSING locally AND that has no
+	 * live pane/process evidence is a stale read-model projection — the launcher
+	 * settled the lane (or the receipt was consumed) and the row simply never
+	 * refreshed. Such a row must NOT be counted as attention-required work; it
+	 * is reconciliation backlog that belongs in Needs Review (limbo), never the
+	 * activity-bar action badge.
+	 *
+	 * Gated narrowly so genuine attention work is preserved:
+	 *  - a present receipt → a real pending review the reviewer can act on.
+	 *  - live pane/process evidence → the lane is actually live, not stale.
+	 *  - a remote/node row (non-authoritative local probe) → receipt state is
+	 *    "unknown", never "missing", so isReviewQueueReceiptMissing returns
+	 *    false and this predicate stays false (judged by metadata, not a probe).
+	 */
+	private isStaleReviewProjection(task: AgentTask): boolean {
+		// CCSYNC-02: an authoritative lane-projection GC pass already classified
+		// this row as no longer live attention work (downgraded/archived/removed).
+		// The GC receipt verdict is authoritative reconciliation truth, so honor
+		// it directly instead of re-deriving from live FS state on the hot path.
+		if (this.isGcReconciledRow(task)) return true;
+		if (!this.isReviewPendingProjection(task)) return false;
+		if (!this.isReviewQueueReceiptMissing(task)) return false;
+		if (this.hasLivePaneOrProcessEvidence(task)) return false;
+		return true;
+	}
+
+	/**
+	 * CCSYNC-02: whether a lane-projection GC pass downgraded/archived/removed
+	 * this row (stamped by {@link applyGcReceiptReconciliation}). A
+	 * reconciled-out row is reconciliation backlog, never attention work.
+	 * Metadata-only — safe on the `getNodeStatusGroup` hot path.
+	 */
+	private isGcReconciledRow(task: AgentTask): boolean {
+		return task.gc_reconcile !== undefined;
+	}
+
+	/**
+	 * Whether the lane's recorded review metadata advertises a still-pending
+	 * review — either the structured `review_status="pending"` or a launcher
+	 * `review_state` that means "review not yet settled" (pending). Reviewed /
+	 * no_review_expected / approved are settled and handled elsewhere.
+	 */
+	private isReviewPendingProjection(task: AgentTask): boolean {
+		if (task.review_status === "pending") return true;
+		return task.review_state?.trim().toLowerCase() === "pending";
+	}
+
+	/**
 	 * Whether the launcher's pending-review receipt records THIS task's review
 	 * as reviewed — ground truth that OVERRIDES a stale tasks.json review_state.
 	 *
@@ -2500,6 +2597,99 @@ export class AgentStatusTreeProvider
 			return cached.evidence;
 		}
 		return "not-checked";
+	}
+
+	/**
+	 * The tmux target (a `%NN` pane id when recorded, else the session id) the
+	 * attention classifier reads, plus the cache key. Mirrors the pane/session
+	 * targeting `getTmuxPaneAgentEvidence` already uses so a shared pane in a
+	 * shared session is classified from the exact pane, not a sibling.
+	 */
+	private getTmuxPaneAttentionTarget(
+		task: AgentTask,
+	): { target: string; cacheKey: string } | null {
+		if (isRemoteNodeTaskForCurrentHost(task)) return null;
+		if (
+			(task.terminal_backend !== "tmux" &&
+				task.terminal_backend !== undefined) ||
+			!isValidSessionId(task.session_id)
+		) {
+			return null;
+		}
+		if (task.tmux_pane_id) {
+			return {
+				target: task.tmux_pane_id,
+				cacheKey: `${task.tmux_socket ?? "__default__"}::pane::${task.tmux_pane_id}`,
+			};
+		}
+		return {
+			target: task.session_id,
+			cacheKey: `${task.tmux_socket ?? "__default__"}::${task.session_id}`,
+		};
+	}
+
+	/**
+	 * CCSYNC-03 (PAR-228): WARM the live-pane attention classification by
+	 * capturing a recent pane snippet (subprocess) and running the pure
+	 * {@link classifyPaneAttention}. Read-only w.r.t. the terminal. Called from
+	 * the render path alongside the liveness probe so the `getNodeStatusGroup`
+	 * hot path can read it cache-only. Returns "unknown" when the task has no
+	 * probe-able pane/session.
+	 */
+	private getTerminalTaskPaneAttention(task: AgentTask): PaneAttentionState {
+		const targetInfo = this.getTmuxPaneAttentionTarget(task);
+		if (!targetInfo) return "unknown";
+		const cacheTtlMs = 5_000;
+		const now = Date.now();
+		const cached = this._tmuxPaneAttentionCache.get(targetInfo.cacheKey);
+		if (cached && now - cached.checkedAt < cacheTtlMs) {
+			return cached.state;
+		}
+		// An agent process owning the pane is the strongest signal — reuse the
+		// already-warmed liveness evidence so an "alive" pane is never demoted to
+		// a benign state by a snippet that happens to look quiet.
+		const agentOwned = this.getTerminalTaskLivenessEvidence(task) === "alive";
+		const snippet = capturePaneSnippet(targetInfo.target, task.tmux_socket);
+		const state = classifyPaneAttention(
+			agentOwned ? "claude" : undefined,
+			snippet ?? "",
+		);
+		this._tmuxPaneAttentionCache.set(targetInfo.cacheKey, {
+			state,
+			checkedAt: now,
+		});
+		return state;
+	}
+
+	/**
+	 * Cache-only variant of {@link getTerminalTaskPaneAttention}. Returns warm
+	 * cached state when available, "unknown" otherwise (never spawns a
+	 * subprocess). Safe on the `getNodeStatusGroup` hot path; the cache is warmed
+	 * by `getTreeItem` rendering.
+	 */
+	private getCachedTerminalTaskPaneAttention(
+		task: AgentTask,
+	): PaneAttentionState {
+		const targetInfo = this.getTmuxPaneAttentionTarget(task);
+		if (!targetInfo) return "unknown";
+		const cached = this._tmuxPaneAttentionCache.get(targetInfo.cacheKey);
+		if (cached && Date.now() - cached.checkedAt < 5_000) {
+			return cached.state;
+		}
+		return "unknown";
+	}
+
+	/**
+	 * CCSYNC-03 (PAR-228): whether a terminal-status lane's lifecycle-conflict
+	 * promotion into the badge-counted `attention` bucket should be SUPPRESSED
+	 * because its live pane is benign — a finished command sitting at its prompt
+	 * or a bare/idle shell. A genuine "awaiting-user-input" pane (or an unknown
+	 * one) is never suppressed: attention is preserved when in doubt.
+	 *
+	 * Cache-only — safe on the `getNodeStatusGroup` hot path.
+	 */
+	private isBenignLiveTerminalPane(task: AgentTask): boolean {
+		return isBenignLivePane(this.getCachedTerminalTaskPaneAttention(task));
 	}
 
 	private static readonly RELEASE_GENERATION_CACHE_TTL_MS = 5_000;
@@ -4134,7 +4324,11 @@ export class AgentStatusTreeProvider
 				}
 				return {
 					version: 2,
-					tasks: this.applyIngestFilter(filePath, normalizedLanes, ingest),
+					tasks: this.applyIngestFilter(
+						filePath,
+						this.reconcileLanesAgainstGcReceipt(normalizedLanes),
+						ingest,
+					),
 				};
 			}
 
@@ -4160,6 +4354,67 @@ export class AgentStatusTreeProvider
 			);
 			return createEmptyTaskRegistry();
 		}
+	}
+
+	/**
+	 * CCSYNC-02: reconcile freshly-normalized lane-projection rows against the
+	 * lane-projection GC receipt (`scripts/oste-lanes-gc.sh` output). For every
+	 * row the GC pass classified as no longer live attention work
+	 * (downgraded/archived/removed), stamp a `gc_reconcile` marker so the tree
+	 * routes it to Needs Review (limbo) instead of the attention/action badge.
+	 * The receipt is the authoritative reconciliation verdict; an absent or
+	 * malformed receipt leaves every row untouched. Reads the receipt once per
+	 * projection ingest (not on the `getNodeStatusGroup` hot path).
+	 */
+	private reconcileLanesAgainstGcReceipt(
+		lanes: Record<string, AgentTask>,
+	): Record<string, AgentTask> {
+		const receipt = this.readLaneProjectionGcReceipt();
+		if (!receipt) return lanes;
+
+		const reconciled: Record<string, AgentTask> = {};
+		for (const [key, task] of Object.entries(lanes)) {
+			const laneId = this.laneIdFromProjectionTask(task);
+			const row = lookupGcRowVerdict(receipt, { laneId, taskId: task.id });
+			if (row && isReconciledGcVerdict(row.verdict)) {
+				reconciled[key] = {
+					...task,
+					gc_reconcile: row.verdict,
+					gc_reconcile_reason: row.reason,
+				};
+			} else {
+				reconciled[key] = task;
+			}
+		}
+		return reconciled;
+	}
+
+	/**
+	 * The provider-scoped lane id (`launcher:<task_id>`) a projection row was
+	 * admitted under, preserved as `provenance.source_ref` by
+	 * `laneRefUpdateToTaskRecord`. The GC receipt may key rows by it or by the
+	 * bare task id.
+	 */
+	private laneIdFromProjectionTask(task: AgentTask): string | null {
+		const provenance = task.provenance;
+		if (
+			provenance &&
+			typeof provenance === "object" &&
+			!Array.isArray(provenance)
+		) {
+			const ref = (provenance as Record<string, unknown>)["source_ref"];
+			if (typeof ref === "string" && ref.length > 0) return ref;
+		}
+		return null;
+	}
+
+	/**
+	 * Seam for tests + dependency injection: read the lane-projection GC receipt.
+	 * Defaults to the launcher's on-disk receipt; overridable so suites can
+	 * inject a fixture receipt without touching the global filesystem.
+	 */
+	protected readLaneProjectionGcReceipt(): LaneProjectionGcReceipt | null {
+		return readLaneProjectionGcReceipt();
 	}
 
 	/**
@@ -5066,6 +5321,18 @@ export class AgentStatusTreeProvider
 
 	private getNodeStatusGroup(node: SortableAgentNode): AgentStatusGroup {
 		const status = this.getNodeStatus(node);
+
+		// CCSYNC-02: a lane-projection GC pass that downgraded/archived/removed
+		// this row is the authoritative reconciliation verdict — the projection
+		// row is stale read-model backlog, not live attention work. Route it to
+		// Needs Review (limbo) so it never counts in the activity-bar action badge
+		// or masquerades as a live "running" lane, even when its projected status
+		// field still says running/pending. Only ever applies to projection rows
+		// the GC receipt explicitly reconciled out (see applyGcReceiptReconciliation).
+		if (node.type === "task" && this.isGcReconciledRow(node.task)) {
+			return "limbo";
+		}
+
 		if (status === "running") return "running";
 
 		// Lifecycle conflict: the launcher recorded a TERMINAL status but the
@@ -5099,7 +5366,20 @@ export class AgentStatusTreeProvider
 					this.effectiveLauncherSessionLive(node.task),
 				).kind === "live-process-conflict"
 			) {
-				return "attention";
+				// CCSYNC-03 (PAR-228): a terminal lane whose "liveness" is only the
+				// launcher's recorded session_live (no agent process confirmed by the
+				// probe) and whose live pane is BENIGN — a finished command sitting at
+				// its prompt or a bare/idle shell — is not attention work. The shell
+				// is alive but the agent is gone and the human is not blocked, so let
+				// it fall through to its normal terminal bucket instead of the
+				// badge-counted action bucket. A confirmed agent process (liveness
+				// "alive") or a genuine awaiting-user-input pane is never suppressed —
+				// attention is preserved when in doubt.
+				const benignLivePane =
+					liveness !== "alive" && this.isBenignLiveTerminalPane(node.task);
+				if (!benignLivePane) {
+					return "attention";
+				}
 			}
 		}
 
@@ -5109,11 +5389,18 @@ export class AgentStatusTreeProvider
 			// sidecar). Reviewed tasks fall through to the handoff and
 			// pending-review-receipt checks below, so true blockers still
 			// surface in Limbo instead of silently landing in Done.
+			//
+			// CCSYNC-01: a stale read-model projection (review still says pending
+			// but the advertised receipt is missing and nothing is live) is NOT
+			// attention-required work — it is reconciliation backlog. Let it fall
+			// through to the receipt-missing check below, which routes it to Needs
+			// Review (limbo), keeping it out of the activity-bar action badge.
 			if (
 				node.type === "task" &&
 				(node.task.review_status === "pending" ||
 					node.task.review_status === "changes_requested") &&
-				!this.isTaskReviewed(node.task)
+				!this.isTaskReviewed(node.task) &&
+				!this.isStaleReviewProjection(node.task)
 			) {
 				return "attention";
 			}
@@ -5130,6 +5417,15 @@ export class AgentStatusTreeProvider
 		}
 		if (status === "completed_dirty" || status === "completed_stale") {
 			if (node.type === "task" && this.isReviewQueueReceiptMissing(node.task)) {
+				// CCSYNC-01: a missing receipt only counts as attention work when
+				// the lane is NOT a stale projection. A stale/dirty row that still
+				// claims pending review with a missing receipt and no live
+				// pane/process evidence has not been refreshed by the launcher —
+				// surface it as reconciliation backlog (Needs Review), never as a
+				// badge-counted action terminal.
+				if (node.type === "task" && this.isStaleReviewProjection(node.task)) {
+					return "limbo";
+				}
 				return "attention";
 			}
 			return "limbo";
@@ -6384,6 +6680,29 @@ export class AgentStatusTreeProvider
 				value: task.agentId,
 				taskId,
 				icon: "hubot",
+			});
+		}
+
+		// Cross-project orchestration identity (CC-006): tracked issue, target
+		// workspace, execution node, workflow contract. Empty for plain local
+		// background tasks, so the common case stays noise-free.
+		for (const row of classifyOpenClawCrossProjectContext(task)) {
+			details.push({
+				type: "detail",
+				label: row.label,
+				value: row.value,
+				taskId,
+				icon: row.icon,
+				...(row.iconColor ? { iconColor: row.iconColor } : {}),
+				...(row.url
+					? {
+							command: {
+								command: "vscode.open",
+								title: "Open Tracked Issue",
+								arguments: [vscode.Uri.parse(row.url)],
+							},
+						}
+					: {}),
 			});
 		}
 
@@ -7719,6 +8038,43 @@ export class AgentStatusTreeProvider
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * CCSYNC-04: build a read-only per-project sync-readiness receipt
+	 * (host-labeled branch/upstream/ahead-behind/HEAD/tree/dirty-count + a
+	 * prioritized blocker list). Hub-side only: a project whose known tasks ran
+	 * on a remote node we cannot reach from here yields an explicit
+	 * not-yet-queried card with NO fabricated git facts (cross-machine repo
+	 * parity needs live node access this provider does not have).
+	 *
+	 * Pure git QUERY commands only — never mutates the repo.
+	 */
+	getSyncReadiness(projectDir: string): SyncReadinessReceipt {
+		const tasks = this.getTasks().filter((t) => t.project_dir === projectDir);
+		const project =
+			tasks
+				.map((t) => getTaskDisplayProjectName(t))
+				.find((name) => name.length > 0) ?? path.basename(projectDir);
+
+		const remoteTask = tasks.find((t) => isRemoteNodeTaskForCurrentHost(t));
+		if (remoteTask) {
+			return buildUnreachableNodeCard({
+				project,
+				projectDir,
+				host: getTaskExecutionHostLabel(remoteTask) ?? "node",
+				reachability: "not-yet-queried",
+			});
+		}
+
+		const pendingReviewCount = tasks.filter((t) =>
+			this.isReviewQueueReceiptMissing(t),
+		).length;
+
+		return collectHubSyncReadiness(projectDir, {
+			project,
+			pendingReviewCount,
+		});
 	}
 
 	private truncatePromptSummary(value: string): string {
@@ -9963,10 +10319,34 @@ export class AgentStatusTreeProvider
 			// Suppressed for superseded lanes (effectiveLauncherSessionLive).
 			isDoneStatus ? this.effectiveLauncherSessionLive(task) : null,
 		);
+		// CCSYNC-03 (PAR-228): warm the live-pane attention classification while we
+		// have already paid for the liveness probe, so getNodeStatusGroup can read
+		// it cache-only. Only when a conflict actually fired (otherwise there is no
+		// "alive" pane worth capturing) and the probe did not positively confirm an
+		// agent (a confirmed agent is genuine live work, never benign).
+		const paneAttention =
+			lifecycleConflict.kind === "live-process-conflict" &&
+			lifecycleLiveness !== "alive"
+				? this.getTerminalTaskPaneAttention(task)
+				: ("unknown" as PaneAttentionState);
+		const benignLivePane =
+			lifecycleConflict.kind === "live-process-conflict" &&
+			lifecycleLiveness !== "alive" &&
+			isBenignLivePane(paneAttention);
 		if (supersededByReset) {
 			// Pre-reset stale terminal — leftover from before the release recreated
 			// terminals. Explicitly distinct from a current running/live lane.
 			descriptionParts.push("stale (pre-release)");
+		} else if (benignLivePane) {
+			// CCSYNC-03: the launcher recorded the session as live but the pane is a
+			// finished command at its prompt or a bare/idle shell — the agent is gone
+			// and nothing is blocked. Not attention; badge it as a benign leftover so
+			// the contradiction stays visible without inflating the action count.
+			descriptionParts.push(
+				paneAttention === "completed-at-prompt"
+					? "live shell · completed at prompt"
+					: "live shell · idle",
+			);
 		} else if (lifecycleConflict.kind === "live-process-conflict") {
 			// "live attention required" — the launcher marked this lane terminal
 			// but it is still alive. Loud, un-buried, and distinct from a genuine
@@ -10167,6 +10547,9 @@ export class AgentStatusTreeProvider
 				`Scope: ${task.scopeKind}`,
 				task.agentId ? `Agent: ${task.agentId}` : null,
 				task.runId ? `Run: ${task.runId}` : null,
+				...classifyOpenClawCrossProjectContext(task).map(
+					(row) => `${row.label}: ${row.value}`,
+				),
 				task.childSessionKey
 					? `Child Session: \`${task.childSessionKey}\``
 					: null,

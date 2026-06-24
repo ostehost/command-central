@@ -56,8 +56,8 @@ describe("StorageAdapter Interface Contract", () => {
 			expect(loaded[1]?.filePath).toBe("/test/repo/file2.ts");
 		});
 
-		// Test removed - write-once design doesn't allow overwrites
-		// See "Write-Once Behavior" section for correct tests
+		// Overwrite / removal semantics live in the
+		// "Full-State Sync Behavior" section below.
 	});
 
 	describe("Query Operations", () => {
@@ -198,7 +198,7 @@ describe("StorageAdapter Interface Contract", () => {
 		});
 	});
 
-	describe("Write-Once Behavior (Immutable Audit Log)", () => {
+	describe("Full-State Sync Behavior (matches save contract)", () => {
 		test("should insert new record on first save", async () => {
 			const repoId = await adapter.ensureRepository("/test/repo", "repo");
 
@@ -217,7 +217,7 @@ describe("StorageAdapter Interface Contract", () => {
 			expect(loaded[0]?.timestamp).toBe(1000);
 		});
 
-		test("should skip duplicate on second save (write-once)", async () => {
+		test("should overwrite existing record on second save (full sync)", async () => {
 			const repoId = await adapter.ensureRepository("/test/repo", "repo");
 
 			// First save
@@ -230,23 +230,24 @@ describe("StorageAdapter Interface Contract", () => {
 				},
 			]);
 
-			// Second save with DIFFERENT data (should be skipped entirely)
+			// Second save with DIFFERENT data for the same path:
+			// the full-sync contract replaces, it does not skip.
 			await adapter.save(repoId, [
 				{
 					filePath: "/test/repo/file.ts",
 					order: 999, // Different order
 					timestamp: 9999, // Different timestamp
-					isVisible: false, // Different visibility
+					isVisible: false, // Different visibility (not persisted)
 				},
 			]);
 
 			const loaded = await adapter.load(repoId);
 			expect(loaded).toHaveLength(1);
-			expect(loaded[0]?.order).toBe(1); // Original order preserved
-			expect(loaded[0]?.timestamp).toBe(1000); // Original timestamp preserved
+			expect(loaded[0]?.order).toBe(999); // New order applied
+			expect(loaded[0]?.timestamp).toBe(9999); // New timestamp applied
 		});
 
-		test("should handle batch save with mix of new and existing", async () => {
+		test("should drop records absent from the new full-state set", async () => {
 			const repoId = await adapter.ensureRepository("/test/repo", "repo");
 
 			// First save - 2 files
@@ -265,44 +266,60 @@ describe("StorageAdapter Interface Contract", () => {
 				},
 			]);
 
-			// Second save - file1 (exists), file2 (exists), file3 (new)
+			// Second save - file1 restored (gone), file2 kept, file3 added.
+			// Full sync: result is exactly the records sent.
 			await adapter.save(repoId, [
 				{
-					filePath: "/test/repo/file1.ts",
-					order: 999,
-					timestamp: 9999,
-					isVisible: false,
-				}, // Should skip
-				{
 					filePath: "/test/repo/file2.ts",
-					order: 888,
-					timestamp: 8888,
-					isVisible: false,
-				}, // Should skip
+					order: 1,
+					timestamp: 2000,
+					isVisible: true,
+				},
 				{
 					filePath: "/test/repo/file3.ts",
-					order: 3,
+					order: 2,
 					timestamp: 3000,
 					isVisible: true,
-				}, // Should insert
+				},
 			]);
 
 			const loaded = await adapter.load(repoId);
-			expect(loaded).toHaveLength(3);
+			expect(loaded).toHaveLength(2);
+			expect(loaded.map((f) => f.filePath)).toEqual([
+				"/test/repo/file2.ts",
+				"/test/repo/file3.ts",
+			]);
 
-			// Verify original data preserved for file1 and file2
-			const file1 = loaded.find((f) => f.filePath === "/test/repo/file1.ts");
-			expect(file1?.order).toBe(1);
-			expect(file1?.timestamp).toBe(1000);
+			// file1 was dropped (restored / absent from new state)
+			expect(
+				loaded.find((f) => f.filePath === "/test/repo/file1.ts"),
+			).toBeUndefined();
 
+			// file2 reflects its new order; file3 was inserted
 			const file2 = loaded.find((f) => f.filePath === "/test/repo/file2.ts");
-			expect(file2?.order).toBe(2);
-			expect(file2?.timestamp).toBe(2000);
-
-			// Verify file3 was inserted
+			expect(file2?.order).toBe(1);
 			const file3 = loaded.find((f) => f.filePath === "/test/repo/file3.ts");
-			expect(file3?.order).toBe(3);
+			expect(file3?.order).toBe(2);
 			expect(file3?.timestamp).toBe(3000);
+		});
+
+		test("should clear all records when saving an empty set", async () => {
+			const repoId = await adapter.ensureRepository("/test/repo", "repo");
+
+			await adapter.save(repoId, [
+				{
+					filePath: "/test/repo/file.ts",
+					order: 1,
+					timestamp: 1000,
+					isVisible: true,
+				},
+			]);
+
+			// All tracked files restored → tracker flushes an empty set.
+			await adapter.save(repoId, []);
+
+			const loaded = await adapter.load(repoId);
+			expect(loaded).toHaveLength(0);
 		});
 
 		test("should load records with default isVisible=true", async () => {
@@ -343,9 +360,12 @@ describe("StorageAdapter Interface Contract", () => {
 			expect(true).toBe(true);
 		});
 
-		test("should handle concurrent saves safely", async () => {
+		test("should handle concurrent saves atomically (full sync)", async () => {
 			const repoId = await adapter.ensureRepository("/test/repo", "repo");
 
+			// Under full-sync semantics each save replaces the prior state.
+			// Concurrent full-state flushes must not tear: the final state
+			// must equal exactly one of the saved sets, never a merge.
 			const promises = Array.from({ length: 10 }, (_, i) =>
 				adapter.save(repoId, [
 					{
@@ -360,9 +380,11 @@ describe("StorageAdapter Interface Contract", () => {
 			// Should complete without throwing
 			await Promise.all(promises);
 
-			// Verify all files were saved
+			// Each flush carried exactly one record, so the winning state
+			// is a single record — not an accumulated merge of all ten.
 			const loaded = await adapter.load(repoId);
-			expect(loaded.length).toBeGreaterThanOrEqual(10);
+			expect(loaded).toHaveLength(1);
+			expect(loaded[0]?.filePath).toMatch(/^\/test\/repo\/file\d\.ts$/);
 		});
 	});
 });

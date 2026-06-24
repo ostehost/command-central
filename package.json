@@ -46,11 +46,10 @@
   },
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": true,
-      "description": "Command Central works in all workspaces",
+      "supported": "limited",
+      "description": "Read-only features (Agent Status, Git Sort, project icons) work in untrusted workspaces. Ghostty project terminals are blocked until the workspace is trusted because the launcher executes project-defined shell.",
       "restrictedConfigurations": [
-        "commandCentral.terminal.launcherPath",
-        "commandCentral.terminal.app"
+        "commandCentral.ghostty.launcherPath"
       ]
     }
   },
@@ -291,13 +290,6 @@
           "type": "boolean",
           "default": false,
           "description": "Play a sound when an agent completes or fails",
-          "scope": "window"
-        },
-        "commandCentral.notifications.autoDismissSeconds": {
-          "type": "number",
-          "default": 10,
-          "minimum": 0,
-          "description": "Auto-dismiss agent completion notifications after N seconds (0 = never auto-dismiss)",
           "scope": "window"
         },
         "commandCentral.projects": {
@@ -915,6 +907,12 @@
         "icon": "$(warning)"
       },
       {
+        "command": "commandCentral.closeoutBenignPane",
+        "title": "Close Out Benign Pane",
+        "category": "Command Central",
+        "icon": "$(check-all)"
+      },
+      {
         "command": "commandCentral.focusNextRunningAgent",
         "title": "Focus Next Running Agent",
         "category": "Command Central",
@@ -979,6 +977,12 @@
         "title": "Open Infrastructure Dashboard",
         "category": "Command Central",
         "icon": "$(dashboard)"
+      },
+      {
+        "command": "commandCentral.openSessionHistoryRecoveryRisk",
+        "title": "Open Session History Recovery Risk",
+        "category": "Command Central",
+        "icon": "$(history)"
       },
       {
         "command": "commandCentral.ghostty.createTerminal",
@@ -1119,7 +1123,8 @@
         {
           "id": "commandCentral.cronJobs",
           "name": "Cron Jobs",
-          "type": "tree"
+          "type": "tree",
+          "when": "commandCentral.cron.enabled"
         },
         {
           "id": "commandCentral.symphony",
@@ -1429,6 +1434,11 @@
           "command": "commandCentral.markStaleAgentFailed",
           "when": "viewItem =~ /^agentTask\\.completed_stale/",
           "group": "inline"
+        },
+        {
+          "command": "commandCentral.closeoutBenignPane",
+          "when": "viewItem =~ /^agentTask\\.running(\\.|$)/",
+          "group": "9_advanced"
         },
         {
           "command": "commandCentral.viewAgentDiff",
@@ -1885,16 +1895,16 @@
   },
   "scripts": {
     "dev": "bun run scripts-v2/dev.ts",
-    "test": "bun test test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/*.test.ts test/package-json/ test/properties/ test/providers/ test/scripts/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
-    "test:coverage": "bun test --coverage test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/*.test.ts test/package-json/ test/properties/ test/providers/ test/scripts/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
-    "test:coverage:ci": "bun test --reporter=dots --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage-ci test/commands/ test/config/ test/discovery/ test/events/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/*.test.ts test/package-json/ test/properties/ test/providers/ test/scripts/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
+    "test": "bun test test/commands/ test/config/ test/discovery/ test/events/ test/factories/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/*.test.ts test/package-json/ test/properties/ test/providers/ test/scripts/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
+    "test:coverage": "bun test --coverage test/commands/ test/config/ test/discovery/ test/events/ test/factories/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/*.test.ts test/package-json/ test/properties/ test/providers/ test/scripts/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
+    "test:coverage:ci": "bun test --reporter=dots --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage-ci test/commands/ test/config/ test/discovery/ test/events/ test/factories/ test/ghostty/ test/git-sort/ test/helpers/ test/integration/*.test.ts test/package-json/ test/properties/ test/providers/ test/scripts/ test/scripts-v2/ test/services/ test/state/ test/tree-view/ test/types/ test/ui/ test/utils/",
     "dist": "bun run scripts-v2/dist-simple.ts",
     "_test:git-sort": "bun test test/git-sort/",
     "_test:core": "bun test test/utils test/services",
     "_test:integration": "bun test test/integration/*.test.ts",
     "_test:discovery-e2e": "bun test test/discovery-e2e/",
     "_test:tree-view-patterns": "bun test test/tree-view/",
-    "build": "bun run scripts-v2/dist-simple.ts"
+    "build": "bun run scripts-v2/dist-simple.ts --build-only"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.1",

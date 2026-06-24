@@ -455,6 +455,139 @@ describe("Nested Repository Detection", () => {
 		expect(repo?.rootUri.fsPath).toBe("/Users/test/.openclaw/workspace");
 	});
 
+	// =========================================================================
+	// Windows-style paths (PAR-51 / CP-09): backslash separators must match
+	//
+	// Regression: findRepositoryForFile used POSIX-only `${repoPath}/` prefix
+	// checks, so on Windows (backslash fsPath) only the exact-root case matched
+	// and ordinary files inside a repo returned undefined. These cases use
+	// backslash fsPaths and FAIL on the old POSIX-only code.
+	// =========================================================================
+
+	test("finds repo when Windows file is inside repo (backslash separators)", async () => {
+		const vscode = await import("vscode");
+		const { SortedGitChangesProvider } = await import(
+			"../../src/git-sort/sorted-changes-provider.js"
+		);
+
+		await setupGitExtensionWithRepos([{ rootPath: "C:\\repo" }]);
+
+		const mockContext = createMockExtensionContext();
+		const provider = new SortedGitChangesProvider(
+			mockLogger,
+			mockContext,
+			undefined,
+			vscode.Uri.file("C:\\repo"),
+		);
+		await provider.initialize();
+
+		const repo = provider.findRepositoryForFile(
+			vscode.Uri.file("C:\\repo\\src\\file.ts"),
+		);
+		expect(repo).toBeDefined();
+		expect(repo?.rootUri.fsPath).toBe("C:\\repo");
+	});
+
+	test("finds repo when Windows workspace equals repo root (exact match)", async () => {
+		const vscode = await import("vscode");
+		const { SortedGitChangesProvider } = await import(
+			"../../src/git-sort/sorted-changes-provider.js"
+		);
+
+		await setupGitExtensionWithRepos([{ rootPath: "C:\\repo" }]);
+
+		const mockContext = createMockExtensionContext();
+		const provider = new SortedGitChangesProvider(
+			mockLogger,
+			mockContext,
+			undefined,
+			vscode.Uri.file("C:\\repo"),
+		);
+		await provider.initialize();
+
+		const repo = provider.findRepositoryForFile(vscode.Uri.file("C:\\repo"));
+		expect(repo).toBeDefined();
+		expect(repo?.rootUri.fsPath).toBe("C:\\repo");
+	});
+
+	test("returns most specific Windows repo in multi-root workspace", async () => {
+		const vscode = await import("vscode");
+		const { SortedGitChangesProvider } = await import(
+			"../../src/git-sort/sorted-changes-provider.js"
+		);
+
+		await setupGitExtensionWithRepos([
+			{ rootPath: "C:\\repo" },
+			{ rootPath: "C:\\repo\\packages\\sub-repo" },
+		]);
+
+		const mockContext = createMockExtensionContext();
+		const provider = new SortedGitChangesProvider(
+			mockLogger,
+			mockContext,
+			undefined,
+			vscode.Uri.file("C:\\repo"),
+		);
+		await provider.initialize();
+
+		const repo = provider.findRepositoryForFile(
+			vscode.Uri.file("C:\\repo\\packages\\sub-repo\\src\\index.ts"),
+		);
+		expect(repo).toBeDefined();
+		expect(repo?.rootUri.fsPath).toBe("C:\\repo\\packages\\sub-repo");
+	});
+
+	test("finds nested Windows repo when workspace is parent of repo root", async () => {
+		const vscode = await import("vscode");
+		const { SortedGitChangesProvider } = await import(
+			"../../src/git-sort/sorted-changes-provider.js"
+		);
+
+		// Workspace is C:\Users\test\.openclaw, repo is the nested workspace dir
+		await setupGitExtensionWithRepos([
+			{ rootPath: "C:\\Users\\test\\.openclaw\\workspace" },
+		]);
+
+		const mockContext = createMockExtensionContext();
+		const provider = new SortedGitChangesProvider(
+			mockLogger,
+			mockContext,
+			undefined,
+			vscode.Uri.file("C:\\Users\\test\\.openclaw"),
+		);
+		await provider.initialize();
+
+		const repo = provider.findRepositoryForFile(
+			vscode.Uri.file("C:\\Users\\test\\.openclaw"),
+		);
+		expect(repo).toBeDefined();
+		expect(repo?.rootUri.fsPath).toBe("C:\\Users\\test\\.openclaw\\workspace");
+	});
+
+	test("does NOT match Windows repo with similar prefix (path boundary)", async () => {
+		const vscode = await import("vscode");
+		const { SortedGitChangesProvider } = await import(
+			"../../src/git-sort/sorted-changes-provider.js"
+		);
+
+		// C:\repo-other should NOT match workspace C:\repo
+		await setupGitExtensionWithRepos([{ rootPath: "C:\\repo-other" }]);
+
+		const mockContext = createMockExtensionContext();
+		const provider = new SortedGitChangesProvider(
+			mockLogger,
+			mockContext,
+			undefined,
+			vscode.Uri.file("C:\\repo"),
+		);
+		await provider.initialize();
+
+		const repo = provider.findRepositoryForFile(
+			vscode.Uri.file("C:\\repo\\src\\file.ts"),
+		);
+		expect(repo).toBeUndefined();
+	});
+
 	test("getChildren returns empty when workspace has no nested repos", async () => {
 		const vscode = await import("vscode");
 		const { SortedGitChangesProvider } = await import(

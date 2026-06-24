@@ -58,6 +58,23 @@ export class LauncherValidationError extends Error {
 }
 
 /**
+ * Thrown when a launcher subprocess would run in an untrusted workspace.
+ *
+ * The launcher executes project-defined shell (it reads
+ * `.vscode/settings.json → commandCentral.terminal.*` and spawns a
+ * multiplexer + AppleScript), so launching/sending in a workspace the user
+ * has not trusted would let a hostile repository run code on open. This
+ * mirrors the Workspace Trust gate already enforced before `bun test` in
+ * `TestCountStatusBar.refreshCount()`.
+ */
+export class WorkspaceTrustRequiredError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "WorkspaceTrustRequiredError";
+	}
+}
+
+/**
  * Default fallback paths to check when launcher is not in PATH.
  * Includes common local dev checkout locations.
  */
@@ -115,6 +132,27 @@ export class TerminalManager {
 	}
 
 	/**
+	 * Workspace Trust gate for every code-executing entry point.
+	 *
+	 * Spawning the launcher (or `open`/`osascript` for an app bundle) runs
+	 * project-controlled shell, so it must be blocked when VS Code reports the
+	 * workspace as explicitly untrusted. Only `isTrusted === false` blocks;
+	 * `true`/`undefined` (older hosts, restricted-mode-unaware mocks) proceed,
+	 * so the gate never silently disables terminals in a trusted workspace.
+	 */
+	private assertWorkspaceTrusted(operation: string): void {
+		if (vscode.workspace.isTrusted === false) {
+			this.logger.warn(
+				`Refusing to ${operation} in an untrusted workspace; the launcher executes project-defined shell.`,
+				"TerminalManager",
+			);
+			throw new WorkspaceTrustRequiredError(
+				`Cannot ${operation} in an untrusted workspace. Trust this workspace to run Ghostty project terminals.`,
+			);
+		}
+	}
+
+	/**
 	 * Returns the resolved path to the launcher binary.
 	 * Checks (in order):
 	 *   1. commandCentral.ghostty.launcherPath setting
@@ -157,6 +195,7 @@ export class TerminalManager {
 	 * Runs: launcher --create-bundle <dir>
 	 */
 	async createProjectTerminal(workspaceRoot: string): Promise<void> {
+		this.assertWorkspaceTrusted("create a project terminal");
 		this.logger.info(
 			`Creating project terminal for: ${workspaceRoot}`,
 			"TerminalManager",
@@ -643,6 +682,7 @@ export class TerminalManager {
 		command?: string,
 		cwd?: string,
 	): Promise<void> {
+		this.assertWorkspaceTrusted("open a project terminal");
 		try {
 			const installed = await this.isLauncherInstalled();
 
@@ -723,6 +763,7 @@ export class TerminalManager {
 		bundlePath: string,
 		command: string,
 	): Promise<void> {
+		this.assertWorkspaceTrusted("run a command in a launcher bundle");
 		this.logger.info(
 			`Routing command through launcher bundle: ${bundlePath}`,
 			"TerminalManager",

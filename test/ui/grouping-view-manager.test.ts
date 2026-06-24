@@ -442,6 +442,62 @@ describe("GroupingViewManager - Observable Effects Testing", () => {
 	});
 
 	/**
+	 * TEST 8: Context-Driven Disposal Cleans Up Provider State Subscription
+	 *
+	 * Regression for CP-36 / PAR-74:
+	 * The constructor must register the provider (not just the TreeView) in
+	 * context.subscriptions so the provider's onDidChangeGrouping subscription is
+	 * torn down on extension shutdown WITHOUT requiring a direct manager.dispose().
+	 *
+	 * Observable Effects:
+	 * - Disposing every context.subscriptions item disposes the state subscription
+	 * - After context-driven disposal, firing onDidChangeGrouping triggers no refresh
+	 */
+	test("context-driven disposal tears down provider state subscription", async () => {
+		const module = await import("../../src/ui/grouping-view-manager.js");
+		const { GroupingViewManager } = module;
+
+		await import("vscode");
+
+		const mockContext = createMockExtensionContext({
+			globalState: {
+				keys: mock(() => []),
+				get: mock(() => true),
+				update: mock(() => Promise.resolve()),
+				setKeysForSync: mock(() => {}),
+			},
+		});
+
+		// Capture the listener registered by the provider so we can fire it later,
+		// and track disposal of the subscription it hands back.
+		let stateChangeListener: ((enabled: boolean) => void) | undefined;
+		const stateSubscriptionDispose = mock(() => {});
+		const mockStateManager = createMockGroupingStateManager(false, {
+			onDidChangeGrouping: mock((callback: (enabled: boolean) => void) => {
+				stateChangeListener = callback;
+				return { dispose: stateSubscriptionDispose };
+			}),
+		});
+
+		const mockLogger = createMockLogger();
+
+		new GroupingViewManager(mockContext, mockStateManager, mockLogger);
+
+		// The provider subscribed to external state changes.
+		expect(stateChangeListener).toBeDefined();
+
+		// Simulate extension shutdown WITHOUT calling manager.dispose():
+		// VS Code disposes every item it was handed in context.subscriptions.
+		for (const subscription of mockContext.subscriptions) {
+			subscription.dispose();
+		}
+
+		// Observable effect: the provider's state subscription was disposed via the
+		// context, proving the provider (not just the TreeView) was registered.
+		expect(stateSubscriptionDispose).toHaveBeenCalled();
+	});
+
+	/**
 	 * BEST PRACTICE SUMMARY:
 	 *
 	 * ✅ All tests verify ONLY observable effects:

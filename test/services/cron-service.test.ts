@@ -1,22 +1,27 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { waitFor } from "../helpers/wait-for.js";
 
-// Track execFileSync / execFile calls
-let execFileSyncResult: string | Error = "[]";
-let execFileSyncCalls: Array<{ cmd: string; args: string[] }> = [];
-let execFileResult: string | Error = "";
+// Reload now flows through the async execFile path (PAR-68 / CP-29):
+// reload() returns synchronously and resolves the CLI off the event loop.
+// `execFileResult` drives the resolved stdout (or thrown Error) for reloads
+// AND mutating CLI commands; `execFilePending`, when set, holds the callback
+// so a test can control exactly when the CLI resolves.
+let execFileResult: string | Error = "[]";
 let execFileCalls: Array<{ cmd: string; args: string[] }> = [];
+let execFilePending:
+	| ((cb: (err: Error | null, stdout: string) => void) => void)
+	| null = null;
 
 // Track fs.watch calls
 let watchCallback: ((event: string, filename: string) => void) | null = null;
 let watchClosed = false;
+// PAR-67 / CP-28: number of leading fs.watch() calls that should throw ENOENT
+// (simulating the OpenClaw cron directory being absent at startup) before a
+// subsequent call succeeds. Lets a test exercise the watch-with-retry path.
+let watchThrowCount = 0;
+let watchCallCount = 0;
 
 mock.module("node:child_process", () => ({
-	execFileSync: (cmd: string, args: string[], _opts?: unknown) => {
-		execFileSyncCalls.push({ cmd, args });
-		if (execFileSyncResult instanceof Error) throw execFileSyncResult;
-		return execFileSyncResult;
-	},
 	execFile: (
 		cmd: string,
 		args: string[],
@@ -24,6 +29,10 @@ mock.module("node:child_process", () => ({
 		cb: (err: Error | null, stdout: string) => void,
 	) => {
 		execFileCalls.push({ cmd, args });
+		if (execFilePending) {
+			execFilePending(cb);
+			return;
+		}
 		if (execFileResult instanceof Error) {
 			cb(execFileResult, "");
 		} else {
@@ -34,6 +43,12 @@ mock.module("node:child_process", () => ({
 
 mock.module("node:fs", () => ({
 	watch: (_dir: string, cb: (event: string, filename: string) => void) => {
+		watchCallCount++;
+		if (watchCallCount <= watchThrowCount) {
+			const err = new Error(`watch ENOENT ${_dir}`) as NodeJS.ErrnoException;
+			err.code = "ENOENT";
+			throw err;
+		}
 		watchCallback = cb;
 		watchClosed = false;
 		return {
@@ -79,18 +94,20 @@ const sampleJobs = [
 
 describe("CronService", () => {
 	beforeEach(() => {
-		execFileSyncResult = "[]";
-		execFileSyncCalls = [];
-		execFileResult = "";
+		execFileResult = "[]";
 		execFileCalls = [];
+		execFilePending = null;
 		watchCallback = null;
 		watchClosed = false;
+		watchThrowCount = 0;
+		watchCallCount = 0;
 	});
 
-	test("parses valid openclaw cron list output", () => {
-		execFileSyncResult = JSON.stringify(sampleJobs);
+	test("parses valid openclaw cron list output", async () => {
+		execFileResult = JSON.stringify(sampleJobs);
 		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 
 		const jobs = service.getJobs();
 		expect(jobs).toHaveLength(2);
@@ -99,40 +116,43 @@ describe("CronService", () => {
 		service.dispose();
 	});
 
-	test("parses output with jobs wrapper object", () => {
-		execFileSyncResult = JSON.stringify({ jobs: sampleJobs });
+	test("parses output with jobs wrapper object", async () => {
+		execFileResult = JSON.stringify({ jobs: sampleJobs });
 		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 
 		expect(service.getJobs()).toHaveLength(2);
 		service.dispose();
 	});
 
-	test("handles ENOENT (OpenClaw not installed)", () => {
+	test("handles ENOENT (OpenClaw not installed)", async () => {
 		const err = new Error("spawn openclaw ENOENT") as NodeJS.ErrnoException;
 		err.code = "ENOENT";
-		execFileSyncResult = err;
+		execFileResult = err;
 
 		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 
 		expect(service.getJobs()).toHaveLength(0);
 		expect(service.isInstalled).toBe(false);
 		service.dispose();
 	});
 
-	test("handles non-zero exit — keeps last known state", () => {
+	test("handles non-zero exit — keeps last known state", async () => {
 		// First load succeeds
-		execFileSyncResult = JSON.stringify(sampleJobs);
+		execFileResult = JSON.stringify(sampleJobs);
 		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 		expect(service.getJobs()).toHaveLength(2);
 
 		// Second load fails with non-ENOENT error
 		const err = new Error("exit code 1") as NodeJS.ErrnoException;
 		err.code = "ERR_CHILD_PROCESS";
-		execFileSyncResult = err;
-		service.reload();
+		execFileResult = err;
+		await service.reloadAsync();
 
 		// Should keep last known state (2 jobs)
 		expect(service.getJobs()).toHaveLength(2);
@@ -141,9 +161,11 @@ describe("CronService", () => {
 	});
 
 	test("enable calls correct CLI command", async () => {
-		execFileSyncResult = "[]";
+		execFileResult = "[]";
 		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
+		execFileCalls = [];
 
 		await service.enableJob("job-1");
 		expect(execFileCalls).toHaveLength(1);
@@ -153,9 +175,11 @@ describe("CronService", () => {
 	});
 
 	test("disable calls correct CLI command", async () => {
-		execFileSyncResult = "[]";
+		execFileResult = "[]";
 		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
+		execFileCalls = [];
 
 		await service.disableJob("job-2");
 		expect(at(execFileCalls, 0).args).toEqual(["cron", "disable", "job-2"]);
@@ -163,9 +187,11 @@ describe("CronService", () => {
 	});
 
 	test("runJob calls correct CLI command", async () => {
-		execFileSyncResult = "[]";
+		execFileResult = "[]";
 		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
+		execFileCalls = [];
 
 		await service.runJob("job-1");
 		expect(at(execFileCalls, 0).args).toEqual(["cron", "run", "job-1"]);
@@ -173,7 +199,7 @@ describe("CronService", () => {
 	});
 
 	test("file watcher triggers reload callback", async () => {
-		execFileSyncResult = "[]";
+		execFileResult = "[]";
 		let callbackCount = 0;
 		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {
@@ -192,7 +218,7 @@ describe("CronService", () => {
 	});
 
 	test("debounce fires only once for rapid changes", async () => {
-		execFileSyncResult = "[]";
+		execFileResult = "[]";
 		let callbackCount = 0;
 		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {
@@ -213,7 +239,7 @@ describe("CronService", () => {
 	});
 
 	test("dispose cleans up watcher and timer", () => {
-		execFileSyncResult = "[]";
+		execFileResult = "[]";
 		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
 
@@ -222,11 +248,117 @@ describe("CronService", () => {
 		expect(service.getJobs()).toHaveLength(0);
 	});
 
-	test("handles empty stdout", () => {
-		execFileSyncResult = "";
+	test("handles empty stdout", async () => {
+		execFileResult = "";
 		const service = new CronService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 		expect(service.getJobs()).toHaveLength(0);
+		service.dispose();
+	});
+
+	// ── PAR-68 / CP-29 regression: non-blocking async reload ─────────────
+	// On the synchronous (execFileSync) implementation start() did not return
+	// until the CLI finished, and jobs were populated before start() returned.
+	// These tests assert start() returns BEFORE the CLI resolves and that
+	// state lands only after the deferred CLI callback fires.
+	test("start() returns before the CLI resolves (non-blocking reload)", async () => {
+		const cli: { resolve: ((stdout: string) => void) | null } = {
+			resolve: null,
+		};
+		execFilePending = (cb) => {
+			cli.resolve = (stdout) => cb(null, stdout);
+		};
+
+		const service = new CronService({ debounceMs: 1 });
+		service.start(() => {});
+
+		// start() has returned but the CLI has not resolved yet — on the old
+		// execFileSync code this state was impossible (jobs already populated).
+		expect(cli.resolve).not.toBeNull();
+		expect(service.getJobs()).toHaveLength(0);
+
+		cli.resolve?.(JSON.stringify(sampleJobs));
+		await waitFor(() => service.getJobs().length === 2, {
+			message: "jobs should populate after the deferred CLI resolves",
+		});
+		expect(service.getJobs()).toHaveLength(2);
+		service.dispose();
+	});
+
+	test("concurrent reloads coalesce onto a single CLI invocation", async () => {
+		const cli: { resolve: ((stdout: string) => void) | null } = {
+			resolve: null,
+		};
+		execFilePending = (cb) => {
+			cli.resolve = (stdout) => cb(null, stdout);
+		};
+
+		const service = new CronService({ debounceMs: 1 });
+		const first = service.reloadAsync();
+		const second = service.reloadAsync();
+		const third = service.reloadAsync();
+
+		expect(execFileCalls).toHaveLength(1);
+		expect(second).toBe(first);
+		expect(third).toBe(first);
+
+		cli.resolve?.(JSON.stringify(sampleJobs));
+		await Promise.all([first, second, third]);
+		expect(execFileCalls).toHaveLength(1);
+		expect(service.getJobs()).toHaveLength(2);
+		service.dispose();
+	});
+
+	// ── PAR-67 / CP-28 regression: resilient watcher install ─────────────
+	// On the buggy code startWatching() called fs.watch exactly once and
+	// swallowed the ENOENT throw, so a cron directory absent at startup was
+	// never watched even after it appeared — leaving the tree stale until
+	// restart. The fix polls and installs the real watcher once the directory
+	// shows up, after which jobs.json changes drive reload + onChange.
+	test("retries watcher install when cron directory is absent at startup", async () => {
+		execFileResult = "[]";
+		// First fs.watch() throws (directory missing); the retry must succeed.
+		watchThrowCount = 1;
+		let callbackCount = 0;
+		const service = new CronService({ debounceMs: 1, watchRetryMs: 1 });
+		service.start(() => {
+			callbackCount++;
+		});
+
+		// The startup attempt threw, so no watcher callback is registered yet.
+		expect(watchCallback).toBeNull();
+
+		// Once the directory appears the retry installs the real watcher.
+		await waitFor(() => watchCallback !== null, {
+			message: "CronService should retry fs.watch until the directory exists",
+		});
+
+		// A later jobs.json change must now drive a debounced reload + onChange.
+		callbackCount = 0;
+		watchCallback?.("change", "jobs.json");
+		await waitFor(() => callbackCount === 1, {
+			message:
+				"recovered watcher should trigger a debounced reload after the dir appears",
+		});
+		expect(callbackCount).toBe(1);
+		service.dispose();
+	});
+
+	test("stops retrying after the watcher is installed", async () => {
+		execFileResult = "[]";
+		watchThrowCount = 2;
+		const service = new CronService({ debounceMs: 1, watchRetryMs: 1 });
+		service.start(() => {});
+
+		await waitFor(() => watchCallback !== null, {
+			message: "CronService should eventually install the watcher",
+		});
+		const callsAtInstall = watchCallCount;
+
+		// Give the retry interval several windows to (incorrectly) fire again.
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(watchCallCount).toBe(callsAtInstall);
 		service.dispose();
 	});
 });

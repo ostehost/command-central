@@ -87,6 +87,20 @@ describe("WorkspaceStateStorageAdapter", () => {
 				"/repo/c.ts",
 			]);
 		});
+
+		test("saving an empty set clears all records (full sync)", async () => {
+			const repoId = await adapter.ensureRepository("/repo", "r");
+
+			await adapter.save(repoId, [
+				{ filePath: "/repo/a.ts", order: 1, timestamp: 1000, isVisible: true },
+			]);
+
+			// All tracked files restored → tracker flushes an empty set.
+			await adapter.save(repoId, []);
+
+			const loaded = await adapter.load(repoId);
+			expect(loaded).toHaveLength(0);
+		});
 	});
 
 	describe("Queries", () => {

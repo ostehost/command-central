@@ -12,6 +12,8 @@ export interface VerifyConsumptionArgs {
 	codeBin: string;
 	extensionsDir: string;
 	manifestOut?: string;
+	nodeLabel?: string;
+	receiptDir?: string;
 }
 
 export interface VsixPackageIdentity {
@@ -22,6 +24,7 @@ export interface VsixPackageIdentity {
 
 export interface ConsumptionReceipt {
 	generatedAt: string;
+	nodeLabel?: string;
 	vsixPath: string;
 	vsixSha256: string;
 	vsixIdentity: VsixPackageIdentity;
@@ -44,6 +47,8 @@ function usage(): never {
 			"Optional:",
 			"  --code-bin <path>        Defaults to code",
 			"  --extensions-dir <path> Defaults to ~/.vscode/extensions",
+			"  --node-label <label>    Records which host produced the receipt (e.g. hub, node)",
+			"  --receipt-dir <path>    Auto-names the receipt vscode-consumption-<version>[-<label>].json",
 		].join("\n"),
 	);
 }
@@ -74,6 +79,7 @@ export function parseArgs(args: string[]): VerifyConsumptionArgs {
 	const vsixPath = argValue(args, "--vsix");
 	if (!vsixPath) usage();
 	const manifestOut = argValue(args, "--manifest-out");
+	const receiptDir = argValue(args, "--receipt-dir");
 	return {
 		vsixPath: path.resolve(vsixPath),
 		expectedVersion: argValue(args, "--expected-version"),
@@ -82,7 +88,21 @@ export function parseArgs(args: string[]): VerifyConsumptionArgs {
 			argValue(args, "--extensions-dir") ?? resolveDefaultExtensionsDir(),
 		),
 		manifestOut: manifestOut ? path.resolve(manifestOut) : undefined,
+		nodeLabel: argValue(args, "--node-label"),
+		receiptDir: receiptDir ? path.resolve(receiptDir) : undefined,
 	};
+}
+
+/**
+ * Per-RC, per-node receipt filename. CCREL-05 needs install proof on BOTH the
+ * hub AND the node for the same RC, so receipts must not collide: the version
+ * and the optional node label both go in the name. Example:
+ * `vscode-consumption-0.6.0-rc.71-node.json`.
+ */
+export function receiptFileName(version: string, nodeLabel?: string): string {
+	const safeLabel = nodeLabel?.trim().replace(/[^a-zA-Z0-9._-]+/g, "-");
+	const suffix = safeLabel ? `-${safeLabel}` : "";
+	return `vscode-consumption-${version}${suffix}.json`;
 }
 
 export function extensionId(identity: VsixPackageIdentity): string {
@@ -178,6 +198,7 @@ export function verifyConsumption(args: VerifyConsumptionArgs): ConsumptionRecei
 
 	return {
 		generatedAt: new Date().toISOString(),
+		nodeLabel: args.nodeLabel,
 		vsixPath: args.vsixPath,
 		vsixSha256: sha256File(args.vsixPath),
 		vsixIdentity: identity,
@@ -200,6 +221,14 @@ if (import.meta.main) {
 		if (args.manifestOut) {
 			fs.mkdirSync(path.dirname(args.manifestOut), { recursive: true });
 			fs.writeFileSync(args.manifestOut, `${JSON.stringify(receipt, null, 2)}\n`);
+		}
+		if (args.receiptDir) {
+			const receiptPath = path.join(
+				args.receiptDir,
+				receiptFileName(receipt.expectedVersion, args.nodeLabel),
+			);
+			fs.mkdirSync(args.receiptDir, { recursive: true });
+			fs.writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
 		}
 		console.log(JSON.stringify(receipt, null, 2));
 		if (!receipt.success) process.exit(1);

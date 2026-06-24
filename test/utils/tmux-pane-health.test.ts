@@ -29,6 +29,9 @@ const {
 	isTmuxPaneAgentAlive,
 	inspectTmuxPaneAgent,
 	inspectTmuxPaneById,
+	classifyPaneAttention,
+	isBenignLivePane,
+	capturePaneSnippet,
 	AGENT_PROCESS_NAMES,
 	PANE_ID_RE,
 } = await import("../../src/utils/tmux-pane-health.js");
@@ -583,5 +586,172 @@ describe("inspectTmuxPaneById (pane-specific evidence)", () => {
 		expect(tmuxArgs).toContain("-t");
 		expect(tmuxArgs).toContain("%26");
 		expect(tmuxArgs).not.toContain("list-panes");
+	});
+});
+
+// ── CCSYNC-03 (PAR-228): live-pane attention classifier ────────────────────
+
+describe("classifyPaneAttention (pure)", () => {
+	const PROMPT = "user@host project %";
+
+	// ── active-agent: the agent CLI owns the pane ────────────────────────────
+
+	test("pane_current_command=claude → active-agent (live work)", () => {
+		expect(classifyPaneAttention("claude", "thinking...\n")).toBe(
+			"active-agent",
+		);
+	});
+
+	test("every known agent name → active-agent regardless of snippet", () => {
+		for (const name of AGENT_PROCESS_NAMES) {
+			expect(classifyPaneAttention(name, `${PROMPT}`)).toBe("active-agent");
+		}
+	});
+
+	// ── awaiting-user-input: a genuine question → attention ──────────────────
+
+	test("y/N confirmation prompt → awaiting-user-input", () => {
+		const snippet = "Apply this change?\nProceed with edit? (y/N) ";
+		expect(classifyPaneAttention("bash", snippet)).toBe("awaiting-user-input");
+	});
+
+	test("[y/n] bracket prompt → awaiting-user-input", () => {
+		expect(classifyPaneAttention("bash", "Overwrite file? [y/n]")).toBe(
+			"awaiting-user-input",
+		);
+	});
+
+	test("password prompt → awaiting-user-input", () => {
+		expect(classifyPaneAttention("ssh", "Password: ")).toBe(
+			"awaiting-user-input",
+		);
+	});
+
+	test("press enter to continue → awaiting-user-input", () => {
+		expect(classifyPaneAttention("less", "Press Enter to continue...")).toBe(
+			"awaiting-user-input",
+		);
+	});
+
+	// ── completed-at-prompt: a finished run left its result → benign ─────────
+
+	test("test summary above a bare prompt → completed-at-prompt (benign)", () => {
+		const snippet = [
+			"$ bun test",
+			"459 pass",
+			"0 fail",
+			"Ran 459 tests across 30 files. [1.20s]",
+			PROMPT,
+		].join("\n");
+		expect(classifyPaneAttention("bash", snippet)).toBe("completed-at-prompt");
+	});
+
+	test("exit code summary above a prompt → completed-at-prompt", () => {
+		const snippet = ["$ ./run.sh", "exited 0", `${PROMPT} `].join("\n");
+		expect(classifyPaneAttention("zsh", snippet)).toBe("completed-at-prompt");
+	});
+
+	test("build succeeded above a prompt → completed-at-prompt", () => {
+		const snippet = ["$ make", "Build succeeded", PROMPT].join("\n");
+		expect(classifyPaneAttention("bash", snippet)).toBe("completed-at-prompt");
+	});
+
+	// ── empty-stale-shell: a bare/idle shell → benign ────────────────────────
+
+	test("bare shell prompt only → empty-stale-shell (benign)", () => {
+		expect(classifyPaneAttention("bash", `${PROMPT} `)).toBe(
+			"empty-stale-shell",
+		);
+	});
+
+	test("blank snippet with a shell command → empty-stale-shell", () => {
+		expect(classifyPaneAttention("zsh", "\n\n   \n")).toBe("empty-stale-shell");
+	});
+
+	test("❯ starship-style prompt only → empty-stale-shell", () => {
+		expect(classifyPaneAttention("fish", "~/projects/cc ❯ ")).toBe(
+			"empty-stale-shell",
+		);
+	});
+
+	// ── unknown: no usable evidence, or ambiguous mid-output ─────────────────
+
+	test("no command and empty snippet → unknown (fail-open)", () => {
+		expect(classifyPaneAttention(undefined, "")).toBe("unknown");
+		expect(classifyPaneAttention(null, "   ")).toBe("unknown");
+	});
+
+	test("mid-output with no prompt/question/summary → unknown (fail-open)", () => {
+		// Output is present but not a recognizable prompt, question, or completion
+		// summary — we must NOT call this benign (that would suppress a real
+		// attention pane), so fail-open as unknown.
+		const snippet = "Downloading package 42 of 100\nresolving deps";
+		expect(classifyPaneAttention("bash", snippet)).toBe("unknown");
+	});
+});
+
+describe("isBenignLivePane", () => {
+	test("completed-at-prompt and empty-stale-shell are benign", () => {
+		expect(isBenignLivePane("completed-at-prompt")).toBe(true);
+		expect(isBenignLivePane("empty-stale-shell")).toBe(true);
+	});
+
+	test("active-agent, awaiting-user-input, unknown are NOT benign", () => {
+		expect(isBenignLivePane("active-agent")).toBe(false);
+		expect(isBenignLivePane("awaiting-user-input")).toBe(false);
+		expect(isBenignLivePane("unknown")).toBe(false);
+	});
+});
+
+describe("capturePaneSnippet (read-only)", () => {
+	beforeEach(() => {
+		execFileSyncMock.mockReset();
+	});
+
+	test("returns the captured snippet text for a session target", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({ tmux: "459 pass\nuser@host %\n" }),
+		);
+		expect(capturePaneSnippet("agent-cc-lane")).toBe("459 pass\nuser@host %\n");
+	});
+
+	test("uses capture-pane -p (read-only) with a bounded -S start line", () => {
+		execFileSyncMock.mockImplementation(makeExecImpl({ tmux: "out\n" }));
+		capturePaneSnippet("%26", null, 40);
+		const [, tmuxArgs] = execFileSyncMock.mock.calls[0] as [string, string[]];
+		expect(tmuxArgs).toContain("capture-pane");
+		expect(tmuxArgs).toContain("-p");
+		expect(tmuxArgs).toContain("-t");
+		expect(tmuxArgs).toContain("%26");
+		expect(tmuxArgs).toContain("-S");
+		expect(tmuxArgs).toContain("-40");
+		// Never any write/send subcommand — read-only contract.
+		expect(tmuxArgs).not.toContain("send-keys");
+		expect(tmuxArgs).not.toContain("paste-buffer");
+	});
+
+	test("forwards tmuxSocket as -S <socket> before the subcommand", () => {
+		execFileSyncMock.mockImplementation(makeExecImpl({ tmux: "x\n" }));
+		capturePaneSnippet("agent-sock", "/tmp/my.sock");
+		const [, tmuxArgs] = execFileSyncMock.mock.calls[0] as [string, string[]];
+		expect(tmuxArgs[0]).toBe("-S");
+		expect(tmuxArgs[1]).toBe("/tmp/my.sock");
+	});
+
+	test("returns null for an invalid target (no subprocess)", () => {
+		expect(capturePaneSnippet("bad session/id")).toBeNull();
+		expect(capturePaneSnippet("")).toBeNull();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
+	});
+
+	test("returns null when tmux throws (fail-closed to null)", () => {
+		execFileSyncMock.mockImplementation(
+			makeExecImpl({
+				tmux: () => {
+					throw new Error("no server running");
+				},
+			}),
+		);
+		expect(capturePaneSnippet("agent-x")).toBeNull();
 	});
 });

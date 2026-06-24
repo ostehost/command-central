@@ -14,8 +14,21 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+	type LaneProjectionGcReceipt,
+	parseLaneProjectionGcReceipt,
+} from "./review-queue-health.js";
 
 export const DEFAULT_PENDING_REVIEW_DIR = "/tmp/oste-pending-review";
+
+/**
+ * Default location of the lane-projection GC receipt the launcher's GC command
+ * (`scripts/oste-lanes-gc.sh`) writes alongside the projection it rebuilds. The
+ * `CC_LANE_GC_RECEIPT` env override mirrors `CC_PENDING_REVIEW_DIR`.
+ */
+export const DEFAULT_LANE_GC_RECEIPT_PATH =
+	"/tmp/oste-pending-review/lane-projection-gc.json";
+
 const DEFAULT_CACHE_TTL_MS = 5_000;
 
 /**
@@ -275,4 +288,49 @@ export function receiptToOverlay(
 	}
 
 	return null;
+}
+
+/**
+ * Read + parse the lane-projection GC receipt the launcher's GC command emits.
+ * Returns null when the file is absent or malformed (fail-closed — Command
+ * Central treats "no receipt" as "no authoritative GC pass to reconcile
+ * against", never as a verdict). Side-effecting FS read kept here alongside the
+ * other launcher-receipt readers; the schema parse is the pure
+ * {@link parseLaneProjectionGcReceipt}.
+ *
+ * Opt-in by design: with no explicit `receiptPath` argument, the reader only
+ * touches disk when `CC_LANE_GC_RECEIPT` is set. This keeps the default
+ * projection ingest path from coupling to an ambient file on disk (tests/CI
+ * never see a phantom GC pass); a real deployment wires the launcher's receipt
+ * path via the env var. Pass `receiptPath` to read a specific file (fixtures,
+ * explicit config). An env value of "" means "use the launcher default path".
+ */
+export function readLaneProjectionGcReceipt(
+	receiptPath?: string,
+): LaneProjectionGcReceipt | null {
+	const envRaw = process.env["CC_LANE_GC_RECEIPT"];
+	const fromEnv =
+		envRaw === undefined
+			? null
+			: envRaw.trim().length > 0
+				? envRaw.trim()
+				: DEFAULT_LANE_GC_RECEIPT_PATH;
+	const resolved = receiptPath ?? fromEnv;
+	if (!resolved || resolved.length === 0) return null;
+
+	let raw: string;
+	try {
+		raw = fs.readFileSync(resolved, "utf-8");
+	} catch {
+		return null;
+	}
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw) as unknown;
+	} catch {
+		return null;
+	}
+
+	return parseLaneProjectionGcReceipt(parsed);
 }

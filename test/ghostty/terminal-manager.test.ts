@@ -99,6 +99,7 @@ import {
 	LauncherTimeoutError,
 	LauncherValidationError,
 	TerminalManager,
+	WorkspaceTrustRequiredError,
 } from "../../src/ghostty/TerminalManager.js";
 
 // ── Logger mock ───────────────────────────────────────────────────────
@@ -1570,5 +1571,145 @@ describe("TerminalManager.runInBundleTerminal", () => {
 					file === "osascript" && Array.isArray(args) && args.length === 1,
 			),
 		).toBe(true);
+	});
+});
+
+// ══ CCSTD-03 (PAR-82): Workspace Trust gate for launcher subprocesses ═══════
+//
+// The launcher executes project-defined shell (it reads
+// `.vscode/settings.json → commandCentral.terminal.*` and spawns a
+// multiplexer + AppleScript). In a workspace VS Code reports as untrusted,
+// every code-executing entry point must refuse before spawning, mirroring the
+// pre-`bun test` Workspace Trust gate in TestCountStatusBar.refreshCount().
+describe("TerminalManager Workspace Trust gate (CCSTD-03)", () => {
+	function applyMocks(isTrusted: boolean | undefined): void {
+		mock.module("vscode", () => ({
+			workspace: {
+				getConfiguration: mockGetConfiguration,
+				isTrusted,
+			},
+			window: {
+				createTerminal: mockCreateTerminal,
+				showWarningMessage: mockShowWarningMessage,
+			},
+			env: { openExternal: mockOpenExternal },
+			Uri: { parse: (s: string) => ({ toString: () => s }) },
+		}));
+		mock.module("node:child_process", () => ({
+			...realChildProcess,
+			execFile: execFileMock,
+		}));
+		mock.module("node:fs", () => ({
+			...realFs,
+			promises: realFs.promises,
+			existsSync: fsExistsSyncMock,
+			accessSync: fsAccessSyncMock,
+		}));
+	}
+
+	beforeEach(() => {
+		mock.restore();
+		mockConfigGet.mockImplementation(() => undefined);
+		mockCreateTerminal.mockClear();
+		mockShowWarningMessage.mockClear();
+		// A fully working launcher: if the gate were absent, these would all
+		// spawn subprocesses successfully, so any blocking must come from trust.
+		fsExistsSyncMock.mockImplementation(() => true);
+		execFileMock.mockReset();
+		execFileMock.mockImplementation(
+			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				if (a.includes("--version")) {
+					cb(null, { stdout: "ghostty-launcher version 1.2.0\n", stderr: "" });
+				} else {
+					cb(null, { stdout: "", stderr: "" });
+				}
+			},
+		);
+	});
+
+	test("runInProjectTerminal refuses and spawns nothing when workspace is untrusted", async () => {
+		applyMocks(false);
+		const mgr = new TerminalManager(createMockLogger() as never);
+
+		await expect(
+			mgr.runInProjectTerminal("/Users/test/evil-project", "rm -rf /"),
+		).rejects.toThrow(WorkspaceTrustRequiredError);
+
+		// No launcher subprocess of any kind may run in an untrusted workspace.
+		expect(execFileMock).not.toHaveBeenCalled();
+		// And no integrated-terminal fallback is silently opened either.
+		expect(mockCreateTerminal).not.toHaveBeenCalled();
+	});
+
+	test("createProjectTerminal refuses and spawns nothing when workspace is untrusted", async () => {
+		applyMocks(false);
+		const iconEnsurer = {
+			ensureProjectIconPersisted: mock(async () => "🧪"),
+		};
+		const mgr = new TerminalManager(createMockLogger() as never, iconEnsurer);
+
+		await expect(
+			mgr.createProjectTerminal("/Users/test/evil-project"),
+		).rejects.toThrow(WorkspaceTrustRequiredError);
+
+		expect(execFileMock).not.toHaveBeenCalled();
+		// The gate fires before any bundle side effects (icon persistence).
+		expect(iconEnsurer.ensureProjectIconPersisted).not.toHaveBeenCalled();
+	});
+
+	test("runInBundleTerminal refuses and spawns nothing when workspace is untrusted", async () => {
+		applyMocks(false);
+		const mgr = new TerminalManager(createMockLogger() as never);
+
+		await expect(
+			mgr.runInBundleTerminal("/Applications/Projects/evil.app", "rm -rf /"),
+		).rejects.toThrow(WorkspaceTrustRequiredError);
+
+		expect(execFileMock).not.toHaveBeenCalled();
+	});
+
+	test("createProjectTerminal proceeds and spawns the launcher when workspace is trusted", async () => {
+		applyMocks(true);
+		const iconEnsurer = { ensureProjectIconPersisted: mock(async () => "📦") };
+		const calls: Array<{ file: string; args: string[] }> = [];
+		execFileMock.mockImplementation(
+			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				calls.push({ file: f, args: a });
+				if (a.includes("--version")) {
+					cb(null, { stdout: "ghostty-launcher version 1.2.0\n", stderr: "" });
+				} else {
+					cb(null, { stdout: "Bundle created", stderr: "" });
+				}
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never, iconEnsurer);
+		await mgr.createProjectTerminal("/Users/test/trusted-project");
+
+		// Positive control: the same call DOES spawn the launcher when trusted,
+		// proving the untrusted refusal above is the trust gate, not a mock gap.
+		expect(calls.some((c) => c.args.includes("--create-bundle"))).toBe(true);
+	});
+
+	test("createProjectTerminal proceeds when isTrusted is undefined (trust-unaware host)", async () => {
+		applyMocks(undefined);
+		const iconEnsurer = { ensureProjectIconPersisted: mock(async () => "📦") };
+		const calls: Array<{ file: string; args: string[] }> = [];
+		execFileMock.mockImplementation(
+			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
+				calls.push({ file: f, args: a });
+				if (a.includes("--version")) {
+					cb(null, { stdout: "ghostty-launcher version 1.2.0\n", stderr: "" });
+				} else {
+					cb(null, { stdout: "Bundle created", stderr: "" });
+				}
+			},
+		);
+
+		const mgr = new TerminalManager(createMockLogger() as never, iconEnsurer);
+		await expect(
+			mgr.createProjectTerminal("/Users/test/legacy-host-project"),
+		).resolves.toBeUndefined();
+		expect(calls.some((c) => c.args.includes("--create-bundle"))).toBe(true);
 	});
 });

@@ -152,6 +152,7 @@ describe("filter-by-extension-command", () => {
 		// Mock providers with changes
 		// INTENTIONAL: Partial mock of GitChangeItem for testing
 		const mockChange = {
+			type: "gitChangeItem" as const,
 			uri: createMockUri("/test/file.ts"),
 			status: "Modified",
 			isStaged: false,

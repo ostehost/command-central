@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
 	classifyTimePeriod,
 	groupByTimePeriod,
@@ -26,6 +26,48 @@ describe("classifyTimePeriod", () => {
 
 		expect(classifyTimePeriod(0, now)).toBe("older");
 		expect(classifyTimePeriod(Number.NaN, now)).toBe("older");
+	});
+
+	// Regression for CP-33 / PAR-72: boundaries must follow calendar days
+	// (local midnight) rather than fixed 24h multiples, otherwise timestamps
+	// near midnight on DST transition days land in the wrong bucket because the
+	// transition day is only 23h (spring forward) or 25h (fall back) long.
+	describe("daylight-saving boundaries (CP-33)", () => {
+		const originalTZ = process.env["TZ"];
+
+		afterEach(() => {
+			if (originalTZ === undefined) delete process.env["TZ"];
+			else process.env["TZ"] = originalTZ;
+		});
+
+		test("spring-forward: keeps the 23h day in the yesterday bucket", () => {
+			// America/New_York 2025-03-09 02:00 EST -> 03:00 EDT (23h day).
+			process.env["TZ"] = "America/New_York";
+
+			const now = new Date(2025, 2, 10, 12, 0, 0, 0).getTime();
+			// 23:30 on the day BEFORE the 23h transition day. Calendar-day
+			// boundaries place this in last7days; the buggy 24h-multiple math
+			// shifts yesterdayStart back an hour and misclassifies it as
+			// "yesterday".
+			const beforeYesterday = new Date(2025, 2, 8, 23, 30, 0, 0).getTime();
+			expect(classifyTimePeriod(beforeYesterday, now)).toBe("last7days");
+
+			// 00:30 just after the previous local midnight stays "yesterday".
+			const earlyYesterday = new Date(2025, 2, 9, 0, 30, 0, 0).getTime();
+			expect(classifyTimePeriod(earlyYesterday, now)).toBe("yesterday");
+		});
+
+		test("fall-back: keeps the early hours of the 25h day in yesterday", () => {
+			// America/New_York 2025-11-02 02:00 EDT -> 01:00 EST (25h day).
+			process.env["TZ"] = "America/New_York";
+
+			const now = new Date(2025, 10, 3, 12, 0, 0, 0).getTime();
+			// 00:30 on the 25h transition day is just after local midnight, so it
+			// belongs to "yesterday". The buggy 24h-multiple math pushes
+			// yesterdayStart forward an hour and demotes it to "last7days".
+			const earlyTransitionDay = new Date(2025, 10, 2, 0, 30, 0, 0).getTime();
+			expect(classifyTimePeriod(earlyTransitionDay, now)).toBe("yesterday");
+		});
 	});
 });
 

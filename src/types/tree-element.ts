@@ -116,8 +116,8 @@ export interface TimeGroup {
  * Properties align with VS Code Git API Change type.
  */
 export interface GitChangeItem {
-	/** Discriminant for type guards */
-	type?: "gitChangeItem";
+	/** Discriminant for type guards (required so values satisfy isGitChangeItem) */
+	type: "gitChangeItem";
 
 	/** File URI */
 	uri: vscode.Uri;

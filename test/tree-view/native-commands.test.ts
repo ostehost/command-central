@@ -148,6 +148,7 @@ describe("Native Command Behavior (TIER 1)", () => {
 
 		// Create file change element
 		const fileChange = {
+			type: "gitChangeItem" as const,
 			uri: vscode.Uri.file("/workspace/src/file.ts"),
 			status: "Modified",
 			isStaged: false,
@@ -198,6 +199,7 @@ describe("Native Command Behavior (TIER 1)", () => {
 
 		// Create deleted file change
 		const deletedFile = {
+			type: "gitChangeItem" as const,
 			uri: vscode.Uri.file("/workspace/src/deleted.ts"),
 			status: "Deleted",
 			isStaged: false,
@@ -239,6 +241,7 @@ describe("Native Command Behavior (TIER 1)", () => {
 
 		// Create staged file change
 		const stagedFile = {
+			type: "gitChangeItem" as const,
 			uri: vscode.Uri.file("/workspace/src/file.ts"),
 			status: "Modified",
 			isStaged: true, // Staged!
@@ -279,6 +282,7 @@ describe("Native Command Behavior (TIER 1)", () => {
 
 		// Create file with both staged and unstaged changes
 		const mixedFile = {
+			type: "gitChangeItem" as const,
 			uri: vscode.Uri.file("/workspace/src/file.ts"),
 			status: "Modified (staged+unstaged)",
 			isStaged: false, // Working tree version

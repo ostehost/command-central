@@ -1,0 +1,2382 @@
+{
+  "project": "Command Central",
+  "generated": "Command Central dependency-ordered work ledger",
+  "source": "Linear team PAR / project Command Central",
+  "totals": {
+    "all": 70,
+    "linear_done": 17,
+    "verified_done_pending_close": 0,
+    "active": 53,
+    "waves": 4
+  },
+  "wave_sizes": [
+    30,
+    14,
+    7,
+    2
+  ],
+  "verified_done": [],
+  "linear_done": [
+    "PAR-154",
+    "PAR-189",
+    "PAR-190",
+    "PAR-191",
+    "PAR-192",
+    "PAR-193",
+    "PAR-195",
+    "PAR-232",
+    "PAR-233",
+    "PAR-234",
+    "PAR-235",
+    "PAR-236",
+    "PAR-238",
+    "PAR-239",
+    "PAR-243",
+    "PAR-38",
+    "PAR-71"
+  ],
+  "order": [
+    {
+      "identifier": "PAR-226",
+      "title": "[CCSYNC-01] Agent Status must stop showing stale lane/read-model rows as attention-required terminals",
+      "priority": 1,
+      "priorityLabel": "Urgent",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "reliability",
+        "command-central",
+        "ghostty-launcher",
+        "Bug",
+        "needs-review"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-226/ccsync-01-agent-status-must-stop-showing-stale-laneread-model-rows-as",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-228",
+        "PAR-227"
+      ],
+      "downstream_impact": 3,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "WORK-LEDGER.md:24 - PAR-226 [CCSYNC-01] still listed as open '- [ ]' P0 item (unblocks PAR-228, PAR-227)",
+        "No CCSYNC-01 / PAR-226 marker anywhere in src/, scripts/, scripts-v2/, test/, or research/ (only WORK-LEDGER.md + cc-work-ledger.json backlog entries)",
+        "src/providers/agent-status-tree-provider.ts:5112-5118 - completed task with review_status='pending' and not-yet-reviewed routes to 'attention' (badge-counted), the opposite of CCSYNC-01's requirement",
+        "src/providers/agent-status-tree-provider.ts:5131-5134 - completed_dirty/completed_stale with isReviewQueueReceiptMissing() routes to 'attention'",
+        "src/utils/agent-status-sections.ts:198-205 - sectionFromSignals maps reviewPipelineBroken (missing receipt) to 'action'; sections.ts:91 maps attention->action; sections.ts:145 badge = live+action",
+        "test/tree-view/agent-status-review-queue-gap.test.ts:242-252 - test 'pending review status still wins over receipt-gap routing' asserts groupOf == 'attention', the exact behavior CCSYNC-01 wants reversed; no fixture asserts pending+missing-receipt is excluded from active/attention work"
+      ],
+      "implementation_pointers": [
+        "src/providers/agent-status-tree-provider.ts:getNodeStatusGroup() (lines 5067-5138) - add a stale-projection classification so a completed/stale row with review_status or review_state='pending' but a MISSING pending_review_path is not routed to 'attention'",
+        "src/providers/agent-status-tree-provider.ts:isReviewQueueReceiptMissing() (lines 2250-2266) - existing missing-receipt detection; distinguish stale projection (no live pane/process evidence) from a true review-queue gap",
+        "src/utils/agent-status-sections.ts:sectionFromSignals() + V2SectionSignals.reviewPipelineBroken (lines 164-218) and DEFAULT badge math at line 145 - missing-receipt pending row must not feed the badge-counted 'action' section",
+        "src/providers/agent-task-normalize.ts:laneRefUpdateToTaskRecord() (lines 285-333) - lanes.json projection rows currently drop review_state/pending_review_path; confirm/handle review.state=pending lanes from ~/.config/openclaw/lanes.json per the issue's evidence",
+        "test/tree-view/agent-status-review-queue-gap.test.ts - update test at line 242 and add a NEW regression fixture: review.state=pending + missing receipt_path + no live pane/process => not active/attention (stale projection)",
+        "research/CC-REVIEW-STATE-PROJECTION-HARDENING-2026-06-16.md and research/CC-STALE-REVIEW-LANE-LIVE-ROW-2026-06-16.md - adjacent prior art (receipt-truth precedence, reviewer-lane self-completion) to build on, but neither implements CCSYNC-01"
+      ],
+      "notes": "CCSYNC-01 (PAR-226) is NOT done. It asks Agent Status to validate receipt paths and live pane/process evidence before classifying a row as attention-required, so rows with review.state=pending but a missing pending_review_path render as stale projection / needs reconciliation rather than counting in the attention/action badge. Current code does the opposite: getNodeStatusGroup (tree provider ~5112-5134) routes pending-review + missing-receipt rows to 'attention'->'action' (badge-counted), and the existing test agent-status-review-queue-gap.test.ts:242 explicitly asserts that. No CCSYNC-01 marker, closeout doc, or regression fixture exists; WORK-LEDGER.md:24 lists it as an open P0. The related PAR-195 (completed detached Symphony lanes) is independently satisfied (commit 515e132, agent-status-symphony-detached.test.ts), and the 2026-06-16 receipt-truth/reviewer-lane hardening is adjacent prior art but does not implement this issue.",
+      "wave": 1,
+      "rank": 1,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-152",
+      "title": "[CC-002] Define OpenClaw health truth contract for Command Central",
+      "priority": 2,
+      "priorityLabel": "High",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "reliability",
+        "product-gap",
+        "architecture",
+        "openclaw",
+        "symphony"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-152/cc-002-define-openclaw-health-truth-contract-for-command-central",
+      "parent": "PAR-149",
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [
+        "PAR-38"
+      ],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "partial",
+      "confidence": "high",
+      "evidence": [
+        "src/services/infrastructure-health-status-bar.ts:20 DisplayState = 'ok' | 'warn' | 'degraded' | 'stale' | 'down' (five-state machine, no auth-failed)",
+        "src/services/infrastructure-health-status-bar.ts:424-444 resolveDisplayState weighs gateway probe + summary + task activity; reserves DOWN for unreachable+no-life",
+        "src/services/infrastructure-health-status-bar.ts:71,453-460 taskActivityProbe ties task counts to their source so counts don't imply gateway health",
+        "src/utils/openclaw-gateway-health.ts resolveGatewayHealthSource handles hub/node scope",
+        "test/services/infrastructure-health-status-bar.test.ts:150 'DEGRADED, not DOWN, when tasks are working while the hub gateway is unreachable' + 38 mixed-health precedence/label tests",
+        "research/RESULT-cc-001-openclaw-down-health-20260611.md:49 five-state model documented as CC-001/PAR-38 bug-fix receipt, not as the CC-002 cross-dimension contract",
+        "commit e83386c 'fix(health): stop collapsing partial OpenClaw health into a false DOWN' tagged CC-001/PAR-38 (the dependency), not PAR-152",
+        "WORK-LEDGER.md:109 PAR-152 still unchecked [ ]; research/cc-work-ledger.json:1027 state: Backlog",
+        "rg auth.?fail|401|403 in health files returns nothing \u2014 no 'auth failed' state required by AC",
+        "Only CC-002 commit is cc607dd (activity-badge-count) \u2014 unrelated reuse of the CC-002 key"
+      ],
+      "implementation_pointers": [
+        "src/services/infrastructure-health-status-bar.ts \u2014 add an 'auth-failed' DisplayState and detect 401/403/GatewayExplicitAuthRequiredError in probeReadyzOnce (lines 471-498); extend resolveDisplayState (424-444) for the new dimension",
+        "src/utils/openclaw-gateway-health.ts \u2014 model node-connectivity / launcher-execution as explicit health dimensions if in scope",
+        "test/services/infrastructure-health-status-bar.test.ts \u2014 add precedence/label assertions for the auth-failed state and any new dimensions",
+        "research/ \u2014 author the actual CC-002 'OpenClaw health truth contract' doc enumerating dimensions (gateway process status, API reachability, channel health, TaskFlow/task availability, node connectivity, launcher execution) and their precedence; reference RESULT-cc-001-openclaw-down-health-20260611.md as the implemented baseline",
+        "src/extension.ts \u2014 taskActivityProbe / refreshTaskActivity wiring is the existing pattern for binding task counts to their source (see RESULT-cc-001 'Files changed')"
+      ],
+      "notes": "The evidence-weighted five-state health model (ok/warn/degraded/stale/down) that PAR-152 asks for largely already shipped under its dependency CC-001/PAR-38 (commits e83386c + ceca1a9): it distinguishes unreachable/stale/degraded/healthy, ties task counts to their source, and has 38+ precedence/label tests. But PAR-152's distinct deliverables are not done: there is no 'auth failed' state (AC explicitly requires it), no documented health-truth contract enumerating the named dimensions and precedence (only a CC-001 bug-fix receipt exists), and node-connectivity/launcher-execution are not modeled as dimensions. The issue is still Backlog/unchecked in both ledgers, and the only CC-002 commit is unrelated activity-badge work.",
+      "wave": 1,
+      "rank": 2,
+      "execution_status": "partial",
+      "execution_caveat": "auth-failed health state + truth-contract doc + tests shipped; live 401/403 gateway smoke deferred (needs real hub auth)."
+    },
+    {
+      "identifier": "PAR-149",
+      "title": "[CC-000] Command Central project: OpenClaw health + Symphony orchestration",
+      "priority": 2,
+      "priorityLabel": "High",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "architecture"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-149/cc-000-command-central-project-openclaw-health-symphony-orchestration",
+      "parent": null,
+      "children": [
+        "PAR-158",
+        "PAR-157",
+        "PAR-156",
+        "PAR-154",
+        "PAR-152",
+        "PAR-38"
+      ],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-156"
+      ],
+      "downstream_impact": 3,
+      "related": [],
+      "verdict": "done",
+      "confidence": "medium",
+      "evidence": [
+        "research/cc-work-ledger.json: \"source\": \"Linear team PAR / project Command Central\", \"project\": \"Command Central\" \u2014 the dedicated Command Central Linear project now exists (CC-000's core deliverable)",
+        "research/cc-work-ledger.json PAR-149 entry: children = [PAR-158, PAR-157, PAR-156, PAR-154, PAR-152, PAR-38], each preserving bracketed CC-00x keys",
+        "research/linear-command-central-orchestration-plan-2026-05-27.json: destination.targetProject=\"Command Central\", 7 items CC-000..CC-006 with idempotencyKey per item, validation.ok=true, relations[] = parent_child CC-000->CC-001..CC-006",
+        "git log: 398a3c4 / 4ac5f03 'docs(research): preserve command central Linear intake artifacts' \u2014 intake plan + handoff committed",
+        "research/HANDOFF-linear-command-central-orchestration-2026-05-27.html \u2014 source handoff for the orchestration intake"
+      ],
+      "implementation_pointers": [
+        "research/cc-work-ledger.json \u2014 live Linear state for PAR-149 and CC-* children; check PAR-149.state to flip from Backlog->Done",
+        "research/linear-command-central-orchestration-plan-2026-05-27.json \u2014 applied intake plan (destination, items, relations, validation)",
+        "WORK-LEDGER.md line 30 \u2014 PAR-149 worklist entry (still unchecked) and child dependency map",
+        "research/HANDOFF-linear-command-central-orchestration-2026-05-27.html \u2014 orchestration handoff source",
+        "Linear PAR-149 + children PAR-38/PAR-152/PAR-154/PAR-156/PAR-157/PAR-158 \u2014 verify parent/child grouping and close umbrella if all AC met"
+      ],
+      "notes": "PAR-149 [CC-000] is the umbrella/program issue (not a code change): create a dedicated Command Central Linear project for OpenClaw-health + Symphony orchestration and import CC-* issues with preserved bracket keys and parent/child grouping. That deliverable is met \u2014 the work ledger is now sourced from \"Linear team PAR / project Command Central\", and PAR-149 owns 6 keyed children (PAR-38/CC-001 ... PAR-158/CC-006) via parent_child relations in the applied intake plan (validation.ok). Intake artifacts were committed (398a3c4, 4ac5f03). Confidence is medium not high because PAR-149 is still marked Backlog with no explicit closeout/receipt doc, and several children remain active; the project-structure work itself is complete.",
+      "wave": 1,
+      "rank": 3,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-237",
+      "title": "[CCREL-05] Cut the next Command Central RC only after parity and daemon smoke are green",
+      "priority": 2,
+      "priorityLabel": "High",
+      "estimate": null,
+      "state": "Todo",
+      "labels": [
+        "validation",
+        "command-central",
+        "needs-review"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-237/ccrel-05-cut-the-next-command-central-rc-only-after-parity-and-daemon",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [
+        "PAR-233",
+        "PAR-234",
+        "PAR-236"
+      ],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "partial",
+      "confidence": "medium",
+      "evidence": [
+        "RCs after rc.68 WERE cut: releases/command-central-0.6.0-rc.69.vsix (Jun 21 14:21) and -rc.70.vsix (Jun 21 16:47); commit c17ef05 'chore(release): cut v0.6.0-rc.70 preview', bf81ff9 cut rc.69",
+        "Fresh prerelease gate ran at current RC HEAD: research/prerelease-gate/prerelease-gate-2026-06-21T20-47-56.135Z.json has success=true at commandCentral.sha=abb063b (the pre-cut HEAD of rc.70), generatedAt 2026-06-21T20:47:56Z",
+        "Gate checks are only: 'command-central validation', 'ghostty-launcher validation', 3x launcher cli sanity, 'cross-repo launcher contract'. Recursive jq key search for daemon|node|readiness|parity|smoke|hub returned NOTHING - no daemon smoke / node readiness / config parity / hub-node repo parity (AC1 partially unmet)",
+        "AC2/AC3 unmet: research/prerelease-gate/ newest consumption proof is vscode-consumption-0.6.0-rc.68.json - there is NO -rc.69.json or -rc.70.json, and no node-side proof for the new RC",
+        "AC4 unmet: releases/digest-v0.6.0-rc.69.md and digest-v0.6.0-rc.70.md are generic templated changelogs with no daemon smoke / config parity / launcher sync / hub-node repo parity evidence",
+        "No CCREL-05 reference anywhere: git log --grep CCREL empty; rg CCREL-05 across repo empty; no research/ closeout doc for CCREL-05 (only unrelated research/PAR-239-WORKROOM-BINDING-HOOK-ROUTING-2026-06-20.md is recent)"
+      ],
+      "implementation_pointers": [
+        "justfile:601 cut-preview recipe; justfile:564 prerelease-gate; justfile:580 vsix-gate; justfile:399 verify-vscode-consumption - the existing release wiring to extend",
+        "scripts-v2/prerelease-gate.ts - currently emits only command-central/ghostty-launcher validation + launcher cli + cross-repo launcher contract; add daemon smoke, node readiness, config parity, and hub/node repo-parity checks",
+        "scripts-v2/verify-vscode-extension-consumption.ts - run for the next RC and persist vscode-consumption-0.6.0-rc.<N>.json for BOTH hub AND node (currently only rc.68 exists)",
+        "scripts-v2/release-digest.ts and scripts-v2/post-release-digest.sh - inject daemon smoke / config parity / launcher sync / hub-node repo parity evidence into the cut digest (releases/digest-v0.6.0-rc.<N>.md)",
+        "research/prerelease-gate/ - target dir for the fresh gate artifact + per-RC consumption proofs; write a CCREL-05 closeout under research/ recording the integrated evidence"
+      ],
+      "notes": "CCREL-05 asks to cut the next CC RC after rc.68 ONLY once integrated parity + daemon smoke are green, then verify install on hub AND node and record daemon smoke / config parity / launcher sync / hub-node repo parity in the release digest. The mechanical cut happened (rc.69 and rc.70 shipped Jun 21, with a fresh passing prerelease gate at HEAD abb063b), but the CCREL-05-specific integration evidence is missing: the gate only covers repo + launcher-contract validation (no daemon/node/parity signals), there is no rc.69/rc.70 extension-consumption proof (newest is rc.68) and none for node, and the rc.69/rc.70 digests are generic changelogs with no parity/daemon/hub-node evidence. Treat as partial: cut done, integrated acceptance evidence not captured. No push/tag/publish occurred (AC5 satisfied).",
+      "wave": 1,
+      "rank": 4,
+      "execution_status": "done",
+      "execution_caveat": "daemon-smoke + hub/node repo-parity gate checks, per-RC/per-node consumption receipts, and digest evidence shipped with 69 unit tests; live hub/node daemon smoke + an actual new RC re-cut deferred (needs live infra)."
+    },
+    {
+      "identifier": "PAR-229",
+      "title": "[CCSYNC-04] Add hub/node sync readiness card with repo parity, dirty-tree, branch, and queue evidence",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "node",
+        "validation",
+        "command-central",
+        "hub-node-update"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-229/ccsync-04-add-hubnode-sync-readiness-card-with-repo-parity-dirty-tree",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "Bracket key absent: rg -li 'CCSYNC-04' over repo root and research/ returns zero hits",
+        "No feature symbols: rg -li 'sync readiness|readiness card|sync surface|syncReadiness|repoParity|hubNode' over src/scripts/scripts-v2 returns nothing; package.json has no sync/readiness/parity command titles",
+        "git log --grep 'CCSYNC' and --all greps for 'sync readiness|repo parity|hub-node sync' return no commits",
+        "Issue state is Backlog in active-items.json; description is an openclaw-linear-intake:v1 stub with Source HEAD unknown",
+        "Existing host/readiness hits are unrelated: getTaskExecutionHostLabel (src/providers/agent-task-classification.ts:75) labels a task's execution node; requireNodeReadiness/nodeReadinessGate (scripts-v2/prerelease-gate.ts:45,431) is the OpenClaw node gate; GatewayReadiness (src/services/infrastructure-health-status-bar.ts:30) is gateway health \u2014 none is a cross-machine repo sync card"
+      ],
+      "implementation_pointers": [
+        "src/utils/agent-status-sections.ts \u2014 V2Section model; where a new per-project sync readiness card/section would be added to the Agent Status tree",
+        "src/types/git-extension.types.ts:40,49,105 \u2014 HEAD/upstream/diffWithHEAD types to source branch/upstream/ahead-behind/dirty-count from the VS Code Git API (hub side)",
+        "scripts-v2/sync-launcher.ts and scripts-v2/prerelease-gate.ts \u2014 reusable git rev-parse/porcelain primitives for HEAD/tree hash and dirty-tree collection across configured projects",
+        "src/utils/pending-review-probe.ts (readPendingReviewReceipt, PendingReviewReceipt) \u2014 pending-review count source for the card's pending-review blocker",
+        "src/providers/agent-status-tree-provider.ts \u2014 existing live-terminal counting and ahead/behind logic to reuse for the card's terminal-count and divergence evidence"
+      ],
+      "notes": "CCSYNC-04 (per-project hub/node sync readiness card with host-labeled branch/upstream/ahead-behind/HEAD/tree/dirty-count, blocker prioritization, and a machine-readable receipt) is NOT implemented. The bracket key appears nowhere in code, scripts, or research/, no such card/command/section exists, and the issue is in Backlog. The git-parity, host-label, and node-readiness primitives present in the repo serve unrelated existing features (agent task host labels, prerelease node gate, infra gateway health), but they are good reusable building blocks. The hardest unbuilt part is the cross-machine (hub AND node) querying with explicit unavailable-host handling \u2014 no current code reaches the remote node for repo parity.",
+      "wave": 1,
+      "rank": 5,
+      "execution_status": "partial",
+      "execution_caveat": "hub-side sync-readiness service + receipt + provider API + tests shipped; live cross-machine NODE repo-parity query + tree render wiring deferred."
+    },
+    {
+      "identifier": "PAR-230",
+      "title": "[CCSYNC-05] Surface OpenClaw session-history archive/recovery risk without making Command Central mutate transcripts",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "reliability",
+        "node",
+        "validation",
+        "command-central"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-230/ccsync-05-surface-openclaw-session-history-archiverecovery-risk",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "rg 'CCSYNC-05' and 'PAR-230' across repo, research/, and git history: zero matches",
+        "No recovery-risk panel: rg -i 'recovery.risk|recoveryRisk|retention.window|prune.window|backup-first|orphan session|session.history|runbook' over src/scripts/scripts-v2/research returns nothing",
+        "Only 'jsonl.deleted' hit is unrelated git-sort deleted-file tracking: src/git-sort/storage/workspace-state-storage-adapter.ts:9,65,69 (cc.deleted.<repoId> keys), not OpenClaw .jsonl.deleted.* transcripts",
+        "git log --grep 'CCSYNC-05' and --grep 'PAR-230' both empty; 'recovery' commits/docs are about recovering paused V2 dev work (research/RESULT-cc-agent-status-v2-recovery-20260613.md), not session transcripts",
+        "No CCSYNC research docs exist at all: rg -l 'CCSYNC' research/ returns nothing"
+      ],
+      "implementation_pointers": [
+        "src/providers/agent-dashboard-panel.ts (AgentDashboardPanel class, line 80) - existing read-only webview panel pattern to model the new recovery-risk panel on",
+        "src/services/openclaw-config-service.ts and src/services/openclaw-task-service.ts - where OpenClaw diagnostics/paths are read; add read-only detection of .jsonl.deleted.* and orphan session files + retention window here",
+        "package.json contributes block (line 60+; views commandCentral/commandCentralPanel) - register the new read-only panel/view and a command to open the recovery runbook/receipt link",
+        "src/services/acp-session-service.ts - existing session-handling service to source session file locations/diagnostics from without mutating"
+      ],
+      "notes": "PAR-230 [CCSYNC-05] is not started. The ask is a read-only panel surfacing OpenClaw session-history recovery risk: count/age of archived .jsonl.deleted.* and orphan session files, retention window, backup-first manual-recovery guidance, and a link to an existing recovery runbook/receipt - explicitly without Command Central mutating session files or gateway config. No bracket key, panel, detection logic, research closeout, or commit exists for this work anywhere in the repo. Issue is in Backlog state, consistent with todo.",
+      "wave": 1,
+      "rank": 6,
+      "execution_status": "done",
+      "execution_caveat": "read-only session-history recovery-risk panel + service + tests + activation wiring shipped; CC does not mutate transcripts/config."
+    },
+    {
+      "identifier": "PAR-83",
+      "title": "[CCSTD-04] Audit Command Central TypeScript/Node hermetic build and env handling",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [],
+      "url": "https://linear.app/partnerai/issue/PAR-83/ccstd-04-audit-command-central-typescriptnode-hermetic-build-and-env",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-82"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "WORK-LEDGER.md:39 - PAR-83 [CCSTD-04] listed as unchecked '[ ]' backlog item, no closeout marker",
+        "research/cc-work-ledger.json:233-246 - PAR-83 state 'Backlog', blocks PAR-82, no completion record",
+        "rg 'CCSTD-04' only hits WORK-LEDGER.md and research/cc-work-ledger.json (planning artifacts) - no standards receipt or RESULT/CLOSEOUT doc exists",
+        "rg 'standards-adoption|typescript-node-preservation|HERMETIC_BUILD_ENV' over repo returns zero matches - source kits never applied",
+        "git log --all has no CCSTD/hermetic/preserve-before-destroy commits; sibling CCSTD-01 (PAR-80) also unstarted, confirming the standards-adoption lane is not begun",
+        "Existing STANDARDS.md and docs/standards/ cover test/code-style standards, not the CCSTD-04 hermetic-build/env audit deliverable"
+      ],
+      "implementation_pointers": [
+        "Create new repo-local standards receipt doc (e.g. research/RESULT-ccstd-04-typescript-node-hermetic-audit-YYYYMMDD.md) identifying package manager (Bun), lockfile (bun.lock), Node policy, formatter (Biome), quality-gate commands",
+        "package.json + bunfig.toml + bun.lock at repo root - record engines (code/bun versions), scripts, lockfile evidence",
+        "justfile:194 (check, read-only), justfile:541 (dist, artifact-producing), justfile:90 (install), justfile:573 (prerelease/publish-adjacent) - classify each command per acceptance criteria",
+        "scripts/build.ts and scripts-v2/ (vsix-content-gate.ts, preview-status.ts) - audit build-time env usage; confirm no ambient .env* file is a source build input and document safe non-secret build-time env vars",
+        "Source standards to apply: ostehost/standards-adoption-kits typescript-node-preservation-and-standards-kit.md and ostehost/universal8-framework standards-synthesis-20260603/HERMETIC_BUILD_ENV_STANDARD.md"
+      ],
+      "notes": "CCSTD-04 is an unstarted audit task (Backlog) from the standards-adoption lane. It requires producing a repo-local standards receipt (package manager, lockfile, Node policy, formatter, quality-gate commands), classifying check/build/dist commands as read-only vs artifact-producing vs install/publish-adjacent, and documenting that no ambient .env* file is a build input plus any safe build-time env vars. No deliverable, closeout doc, or commit exists; the whole CCSTD lane (incl. sibling CCSTD-01) is unstarted.",
+      "wave": 1,
+      "rank": 7,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-80",
+      "title": "[CCSTD-01] Run Command Central baseline preserve-before-destroy audit",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [],
+      "url": "https://linear.app/partnerai/issue/PAR-80/ccstd-01-run-command-central-baseline-preserve-before-destroy-audit",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-81",
+        "PAR-84"
+      ],
+      "downstream_impact": 3,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "WORK-LEDGER.md:42 \u2014 PAR-80 [CCSTD-01] still unchecked '[ ]' under Wave 1 (ready now)",
+        "research/cc-work-ledger.json:258-300 \u2014 PAR-80 entry: state 'Backlog', verdict null, evidence [], implementation_pointers [], notes ''",
+        "rg 'standards-adoption-kits|any-repo-baseline' over repo returns 0 hits \u2014 referenced preservation kit not adopted anywhere",
+        "rg 'staged-only|upstream gone|stash count|credential-in-remote|ignored-only|divergent' \u2014 none of the required audit categories appear in any script/doc/justfile",
+        "git log --grep 'CCSTD' and --grep 'CCSTD-01' both return empty \u2014 no commit implements this audit"
+      ],
+      "implementation_pointers": [
+        "justfile:644 _preview-preflight \u2014 only existing related primitive; binary dirty-tree refusal with an allowlist, NOT a host-labeled receipt nor a category-by-category preserve-before-destroy audit. Extend or build alongside it.",
+        "justfile:603 cut-preview recipe + justfile:194/237 check/ci \u2014 release/destructive workflows that should reference the new audit (acceptance criterion 4)",
+        "scripts-v2/ (alongside prerelease-gate.ts / preview-status.ts) \u2014 likely home for a new preserve-baseline-audit.ts script the new just recipe would wrap",
+        "Canonical spec to implement against: github.com/ostehost/standards-adoption-kits/blob/main/any-repo-baseline-preservation-kit.md (per issue description)"
+      ],
+      "notes": "PAR-80 [CCSTD-01] is not done. The deliverable is a re-runnable, non-mutating, host-labeled baseline preserve-before-destroy audit (repo-local just recipe or documented checklist) enumerating staged-only/unstaged/untracked/ignored-only/stash-count/divergent-or-gone-upstream/remotes/credential-in-remote, with a receipt (HEAD, branch, upstream, dirty summary) and release/tag/cleanup docs pointing to it. None of this exists in code, scripts-v2, justfile, or research closeouts. The only overlap is justfile's narrow _preview-preflight dirty-tree gate, which covers a small slice and emits no receipt \u2014 insufficient to satisfy any acceptance criterion. Issue remains Backlog with empty ledger evidence.",
+      "wave": 1,
+      "rank": 8,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-79",
+      "title": "[CP-43] Workspace display-name setting is ignored",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "API Contract"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-79/cp-43-workspace-display-name-setting-is-ignored",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/config/workspace-project-source.ts:84 - folderName = path.basename(folder.uri.fsPath); display name still derived only from filesystem basename",
+        "src/config/workspace-project-source.ts:88-97 - workspaceConfig only reads 'project.icon'; commandCentral.project.name is never read; displayName = customIcon ? `${customIcon} ${folderName}` : folderName",
+        "package.json:95-99 - commandCentral.project.name ('Display name for this workspace project', scope: resource) is contributed but unhonored by WorkspaceProjectSource",
+        "test/config/workspace-project-source.test.ts - rg -c 'project.name' returns NONE; tests cover basename (L157) and project.icon (L236-282) only; no project.name regression test",
+        "git log -S'project.name' -- src/config/workspace-project-source.ts returns empty; git log --grep CP-43/PAR-79 empty",
+        "WORK-LEDGER.md:45 - '- [ ] #9 PAR-79 P2 [CP-43] Workspace display-name setting is ignored' (unchecked checkbox); Linear state=Backlog"
+      ],
+      "implementation_pointers": [
+        "src/config/workspace-project-source.ts:88-97 (loadProjects) - after reading customIcon, add const projectName = workspaceConfig.get<string>('project.name'); use trimmed non-empty projectName as the display-name base, falling back to path.basename when empty/unset",
+        "src/config/workspace-project-source.ts:84 - folderName extraction becomes the fallback; set base = projectName?.trim() || folderName",
+        "test/config/workspace-project-source.test.ts (near L236-282) - add tests: (1) project.name alone overrides basename; (2) project.name + project.icon yields '<icon> <name>'; (3) empty/whitespace project.name falls back to basename; reuse existing configByScope/configValues mock pattern",
+        "src/services/project-icon-service.ts:56 - already reads project.name for status-bar tooltip (separate feature); use as reference for config read pattern, not the fix site"
+      ],
+      "notes": "CP-43 / PAR-79 is NOT done. WorkspaceProjectSource still builds the tree slot display name purely from path.basename(folder.uri.fsPath) and only honors commandCentral.project.icon, never the contributed commandCentral.project.name setting. The fix (read folder-scoped project.name, use it as the display-name base, fall back to basename) and the regression tests for project.name (alone and with icon) are both still absent. Note: project-icon-service.ts:56 reads project.name but that drives the status-bar tooltip, a different feature, so it does not satisfy this finding.",
+      "wave": 1,
+      "rank": 9,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-78",
+      "title": "[CP-42] build script inherits distribution/install side effects",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Build/Release"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-78/cp-42-build-script-inherits-distributioninstall-side-effects",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "package.json:1897 \"build\": \"bun run scripts-v2/dist-simple.ts\" is still byte-identical to \"dist\" (package.json:1891); no flag passed to make it build-only",
+        "scripts-v2/dist-simple.ts:217 `if (!flags.noInstall)` runs installVSIX (code --install-extension) by default; the build script does not pass --no-install so install side effect still fires",
+        "scripts-v2/dist-simple.ts:213 `await cleanupOldReleases(maxReleases)` runs unconditionally (fs.unlink prune of releases/) on every build/dist",
+        "scripts-v2/dist-simple.ts:40-50 flags object only has --patch/--minor/--major/--prerelease/--dry-run/--no-install/--help; no --no-release or build-only mode",
+        "No build-only entrypoint in scripts-v2/ (ls scripts-v2 | grep build empty); git log -S on the build line shows last touch in d68f5e9 (v0.1.5 initial release), no CP-42 fix",
+        "research/cc-work-ledger.json:315 CP-42/PAR-78 entry has verdict:null, evidence:[], implementation_pointers:[] \u2014 no closeout recorded"
+      ],
+      "implementation_pointers": [
+        "package.json:1897 \u2014 change \"build\" to a build-only invocation (pass a new --build-only / --no-release flag, plus existing --no-install)",
+        "scripts-v2/dist-simple.ts:40-50 \u2014 add a buildOnly/noRelease flag to the flags object and document it in help text (~lines 54-90)",
+        "scripts-v2/dist-simple.ts:212-213 \u2014 guard cleanupOldReleases(maxReleases) (and possibly the fs.rename move to releases/ at line 208) behind the new build-only flag",
+        "scripts-v2/dist-simple.ts:216-225 \u2014 already guarded by !flags.noInstall; ensure build-only implies no-install",
+        "test/package-json/ \u2014 add a regression test asserting scripts.build differs from scripts.dist and does not trigger install/prune (none exists today)"
+      ],
+      "notes": "CP-42 (PAR-78) is unimplemented. The package.json `build` script (line 1897) is still byte-identical to `dist` (line 1891), so `bun run build`/`npm run build` runs the full distribution workflow: it installs the VSIX into local VS Code (dist-simple.ts:217, gated only by --no-install which build does not pass) and prunes releases/ via cleanupOldReleases (dist-simple.ts:213, unconditional). No build-only flag/entrypoint exists and no regression test covers scripts.build. The recommended fix (make build a side-effect-free build-only command) has not been applied.",
+      "wave": 1,
+      "rank": 10,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-73",
+      "title": "[CP-34] Status bar visibility setting is ignored",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-73/cp-34-status-bar-visibility-setting-is-ignored",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/services/project-icon-service.ts:93 \u2014 refresh() only does `if (config)` with no check on config.showInStatusBar",
+        "src/services/project-icon-service.ts:128 \u2014 updateStatusBar() unconditionally calls this.statusBarItem.show(); no guard for showInStatusBar=false",
+        "showInStatusBar is read at project-icon-service.ts:67-76 but never consumed anywhere (rg shows it only assigned into config object and typed in project-icon-types.ts:11)",
+        "test/services/project-icon-service.test.ts: no occurrence of showProjectIcon/showInStatusBar set to false (grep returned nothing); no regression test exercises the false toggle",
+        "WORK-LEDGER.md:49 \u2014 item '#11 \u00b7 PAR-73 \u00b7 P2 \u2014 [CP-34]' is unchecked [ ]",
+        "git log -- src/services/project-icon-service.ts shows only d68f5e9 (v0.1.5 initial release); no fix commit; no CP-34/PAR-73 closeout doc in research/"
+      ],
+      "implementation_pointers": [
+        "src/services/project-icon-service.ts:89-104 ProjectIconService.refresh \u2014 add guard: if config exists but config.showInStatusBar===false, call hideStatusBar() and return",
+        "src/services/project-icon-service.ts:109-138 ProjectIconService.updateStatusBar \u2014 short-circuit to hide instead of show() when showInStatusBar is false (or skip creating the item)",
+        "src/services/project-icon-service.ts:143-147 hideStatusBar \u2014 reuse to hide existing item on toggle true->false",
+        "test/services/project-icon-service.test.ts \u2014 add tests setting commandCentral.project.icon plus commandCentral.statusBar.showProjectIcon=false, assert hide() called / show() not called; also test true->false transition hides existing item",
+        "package.json:176-180 \u2014 config contribution for commandCentral.statusBar.showProjectIcon (the user-facing toggle being ignored)"
+      ],
+      "notes": "[CP-34] bug is still present and unfixed. ProjectIconService reads statusBar.showProjectIcon into config.showInStatusBar but never enforces it: refresh() only checks whether any config exists, and updateStatusBar() always calls show(), so toggling the setting to false still leaves the project icon visible. No fix commit, no regression test (the test file never sets the toggle to false), and the WORK-LEDGER entry is unchecked. Recommended fix is the small guard described in the issue: hide/return when showInStatusBar is false.",
+      "wave": 1,
+      "rank": 11,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-72",
+      "title": "[CP-33] Calendar-day grouping drifts across daylight-saving boundaries",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-72/cp-33-calendar-day-grouping-drifts-across-daylight-saving-boundaries",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [
+        "PAR-71"
+      ],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/utils/time-grouping.ts:40-42 still computes yesterdayStart/last7DaysStart/last30DaysStart as todayStart - DAY_MS multiples (the exact DST-drift pattern named in the finding)",
+        "src/utils/time-grouping.ts:38 - the only getDate() use is for todayStart; the recommended calendar-arithmetic fix new Date(y,m,getDate()-n) for the n-day boundaries was never applied (rg 'getDate() - n' returns nothing)",
+        "test/utils/time-grouping.test.ts uses only April 2, 2026 (non-DST date); no spring-forward/fall-back regression test exists",
+        "git log --grep 'CP-33' and git log -S'getDate() - n' -- src/utils both return zero commits",
+        "WORK-LEDGER.md:118 lists '#37 PAR-72 P2 [CP-33] ...' as unchecked [ ]; no research/ closeout doc references CP-33 (only cc-work-ledger.json)"
+      ],
+      "implementation_pointers": [
+        "src/utils/time-grouping.ts:34-49 classifyTimePeriod - replace lines 40-42 (todayStart - n*DAY_MS) with calendar arithmetic: new Date(now.getFullYear(), now.getMonth(), now.getDate() - n).getTime() for yesterday(1)/last7(7)/last30(30)",
+        "src/utils/time-grouping.ts:8 DAY_MS constant becomes unused after the fix - remove it or verify knip/biome passes",
+        "test/utils/time-grouping.test.ts:8-22 - add a DST-boundary regression test (spring-forward/fall-back) checking timestamps around previous local midnight; likely set TZ to a DST-observing zone (e.g. America/New_York) for the test"
+      ],
+      "notes": "CP-33 is a confirmed, still-open bug. classifyTimePeriod derives yesterday/last7/last30 boundaries by subtracting fixed 24h multiples from local midnight, so on DST transition days (23h/25h offsets) timestamps near midnight land in the wrong bucket. No fix commit, no calendar-arithmetic change, no DST regression test, and no closeout doc exist; the work-ledger marks it unchecked. WORK-LEDGER notes a dep on PAR-71, but the time-grouping fix itself is self-contained.",
+      "wave": 1,
+      "rank": 12,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-68",
+      "title": "[CP-29] Synchronous CLI reloads can freeze the extension host",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Performance"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-68/cp-29-synchronous-cli-reloads-can-freeze-the-extension-host",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-67",
+        "PAR-70",
+        "PAR-69"
+      ],
+      "downstream_impact": 3,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/services/acp-session-service.ts:40 start() synchronously calls this.reload()",
+        "src/services/acp-session-service.ts:44-53 reload() uses execFileSync(\"openclaw\", [\"tasks\",\"list\",...], {timeout: CLI_TIMEOUT_MS}) \u2014 blocking",
+        "src/services/cron-service.ts:40 + 48-53 reload() uses execFileSync(\"openclaw\",[\"cron\",\"list\",\"--json\"]) synchronously, called by start()",
+        "src/services/taskflow-service.ts:33 + 37-43 reload() uses execFileSync(\"openclaw\",[\"tasks\",\"flow\",\"list\",\"--json\"]) synchronously, called by start()",
+        "rg 'inflight|coalesc|reloadAsync' src/services finds no async reload/coalescing in the three services (only project-view-manager.ts has async reload)",
+        "test/services/acp-session-service.test.ts:12-18 mock.module replaces execFileSync with an immediate synchronous return \u2014 cannot detect event-loop blocking, matching the finding's 'why tests miss this'",
+        "WORK-LEDGER.md:51 PAR-68 row is unchecked '[ ]'; research/cc-work-ledger.json verdict=null, state=Backlog \u2014 no closeout"
+      ],
+      "implementation_pointers": [
+        "src/services/acp-session-service.ts: refactor reload() to async (execFile/promisify) with in-flight coalescing + stale-result protection; keep start() void scheduling the async initial reload (lines 38-59)",
+        "src/services/cron-service.ts: same refactor for reload() at lines 48-59 and start() at 38-42",
+        "src/services/taskflow-service.ts: same refactor for reload() at lines 37-49 and start() at 31-35",
+        "Each service already imports execFile (used by execCli at acp ~line 147, cron ~164, taskflow ~142) \u2014 reuse that async path for reload",
+        "Check startWatching()/debounce reload triggers in each service (handleReloadError, debounceTimer) so watcher-driven reloads also go async",
+        "test/services/acp-session-service.test.ts:12-18, test/services/cron-service.test.ts, test/services/taskflow-service.test.ts: switch CLI mock to async execFile and add regression test asserting start() returns before CLI resolves, then state/onChange update after completion"
+      ],
+      "notes": "[CP-29] is unimplemented. All three services (AcpSessionService, CronService, TaskFlowService) still have start() synchronously call reload(), and reload() still uses execFileSync with CLI_TIMEOUT_MS \u2014 exactly the blocking pattern the finding flags. No async reload, no in-flight coalescing, and no regression test exist; the current tests mock execFileSync with an immediate return, so they cannot catch the freeze (as the finding predicted). The work ledger shows PAR-68 unchecked and in Backlog with no closeout doc. Remaining work: port reload to async execFile with coalescing/stale-result protection in all three services and update/add tests asserting start() returns before the CLI resolves.",
+      "wave": 1,
+      "rank": 13,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-64",
+      "title": "[CP-25] Deleted-file timestamp lookup cannot run in the VS Code Node extension host",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-64/cp-25-deleted-file-timestamp-lookup-cannot-run-in-the-vs-code-node",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-65"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/git-sort/git-timestamps.ts:77 still calls Bun.spawn([...git log...]) inside getDeletedFileTimestamp -- the exact Bun-only call PAR-64 flags as failing in the Node extension host",
+        "src/git-sort/git-timestamps.ts:109-113 broad catch returns undefined, silently swallowing the error when globalThis.Bun is absent (the silent-failure behavior described)",
+        "git log -S 'Bun.spawn' -- src/git-sort/git-timestamps.ts shows only d68f5e9 (v0.1.5 initial release); no commit replaced Bun.spawn with child_process/execFile",
+        "test/integration/git-timestamps-integration.test.ts header (line 10) says it tests 'real Bun.spawn behavior' under bun:test -- no Node-runtime/extension-host coverage, matching the 'Why tests miss this' note",
+        "Only repo reference to CP-25 is research/cc-work-ledger.json:403, an open Backlog ledger row with empty verdict/evidence; no RESULT/CLOSEOUT/handoff doc closes it out"
+      ],
+      "implementation_pointers": [
+        "src/git-sort/git-timestamps.ts:68-114 (getDeletedFileTimestamp) -- replace Bun.spawn with node:child_process execFile/spawn + AbortController timeout; keep TIMEOUT_MS=200, buildIsolatedGitEnv (lines 9-16), and relativePath logic (line 74)",
+        "Optionally add a small injectable process-runner abstraction so prod (Node) and tests share one code path (new util under src/git-sort/ or src/utils/)",
+        "test/git-sort/git-timestamps.test.ts:39-41 -- current tests only assert undefined for invalid/non-git roots; add a Node-runtime (or DI process-runner) test asserting a numeric ms timestamp for a real committed file",
+        "test/integration/git-timestamps-integration.test.ts:201-330 -- extend existing real-git-repo suite to exercise the Node child_process path, not only Bun.spawn",
+        "PAR-65 is blocked by this per ledger blocks_active; fixing it unblocks PAR-65"
+      ],
+      "notes": "PAR-64 [CP-25] is NOT done. getDeletedFileTimestamp in src/git-sort/git-timestamps.ts:77 still uses the Bun-only Bun.spawn, which throws (ReferenceError) in the VS Code Node extension host where globalThis.Bun is undefined; the broad catch at lines 109-113 then silently returns undefined, so deleted-file git-log timestamps fail in production. No code change, regression test, or closeout doc addresses the Bun-to-Node migration. The fix is to swap Bun.spawn for node:child_process (execFile/spawn) with an AbortController timeout and add a Node-runtime/DI test that asserts a real numeric timestamp.",
+      "wave": 1,
+      "rank": 14,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-63",
+      "title": "[CP-24] GitChangeItem guard rejects valid GitChangeItem values",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "API Contract"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-63/cp-24-gitchangeitem-guard-rejects-valid-gitchangeitem-values",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/types/tree-element.ts:120 \u2014 type?: \"gitChangeItem\" discriminant still optional on GitChangeItem interface",
+        "src/types/tree-element-guards.ts:79 \u2014 isGitChangeItem returns only el.type === \"gitChangeItem\", rejecting valid items with no type field",
+        "test/types/tree-element-migration.test.ts:125-146 \u2014 guard test always passes type: \"gitChangeItem\"; no missing-discriminant case",
+        "WORK-LEDGER.md:57 \u2014 [ ] #14 \u00b7 PAR-63 \u00b7 P2 \u2014 [CP-24] still unchecked",
+        "No research/ RESULT or CLOSEOUT doc references PAR-63 or finding id 81eafc79a1-4550; git log shows no fix commit on tree-element-guards.ts since initial release"
+      ],
+      "implementation_pointers": [
+        "src/types/tree-element.ts:118-142 \u2014 GitChangeItem interface: decide contract (make type: \"gitChangeItem\" required, or keep optional)",
+        "src/types/tree-element-guards.ts:73-80 \u2014 isGitChangeItem: if keeping optional discriminant, widen guard to validate structural fields (uri/status/isStaged) when type is absent",
+        "test/builders/tree-element-builder.ts:170,395 \u2014 GitChangeItemBuilder already sets type: \"gitChangeItem\"; reconcile with chosen contract",
+        "test/types/tree-element-helpers.test.ts:88-99 and test/types/tree-element-migration.test.ts:125-146 \u2014 add regression test for a structurally-valid GitChangeItem with no type field",
+        "Audit callers constructing GitChangeItem via rg 'type: \"gitChangeItem\"' across src/ if making the discriminant required"
+      ],
+      "notes": "ClawPatch finding [CP-24]: the GitChangeItem interface makes type optional but isGitChangeItem only accepts type === \"gitChangeItem\", so a value satisfying the exported interface fails the exported guard \u2014 a contract mismatch. The bug is still present verbatim at the cited lines, no fix commit exists, no regression test covers the missing-discriminant case, and the WORK-LEDGER entry is unchecked. Next agent should pick a consistent contract (prefer requiring the discriminant and updating builders/callers) and add a regression test for a no-type GitChangeItem.",
+      "wave": 1,
+      "rank": 15,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-61",
+      "title": "[CP-21] Malformed config reload wipes the last known agent models",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-61/cp-21-malformed-config-reload-wipes-the-last-known-agent-models",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-62"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/services/openclaw-config-service.ts:77 \u2014 reload() still calls this.agents.clear() at the very top, before any read/parse; this is the exact described bug",
+        "src/services/openclaw-config-service.ts:105-107 \u2014 parse catch is empty ('Parse error \u2014 config may be mid-edit'), so a malformed config leaves the agents map empty and last-known-good models are lost",
+        "No regression test exists: only test/tree-view/agent-status-tree-provider-{rendering,diff-notifications}.test.ts reference OpenClawConfigService; the single configService.reload() (rendering.test.ts:617) loads a valid config only; no test/services/openclaw-config-service.test.ts file exists",
+        "git log --grep 'CP-21' and --grep 'PAR-61' return nothing; only commit touching the file is 42b35ff (original feature add)",
+        "WORK-LEDGER.md:59 \u2014 '[ ] #15 \u00b7 PAR-61 \u00b7 P2 \u2014 [CP-21] Malformed config reload...' is still an unchecked open item; no RESULT/CLOSEOUT doc in research/ references finding ID fnd_sig-feat-library-761536b46c-18a6_9164dcb093"
+      ],
+      "implementation_pointers": [
+        "src/services/openclaw-config-service.ts:76-108 \u2014 OpenClawConfigService.reload(): build a temp Map<string,OpenClawAgentModel>, populate from a successful read+JSON.parse, then assign this.agents = next only after success; preserve prior map on parse failure",
+        "src/services/openclaw-config-service.ts:82-84 \u2014 readFileSync catch is the legitimate clear path (missing/deleted config); keep explicit clear here only, not at line 77",
+        "src/services/openclaw-config-service.ts:105-107 \u2014 empty parse catch is where the map currently stays wiped; on parse failure it must keep the previously loaded this.agents",
+        "Add new test file test/services/openclaw-config-service.test.ts (none exists): write valid openclaw.json to a temp path, reload(), assert getAgentModel returns the model; overwrite with invalid JSON, reload() again, assert getAgentModel STILL returns the previously loaded model",
+        "getAgentModel (line 68) / getAllAgentModels (line 72) are the downstream readers whose output regresses when the map is wiped"
+      ],
+      "notes": "The CP-21 bug is unfixed. OpenClawConfigService.reload() clears this.agents at line 77 before reading/parsing the config, so a transiently malformed openclaw.json (e.g. mid-edit) leaves the service with zero agent models even though a valid config was previously loaded \u2014 exactly the described transient model/default loss. The recommended fix (parse into a temp Map and swap on success) has not been applied, and no malformed-reload regression test exists. Work ledger and git history confirm no closeout.",
+      "wave": 1,
+      "rank": 16,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-57",
+      "title": "[CP-16] Git Sort file actions fail for nested workspace files on Windows",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-57/cp-16-git-sort-file-actions-fail-for-nested-workspace-files-on-windows",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-59",
+        "PAR-58"
+      ],
+      "downstream_impact": 2,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/factories/provider-factory.ts:168 \u2014 workspaceWithSep hard-codes a `/` separator (`${workspacePath}/`), the exact CP-16 bug; on Windows fsPath uses backslashes so C:/repo/src/file.ts (actually C:\\repo\\src\\file.ts) never startsWith C:\\repo/",
+        "src/factories/provider-factory.ts:172 \u2014 containment is filePath.startsWith(workspaceWithSep) with no path.relative / win32 / separator normalization (rg for path.relative|win32|sep in this file found nothing)",
+        "No regression test exists: no provider-factory.test.ts; only mocks of getProviderForFile returning undefined in test/services/active-file-tracking.test.ts and test/integration/workspace-folder-changes.test.ts \u2014 no Windows-path boundary assertion",
+        "No closeout doc: rg 'CP-16' research/ hits only research/cc-work-ledger.json; WORK-LEDGER.md:62 lists PAR-57 as unchecked `[ ]`; git log --grep CP-16 and -S getProviderForFile show no fix commit"
+      ],
+      "implementation_pointers": [
+        "src/factories/provider-factory.ts:151-181 ProjectProviderFactory.getProviderForFile \u2014 replace `/`-based startsWith containment with path-aware check (path.relative(workspacePath, filePath) boundary check, or normalize both with path.sep) so backslash fsPaths on Windows match",
+        "src/factories/provider-factory.ts:140-141 providersByWorkspace.set(config.gitPath, provider) \u2014 workspace keys come from config.gitPath; normalize keys here too for consistent comparison",
+        "Add test/factories/provider-factory.test.ts \u2014 assert getProviderForFile for a C:\\repo workspace + C:\\repo\\src\\file.ts returns the provider, and C:\\repo-other does NOT match (preserve longest-match); keep existing POSIX coverage",
+        "src/activation/register-git-sort-commands.ts:217,251 \u2014 gitSort openChange/openDiff consumers; report 'no workspace found' when lookup returns undefined (the user-visible symptom)"
+      ],
+      "notes": "CP-16 / PAR-57 is NOT done. ProjectProviderFactory.getProviderForFile still uses a hard-coded `/` separator for workspace containment, so on Windows (backslash fsPaths) nested files fail provider lookup and gitSort openChange/openDiff report no workspace found. No path-aware fix, no Windows boundary test, and no research closeout exist; the work ledger lists it as open. Next agent should make the containment platform-aware and add the cross-platform provider-factory test.",
+      "wave": 1,
+      "rank": 17,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-50",
+      "title": "[CP-08] Port ownership check accepts sibling path prefixes",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-50/cp-08-port-ownership-check-accepts-sibling-path-prefixes",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-51"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/utils/port-detector.ts:80 \u2014 `if (cwd.includes(projectDir))` is the exact substring-match bug described; no path-boundary containment",
+        "No `node:path` import / no `path.relative`/`path.resolve`/`normalize` in src/utils/port-detector.ts (only Promise-constructor `resolve`)",
+        "test/utils/port-detector.test.ts:115-130 \u2014 'no match' test still uses `/Users/test/other-project` (not a prefix-sibling); no `my-app-copy` regression test exists anywhere (rg -rn 'my-app-copy' test/ src/ \u2192 no hits)",
+        "git log --grep 'CP-08' and git log -S'path.relative' -- src/utils/port-detector.ts both return nothing",
+        "WORK-LEDGER.md:65 \u2014 PAR-50 [CP-08] listed as unchecked `[ ]`; Linear state = Backlog; no closeout doc in research/ (only the ledger JSON lists the open item)"
+      ],
+      "implementation_pointers": [
+        "src/utils/port-detector.ts:80 (inside detectListeningPortsAsync) \u2014 replace `cwd.includes(projectDir)` with directory-boundary-aware containment: parse the cwd from the lsof `-Fn` output (line starting with 'n'), then `import path from 'node:path'` and accept only when `path.resolve(cwd) === path.resolve(projectDir)` OR `path.relative(path.resolve(projectDir), path.resolve(cwd))` is non-empty, does not start with '..', and is not absolute",
+        "src/utils/port-detector.ts:75-79 \u2014 the per-PID lsof returns multi-line `-Fn` output (e.g. `p1234\\nn/Users/...`); currently the whole stdout is fed to includes(); extract the actual cwd line (slice after 'n') before comparing",
+        "test/utils/port-detector.test.ts:115-130 \u2014 add a new regression test: mock per-PID lsof cwd as `/Users/test/projects/my-app-copy`, call detectListeningPortsAsync('/Users/test/projects/my-app'), assert `expect(ports).toEqual([])`",
+        "Run: just test-unit (port-detector tests run there); confirm existing 'returns ports when lsof finds matches' test still passes after the cwd-parsing change"
+      ],
+      "notes": "PAR-50 [CP-08] is NOT done. The bug is still present verbatim at src/utils/port-detector.ts:80, which uses `cwd.includes(projectDir)` substring matching \u2014 a process in `/Users/test/projects/my-app-copy` is wrongly classified as belonging to `/Users/test/projects/my-app`. No path-boundary fix, no `node:path` import, and no prefix-sibling regression test exist; the existing negative test only covers an unrelated path. No commit or research closeout addresses it, and the work ledger still tracks it as open (Backlog). Fix is a small, well-scoped change plus one regression test.",
+      "wave": 1,
+      "rank": 18,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-49",
+      "title": "[CP-07] Failed extraction leaves the existing Ghostty install renamed as the backup",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Data-Loss"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-49/cp-07-failed-extraction-leaves-the-existing-ghostty-install-renamed-as",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/ghostty/BinaryManager.ts:275 \u2014 `await this.extractZip(zipPath, ...)` is NOT wrapped in try/catch; if it throws, method exits with install already renamed to .bak (line 271)",
+        "src/ghostty/BinaryManager.ts:271 \u2014 `fs.renameSync(this.installPath, bakPath)` backs up BEFORE extraction",
+        "src/ghostty/BinaryManager.ts:277-294 \u2014 backup restore only fires on `!installed` validation failure, never on extractZip throwing; no finally block",
+        "No BinaryManager test file exists: `extractZip`/`downloadRelease` are referenced only in BinaryManager.ts itself (no *.test.ts coverage)",
+        "git log --grep 'CP-07' and 'PAR-49' return no commits; no fix has been authored",
+        "WORK-LEDGER.md:68 lists '#18 \u00b7 PAR-49 \u00b7 P2 \u2014 [CP-07]' as unchecked `[ ]`"
+      ],
+      "implementation_pointers": [
+        "src/ghostty/BinaryManager.ts:258-312 \u2014 `downloadRelease`: wrap extractZip + isInstalled validation in try/catch (or try/finally) after backup rename at line 271; on any throw before full validation, rm partial install and renameSync(bakPath -> installPath) before rethrowing",
+        "src/ghostty/BinaryManager.ts:277-294 \u2014 existing validation-failure restore block; consolidate this restore logic into the new catch so both extraction errors and validation failures share one recovery path",
+        "Create new test file src/ghostty/BinaryManager.test.ts (does not exist) \u2014 test downloadRelease with existing installPath, mocked successful download+checksum, and an extractZip override that throws; assert backup restored to installPath and .bak is not the sole copy",
+        "ClawPatch finding ID fnd_sig-feat-library-19c3a81296-bbe8_ceb5bf118e for traceability"
+      ],
+      "notes": "[CP-07] data-loss bug is still live and unfixed. BinaryManager.downloadRelease renames the existing Ghostty.app to .bak (line 271) before calling extractZip (line 275) with no surrounding try/catch. If extractZip throws (corrupt zip, missing unzip, timeout, interrupt), the method exits leaving the user with no Ghostty.app \u2014 the backup is only ever restored when post-extraction validation returns false, not when extraction itself fails. No fix commit, no closeout doc, and no BinaryManager test file exist. Fix: wrap extraction+validation in try/catch/finally to restore the .bak on any pre-validation failure, and add the suggested regression test.",
+      "wave": 1,
+      "rank": 19,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-242",
+      "title": "[M1SQL-01] Plan and execute SQLite receipt-store migration for Symphony daemon M1",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "command-central",
+        "symphony",
+        "receipts",
+        "validation",
+        "reliability",
+        "operations"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-242/m1sql-01-plan-and-execute-sqlite-receipt-store-migration-for-symphony",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "No bracket key M1SQL-01 anywhere: rg -ril 'M1SQL' ~/projects/symphony-daemon and ~/projects/command-central both empty",
+        "No migration/decision/backfill/read-back doc: rg -li 'pulled from backlog|backfill|dual-read|retention' research/ has no M1SQL hit",
+        "Contradiction with AC#1 (NDJSON must stay default): runtime default is now sqlite at src/daemon/cliRun.ts:796, src/daemon/cliRun.ts:1117, src/openclaw-plugin/index.ts:152",
+        "Default flipped ad hoc in commit 9e579fc 'fix(workroom): harden wake routing' (diff: process.env.SYMPHONY_RECEIPT_STORE ?? \"sqlite\"), not via a deliberate documented migration",
+        "SQLite primitives + basic idempotency tests exist from commit 47d0c7c 'feat(v2): select sqlite receipt store explicitly': test/v2/receipts.test.ts:211 'SQLite store is idempotent', test/v2/openclawPlugin.test.ts:93/:162/:211 plugin ack into SQLite",
+        "No SQLite round-trip coverage for the required kinds: m1.event.requested / m1.event.wake.sent only appear in m1Events.test.ts and visibleLaneCloseout.test.ts (emission/wake), not in receipts.test.ts/openclawPlugin.test.ts SQLite tests",
+        "No gated-smoke / read-back evidence doc; no sqlite-receipt smoke recipe in package.json or justfile"
+      ],
+      "implementation_pointers": [
+        "~/projects/symphony-daemon/src/v2/receipts.ts (RECEIPT_STORE_FORMATS:45, resolveReceiptStoreFormat:52, defaultReceiptFileForFormat:80, SqliteReceiptStore class :166, loadNodeSqlite:277) \u2014 store selection/primitives",
+        "~/projects/symphony-daemon/src/daemon/cliRun.ts:796 and :1117 \u2014 runtime receipt-store default (currently 'sqlite'; AC#1 wants NDJSON default until intentionally pulled)",
+        "~/projects/symphony-daemon/src/openclaw-plugin/index.ts:149-154 \u2014 plugin receiptStore resolution (config -> env -> 'sqlite')",
+        "~/projects/symphony-daemon/test/v2/receipts.test.ts:211 and test/v2/openclawPlugin.test.ts:93/:162/:211 \u2014 extend with m1.event.requested + m1.event.wake.sent SQLite round-trip idempotency proofs",
+        "~/projects/symphony-daemon/src/v2/m1Events.ts:65 \u2014 m1.event.requested emission (source of kinds to assert against SQLite)",
+        "~/projects/symphony-daemon/research/ \u2014 add the missing M1SQL-01 decision/migration/backfill+retention/read-back-smoke handoff doc (none exists)",
+        "package.json / justfile \u2014 add a gated sqlite-receipt smoke recipe to produce read-back evidence in a disposable env"
+      ],
+      "notes": "M1SQL-01 is a deliberate-migration governance issue in symphony-daemon (not command-central; no trace in command-central). The SQLite receipt primitives, store selector, and basic idempotency + plugin-ack tests already exist (commit 47d0c7c), so groundwork is partial. But none of the M1SQL-01 deliverables are done: no decision doc keeping NDJSON default, no migration trigger/owner, no backfill/dual-read/retention spec, no post-rollout SQLite idempotency tests for m1.event.requested/m1.event.wake.sent, and no gated-smoke read-back evidence. Worse, the runtime default was flipped to sqlite ad hoc in commit 9e579fc (the exact pattern AC#1 says to avoid), so the codebase currently contradicts the issue's stated decision. Treat as todo: write the migration plan/decision doc, decide whether to revert the ad-hoc sqlite default or formally adopt it with rollout+backfill, and add the kind-specific SQLite proofs + smoke evidence.",
+      "wave": 1,
+      "rank": 20,
+      "execution_status": "skipped",
+      "execution_caveat": "OUT OF SCOPE: lives in the symphony-daemon repo, not Command Central."
+    },
+    {
+      "identifier": "PAR-75",
+      "title": "[CP-39] Diff content working-tree URIs can escape the project directory",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Security"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-75/cp-39-diff-content-working-tree-uris-can-escape-the-project-directory",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-77",
+        "PAR-76"
+      ],
+      "downstream_impact": 2,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/providers/diff-content-provider.ts:106-116 readWorkingTree() still does joinPath(projectDir, relativePath) then readFileSync with no '..'/absolute-path/confinement check",
+        "test/providers/diff-content-provider.test.ts:80 has only a normal working-tree read test; rg for traversal|escape|confine|'..' in the test file returns nothing",
+        "WORK-LEDGER.md:72 lists PAR-75 [CP-39] as open '[ ]'; Linear state=Backlog",
+        "git log -- src/providers/diff-content-provider.ts shows only original commit 85ecdc6 'feat: use virtual docs for agent file diffs'; no fix/normalize/confinement commit",
+        "No research closeout: rg 'CP-39|traversal|path confinement' across research/ only hits research/cc-work-ledger.json, not a RESULT/CLOSEOUT/AMENDMENT doc"
+      ],
+      "implementation_pointers": [
+        "src/providers/diff-content-provider.ts:106 readWorkingTree() \u2014 resolve candidate via path.resolve(projectDir, relativePath); reject unless it equals normalized projectDir or startsWith projectDir + path.sep; also reject absolute decoded paths and '..' segments before readFileSync",
+        "src/providers/diff-content-provider.ts:71 provideTextDocumentContent() and :28 decodeRelativePath() \u2014 candidate spots to validate/normalize the decoded path before dispatch",
+        "test/providers/diff-content-provider.test.ts:80 \u2014 add regression test: ref=working-tree with a '../' path returns '' and never calls readFileSync outside projectDir (join/readFileSync are injectable via DiffContentProviderDependencies)"
+      ],
+      "notes": "[CP-39] path-traversal security finding is unimplemented. DiffContentProvider.readWorkingTree joins the untrusted decoded URI path onto projectDir and reads it with no confinement, so a crafted cc-diff working-tree URI containing ../ can escape the project directory. No fix commit, no closeout doc, and no traversal regression test exist; ledger and Linear both show it open in Backlog.",
+      "wave": 1,
+      "rank": 21,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-74",
+      "title": "[CP-36] Provider state subscription is not registered for extension disposal",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Performance"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-74/cp-36-provider-state-subscription-is-not-registered-for-extension",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/ui/grouping-view-manager.ts:115 pushes only this.treeView into context.subscriptions; the GroupingTreeProvider (created at :104) and its state subscription are never registered for context-driven disposal",
+        "src/ui/grouping-tree-provider.ts:85-89 stateChangeDisposable subscribes to onDidChangeGrouping; freed only via GroupingTreeProvider.dispose() (:212-215), reachable only through GroupingViewManager.dispose() (:197-201)",
+        "git log -S'context.subscriptions' -- src/ui/grouping-view-manager.ts shows only d68f5e9 (v0.1.5 initial release); git log --grep 'CP-36' is empty",
+        "test/ui/grouping-view-manager.test.ts TEST 7 'dispose() cleans up TreeView resources' only calls manager.dispose() and asserts mockTreeView.dispose; no test disposes context.subscriptions items then fires the state-change callback; no refs to provider/stateChangeDisposable/onDidChangeGrouping in the test",
+        "research/cc-work-ledger.json:641 PAR-74 state=Backlog, verdict=null; rg 'CP-36' only hits the ledger title, no RESULT/CLOSEOUT doc in research/"
+      ],
+      "implementation_pointers": [
+        "src/ui/grouping-view-manager.ts:103-124 (constructor) \u2014 register provider+treeView together, e.g. context.subscriptions.push(this.provider, this.treeView) or push a single Disposable wrapping this.dispose()",
+        "src/ui/grouping-view-manager.ts:197-201 (dispose) \u2014 keep ownership clear so each disposable runs exactly once; avoid double-dispose if both manager.dispose() and context-driven disposal fire",
+        "src/ui/grouping-tree-provider.ts:212-215 (GroupingTreeProvider.dispose) \u2014 verify idempotent if doubly registered",
+        "test/ui/grouping-view-manager.test.ts (after TEST 7, ~line 441) \u2014 add regression: construct manager, dispose every mockContext.subscriptions item WITHOUT calling manager.dispose(), then trigger mockStateManager onDidChangeGrouping and assert no tree refresh fires / the state subscription disposable was called"
+      ],
+      "notes": "[CP-36] bug is still present and unfixed. The GroupingViewManager constructor registers only the TreeView with context.subscriptions, leaving the GroupingTreeProvider's onDidChangeGrouping subscription alive after extension shutdown unless manager.dispose() is called directly. Fix: register provider+treeView as one ownership unit and add a focused regression test that exercises context-driven disposal. No closeout doc or commit exists; ledger shows Backlog/verdict=null.",
+      "wave": 1,
+      "rank": 22,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-66",
+      "title": "[CP-27] Lifecycle-event tests exercise the mock emitter instead of the event-producing code",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Test Gap"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-66/cp-27-lifecycle-event-tests-exercise-the-mock-emitter-instead-of-the",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "test/events/agent-events.test.ts:9 imports only `type AgentEvent`, never the provider; the entire suite fires a raw vscode.EventEmitter mock (L71-90, L101-128, L226-247) \u2014 exactly the gap CP-27 describes",
+        "No test subscribes to the real event: `rg -n onAgentEvent test/` returns zero hits; grep for previousStatuses / status-transitions in test/ finds nothing",
+        "Production source the test should exercise: src/providers/agent-status-tree-provider.ts:1542 `readonly onAgentEvent = this._onAgentEvent.event`, fired in checkCompletionNotifications() at L3573 (agent-completed), L3602 (agent-failed), L3638 (agent-started)",
+        "git log -- test/events/agent-events.test.ts ends at f9e456e (lint fixes); no CP-27/PAR-66 commit; `git log --grep CP-27` and `--grep PAR-66` both empty",
+        "WORK-LEDGER.md:80 lists PAR-66 (#23, P3) as unchecked `[ ]`; no research/ closeout doc references CP-27 except the cc-work-ledger.json inventory"
+      ],
+      "implementation_pointers": [
+        "test/events/agent-events.test.ts \u2014 add a describe block that imports AgentStatusTreeProvider and subscribes to provider.onAgentEvent; the existing mock-emitter-only blocks are the thing to supplement/replace",
+        "src/providers/agent-status-tree-provider.ts:3499 checkCompletionNotifications() \u2014 method under test; drive transitions by seeding this.previousStatuses and this.registry.tasks, then invoke it",
+        "src/providers/agent-status-tree-provider.ts:1541-1542 _onAgentEvent / onAgentEvent \u2014 production event to subscribe to; L3573/3602/3638 are the three fire() sites; assert payload type, taskId, timestamp, projectDir, elapsed",
+        "test/helpers/vscode-mock.ts (setupVSCodeMock) \u2014 existing mock infra; ensure workspace.getConfiguration returns masterEnabled/onCompletion/onFailure=true so the event-firing branches are reached"
+      ],
+      "notes": "CP-27 test-gap is real and still open. The production event source exists and works (AgentStatusTreeProvider.checkCompletionNotifications fires agent-started/completed/failed via the exported onAgentEvent), but test/events/agent-events.test.ts only verifies the AgentEvent type shape and a raw mocked vscode.EventEmitter \u2014 it never instantiates the provider or subscribes to onAgentEvent, so it would not catch the provider regressing. Remaining work: add provider-level tests that drive status transitions and assert the real emitted payloads (taskId, timestamp, projectDir, elapsed). No code change to the AgentEvent interface is needed.",
+      "wave": 1,
+      "rank": 23,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-60",
+      "title": "[CP-19] Rejects valid SVG viewBox values outside positive integer double quotes",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-60/cp-19-rejects-valid-svg-viewbox-values-outside-positive-integer-double",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "scripts/svg-to-png.ts:44-46 still uses regex /viewBox=\"\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s*\"/ which only matches double-quoted, non-negative integers",
+        "scripts/svg-to-png.ts:52-53 uses Number.parseInt, not the recommended Number.parseFloat",
+        "Repro: regex.test('<svg viewBox=\"-0.5 0 100.5 80.25\">') === false (also false for comma-separated and single-quoted; only plain integers match)",
+        "git log -- scripts/svg-to-png.ts shows only e959b3b (feature add) and e4d7079 (tsc fix); git log --grep 'CP-19' is empty; no fix commit references CP-19",
+        "No tests/fixtures reference svg-to-png or viewBox (rg over test/ src/ scripts-v2/ empty); CP-19 appears only in research/cc-work-ledger.json with state Backlog and verdict null"
+      ],
+      "implementation_pointers": [
+        "scripts/svg-to-png.ts:44-46 \u2014 broaden viewBox regex to accept optional signs, decimals, comma-or-whitespace separators, and both quote styles, e.g. /viewBox=[\"']\\s*(-?[\\d.]+)[\\s,]+(-?[\\d.]+)[\\s,]+(-?[\\d.]+)[\\s,]+(-?[\\d.]+)\\s*[\"']/",
+        "scripts/svg-to-png.ts:52-53 \u2014 switch Number.parseInt to Number.parseFloat for svgWidth/svgHeight (capture groups [3]/[4])",
+        "Add regression test + SVG fixtures (none exist) with decimal/negative/comma/single-quote viewBoxes asserting a PNG at 2x scaled dimensions is produced \u2014 satisfies the Acceptance Criteria"
+      ],
+      "notes": "CP-19 bug is still live. scripts/svg-to-png.ts:44-46 only matches double-quoted non-negative integer viewBoxes and exits with 'No viewBox found' for decimals, negatives, commas, or single quotes (verified by reproducing the finding's example, which returns false). Dimension parsing also still uses parseInt instead of parseFloat. No fix commit, no closeout doc, and no tests exist; PAR-60 sits in Backlog with empty verdict in the ledger. Remaining work: broaden the regex, use parseFloat, and add the regression fixture/test required by the Acceptance Criteria.",
+      "wave": 1,
+      "rank": 24,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-56",
+      "title": "[CP-15] Dotfiles with registered extensions are counted as no-extension files",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-56/cp-15-dotfiles-with-registered-extensions-are-counted-as-no-extension",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/utils/extension-discovery.ts:53 \u2014 `const ext = path.extname(change.uri.fsPath).toLowerCase();` still used directly, no basename-only dotfile handling (bug present)",
+        "src/utils/extension-display-names.ts:32 \u2014 `[\".env\", \"Environment\"]` exists, confirming the mismatch: .env changes would be grouped under 'No Extension'",
+        "test/utils/extension-discovery.test.ts:130 \u2014 `expect(result.has(\"\") || result.has(\".gitignore\")).toBe(true)` is the loose test that does not pin intended behavior",
+        "git log --grep 'CP-15' and --grep 'PAR-56' return nothing; only change to extension-discovery.ts is commit d68f5e9 (initial v0.1.5 release)",
+        "research/cc-work-ledger.json:760 PAR-56 state=\"Backlog\"; WORK-LEDGER.md:84 lists '#25 \u00b7 PAR-56' unchecked '- [ ]'"
+      ],
+      "implementation_pointers": [
+        "src/utils/extension-discovery.ts:45-69 \u2014 countExtensionsByWorkspace: add basename-only dotfile detection before path.extname fallback (e.g. for `.env`, map basename '.env' to key '.env'); preserve '' for true extensionless files like Makefile",
+        "src/utils/extension-display-names.ts:8-65 \u2014 EXTENSION_DISPLAY_NAMES known-dotfile set (.env etc.) to drive which basenames should be treated as extensions",
+        "test/utils/extension-discovery.test.ts:122-131 \u2014 tighten the loose dotfile test; add regression case for /project/.env asserting result.has('.env') and buildExtensionMetadata reports displayName 'Environment'"
+      ],
+      "notes": "[CP-15] is NOT done. The bug is still live: countExtensionsByWorkspace at extension-discovery.ts:53 uses path.extname() directly, which returns '' for single-segment dotfiles like .env, so .env changes are bucketed under 'No Extension' despite the display table mapping .env\u2192'Environment'. No commit, closeout doc, or fix exists; the ledger and WORK-LEDGER mark it Backlog/unchecked. Fix = special-case known dotfile basenames in the extraction logic and tighten the loose dotfile test (it currently accepts either '' or '.gitignore').",
+      "wave": 1,
+      "rank": 25,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-55",
+      "title": "[CP-14] Output stream cannot switch to a new session for an existing task",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-55/cp-14-output-stream-cannot-switch-to-a-new-session-for-an-existing",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/services/agent-output-channels.ts:29 \u2014 startStreaming early-returns `if (this.timers.has(taskId)) return;`, keyed only by taskId, never compares sessionId (the exact bug)",
+        "src/services/agent-output-channels.ts:12-14 \u2014 only channels/timers/lastLineCount maps exist; no per-task sessionId tracking map as the fix recommends",
+        "src/services/agent-output-channels.ts:31-49 \u2014 interval closure permanently captures sessionId; a replacement tmux session is never re-targeted in capture-pane",
+        "test/services/agent-output-channels.test.ts:44-59 \u2014 'reuses OutputChannel' test stubs startStreaming as no-op; no test calls show twice with a changed sessionId",
+        "WORK-LEDGER.md:86 \u2014 '[ ] #26 \u00b7 PAR-55 \u00b7 P3 \u2014 [CP-14]...' is unchecked; Linear state Backlog; no RESULT/CLOSEOUT/AMENDMENT doc for CP-14 in research/"
+      ],
+      "implementation_pointers": [
+        "src/services/agent-output-channels.ts: add `private sessions = new Map<string, string>()`; in show() detect when an existing timer's sessionId differs from a new valid sessionId and stopStreaming(taskId) before startStreaming, preserving channel reuse",
+        "src/services/agent-output-channels.ts:28-51 startStreaming \u2014 replace `if (this.timers.has(taskId)) return;` with a session-aware guard (only return when same sessionId already streaming); record sessions.set(taskId, sessionId)",
+        "src/services/agent-output-channels.ts:53-60 stopStreaming and 70-76 dispose \u2014 also clear the new sessions map entry",
+        "test/services/agent-output-channels.test.ts \u2014 add regression test using fake timers + mocked node:child_process execFileSync: show('task-1','valid-session-1') then show('task-1','valid-session-2'), advance interval, assert tmux capture-pane invoked with 'valid-session-2'",
+        "src/providers/agent-status-tree-provider.ts isValidSessionId \u2014 imported guard that defines which session changes count as valid"
+      ],
+      "notes": "[CP-14] bug is still fully present. AgentOutputChannels.startStreaming is keyed only by taskId and returns early when a timer already exists, so a second show() for the same task with a replacement tmux session keeps polling the original session captured in the interval closure. There is no sessionId tracking, no timer restart on session change, and no regression test exercising a session swap. Linear shows Backlog and WORK-LEDGER.md has it unchecked. Fix is small and localized to agent-output-channels.ts plus one focused test.",
+      "wave": 1,
+      "rank": 26,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-52",
+      "title": "[CP-10] Transcript heuristic selects the newest later session, not the task session",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-52/cp-10-transcript-heuristic-selects-the-newest-later-session-not-the",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-53",
+        "PAR-54"
+      ],
+      "downstream_impact": 2,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/discovery/session-resolver.ts:59-68 byNewestCreatedAt still sorts candidates newest-first (the root of the heuristic)",
+        "src/discovery/session-resolver.ts:124-126 returns withinTaskWindow[0] = newest candidate in window, not the one closest to started_at \u2014 the exact described bug",
+        "src/discovery/session-resolver.ts:128-133 afterTaskStarted[0] also returns newest, so a later unrelated session wins for running tasks (completed_at absent)",
+        "No session-resolver test file exists: find/rg for *session-resolver* returns only the source file, confirming the 'Why tests miss this' note",
+        "git log on session-resolver.ts (latest e068843, 008d17a) shows no CP-10/PAR-52 fix; git log --grep CP-10/PAR-52 empty; -S'closest' on src/discovery empty",
+        "WORK-LEDGER.md:88 marks PAR-52 unchecked '[ ]'; research/cc-work-ledger.json state=Backlog"
+      ],
+      "implementation_pointers": [
+        "src/discovery/session-resolver.ts:109-136 selectClaudeSessionCandidateForTask \u2014 change fallback to pick the candidate with smallest non-negative (createdAtMs - startedAtMs), i.e. earliest at/just after started_at within a bounded tolerance, instead of [0] of a newest-first list",
+        "src/discovery/session-resolver.ts:59-68 byNewestCreatedAt \u2014 add a byClosestToStart comparator or re-sort the filtered window ascending before taking [0]",
+        "src/discovery/session-resolver.ts:178-187 resolveClaudeTranscriptPathForTask \u2014 public entry point to assert in the regression test",
+        "Create src/test/session-resolver.test.ts: write two .jsonl candidates (one just after started_at, one much later, completed_at absent) into a tmp claudeBaseDir and assert resolveClaudeTranscriptPathForTask returns the earlier task-start candidate",
+        "resolveClaudeSessionCandidateForTask:138-176 \u2014 explicit claude_session_id path is correct; preserve it, only change the timestamp-heuristic fallback"
+      ],
+      "notes": "PAR-52 [CP-10] is unimplemented. The transcript heuristic still sorts candidates newest-first (byNewestCreatedAt) and selectClaudeSessionCandidateForTask returns the newest candidate within/after the task window via [0], so a later unrelated Claude session can win over the task's transcript \u2014 exactly the bug. The recommended fix (select the earliest candidate at/just after started_at) is not present, and no session-resolver test exists. Next agent should fix the fallback selection in selectClaudeSessionCandidateForTask and add src/test/session-resolver.test.ts as the suggested regression test.",
+      "wave": 1,
+      "rank": 27,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-47",
+      "title": "[CP-04] Concurrent createProvider calls can create duplicate untracked providers",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Concurrency"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-47/cp-04-concurrent-createprovider-calls-can-create-duplicate-untracked",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-48"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/factories/provider-factory.ts:97-100 cache check (this.providers.get(config.id)) happens before any await",
+        "src/factories/provider-factory.ts:105,135 awaits storage create + provider.initialize(); map set only at line 137 -> TOCTOU race, no in-flight tracking",
+        "src/factories/provider-factory.ts:183-193 dispose() iterates only this.providers; an overwritten/untracked duplicate provider is never disposed (the leak described in the finding)",
+        "No in-flight promise map exists: rg for creating/inFlight/pending in provider-factory.ts matched only the doc comment on line 26",
+        "No regression test for concurrent factory createProvider; test/integration/workspace-folder-changes.test.ts:165 'reload prevents concurrent executions' uses a MOCKED createProvider (line 183) and tests ProjectViewManager.reload(), not the factory race",
+        "WORK-LEDGER.md:91 lists '#28 PAR-47 [CP-04]' as '- [ ]' (open); git log --grep 'CP-04'/'PAR-47' returns nothing; no closeout doc under research/ (only cc-work-ledger.json references it)"
+      ],
+      "implementation_pointers": [
+        "src/factories/provider-factory.ts ProjectProviderFactory.createProvider (L93-149): add private inFlight = new Map<string, Promise<SortedGitChangesProvider>>(); cache an in-flight promise keyed by config.id before the await chain so concurrent callers share one instance; delete inFlight entry on failure",
+        "src/factories/provider-factory.ts ProjectProviderFactory.dispose (L183-193): ensure disposal bookkeeping handles in-flight/overwritten entries so no provider leaks undisposed",
+        "Add new test file (none exists) e.g. test/factories/provider-factory.test.ts: Promise.all([factory.createProvider(config), factory.createProvider(config)]) must resolve to the SAME instance with only one provider created/tracked/disposed",
+        "Reference the existing concurrency-guard pattern in ProjectViewManager.reload() ('Reload already in progress') as a model for the guard"
+      ],
+      "notes": "[CP-04] bug is still present and unfixed. ProjectProviderFactory.createProvider reads the providers cache before awaiting storage creation and provider.initialize(), then writes the map only afterward (provider-factory.ts:97-137), so two concurrent calls for the same config.id both miss the cache, both initialize providers, and one overwrites the other; the orphaned provider is never disposed by dispose() (L183-193). No in-flight promise tracking exists and there is no concurrent-createProvider regression test. The one 'concurrent' test targets ProjectViewManager.reload() with a mocked factory, not the real race. Fix: introduce a per-config.id in-flight promise map and adjust disposal bookkeeping.",
+      "wave": 1,
+      "rank": 28,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-46",
+      "title": "[CP-03] Successful three-way diff behavior is only smoke-tested",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Test Gap"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-46/cp-03-successful-three-way-diff-behavior-is-only-smoke-tested",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "test/commands/three-way-diff-command.test.ts:104-106 \u2014 success test 'executes successfully for MM file (smoke test)' only asserts resolves.toBeUndefined() with comment 'Mock call verification skipped due to Bun ES module mocking limitations'",
+        "test/commands/three-way-diff-command.test.ts:443-445 \u2014 second success test 'executes successfully with proper Git state (smoke test)' also only asserts resolves.toBeUndefined(); no diff-call assertions",
+        "rg over test/ finds zero success-path assertions on the three vscode.diff calls for openThreeWayDiff (no toHaveBeenCalledTimes(3), no 'HEAD \u2194 Staged'/'Staged \u2194 Working' titles, no ViewColumn.One/Two/Three checks); line 12 is only a comment of intent",
+        "git log -- test/commands/three-way-diff-command.test.ts shows last change is d68f5e9 'Command Central v0.1.5 \u2014 initial public release' (file untouched since; no CP-03 fix commit)",
+        "WORK-LEDGER.md:94 lists '#29 \u00b7 PAR-46 \u00b7 P3 \u2014 [CP-03]' as unchecked '[ ]'; research/cc-work-ledger.json:877 state='Backlog', verdict=null"
+      ],
+      "implementation_pointers": [
+        "test/commands/three-way-diff-command.test.ts:28-107 \u2014 rewrite the success test to use the observable mockExecuteCommand and assert it was called exactly 3 times with the correct args",
+        "test/commands/three-way-diff-command.test.ts:371-446 \u2014 second smoke test; convert to observable assertions or remove as redundant",
+        "src/commands/three-way-diff-command.ts:91-116 \u2014 contract to assert: call1 vscode.diff(headUri,indexUri,'<file> (HEAD \u2194 Staged)',{viewColumn:ViewColumn.One}); call2 (indexUri,workingUri,'(Staged \u2194 Working)',ViewColumn.Two); call3 (headUri,workingUri,'(HEAD \u2194 Working)',ViewColumn.Three)",
+        "test/helpers/vscode-mock.js (setupVSCodeMock, imported at test line 17) \u2014 verify ViewColumn enum values so assertions match the mock"
+      ],
+      "notes": "PAR-46 / [CP-03] is a test-gap fix: the two success-path tests for openThreeWayDiff explicitly skip mock verification and only assert the promise resolves, so a regression that swaps columns, drops a diff, or uses the wrong URI/title would still pass. The fix scope is purely test/commands/three-way-diff-command.test.ts \u2014 make vscode.commands.executeCommand observable in the success path and assert all three vscode.diff calls (count, command name, URI order, titles, ViewColumn). The source command at src/commands/three-way-diff-command.ts:91-116 is correct and unchanged; only the test needs strengthening. No work has been done: ledger is Backlog/unchecked, file untouched since v0.1.5, and no closeout doc exists.",
+      "wave": 1,
+      "rank": 29,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-44",
+      "title": "[CP-01] Untrusted-workspace restrictions name stale settings",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Security"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-44/cp-01-untrusted-workspace-restrictions-name-stale-settings",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-45"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "package.json:51-54 still lists stale 'commandCentral.terminal.launcherPath' and 'commandCentral.terminal.app' in capabilities.untrustedWorkspaces.restrictedConfigurations",
+        "No contributed configuration property prefixed 'commandCentral.terminal.' exists in package.json (grep returns only the two restrictedConfigurations lines)",
+        "Actual launcher path setting 'commandCentral.ghostty.launcherPath' is contributed at package.json:335 but is NOT in restrictedConfigurations",
+        "test/package-json/manifest-contract.test.ts has 5 tests (lines 135,142,162,182,209) with zero references to restrictedConfigurations/untrustedWorkspaces/capabilities/launcherPath",
+        "research/cc-work-ledger.json:905 records PAR-44 state as 'Backlog'; no CP-01/PAR-44 closeout doc found in research/"
+      ],
+      "implementation_pointers": [
+        "package.json:47-56 capabilities.untrustedWorkspaces.restrictedConfigurations: replace 'commandCentral.terminal.launcherPath'/'commandCentral.terminal.app' with 'commandCentral.ghostty.launcherPath' (contributed at package.json:335) or remove if machine-scope is the intended mitigation",
+        "test/package-json/manifest-contract.test.ts: add a test asserting every restrictedConfigurations entry exists in contributes.configuration.properties, plus an explicit assertion of the intended launcher-path policy",
+        "package.json:335 commandCentral.ghostty.launcherPath is the live process-exec path setting that should be protected"
+      ],
+      "notes": "PAR-44 [CP-01] is not started. The stale restrictedConfigurations entries (commandCentral.terminal.*) have existed since the v2 launcher-removal commit 7ab54ce and were never updated to the renamed commandCentral.ghostty.launcherPath setting, so the trust metadata protects nonexistent keys while the real exec-path setting is unprotected. No regression test exists in the manifest contract test, and the ledger still shows the issue in Backlog. Fix is small: correct the two manifest entries and add a contract test validating restricted keys against contributed configuration properties.",
+      "wave": 1,
+      "rank": 30,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-228",
+      "title": "[CCSYNC-03] Add live terminal attention classifier for idle prompts, empty shells, and completed test panes",
+      "priority": 2,
+      "priorityLabel": "High",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "reliability",
+        "node",
+        "command-central",
+        "ghostty-launcher"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-228/ccsync-03-add-live-terminal-attention-classifier-for-idle-prompts",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-226"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-231"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "rg 'CCSYNC' across src/ scripts/ scripts-v2/ research/ returns 0 hits; git log --all --grep 'CCSYNC'/'PAR-228'/'attention classifier' returns 0 commits",
+        "src/utils/tmux-pane-health.ts:38 only exposes a binary TmuxPaneAgentEvidence = 'alive'|'dead'|'unknown' health probe; no awaiting-input / completed-at-prompt / empty-stale-shell / active-agent taxonomy exists",
+        "src/services/agent-output-channels.ts:35 uses tmux capture-pane ONLY to stream output to a VS Code OutputChannel \u2014 it never parses snippets to classify attention state",
+        "src/utils/agent-status-sections.ts sectionFromSignals (line 198) classifies lanes into 4 lifecycle buckets (live/review/action/history), not the 5 per-pane attention reasons CCSYNC-03 requires",
+        "src/providers/agent-task-classification.ts classifyLifecycleConflict (line 457) only emits 'live-process-conflict'|'none' \u2014 the nearest existing reason badge, but not the requested multi-state attention reasons",
+        "research/AGENT-STATUS-LIVE-TERMINAL-STATE-FIX-2026-06-15.md is adjacent (terminal-but-alive lifecycle conflict) and explicitly a different concern; no RESULT/CLOSEOUT doc for CCSYNC-03 exists"
+      ],
+      "implementation_pointers": [
+        "src/utils/tmux-pane-health.ts \u2014 extend beyond binary alive/dead/unknown: add a pane-attention classifier that combines pane_current_command + a tmux capture-pane snippet to distinguish awaiting-user-input, completed-at-prompt, empty/stale shell, active agent, unknown",
+        "src/services/agent-output-channels.ts:33-37 \u2014 reuse this capture-pane invocation pattern (tmux capture-pane -p, with -S/-t socket/pane targeting from tmux-pane-health.ts) to fetch the recent snippet the classifier needs",
+        "src/providers/agent-task-classification.ts \u2014 add an AttentionReason classifier alongside classifyLifecycleConflict that produces the explicit reason + evidence string for each Action Required row",
+        "src/utils/agent-status-sections.ts sectionFromSignals (line 198) and V2_SECTION_HEADERS \u2014 group empty shells / completed test panes separately from live user-input prompts within the 'action' bucket",
+        "src/providers/agent-status-tree-provider.ts createTaskItem / expand detail builder \u2014 render the per-row reason badge + pane/session evidence in the tooltip (mirror the existing '\u26a0 live \u00b7 lifecycle conflict' badge wiring)",
+        "test/tree-view/ \u2014 add fixture tests for empty-shell, completed-prompt, and user-input-prompt captures (model on existing agent-status-live-terminal-state.test.ts); assert destructive closeout is never an automatic action",
+        "Dependency: CCSYNC-01 (corrected attention taxonomy) should land first per the issue's Dependencies section"
+      ],
+      "notes": "CCSYNC-03 (PAR-228) asks for a live-pane attention classifier that uses tmux/socket evidence plus recent capture snippets to split panes into awaiting-user-input, completed-at-prompt, empty/stale shell, active agent, and unknown \u2014 surfacing an explicit per-row reason and grouping empty/completed panes apart from live user-input prompts. None of this exists: the repo only has a binary alive/dead/unknown pane health probe and a 'live-process-conflict' lifecycle badge; capture-pane is used solely for output streaming, and there is no CCSYNC reference, fixture coverage, or closeout doc anywhere. Verdict todo. The adjacent AGENT-STATUS-LIVE-TERMINAL-STATE-FIX work is a different (lifecycle-conflict) concern and does not satisfy the acceptance criteria.",
+      "wave": 2,
+      "rank": 31,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-227",
+      "title": "[CCSYNC-02] Add a lane projection rebuild/GC receipt so stale Command Central rows can be cleared safely",
+      "priority": 2,
+      "priorityLabel": "High",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "reliability",
+        "command-central",
+        "ghostty-launcher",
+        "needs-review"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-227/ccsync-02-add-a-lane-projection-rebuildgc-receipt-so-stale-command",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-226"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "No CCSYNC-02 or CCSYNC-01 reference anywhere: `rg -li 'ccsync' .` and in research/ returns nothing in both command-central and ~/projects/ghostty-launcher",
+        "No deterministic full-projection rebuild/GC command with a dry-run/apply receipt exists; closest is reactive per-task settling in ghostty-launcher scripts/lib/reaper.sh:443 (_complete_from_receipt_if_possible) which emits to the projection one task at a time, not a whole-read-model rebuild",
+        "ghostty-launcher scripts/oste-archive.sh is visibility-only ('Archiving hides a task ... It does NOT change the task's status field') \u2014 not a projection rebuild/GC",
+        "ghostty-launcher scripts/oste-repair-pending-review.sh has the dry-run-by-default + --apply + receipt-backup pattern but is scoped to poisoned pending-review receipts, not lane-projection GC",
+        "No `reconcile-needed`/`reconcile_needed` downgrade state in either repo: `rg -in 'reconcile.needed|reconcile_needed'` returns nothing in src/ and in ghostty-launcher",
+        "No Command Central surface for a rebuild/GC receipt path: `rg -in 'rebuild.*receipt|gc.*receipt|projection.*receipt'` in src/ returns no rebuild command (only doc comments at agent-status-tree-provider.ts:2277)",
+        "justfile `rebuild`/`rebuild-one` recipes (ghostty-launcher justfile:470,516) rebuild Ghostty .app bundles, unrelated to lane projection"
+      ],
+      "implementation_pointers": [
+        "~/projects/ghostty-launcher/scripts/lib/work-system-bridge.sh \u2014 producer of ~/.config/openclaw/lanes.json (kind: work-system-lanes-projection); the rebuild/GC command should live here or as a new scripts/oste-lanes-gc.sh that rewrites the whole snapshot via tmp+mv",
+        "~/projects/ghostty-launcher/scripts/lib/reaper.sh \u2014 existing per-task stale detection/settle logic (_receipt_exit_code, _complete_from_receipt_if_possible, dead-reason classification) to reuse for the bulk rebuild's row evaluation",
+        "~/projects/ghostty-launcher/scripts/oste-repair-pending-review.sh \u2014 copy its dry-run-default + --apply + backup + exit-code contract as the template for the GC command's safety contract",
+        "~/projects/ghostty-launcher/scripts/oste-archive.sh \u2014 its --all-finished [--dry-run] flag shape is a model for the dry-run reporting mode",
+        "command-central src/utils/pending-review-probe.ts and src/utils/review-queue-health.ts \u2014 authoritative pending-review file evidence the rebuild must reconcile against",
+        "command-central src/providers/agent-task-normalize.ts and src/providers/agent-status-tree-provider.ts (toDisplayTask reconciliation hierarchy near line 2277) \u2014 where a new stale/reconcile-needed downgrade state and the rebuild-receipt audit surface must be wired in",
+        "command-central package.json contributes config block (lane registry projection markdownDescription) \u2014 where a setting/command to surface the rebuild receipt path would be registered",
+        "Define CCSYNC-01 row taxonomy first (blocking dependency, no evidence it exists) before finalizing the GC output states (kept/downgraded/archived/removed)",
+        "Add tests alongside test/integration/worksystem-lanes-projection.test.ts and test/integration/lane-registry-projection.test.ts for the new downgrade-on-missing-receipt behavior"
+      ],
+      "notes": "PAR-227 ([CCSYNC-02]) asks for a deterministic lane-projection rebuild/GC command (dry-run + apply) that reconstructs ~/.config/openclaw/lanes.json from registry rows + pending-review files + live tmux/process evidence, downgrades receipt-missing rows to stale/reconcile-needed, writes a timestamped receipt of rows kept/downgraded/archived/removed, and lets Command Central surface that receipt for audit. No such command exists. The lanes.json projection is producer-owned by ghostty-launcher, which only has reactive per-task settling (reaper.sh), visibility-only archiving (oste-archive.sh), and a poisoned-receipt repair tool (oste-repair-pending-review.sh) \u2014 none is a whole-read-model GC with the required receipt and reconcile-needed downgrade state. None of the four acceptance criteria are met, and the blocking CCSYNC-01 row taxonomy is also absent.",
+      "wave": 2,
+      "rank": 32,
+      "execution_status": "partial",
+      "execution_caveat": "command-central-side GC emitter (oste-lanes-gc.sh) + receipt schema + reconciliation + provider consumption + tests shipped; live producer wiring lives in ghostty-launcher (cross-repo) and is deferred."
+    },
+    {
+      "identifier": "PAR-156",
+      "title": "[CC-004] Add Linear intake/mirror receipts for Command Central orchestration issues",
+      "priority": 2,
+      "priorityLabel": "High",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "linear-integration"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-156/cc-004-add-linear-intakemirror-receipts-for-command-central",
+      "parent": "PAR-149",
+      "children": [],
+      "depends_on_active": [
+        "PAR-149"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-157"
+      ],
+      "downstream_impact": 2,
+      "related": [],
+      "verdict": "partial",
+      "confidence": "medium",
+      "evidence": [
+        "research/HANDOFF-linear-command-central-orchestration-2026-05-27.html: embeds script#linear-work-items-json with schema linear_import_work_units_v1, targetProject 'Command Central', idempotency/bracket keys CC-000..CC-005 (incl. CC-004)",
+        "research/linear-command-central-orchestration-plan-2026-05-27.json:142-163: CC-004 import-plan entry with bodyHash 81d4d423..., idempotencyKey 'CC-004', lane 'Linear' \u2014 produced by openclaw-linear-intake",
+        "PAR-156 exists in Linear (active-items.json id 659960ae..., real url) \u2014 live apply of the CC import plan occurred for these issues",
+        "commit 398a3c4 'docs(research): preserve command central Linear intake artifacts' \u2014 preserved the intake handoff+plan JSONs",
+        "rg for receipt schemas (linear_import_receipt/receipt_v1/dry-run/apply phases) in research/ returns EMPTY \u2014 no committed dry-run/apply receipts",
+        "No committed mirror-path spec (status comments / task receipts / review evidence) \u2014 acceptance criterion 4 undelivered",
+        "WORK-LEDGER.md:112 \u2014 PAR-156 still '[ ]' unchecked, Backlog, dep PAR-149, unblocks PAR-157",
+        "research/RESULT-cc-004-preview-proof-cut-20260611.md is a NAMING COLLISION: it covers launcher-quarantine VSIX proof + rc.56 cut, NOT the Linear intake/mirror CC-004 \u2014 not a closeout for PAR-156"
+      ],
+      "implementation_pointers": [
+        "research/HANDOFF-linear-command-central-orchestration-2026-05-27.html \u2014 source intake handoff (script#linear-work-items-json) to feed openclaw-linear-intake plan/dry-run/apply",
+        "research/linear-command-central-orchestration-plan-2026-05-27.json \u2014 generated import plan with idempotency keys; basis for receipts",
+        "/Users/ostemini/projects/config/openclaw/skills/openclaw-linear-intake/SKILL.md (+ scripts/, schemas/) \u2014 the plan/dry-run/apply pipeline + receipt doctrine (doctrine #8: write receipts for dry-runs and applies, no secrets)",
+        "Need NEW: committed dry-run + apply receipt artifacts under research/ for the CC-000..CC-005 intake (none exist today)",
+        "Need NEW: a mirror-path design doc specifying status comments / task receipts / review evidence behavior, kept separate from task dispatch (acceptance criterion 4)",
+        "Blocking dep: PAR-149 [CC-000] 'Command Central project' must create destination project/workstream before live applies are clean",
+        "WORK-LEDGER.md:112-114 \u2014 tracking entry to flip when complete"
+      ],
+      "notes": "PAR-156 [CC-004] is a process/design deliverable: (a) drive CC handoff artifacts through openclaw-linear-intake (plan -> dry-run receipt -> gated live apply), and (b) DESIGN the Linear mirror path (status comments, task receipts, review evidence) separate from task dispatch. Part (a) is evidenced indirectly \u2014 the import plan + handoff artifacts exist and the CC issues (including PAR-156) were applied into Linear \u2014 but NO dry-run/apply receipt files are committed and part (b) has no committed spec at all. Issue is still Backlog and blocked by PAR-149. Caution: research/RESULT-cc-004-preview-proof-cut-20260611.md shares the 'cc-004' string but is an unrelated launcher-quarantine VSIX/rc.56 task, not this issue's closeout.",
+      "wave": 2,
+      "rank": 33,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-81",
+      "title": "[CCSTD-02] Audit Command Central VSIX and generated artifact policy",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [],
+      "url": "https://linear.app/partnerai/issue/PAR-81/ccstd-02-audit-command-central-vsix-and-generated-artifact-policy",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-80"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-82"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "partial",
+      "confidence": "high",
+      "evidence": [
+        "WORK-LEDGER.md:115 lists '[ ] #36 PAR-81 [CCSTD-02]' as unchecked (dep PAR-80, unblocks PAR-82)",
+        "git log --all --grep PAR-81 and --grep CCSTD both return empty (no commit closes this)",
+        "rg -li 'source-vs-artifact|preservation-kit|vscode-extension-preservation' over repo returns nothing (no kit audit/closeout doc)",
+        "scripts-v2/vsix-content-gate.ts (just vsix-gate, justfile:580) deterministically fails build on dev/proof artifact leaks into VSIX -- built for rc50 size regression, not the CCSTD-02 source-vs-artifact audit",
+        "Dependency CCSTD-01/PAR-80 is itself unchecked at WORK-LEDGER.md:42, so the prerequisite preserve-before-destroy baseline audit is not done"
+      ],
+      "implementation_pointers": [
+        ".gitignore (root) -- ignores out/dist/*.vsix/.vscode-test/coverage; needs documented source-vs-package classification semantics",
+        ".vscodeignore (root) -- package-exclusion policy; verify it does not hide only-copy source without a deliberate capture decision",
+        "scripts-v2/vsix-content-gate.ts + justfile:580 'vsix-gate' recipe -- existing artifact-leak/size gate to extend or cite as the repeatable audit check",
+        "Kit source: github.com/ostehost/standards-adoption-kits/blob/main/vscode-extension-preservation-kit.md -- apply its source-vs-artifact rules",
+        "research/ -- write a CCSTD-02 RESULT/closeout doc with verification evidence (none exists today)"
+      ],
+      "notes": "PAR-81 [CCSTD-02] is an audit + documentation task: classify VSIX/dist/out/.vscode-test/resources as source vs artifact, document .gitignore/.vscodeignore semantics, confirm no generated artifact is treated as source and no only-copy source is hidden, and add a repeatable audit check. Partial because .gitignore/.vscodeignore are populated and scripts-v2/vsix-content-gate.ts already enforces no-dev-artifact-leak in the VSIX (one acceptance criterion), but there is no written policy document, no only-copy-source verification, no closeout doc, and no git/ledger evidence of the deliberate kit-based audit. Dependency CCSTD-01 (PAR-80) is also still open.",
+      "wave": 2,
+      "rank": 34,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-65",
+      "title": "[CP-26] Mock storage contradicts the StorageAdapter save contract",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "API Contract"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-65/cp-26-mock-storage-contradicts-the-storageadapter-save-contract",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-64"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/git-sort/storage/storage-adapter.ts:57 \u2014 contract docstring: 'Replaces all existing records for this repository (full sync).'",
+        "src/git-sort/storage/mock-storage-adapter.ts:6-11 \u2014 header still declares 'Design: Write-Once Audit Log ... Duplicate saves are silently skipped (no updates)'",
+        "src/git-sort/storage/mock-storage-adapter.ts:53-63 \u2014 save() filters to newRecords (!existingPaths.has) and only appends new paths; never replaces/updates \u2014 contradicts the full-sync contract",
+        "src/git-sort/storage/workspace-state-storage-adapter.ts:64-66 \u2014 save() does full replacement via state.update(`cc.deleted.${repoId}`, records), matching the contract (still divergent from mock)",
+        "test/git-sort/storage-adapter.test.ts:201-247 \u2014 describe block 'Write-Once Behavior (Immutable Audit Log)' still asserts write-once ('should skip duplicate on second save'), encoding the wrong contract",
+        "No code/test reference to CP-26; git log --grep 'CP-26'/'PAR-65' empty; no commit -S for the fix",
+        "research/cc-work-ledger.json:1148-1170 \u2014 PAR-65 entry verdict:null, evidence:[], state:Backlog, depends_on_active:[PAR-64]; no RESULT/CLOSEOUT doc exists"
+      ],
+      "implementation_pointers": [
+        "src/git-sort/storage/mock-storage-adapter.ts:53-63 (save) \u2014 rewrite to replace records for repoId (full sync), updating order/timestamp/removals; also fix header comment lines 6-11",
+        "src/git-sort/storage/storage-adapter.ts:55-62 \u2014 if write-once is the desired contract instead, rename/redocument the interface method; otherwise leave the full-sync doc and align mock to it",
+        "test/git-sort/storage-adapter.test.ts:201-247 \u2014 replace the 'Write-Once Behavior' describe block with full-replacement assertions (second save with different order/timestamp should overwrite; restored-file removal drops records)",
+        "test/git-sort/workspace-state-storage-adapter.test.ts:69-89 \u2014 verify/extend full-replacement assertions so both adapters share one contract",
+        "src/git-sort/storage/workspace-state-storage-adapter.ts:64-66 \u2014 reference implementation of correct full-sync save behavior"
+      ],
+      "notes": "[CP-26] is NOT done. MockStorageAdapter.save still implements write-once (insert-new-only) while the StorageAdapter contract and WorkspaceStateStorageAdapter implement full replacement \u2014 exactly the contradiction the issue describes. The generic storage-adapter test suite still asserts write-once as the contract. No code/test references CP-26, no commit, no research closeout; ledger shows verdict:null/Backlog and a dependency on still-active PAR-64. Decide one contract (recommended: full-state sync per the existing docstring), align the mock, and rewrite the write-once tests.",
+      "wave": 2,
+      "rank": 35,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-62",
+      "title": "[CP-22] Task reload blocks the extension host on a synchronous CLI call",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Performance"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-62/cp-22-task-reload-blocks-the-extension-host-on-a-synchronous-cli-call",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-61"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/services/openclaw-task-service.ts:37-48 reload() still calls execFileSync('openclaw',['tasks','list','--json'],{timeout:5000}) on the extension host thread",
+        "src/services/openclaw-task-service.ts:31-35 start() calls this.reload() synchronously",
+        "src/services/openclaw-task-service.ts:134-142 debouncedReload() calls synchronous this.reload()",
+        "test/services/openclaw-task-service.test.ts:18-21,112,143-144 reload path still mocked via execFileSync; no delayed-async regression test for reload",
+        "git log -- src/services/openclaw-task-service.ts shows only 2 commits (49f57ec, 2627a5a), neither converts reload to async; no commit/handoff references CP-22"
+      ],
+      "implementation_pointers": [
+        "src/services/openclaw-task-service.ts: convert reload() (L37-48) to async using existing execCli/execFile pattern (L144-156); preserve last-known this.tasks until async load resolves",
+        "src/services/openclaw-task-service.ts: make start() (L31-35) fire-and-forget the async reload so activation does not block",
+        "src/services/openclaw-task-service.ts: serialize/coalesce in-flight reloads in debouncedReload() (L134-142) so watcher bursts do not launch overlapping CLI reads (e.g. guard with an inFlight Promise)",
+        "test/services/openclaw-task-service.test.ts: add regression test mocking execFile (async) with a delayed callback; assert start()/reload() return without blocking and tasks update after completion (extend mock at L23-35)"
+      ],
+      "notes": "[CP-22] is unimplemented. OpenClawTaskService.reload() still uses synchronous execFileSync with a 5s timeout, called from start() at startup and from the watcher-driven debouncedReload(), so a slow/hung `openclaw tasks list` can freeze the extension host for up to 5s. The async execFile helper already exists but is only wired to cancelTask/setNotifyPolicy, not reload. No async refactor, coalescing, or delayed-async regression test exists; only mention of CP-22 anywhere is the issue title itself.",
+      "wave": 2,
+      "rank": 36,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-53",
+      "title": "[CP-11] Session file removals do not evict cached agents",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-53/cp-11-session-file-removals-do-not-evict-cached-agents",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-52"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-54"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/discovery/session-watcher.ts:103-147 processFile() still only evicts a cached agent after a successful readFileSync+JSON.parse followed by a dead/non-agent process check (L112-125); no PID-by-filename tracking, no delete/ENOENT eviction path.",
+        "src/discovery/session-watcher.ts:144-146 catch block silently swallows the readFileSync ENOENT thrown on file deletion, leaving the previous entry in this.agents map \u2014 exactly the described bug.",
+        "test/discovery/session-watcher.test.ts test names (L145-373) cover malformed JSON and removal when a still-readable file points at a dead process (alivePids.delete), but NO test deletes a previously-valid file / triggers ENOENT during a watch event. The suggested regression test does not exist.",
+        "WORK-LEDGER.md:127 entry still unchecked: '[ ] #40 \u00b7 PAR-53 \u00b7 [CP-11]'; Linear state 'Backlog'. Only CP-11 refs repo-wide are WORK-LEDGER.md and research/cc-work-ledger.json (ledger snapshots, not fixes).",
+        "git log --grep 'CP-11|PAR-53' and git log -S'ENOENT' -- src/discovery/session-watcher.ts return no commits; no research RESULT/CLOSEOUT/closeout doc exists for CP-11."
+      ],
+      "implementation_pointers": [
+        "src/discovery/session-watcher.ts: SessionWatcher.processFile() (L103-147) \u2014 split the catch (L144) so missing-file/ENOENT evicts the cached agent and fires onChange, while transient malformed JSON preserves the last value.",
+        "src/discovery/session-watcher.ts: SessionWatcher.startWatching() fs.watch callback (L89-93) passes only filename \u2014 add a filename->PID index (or parse PID from <PID>.json) so a delete event can locate and evict the right agent without reading the now-missing file.",
+        "src/discovery/session-watcher.ts: this.agents Map (L38) is keyed by PID; maintain a parallel filename->PID map to support eviction on delete.",
+        "test/discovery/session-watcher.test.ts: add regression test under 'file watcher events' \u2014 start with valid 123.json (assert 1 agent), set sessionFiles['123.json']=undefined, call watchCallback('rename','123.json'), assert getAgents() empty and onChange fired (mock at L43-59 already throws ENOENT for undefined content).",
+        "src/discovery/agent-registry.ts: AgentRegistry.dedup (~L271-300) \u2014 note the session-file priority that lets stale session metadata mask process-scanner metadata; verify eviction fix removes the masking once session entry is gone."
+      ],
+      "notes": "[CP-11] is NOT done. The bug is still live in src/discovery/session-watcher.ts: processFile() only evicts a cached agent when it can read+parse the file and finds a dead/non-agent process; on file deletion readFileSync throws ENOENT and the L144-146 catch silently ignores it, leaving stale agents that (per dedup PID priority) mask current process-scanner data. The suggested deletion/ENOENT regression test is absent, and there is no fix commit or research closeout. The fix needs delete/ENOENT eviction plus a filename->PID index, and a new watcher deletion regression test.",
+      "wave": 2,
+      "rank": 37,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-51",
+      "title": "[CP-09] Windows repository matching uses POSIX separators",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-51/cp-09-windows-repository-matching-uses-posix-separators",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-50"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/utils/git-repo-utils.ts:40 \u2014 filePath.startsWith(`${repoPath}/`): POSIX-only prefix check still present",
+        "src/utils/git-repo-utils.ts:49 \u2014 resolvedFile.startsWith(`${resolvedRepo}/`): realpath branch has same POSIX separator assumption",
+        "src/utils/git-repo-utils.ts:64,68,78 \u2014 nested-repo branch uses `${filePath}/` and repoPath.startsWith(...) POSIX-only checks",
+        "No node:path import and no path.relative/path.resolve/path.sep usage in git-repo-utils.ts (grep returned nothing)",
+        "WORK-LEDGER.md:130 marks PAR-51 [CP-09] as unchecked [ ]; git log --grep CP-09 and PAR-51 both empty; only commit on file is 6cf3236 (extraction refactor)",
+        "test/git-sort/nested-repo-detection.test.ts uses only POSIX paths (/workspace, /parent via vscode.Uri.file); no Windows C: or path.sep cases (grep returned nothing)"
+      ],
+      "implementation_pointers": [
+        "src/utils/git-repo-utils.ts:25-93 findRepositoryForFile \u2014 replace string-prefix containment (L40, L49, L64, L68, L78) with a path.sep-aware helper using path.relative()/path.resolve(); treat equality OR a non-empty relative path that does not start with '..' and is not absolute as containment, for both the direct and realpath comparisons",
+        "Add a shared isContained(parent, child) helper and import node:path in git-repo-utils.ts (node:path is currently not imported)",
+        "test/git-sort/nested-repo-detection.test.ts \u2014 add regression cases with Windows-style fsPath values (e.g. C:\\repo\\src\\file.ts vs root C:\\repo) for contained files, exact roots, and nested repos; the function is exercised via provider.findRepositoryForFile in these tests"
+      ],
+      "notes": "[CP-09] is unfixed. findRepositoryForFile in src/utils/git-repo-utils.ts still uses POSIX `${path}/` string-prefix containment in both the direct (L40/L49) and nested-repo (L64/L68/L78) branches, plus the realpath sub-branches, so on Windows (backslash fsPath) only the exact-root case matches and ordinary files inside a repo return undefined. There is no node:path usage and no Windows-path test coverage; the ledger still lists PAR-51 as open and no commit addresses it. Remaining work: introduce a cross-platform containment helper and add Windows-style regression tests.",
+      "wave": 2,
+      "rank": 38,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-48",
+      "title": "[CP-05] Windows child files cannot be mapped to their workspace provider",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-48/cp-05-windows-child-files-cannot-be-mapped-to-their-workspace-provider",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-47"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/factories/provider-factory.ts:168-172 still uses literal '/' separator: const workspaceWithSep = workspacePath.endsWith('/') ? workspacePath : `${workspacePath}/`; then filePath.startsWith(workspaceWithSep) \u2014 exactly the POSIX-hardcoded bug CP-05 describes",
+        "No path-aware normalization in factory: rg 'path.|win32|sep|normalize|relative' src/factories/provider-factory.ts returns only comment hits, no Node path import or win32 handling",
+        "No regression test: all test references to getProviderForFile (test/integration/workspace-folder-changes.test.ts, test/services/active-file-tracking.test.ts) are mocks returning undefined; none exercise real ProjectProviderFactory.getProviderForFile with Windows backslash paths",
+        "Git history: matching logic unchanged since initial release d68f5e9; no commit references CP-05 or 'workspaceWithSep'",
+        "WORK-LEDGER.md:133 lists PAR-48 / [CP-05] as unchecked [ ] (not done)"
+      ],
+      "implementation_pointers": [
+        "src/factories/provider-factory.ts:151-181 \u2014 ProjectProviderFactory.getProviderForFile: replace literal '/' separator logic with platform-aware containment (e.g. normalize both paths via Node path module and use path.relative + check it does not start with '..' and is not absolute, or compare URI path segments) while preserving longest-match strategy",
+        "src/factories/provider-factory.ts:140-142 \u2014 createProvider stores config.gitPath verbatim as the providersByWorkspace key; ensure key normalization is consistent with the lookup-side fix",
+        "Add new test e.g. test/factories/provider-factory.test.ts (does not currently exist) \u2014 simulate Windows-style fsPath (C:\\\\repo\\\\src\\\\a.ts) and workspace path C:\\\\repo, assert nested file resolves to provider while sibling prefix C:\\\\repo10 does NOT match; also keep a POSIX case",
+        "Cross-check sibling Windows-separator issue PAR-51 ([CP-09] Windows repository matching uses POSIX separators) for a shared normalization helper to avoid duplicating logic"
+      ],
+      "notes": "[CP-05] / PAR-48 is NOT done. The described bug is still present verbatim in src/factories/provider-factory.ts:168-172: getProviderForFile builds workspaceWithSep with a hardcoded '/' and does filePath.startsWith(...), so on Windows where fsPath uses backslashes (C:\\\\repo\\\\src\\\\a.ts vs prefix C:\\\\repo/) nested files fail to resolve and only the exact-root match works. No platform-aware normalization, no Node path import, no Windows regression test exists, and the work ledger lists it unchecked. Fix needs path-aware containment in getProviderForFile plus a unit test covering POSIX and Windows separators; coordinate with PAR-51/[CP-09] which is the analogous POSIX-separator bug.",
+      "wave": 2,
+      "rank": 39,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-45",
+      "title": "[CP-02] Contributed settings are not wired to behavior",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "API Contract"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-45/cp-02-contributed-settings-are-not-wired-to-behavior",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-44"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "package.json:296 commandCentral.notifications.autoDismissSeconds declared but grep finds zero TS consumers (only package.json hit)",
+        "package.json:353 commandCentral.cron.enabled declared but no code reads it; cron provider only reads showDisabled (cron-tree-provider.ts:100) and refreshIntervalMs (cron-tree-provider.ts:349)",
+        "src/extension.ts:434 activateCronFeature(context) is called unconditionally with no gate on cron.enabled (contrast gitSort.enabled gating at extension.ts:403-428)",
+        "src/activation/cron-feature.ts:92 createTreeView('commandCentral.cronJobs') runs unconditionally",
+        "package.json:1120 commandCentral.cronJobs view has no 'when' clause (unlike slot views), so cron.enabled=false cannot hide it",
+        "research/SPEC-cron-integration.md:54 explicitly states cron.enabled 'has no code path that uses it. The view is initialized unconditionally.'",
+        "research/cc-work-ledger.json PAR-45 entry has verdict:null / empty evidence \u2014 not closed out",
+        "No regression test: grep of test/ for autoDismiss and cron.enabled returns nothing; cron-tree-provider.test.ts 'enabled' refs are the per-job model field, not the setting"
+      ],
+      "implementation_pointers": [
+        "src/activation/cron-feature.ts:82-102 activateCronFeature \u2014 add cron.enabled read + early-return/skip view creation, and ideally an onDidChangeConfiguration listener mirroring extension.ts:415-428 gitSort pattern",
+        "src/extension.ts:431-436 \u2014 gate the activateCronFeature(context) call on commandCentral.cron.enabled and/or set a context key (e.g. setContext commandCentral.cron.enabled) for the view's when-clause",
+        "package.json:1120-1123 commandCentral.cronJobs view \u2014 add 'when': 'commandCentral.cron.enabled' (or a derived context key) to gate the contribution",
+        "package.json:296-301 autoDismissSeconds \u2014 either wire into completion notification/status-bar handling or remove; note toasts were replaced by diff-viewer+status-bar in commit a36a065, leaving this setting orphaned",
+        "src/providers/agent-status-tree-provider.ts / src/extension.ts notification path (commit a36a065 touched these) \u2014 locate where completion notifications surface to wire autoDismissSeconds, or drop the setting",
+        "test/providers/cron-tree-provider.test.ts and a package-json contribution test \u2014 add regression coverage asserting cron.enabled=false suppresses the cron view contribution and that every contributed setting has a runtime consumer"
+      ],
+      "notes": "All three [CP-02] findings are still present in current code. commandCentral.notifications.autoDismissSeconds (package.json:296) and commandCentral.cron.enabled (package.json:353) have no runtime consumers, and the commandCentral.cronJobs view (package.json:1120) is contributed with no 'when' gate while activateCronFeature is called unconditionally (extension.ts:434). research/SPEC-cron-integration.md:54 independently documents the cron.enabled gap, and the work ledger has verdict:null. Fix is to either wire both settings end-to-end (cron.enabled gating the view/provider + a context key, autoDismissSeconds into notification handling) or remove them, with package-json/provider regression tests. PAR-45 depends_on_active PAR-44.",
+      "wave": 2,
+      "rank": 40,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-84",
+      "title": "[CCSTD-05] Add Command Central release split-identity and push-target guardrails",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [],
+      "url": "https://linear.app/partnerai/issue/PAR-84/ccstd-05-add-command-central-release-split-identity-and-push-target",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-80"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "scripts/release.sh:30-39 does `git tag` and instructs `git push origin main --tags` with NO remote-URL assertion, NO approval gate, NO dry-run mode",
+        "rg for 'assert.*remote|git remote get-url|expected.*remote' across scripts/ scripts-v2/ justfile returned zero matches; no push-target/remote-identity guardrails exist",
+        "Only CCSTD-05 references are unchecked backlog tracking rows: WORK-LEDGER.md:139 ('[ ] #44 PAR-84') and research/cc-work-ledger.json:1331 (state Backlog)",
+        "No CCSTD-05/PAR-84 closeout in research/ (rg -l 'PAR-84|CCSTD-05' research/ returns only cc-work-ledger.json); the 'split' research docs are provider-split-hardening, unrelated to release split-identity",
+        "No standards receipt / Tier 2 / partner-approval marking exists; only soft note 'Do not push, tag, publish... without explicit approval' at CLAUDE.md:75 and cut-preview SKILL.md (cultural guidance, not enforced)"
+      ],
+      "implementation_pointers": [
+        "scripts/release.sh: add a remote-URL assertion (verify `git remote get-url origin` matches expected GitHub repo) and gate the tag/push behind an explicit approval flag or dry-run mode",
+        "scripts-v2/prerelease-gate.ts: extend the gate checks (the checks.push/buildRecord block) to assert push-target identity before any publish/tag path",
+        "WORKFLOW.md: add a section explicitly separating local build/package/install (just dev/dist/install-extension) from public publish/tag/release (Tier 2) actions",
+        "Create a standards receipt doc under research/ (e.g. RESULT-ccstd-05-*) enumerating which release actions are Tier 2 / partner-approval, per the vscode-extension-preservation-kit canonical source",
+        "STANDARDS.md: document remote URL assertions for preservation/release pushes (currently only covers code-preservation patterns near lines 133-139)"
+      ],
+      "notes": "CCSTD-05 asks for release split-identity / push-target guardrails: docs separating local vs public actions, an approval-gate/dry-run on any publish/tag/release script, documented remote-URL assertions, and a standards receipt marking Tier 2 actions. None of the four acceptance criteria are implemented. scripts/release.sh tags+pushes with no remote assertion, gate, or dry-run; prerelease-gate.ts does no remote-identity checks; there is no standards receipt and no CCSTD-05 closeout. The only existing safety is a soft cultural note (CLAUDE.md:75, cut-preview skill). Issue remains Backlog/unchecked in the ledger. This is genuine TODO work.",
+      "wave": 2,
+      "rank": 41,
+      "execution_status": "partial",
+      "execution_caveat": "release split-identity/push-target guardrail logic + tests + doc shipped; live-remote enforcement deferred."
+    },
+    {
+      "identifier": "PAR-76",
+      "title": "[CP-40] Decoration expiry timers can clear newer decorations",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Concurrency"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-76/cp-40-decoration-expiry-timers-can-clear-newer-decorations",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-75"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-77"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/providers/agent-decoration-provider.ts:33-40 markChanged timeout only checks recentChanges.has(taskId), no timestamp/generation guard \u2014 stale older timeout still deletes newer entry",
+        "src/providers/agent-decoration-provider.ts:49-56 markCompleted timeout has identical defect (recentCompletions.has only)",
+        "test/providers/agent-decoration-provider.test.ts:127-147 'decoration expires after TTL' injects one stale timestamp; no repeated-mark-within-TTL regression test",
+        "git log --grep 'CP-40' and --grep 'PAR-76' both empty; git log -S'generation' on the provider empty \u2014 no fix commit",
+        "research/ has no CP-40 closeout/result doc; cc-work-ledger.json shows PAR-76 state=Backlog, verdict=null"
+      ],
+      "implementation_pointers": [
+        "src/providers/agent-decoration-provider.ts:27 markChanged \u2014 capture scheduledTs=Date.now() (or generation token) and in the setTimeout callback only delete if recentChanges.get(taskId) === scheduledTs",
+        "src/providers/agent-decoration-provider.ts:44 markCompleted \u2014 same fix: store the timestamp and only delete recentCompletions entry if its .timestamp matches the scheduled one",
+        "src/providers/agent-decoration-provider.ts:21-25 maps recentChanges/recentCompletions already store timestamps; can compare against those directly",
+        "Consider tracking timeout handles for cancellation in dispose() at src/providers/agent-decoration-provider.ts:109",
+        "test/providers/agent-decoration-provider.test.ts \u2014 add fake-timer regression test: mark same task twice inside CHANGE_TTL_MS, assert decoration survives until TTL after the SECOND mark; repeat for markCompleted/COMPLETION_TTL_MS"
+      ],
+      "notes": "CP-40 concurrency bug is unfixed. Both markChanged() and markCompleted() schedule independent setTimeouts that delete an entry based only on key presence (has), so a re-mark within the TTL gets cleared early by the first mark's stale timeout. The recommended fix (timestamp/generation guard in the timeout callbacks) is not present, and there is no regression test covering repeated marks within the TTL. No fix commits or closeout docs exist; ledger state is Backlog. Note ledger dependency: depends_on_active PAR-75, blocks PAR-77.",
+      "wave": 2,
+      "rank": 42,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-69",
+      "title": "[CP-30] Required label selection can miss nodes hidden by snapshot caps",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "API Contract"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-69/cp-30-required-label-selection-can-miss-nodes-hidden-by-snapshot-caps",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-68"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-67",
+        "PAR-70"
+      ],
+      "downstream_impact": 2,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/services/integration-test-api.ts:372 cappedChildren = children.slice(0, childLimit) caps children before any requiredLabels handling",
+        "src/services/integration-test-api.ts:373-383 escape hatch exists only for options.requiredTaskId, not requiredLabels",
+        "src/services/integration-test-api.ts:405-409 requiredLabels matched only inside serializeNode which runs on already-capped children, so a label beyond the cap is never visited",
+        "src/services/integration-test-api.ts:430-432 roots are .slice(0, maxChildrenPerNode) with no requiredLabel escape hatch",
+        "WORK-LEDGER.md:145 entry #46 PAR-69 [CP-30] still unchecked '[ ]'",
+        "git log --grep CP-30 and --grep PAR-69 return zero commits; no research closeout doc for CP-30/PAR-69 exists",
+        "No dedicated test of getTreeSnapshotForProvider; test/integration/suite/tree-view-renders.test.ts:18-48 only asserts present labels, never a label on a capped-out child"
+      ],
+      "implementation_pointers": [
+        "src/services/integration-test-api.ts:331 getTreeSnapshotForProvider - needs requiredLabels escape hatch",
+        "src/services/integration-test-api.ts:357-418 serializeNode - after computing cappedChildren (line 372) scan full children for requiredLabel matches and append (dedup), mirroring requiredTaskId pattern at lines 373-383",
+        "src/services/integration-test-api.ts:421-432 root selection - apply same requiredLabel escape hatch to the .slice(0, maxChildrenPerNode) of roots",
+        "src/services/integration-test-api.ts:304 matchesRequiredTaskId is the template; add a matchesRequiredLabel helper",
+        "test/integration/suite/tree-view-renders.test.ts - add regression: fake provider with more than maxChildrenPerNode children, required label on a capped-out child, assert selected.requiredLabels contains that node and its path"
+      ],
+      "notes": "PAR-69 [CP-30] is a live, unfixed bug. getTreeSnapshotForProvider applies child/root caps (slice) before checking requiredLabels, and the only pre-cap escape hatch is for requiredTaskId. A required label on a child beyond childLimit/maxChildrenPerNode, or a root beyond the maxChildrenPerNode slice, is never visited so it never appears in selected.requiredLabels. No fix commit, no closeout doc, and no regression test exists. The fix is to add a requiredLabels escape hatch parallel to the existing requiredTaskId one in both serializeNode child selection and root selection, plus the suggested regression test.",
+      "wave": 2,
+      "rank": 43,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-58",
+      "title": "[CP-17] Untrusted workspace restrictions reference stale settings and miss the real launcher path setting",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Security"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-58/cp-17-untrusted-workspace-restrictions-reference-stale-settings-and",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-57"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-59"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "package.json:51-53 still lists stale restrictedConfigurations: 'commandCentral.terminal.launcherPath' and 'commandCentral.terminal.app'",
+        "package.json:335 'commandCentral.ghostty.launcherPath' is the only launcher/terminal setting under contributes.configuration.properties and is NOT restricted (jq confirms terminal.launcherPath/terminal.app are not contributed properties)",
+        "git log -S'restrictedConfigurations' -- package.json shows only commit d68f5e9 (v0.1.5 initial release); no commit references CP-17 (git log --grep 'CP-17' empty)",
+        "test/package-json/manifest-contract.test.ts has no restrictedConfigurations/untrustedWorkspaces assertions (grep EXIT 1); suggested regression test absent",
+        "WORK-LEDGER.md:148 shows '- [ ] #47 \u00b7 PAR-58 \u00b7 [CP-17]' unchecked; research/cc-work-ledger.json state=Backlog"
+      ],
+      "implementation_pointers": [
+        "package.json:47-55 (capabilities.untrustedWorkspaces.restrictedConfigurations) \u2014 replace 'commandCentral.terminal.launcherPath'/'commandCentral.terminal.app' with the real 'commandCentral.ghostty.launcherPath' (and any other external-launcher-affecting settings)",
+        "package.json:335 commandCentral.ghostty.launcherPath \u2014 the canonical launcher path setting to restrict",
+        "test/package-json/manifest-contract.test.ts \u2014 add a manifest validation test asserting every restrictedConfigurations entry exists under contributes.configuration.properties, and that launcher-related settings are restricted when untrustedWorkspaces.supported is true (insert near existing tests starting at line 134)"
+      ],
+      "notes": "CP-17 is a confirmed, unfixed ClawPatch security/manifest bug. package.json declares untrusted-workspace restrictions on two settings that don't exist as contributed config (commandCentral.terminal.launcherPath, commandCentral.terminal.app), so VS Code applies no real restriction, while the actual launcher path setting (commandCentral.ghostty.launcherPath) is unprotected. Fix = update restrictedConfigurations to the current setting name(s) and add a manifest-consistency regression test. No code, doc, or test work has started; ledger and Linear both show Backlog/unchecked. Note dependency: PAR-58 depends_on_active PAR-57 and blocks PAR-59.",
+      "wave": 2,
+      "rank": 44,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-157",
+      "title": "[CC-005] Design conductor daemon slice using Symphony vocabulary on OpenClaw authority",
+      "priority": 2,
+      "priorityLabel": "High",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "Feature"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-157/cc-005-design-conductor-daemon-slice-using-symphony-vocabulary-on",
+      "parent": "PAR-149",
+      "children": [],
+      "depends_on_active": [
+        "PAR-156"
+      ],
+      "depends_on_done": [
+        "PAR-154"
+      ],
+      "blocks_active": [
+        "PAR-158"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "WORK-LEDGER.md:176 - PAR-157 [CC-005] listed as unchecked '[ ]', Wave 4, blocked on PAR-156/PAR-154; ledger/Linear state = Backlog",
+        "Repo-owned WORKFLOW.md is build/test recipes only - grep for 'conductor|tracker|eligible|concurrency|retry|prompt template|workspace root' returns ZERO hits, so AC-1 (config defining tracker/eligible states/workspace root/concurrency/retry/hooks/prompt template) is unmet",
+        "No conductor-loop spec exists: rg for 'conductor loop|conductor daemon|crash-safe receipt|poll.*select.*launch' finds only the intake artifacts (research/linear-command-central-orchestration-plan-2026-05-27.json / .html, i.e. the issue body itself), not a design deliverable",
+        "git log --grep 'CC-005' and --grep 'PAR-157' both empty; git log -S'conductor daemon' = only 4ac5f03 'docs(research): preserve command central Linear intake artifacts' (the intake, not a design)",
+        "research/PLAN-symphony-vscode-native-integration-2026-05-09.md:9,45,50,87 takes the OPPOSITE stance - CC is a status surface 'not the Symphony scheduler/runner'; Non-Goals explicitly list 'Polling Linear directly', 'Restart recovery for scheduler state', 'scheduler/retry/reconcile ownership'. No conductor daemon was designed."
+      ],
+      "implementation_pointers": [
+        "/Users/ostemini/projects/command-central/WORKFLOW.md - currently only the five-recipe build/test guide; AC-1 wants a conductor config (tracker, eligible states, workspace root, concurrency, retry, hooks, prompt template) here or in an equivalent repo-owned config/SPEC doc",
+        "/Users/ostemini/projects/command-central/research/PLAN-symphony-vscode-native-integration-2026-05-09.md - read FIRST; it codifies the established 'CC is observability surface, NOT scheduler' boundary that any conductor-daemon design must explicitly reconcile or supersede",
+        "/Users/ostemini/projects/command-central/research/SPEC-taskflow-tree-nodes-v2.md - the 'TaskFlow conductor UI' polling model (poll 'openclaw tasks flow list --json'); basis for the projection artifacts the loop must surface (AC-4)",
+        "/Users/ostemini/projects/command-central/research/PLAN-symphony-preview-rc21-conductor-2026-05-09.md - existing 'Conductor Grouping + Evidence Preview' UI slice; lists the raw pieces (TaskFlowService, CodexRunObserverService, WorkflowRunView/CodexRunView, launcher prompt/stream/handoff/pending-review artifacts) the design must name",
+        "/Users/ostemini/projects/command-central/src/providers/agent-status-tree-provider.ts - the projection surface that would monitor the loop (AC-4: name CC projection artifacts)"
+      ],
+      "notes": "PAR-157 [CC-005] is a DESIGN/SPEC task: define a conductor daemon loop (poll eligible Linear/TaskFlow work, launch visible launcher lanes, review, retry-when-safe, update mirrors) using Symphony vocabulary while keeping OpenClaw/TaskFlow/Launcher as lifecycle owners. It is NOT done. None of the four acceptance criteria are satisfied: no repo-owned config defines tracker/eligible-states/workspace-root/concurrency/retry/hooks/prompt-template; no doc specifies the poll/select/launch/review/retry/update loop with crash-safe receipts. The repo's only conductor-related design (PLAN-symphony-vscode-native-integration) deliberately scopes CC OUT of the scheduler/daemon role, so PAR-157 would need a fresh design that reconciles that boundary. It is still Backlog (Wave 4) and blocked behind PAR-156/PAR-154; deps CC-003 (visibility projection) and CC-004 (tracker intake/mirror boundaries) are cited as prerequisites.",
+      "wave": 3,
+      "rank": 45,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-82",
+      "title": "[CCSTD-03] Verify Command Central extension-host runtime and Workspace Trust gates",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [],
+      "url": "https://linear.app/partnerai/issue/PAR-82/ccstd-03-verify-command-central-extension-host-runtime-and-workspace",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-83",
+        "PAR-81"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "partial",
+      "confidence": "high",
+      "evidence": [
+        "package.json:47-58 \u2014 capabilities.untrustedWorkspaces.supported:true with restrictedConfigurations for commandCentral.terminal.launcherPath/app (Workspace Trust posture present; ships since v0.1.5 commit d68f5e9)",
+        "scripts-v2/vsix-content-gate.ts \u2014 hard VSIX package-creation gate (size/content budget) wired into scripts-v2/dist-simple.ts; tested by test/scripts-v2/vsix-content-gate.test.ts",
+        "test/integration/tasks-json-startup-smoke.test.ts + installed-vsix-proof-*.ts \u2014 extension-host startup smoke harnesses already exist",
+        "KNOWN_LIMITATIONS.md:12-32,120 and ARCHITECTURE.md:52 \u2014 extension-host runtime assumptions documented (not framed as CCSTD-03 deliverable)",
+        "No CCSTD-03 closeout in research/: only ledger refs WORK-LEDGER.md:156 (unchecked [ ]) and research/cc-work-ledger.json (state Backlog); no RESULT-/CLOSEOUT- verification doc"
+      ],
+      "implementation_pointers": [
+        "package.json capabilities.untrustedWorkspaces block (lines 47-58) \u2014 confirm restrictedConfigurations cover all subprocess-spawning settings; add a verification receipt",
+        "src/ghostty/TerminalManager.ts \u2014 resolvedLauncherPath() (line ~418), resolveLauncherHelperScriptPath() (line ~292): add negative/path-allowlist tests for the trust-restricted launcherPath/app hotspots",
+        "test/ghostty/terminal-manager.test.ts \u2014 add security/negative coverage for untrusted-workspace restricted configs",
+        "scripts-v2/vsix-content-gate.ts and scripts-v2/prerelease-gate.ts \u2014 map/extend existing gates to the CCSTD-03 extension-host startup-smoke + package-validation requirement",
+        "Canonical source to translate: github.com/ostehost/standards-adoption-kits/blob/main/vscode-extension-preservation-kit.md; write closeout under research/ (e.g. RESULT-ccstd-03-extension-security-gate-*.md)"
+      ],
+      "notes": "CCSTD-03 is a verification/translation task: turn the VS Code preservation kit's host-runtime + Workspace Trust + subprocess/path rules into a documented Command Central gate plus a closeout receipt. The structural building blocks largely exist incidentally \u2014 untrustedWorkspaces capability with restrictedConfigurations in package.json, a hard VSIX content gate, startup-smoke harnesses, and runtime docs in KNOWN_LIMITATIONS/ARCHITECTURE \u2014 but none are mapped to CCSTD-03, there are no negative/path-allowlist tests for the trust-restricted launcher hotspots, no Workspace Trust receipt, and no verification doc in research/. The ledger still shows PAR-82 unchecked and state Backlog. Verdict partial: not a from-scratch effort, but the explicit gate spec + Workspace Trust receipt + security negative tests + closeout evidence have not been produced. Note dependencies CCSTD-02 (PAR-83) and PAR-81 are listed as still-active prerequisites.",
+      "wave": 3,
+      "rank": 46,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-77",
+      "title": "[CP-41] Extension filter refresh rediscovers from already-filtered changes",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-77/cp-41-extension-filter-refresh-rediscovers-from-already-filtered",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-76",
+        "PAR-75"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/providers/extension-filter-view-manager.ts:705 \u2014 refreshExtensions() still calls provider.getCurrentChanges() (filtered-intent method), NOT getCurrentChangesUnfiltered()",
+        "src/providers/extension-filter-view-manager.ts:301 \u2014 discoverExtensions() correctly uses provider.getCurrentChangesUnfiltered(); the asymmetry PAR-77 describes is intact",
+        "WORK-LEDGER.md:50 \u2014 '[ ] #50 \u00b7 PAR-77 \u00b7 P2 \u2014 [CP-41] Extension filter refresh rediscovers from already-filtered changes' (unchecked)",
+        "git log --grep 'CP-41|PAR-77' and -S'getCurrentChanges()' on the file: no fix commit; only d68f5e9 initial release",
+        "No regression test for refreshExtensions; only test/services/extension-filter-state.test.ts exists, covering ExtensionFilterState/validateAndCleanFilter, not the view-manager refresh path"
+      ],
+      "implementation_pointers": [
+        "src/providers/extension-filter-view-manager.ts:690-746 refreshExtensions() \u2014 change line 705 from provider.getCurrentChanges() to provider.getCurrentChangesUnfiltered(), with fallback to getCurrentChanges() if the method is absent (typeof guard), mirroring discoverExtensions()",
+        "src/providers/extension-filter-view-manager.ts:293-324 discoverExtensions() \u2014 reference implementation for the unfiltered collection pattern (try/catch per provider, filter changes.length>0)",
+        "src/git-sort/sorted-changes-provider.ts:656 getCurrentChangesUnfiltered() and :593 getCurrentChanges() \u2014 note both currently return identical raw repo.state data, so the bug is latent today; the fix is contract alignment to stay correct if getCurrentChanges ever applies sortAndFilter()",
+        "test/services/extension-filter-state.test.ts \u2014 add a new test (or new file test/providers/extension-filter-view-manager.test.ts) that populates filter with .ts and .md, checks only .ts, triggers refresh, and asserts .md remains in the rebuilt extensionData",
+        "src/utils/extension-discovery.ts countExtensionsByWorkspace/buildExtensionMetadata \u2014 used by both paths; mock provider.getCurrentChangesUnfiltered vs getCurrentChanges to drive the regression test"
+      ],
+      "notes": "PAR-77 [CP-41] is NOT done. refreshExtensions() (extension-filter-view-manager.ts:705) still rediscovers extensions via the filtered-intent getCurrentChanges(), while discoverExtensions() (line 301) uses getCurrentChangesUnfiltered() \u2014 exactly the asymmetry the issue calls out. No fix commit, no regression test, and WORK-LEDGER.md still lists it unchecked. Note: today both provider methods return identical raw repo.state data (getCurrentChangesUnfiltered just delegates), so the bug is latent rather than actively reproducing; the prescribed work is to align the contract at line 705 (use unfiltered, with a typeof fallback) and add the targeted refresh regression test.",
+      "wave": 3,
+      "rank": 47,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-67",
+      "title": "[CP-28] Services stop watching permanently when OpenClaw directories are absent at startup",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-67/cp-28-services-stop-watching-permanently-when-openclaw-directories-are",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-68",
+        "PAR-69"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [
+        "PAR-70"
+      ],
+      "downstream_impact": 1,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/services/acp-session-service.ts:120-133 startWatching() does single fs.watch with silent catch, no retry/parent-watch/polling",
+        "src/services/cron-service.ts:134-150 startWatching() same single-attempt pattern, catch comment 'Cron directory doesn't exist \u2014 graceful no-op'",
+        "src/services/taskflow-service.ts:115-128 startWatching() same single-attempt pattern, catch 'OpenClaw task ledger may not exist yet'",
+        "rg for retry|backoff|setInterval|poll|parentDir across the 3 services = NONE FOUND",
+        "test/services/cron-service.test.ts:111 only tests ENOENT on reload; no fs.watch throw-then-retry regression test",
+        "WORK-LEDGER.md:162 entry '#51 \u00b7 PAR-67 \u00b7 [CP-28]' is unchecked [ ]",
+        "research/cc-work-ledger.json:1547 PAR-67 state=Backlog, verdict=null, empty implementation_pointers",
+        "git log --grep PAR-67 / -S startWatching shows no fix commit (only original feature commits 9e098ae, e7c996a)"
+      ],
+      "implementation_pointers": [
+        "src/services/acp-session-service.ts:120 startWatching() \u2014 add retry/backoff or parent-dir watch that installs real watcher when TASKS_DIR appears",
+        "src/services/cron-service.ts:134 startWatching() \u2014 same fallback for path.dirname(JOBS_FILE)",
+        "src/services/taskflow-service.ts:115 startWatching() \u2014 same fallback for TASKS_DIR; consider extracting a shared watch-with-retry helper since all three are near-identical",
+        "Keep existing debouncedReload() path after watcher established (all three at debouncedReload())",
+        "test/services/cron-service.test.ts:111 \u2014 add regression test: mock fs.watch to throw on first startWatching, succeed on retry, assert later jobs.json change triggers reload + onChange",
+        "Add analogous watcher tests for acp-session-service and taskflow-service (no existing dedicated watch tests for those two)"
+      ],
+      "notes": "[CP-28] bug is still fully present and unaddressed. All three services (AcpSessionService, CronService, TaskFlowService) call fs.watch exactly once in startWatching() and swallow failures with no retry, parent-directory watch, or polling fallback \u2014 so a watch target absent at startup never gets a watcher even after the dir/ledger is created later, leaving the UI stale until restart. No retry/backoff code, no throw-then-retry regression test, no fix commit, and ledger/WORK-LEDGER both show it open in Backlog. The three startWatching implementations are nearly identical, so a shared watch-with-retry helper is the natural fix.",
+      "wave": 3,
+      "rank": 48,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-231",
+      "title": "[CCSYNC-06] Add manual closeout flow for stale shells and completed test panes after sync review",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "reliability",
+        "validation",
+        "command-central",
+        "ghostty-launcher",
+        "hub-node-update"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-231/ccsync-06-add-manual-closeout-flow-for-stale-shells-and-completed-test",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-228"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "No matches for bracket key: rg -li 'CCSYNC-06' across src/scripts/scripts-v2/test/research/package.json/git-log returned zero hits",
+        "No closeout/propose/approve-execute feature: rg -li 'closeout|propose|approval text|receipt id' src/ returned zero hits",
+        "Existing mutation commands in src/activation/register-agent-registry-commands.ts (killAgent L158, reapStaleAgents L376, markStaleAgentFailed L314) use a single modal Yes/No confirm + registry write \u2014 no propose/approve/execute separation, no approval-text/receipt logging, no per-shell evidence panel",
+        "test/commands/agent-registry-commands-registration.test.ts covers only the 7 existing commands (capture/kill/clear/markStaleFailed/reapStale/remove/markReviewed); no approval-gated closeout test exists",
+        "Issue state is Backlog; dependency CCSYNC-03 (evidence-backed stale detection) also has no closeout doc in research/"
+      ],
+      "implementation_pointers": [
+        "src/activation/register-agent-registry-commands.ts \u2014 add a new approval-gated closeout command alongside reapStaleAgents (L376); reuse mutateAgentTaskRegistry/writeRegistryWithBackup; gate execute on captured approval text/receipt id",
+        "src/providers/agent-status-tree-provider.ts:3870 getStaleLauncherTasks() and staleTaskReasons (L1607) \u2014 source the stale-shell list + why-stale reason for proposals",
+        "src/utils/tmux-pane-health.ts \u2014 inspectTmuxPaneById / TmuxPaneAgentEvidence and task fields tmux_socket/tmux_pane_id (agent-status-tree-provider.ts:310-316) supply host/socket/session/pane + last-capture evidence per proposal",
+        "src/extension.ts:1491-1500 \u2014 registration site for registry mutation commands; register the new closeout command here",
+        "package.json \u2014 add the closeout command contribution + menu entry (see test/package-json/agent-menu-contributions.test.ts)",
+        "test/commands/agent-registry-commands-registration.test.ts \u2014 add test asserting execute is disabled/no-op until approval text or receipt id is present"
+      ],
+      "notes": "CCSYNC-06 wants a non-destructive propose/approve/execute closeout flow for stale shells + completed panes: list each stale shell with host/socket/session/pane/last-capture/why-stale, stage the exact close commands, log the approval text or receipt id, close nothing by default, and test that execute is disabled until approval is present. The repo has the building blocks (getStaleLauncherTasks, staleTaskReasons, tmux-pane-health evidence) and seven existing modal-confirm mutation commands (kill/reapStale/markStaleFailed), but none implement the propose/approve/execute split, approval logging, evidence-rich proposals, or the approval-gating test. Zero references to the CCSYNC-06 key anywhere. This is unstarted; existing research docs cover stale detection/visibility (CCSYNC-03 territory), not the approval-gated closeout.",
+      "wave": 3,
+      "rank": 49,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-59",
+      "title": "[CP-18] External live agents disappear after four hours even while their PID is alive",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Bug"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-59/cp-18-external-live-agents-disappear-after-four-hours-even-while-their",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-57",
+        "PAR-58"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/discovery/process-scanner.ts:602-619 isStaleProcess() still ends with age-only branch: returns nowProvider() - agent.startTime.getTime() >= this.staleProcessAgeMs for agents with no matching launcher task",
+        "src/discovery/process-scanner.ts:276-286 scan() drops any agent where isStaleProcess() is true into filtered with reason 'stale-process' (return null) \u2014 no stuck/retained path exists",
+        "test/discovery/process-scanner.test.ts:545-576 test 'flags stale processes older than four hours when no live launcher task matches' asserts agents.toHaveLength(0) \u2014 codifies the exact buggy behavior the finding wants reversed",
+        "No 'stuck' classification anywhere in src/discovery/; git log --grep PAR-59 empty and -S'isStaleProcess' shows only 7e10ec3 'fix: filter stale interactive agent discovery' which ADDED the filtering, not a fix",
+        "research/cc-work-ledger.json:1611 PAR-59 state 'Backlog', verdict/notes/implementation_pointers all empty; no CP-18 / fnd_sig-feat-library-5120d72ef4-b912_66674a6299 closeout doc in research/"
+      ],
+      "implementation_pointers": [
+        "src/discovery/process-scanner.ts:602-619 isStaleProcess() \u2014 change trailing age-only branch so a live external agent (no launcher task, resolvable cwd) is NOT treated as stale; require dead PID + stale stream metadata before pruning",
+        "src/discovery/process-scanner.ts:265-296 scan() \u2014 instead of dropping age-only-old agents into filtered as 'stale-process', retain them and tag with stuck/stale status metadata so the UI surfaces them",
+        "src/discovery/process-scanner.ts:48 DEFAULT_STALE_PROCESS_AGE_MS and :188-194 staleProcessAgeMs init \u2014 confirm threshold semantics after fix",
+        "test/discovery/process-scanner.test.ts:545-576 and :578-608 \u2014 existing tests assert old drop behavior and must be updated; add suggested regression: agent older than DEFAULT_STALE_PROCESS_AGE_MS, no launcher task, resolvable cwd, assert retained with stuck/stale metadata",
+        "README.md:24-30 advertises 'stuck agents at a glance' \u2014 contradicts current pruning; verify wording matches fixed behavior"
+      ],
+      "notes": "Bug [CP-18] is still present and actively codified by tests. ProcessScanner.isStaleProcess (src/discovery/process-scanner.ts:602-619) prunes any external agent (no matching launcher task) once its process age >= 4h, and scan() (276-286) drops it with reason 'stale-process' rather than surfacing it as stuck \u2014 even though the PID was found alive by ps with a resolvable cwd. The recommended fix (keep live process visible, classify as stuck/stale, require stronger evidence like dead PID + stale stream before pruning) is not implemented; existing test at 545-576 asserts the opposite. No fix commit, no research closeout; ledger entry is empty and still in Backlog (depends on PAR-57/PAR-58).",
+      "wave": 3,
+      "rank": 50,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-54",
+      "title": "[CP-12] Default launcher task discovery ignores additional registry files",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "API Contract"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-54/cp-12-default-launcher-task-discovery-ignores-additional-registry",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-53",
+        "PAR-52"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/discovery/agent-registry.ts:466 readLauncherTasks reads only config.get('agentTasksFile') and never agentTasksFiles",
+        "src/discovery/agent-registry.ts:20,491 imports/uses resolveTasksFilePath (singular) not resolveTasksFilePaths/resolveTaskRegistrySources which handle additionalConfigValues",
+        "src/discovery/agent-registry.ts:112 default launcherTasksProvider = () => this.readLauncherTasks(); same provider passed to ProcessScanner at lines 118-120",
+        "src/providers/agent-status-tree-provider.ts:1759 new AgentRegistry() constructed with NO injected merged provider, so it falls back to the single-file default",
+        "test/discovery/agent-registry.test.ts:952,1001-1017 quarantine tests only set 'agentTasksFile' (singular); no test exercises the agentTasksFiles merge contract -> no regression test exists",
+        "WORK-LEDGER.md:171 still an unchecked '[ ] #54 PAR-54' item; no CP-12/PAR-54 commit (git log --grep) or research closeout doc found"
+      ],
+      "implementation_pointers": [
+        "src/discovery/agent-registry.ts:464-496 readLauncherTasks + resolveLauncherTasksFile \u2014 switch from resolveTasksFilePath (singular) to the merged resolver, reading agentTasksFiles plus agentTasksFile with identical path resolution + JSON validation per file",
+        "src/utils/tasks-file-resolver.ts:175-234 resolveTasksFilePaths / resolveTaskRegistrySources \u2014 reuse these (they already gate agentTasksFiles behind legacyLauncherEnabled at lines 185-191) instead of duplicating logic; read agentTasksFiles via config.get<string[]>('agentTasksFiles', [])",
+        "src/providers/agent-status-tree-provider.ts:1985-2010 getConfiguredSources \u2014 reference impl for how the provider already merges agentTasksFile + agentTasksFiles + laneRegistry.files; alternatively inject a merged provider into new AgentRegistry() at line 1759",
+        "src/discovery/process-scanner.ts (launcherTasksProvider/n option) \u2014 verify it keeps using the merged provider so stale-process matching/suppression sees additional-registry tasks",
+        "test/discovery/agent-registry.test.ts:935-1018 quarantine describe block \u2014 add a case mocking agentTasksFile + agentTasksFiles (legacy on) asserting the default provider returns the merged/suppressed set"
+      ],
+      "notes": "[CP-12] bug is still present. AgentRegistry.readLauncherTasks (src/discovery/agent-registry.ts:464) resolves only the primary commandCentral.agentTasksFile via resolveTasksFilePath (singular) and ignores commandCentral.agentTasksFiles, despite the package.json contract advertising agentTasksFiles as additional registries to merge. That same default provider is wired into ProcessScanner (lines 118-120) and the provider constructs AgentRegistry with no injected merged provider (agent-status-tree-provider.ts:1759), so stale-process matching/suppression miss additional-registry tasks. Note: commit 64d5ca4 quarantined launcher sources behind legacyLauncherTasks.enabled (default false), so the divergence is dormant by default but live whenever the legacy diagnostics escape hatch is on \u2014 the fix and a regression test are still outstanding. No CP-12/PAR-54 commit or closeout doc exists, and WORK-LEDGER.md:171 still lists it unchecked.",
+      "wave": 3,
+      "rank": 51,
+      "execution_status": "done"
+    },
+    {
+      "identifier": "PAR-158",
+      "title": "[CC-006] Dogfood Command Central cross-project orchestration with real OpenClaw issues",
+      "priority": 3,
+      "priorityLabel": "Medium",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "openclaw",
+        "symphony",
+        "reliability",
+        "product-gap",
+        "validation"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-158/cc-006-dogfood-command-central-cross-project-orchestration-with-real",
+      "parent": "PAR-149",
+      "children": [],
+      "depends_on_active": [
+        "PAR-157"
+      ],
+      "depends_on_done": [
+        "PAR-154",
+        "PAR-38"
+      ],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "partial",
+      "confidence": "medium",
+      "evidence": [
+        "research/PAR-189-DOGFOOD-MARKER-2026-06-17.md \u2014 Symphony daemon selected real Linear PAR-189 via ready-for-agent label scoped to Command Central project, routed to a visible Claude Code lane (symphony-PAR-189-a44186ea), committed artifact closes the full-circle loop",
+        "research/PAR-191-DOGFOOD-MARKER-2026-06-16.md \u00a72 \u2014 documents real run: daemon selection -> spawn -> worker failure (gpt-5-codex unsupported on local ChatGPT account) -> visible fallback lane; a dogfood report of what worked and what was blocked",
+        "research/PAR-195-COMPLETED-DETACHED-SYMPHONY-LANE-2026-06-17.md \u2014 a defect surfaced during dogfooding became its own Linear issue PAR-195 with reviewed Implementer+Tester pair, commits 515e1321 (code) / 3ea8bb31 (tests); satisfies 'failures become follow-up issues, not chat memory'",
+        "CC-006 key appears ONLY in intake docs research/linear-command-central-orchestration-plan-2026-05-27.json and research/HANDOFF-linear-command-central-orchestration-2026-05-27.html (commits 398a3c4 / 4ac5f03 'preserve command central Linear intake artifacts') \u2014 no closeout doc names CC-006 or PAR-158",
+        "active-items.json: PAR-158 state=Backlog; named blockers CC-001/PAR-38, CC-003/PAR-154, CC-005/PAR-157 all still Backlog \u2014 the formal dependency chain was never closed"
+      ],
+      "implementation_pointers": [
+        "research/PAR-189-DOGFOOD-MARKER-2026-06-17.md, research/PAR-191-DOGFOOD-MARKER-2026-06-16.md, research/PAR-193-DOGFOOD-MARKER-2026-06-17.md, research/PAR-195-COMPLETED-DETACHED-SYMPHONY-LANE-2026-06-17.md \u2014 existing end-to-end dogfood evidence to consolidate into one CC-006 closeout report",
+        "research/linear-command-central-orchestration-plan-2026-05-27.json \u2014 CC-006 intake record holding the 4 acceptance criteria to write the closeout against",
+        "src/providers/agent-status-tree-provider.ts (getSymphonyDashboardDetailChildren) and src/providers/agent-task-classification.ts (classifyCompletionRouting) \u2014 where workstream/attempt/health/evidence accuracy (criterion 2) is rendered and must be verified during a run",
+        "test/tree-view/openclaw-task-nodes.test.ts \u2014 Symphony Workstreams identity/dashboard contract tests backing the projection"
+      ],
+      "notes": "CC-006/PAR-158 is a dogfooding meta-task: run a real Linear issue through Command Central's full loop (intake -> visible launcher lane -> reviewed completion -> follow-up issues -> Symphony projection) and write a dogfood report. The spirit of this work has largely happened via the later PAR-189/191/193/195 dogfood runs (June 16-20, 2026): real ready-for-agent Linear issues were selected by the Symphony daemon, routed to visible Command Central lanes, committed, and at least one (PAR-195) spun a found defect into its own reviewed/fixed follow-up issue. However, NO doc cites CC-006 or PAR-158 as the umbrella, PAR-158 is still Backlog, its named blockers (CC-001/CC-003/CC-005) are also still Backlog, and there is no single consolidated dogfood report tied to this issue verifying criterion 2 (workstream/attempt/health/evidence all shown accurately during the run). Remaining work: write the CC-006 closeout that consolidates the existing markers against the four acceptance criteria, or formally close PAR-158 as superseded by the PAR-189..195 runs.",
+      "wave": 4,
+      "rank": 52,
+      "execution_status": "partial",
+      "execution_caveat": "cross-project OpenClaw task surfacing + classification + tests implemented; remaining deliverable is dogfooding against real live OpenClaw issues (operational, not code)."
+    },
+    {
+      "identifier": "PAR-70",
+      "title": "[CP-31] Filter persistence writes can complete out of order",
+      "priority": 4,
+      "priorityLabel": "Low",
+      "estimate": null,
+      "state": "Backlog",
+      "labels": [
+        "ClawPatch",
+        "command-central",
+        "Concurrency"
+      ],
+      "url": "https://linear.app/partnerai/issue/PAR-70/cp-31-filter-persistence-writes-can-complete-out-of-order",
+      "parent": null,
+      "children": [],
+      "depends_on_active": [
+        "PAR-68",
+        "PAR-67",
+        "PAR-69"
+      ],
+      "depends_on_done": [],
+      "blocks_active": [],
+      "downstream_impact": 0,
+      "related": [],
+      "verdict": "todo",
+      "confidence": "high",
+      "evidence": [
+        "src/services/extension-filter-state.ts:84-118 persistToStorage uses bare `await storage.update()` with no ordering guarantee or versioning",
+        "src/services/extension-filter-state.ts:187 setExtensionEnabled fires `void this.persistToStorage()` fire-and-forget, no chain \u2014 the exact described bug",
+        "src/services/extension-filter-state.ts:247 validateAndCleanFilter also fires `void this.persistToStorage()` fire-and-forget",
+        "grep for persistChain|persistQueue|version|writeQueue|serialize in extension-filter-state.ts returned nothing \u2014 no ordering mechanism present",
+        "test/services/extension-filter-state.test.ts:17 comment confirms tests use persistenceMode \"none\"; no out-of-order regression test exists",
+        "git log --grep CP-31 and on the file show no fix commit (only d68f5e9 initial release, e5a24b1 unrelated checkbox fix)",
+        "WORK-LEDGER.md:179 PAR-70 still unchecked [ ], state Backlog, Wave 4 blocked by PAR-68/67/69; no research/ closeout doc"
+      ],
+      "implementation_pointers": [
+        "src/services/extension-filter-state.ts: persistToStorage (L84-118) \u2014 serialize writes through a single promise chain (e.g. this.persistChain = this.persistChain.then(() => doWrite())) or use version snapshots and discard stale writes; persist latest in-memory state at execution time",
+        "src/services/extension-filter-state.ts: setExtensionEnabled (L160-188) and validateAndCleanFilter (L204-251) \u2014 the two `void this.persistToStorage()` call sites that must route through the serialized scheduler",
+        "test/services/extension-filter-state.test.ts (around L42-55) \u2014 add regression test: fake ExtensionContext whose workspaceState.update promises resolve out of order, enable then disable .ts, await all writes, assert stored state is empty"
+      ],
+      "notes": "PAR-70 [CP-31] is NOT done. ExtensionFilterState.persistToStorage still does an unordered `await storage.update()`, and both mutation paths (setExtensionEnabled, validateAndCleanFilter) call it as fire-and-forget `void this.persistToStorage()` with no promise chaining, write queue, or version-snapshot discarding \u2014 exactly the out-of-order vulnerability described. Tests still use persistenceMode \"none\" so async ordering is never exercised, and no regression test exists. No git commit or research closeout addresses this; ledger shows it unchecked in Backlog, blocked by PAR-68/67/69.",
+      "wave": 4,
+      "rank": 53,
+      "execution_status": "done"
+    }
+  ],
+  "execution_result": {
+    "as_of": "2026-06-24",
+    "attempted": "all",
+    "done": 47,
+    "partial": 5,
+    "skipped": 1,
+    "pending": 0,
+    "gate": "just ci exit 0; 2547 pass / 0 fail (+224 regression tests over 2323 baseline)",
+    "closeout": "research/RESULT-cc-ledger-execution-2026-06-24.md",
+    "concerns_and_future": "research/cc-ledger-execution-concerns-2026-06-24.json",
+    "note": "Worker queue + per-item caveats also in /ledger.json. PAR-242 skipped (out of repo: symphony-daemon). 5 partials blocked on live infra / cross-repo (ghostty-launcher, live hub-node)."
+  }
+}

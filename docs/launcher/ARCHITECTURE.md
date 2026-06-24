@@ -71,7 +71,7 @@ The launcher service uses the Strategy pattern for flexibility:
 - Default on macOS
 
 ### UserLauncherStrategy
-- Uses user-configured path (`commandCentral.terminal.launcherPath`)
+- Uses user-configured path (`commandCentral.ghostty.launcherPath`)
 - Full permission validation
 - Allows custom launcher versions
 
@@ -134,8 +134,7 @@ Settings in `package.json`:
 
 | Setting | Type | Description |
 |---------|------|-------------|
-| `commandCentral.terminal.launcherPath` | string | Custom launcher path (overrides bundled) |
-| `commandCentral.terminal.app` | string | Custom terminal application path |
+| `commandCentral.ghostty.launcherPath` | string | Optional path to the Ghostty Launcher `launcher` binary; leave empty to auto-detect from PATH. |
 | `commandCentral.project.icon` | string | Default project emoji icon |
 | `commandCentral.project.name` | string | Override project display name |
 

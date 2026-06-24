@@ -143,6 +143,87 @@ describe("InfrastructureHealthStatusBar", () => {
 		expect(tooltip.value).toContain("Status bar state: DOWN");
 	});
 
+	// ── Auth-failed dimension (CC-002 / PAR-152) ───────────────────────────────
+	// A 401/403 from the gateway means the process is up and the API answered
+	// but our credentials were rejected — a distinct health dimension from
+	// reachability. It must render as its own AUTH state (re-auth needed),
+	// never collapse into a false DOWN, and never be masked by a healthy task
+	// layer or a fresh summary.
+	test("shows AUTH, not DOWN, when the gateway rejects credentials with 401", async () => {
+		const { InfrastructureHealthStatusBar } = await loadModule();
+		const bar = new InfrastructureHealthStatusBar({
+			fetchImpl: mock(
+				async () =>
+					new Response(JSON.stringify({ error: "unauthorized" }), {
+						status: 401,
+					}),
+			),
+			readFile: mock(async () => {
+				throw new Error("ENOENT");
+			}),
+			setIntervalImpl: mock(() => createTimerHandle()),
+			clearIntervalImpl: mock(),
+		});
+
+		await bar.refresh();
+
+		expect(mockStatusBarItem.text).toBe("$(key) OpenClaw AUTH");
+		expect((mockStatusBarItem.backgroundColor as { id: string }).id).toBe(
+			"statusBarItem.errorBackground",
+		);
+		const tooltip = mockStatusBarItem.tooltip as { value: string };
+		expect(tooltip.value).toContain(
+			"Gateway: reachable, auth rejected (HTTP 401)",
+		);
+		expect(tooltip.value).toContain("Status bar state: AUTH-FAILED");
+	});
+
+	test("auth rejection (403) outranks a healthy task layer", async () => {
+		const { InfrastructureHealthStatusBar } = await loadModule();
+		const bar = new InfrastructureHealthStatusBar({
+			gatewayScope: "remote",
+			fetchImpl: mock(async () => new Response("forbidden", { status: 403 })),
+			readFile: mock(async () => {
+				throw new Error("ENOENT");
+			}),
+			taskActivityProbe: () => ({
+				workingCount: 2,
+				summary: "2 working · 1 done",
+			}),
+			setIntervalImpl: mock(() => createTimerHandle()),
+			clearIntervalImpl: mock(),
+		});
+
+		await bar.refresh();
+
+		expect(mockStatusBarItem.text).toBe("$(key) OpenClaw AUTH (hub)");
+		const tooltip = mockStatusBarItem.tooltip as { value: string };
+		expect(tooltip.value).toContain(
+			"Gateway (hub): reachable, auth rejected (HTTP 403)",
+		);
+		expect(tooltip.value).toContain("Status bar state: AUTH-FAILED");
+	});
+
+	test("an auth rejection bypasses the transient-blip retry", async () => {
+		const fetchImpl = mock(async () => new Response("nope", { status: 401 }));
+		const { InfrastructureHealthStatusBar } = await loadModule();
+		const bar = new InfrastructureHealthStatusBar({
+			fetchImpl,
+			readFile: mock(async () => {
+				throw new Error("ENOENT");
+			}),
+			setIntervalImpl: mock(() => createTimerHandle()),
+			clearIntervalImpl: mock(),
+		});
+
+		await bar.refresh();
+
+		// Auth rejection is reachable, so it is authoritative on the first
+		// probe — no second attempt (unlike a network-level failure).
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		expect(mockStatusBarItem.text).toBe("$(key) OpenClaw AUTH");
+	});
+
 	// ── Evidence-weighted state matrix (CC-001) ────────────────────────────────
 	// A failed gateway probe must not collapse into "OpenClaw DOWN" while other
 	// evidence (running tasks, a fresh health summary) proves partial life, and

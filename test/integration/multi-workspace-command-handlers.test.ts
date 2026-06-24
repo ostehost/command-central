@@ -16,6 +16,7 @@ describe("Multi-Workspace Command Handlers", () => {
 		test("SHOULD open file from workspace 1", async () => {
 			// Given: File item from workspace 1
 			const item: GitChangeItem = {
+				type: "gitChangeItem",
 				uri: vscode.Uri.file("/Users/test/workspace1/src/app.ts"),
 				status: "Modified",
 				isStaged: false,
@@ -38,6 +39,7 @@ describe("Multi-Workspace Command Handlers", () => {
 		test("SHOULD open file from workspace 2", async () => {
 			// Given: File item from workspace 2
 			const item: GitChangeItem = {
+				type: "gitChangeItem",
 				uri: vscode.Uri.file("/Users/test/workspace2/lib/util.ts"),
 				status: "Modified",
 				isStaged: false,
@@ -57,6 +59,7 @@ describe("Multi-Workspace Command Handlers", () => {
 		test("SHOULD handle untracked files (open directly, no diff)", async () => {
 			// Given: Untracked file (no git history)
 			const item: GitChangeItem = {
+				type: "gitChangeItem",
 				uri: vscode.Uri.file("/Users/test/workspace1/new-file.ts"),
 				status: "Untracked",
 				isStaged: false,
@@ -96,6 +99,7 @@ describe("Multi-Workspace Command Handlers", () => {
 		test("SHOULD find correct provider for workspace 1 file", async () => {
 			// Given: Modified file from workspace 1
 			const item: GitChangeItem = {
+				type: "gitChangeItem",
 				uri: vscode.Uri.file("/Users/test/workspace1/src/component.tsx"),
 				status: "Modified",
 				isStaged: false,
@@ -115,6 +119,7 @@ describe("Multi-Workspace Command Handlers", () => {
 		test("SHOULD find correct provider for workspace 2 file", async () => {
 			// Given: Modified file from workspace 2
 			const item: GitChangeItem = {
+				type: "gitChangeItem",
 				uri: vscode.Uri.file("/Users/test/workspace2/README.md"),
 				status: "Modified",
 				isStaged: false,
@@ -136,6 +141,7 @@ describe("Multi-Workspace Command Handlers", () => {
 		test("SHOULD open file directly using vscode.open", async () => {
 			// Given: Any file
 			const item: GitChangeItem = {
+				type: "gitChangeItem",
 				uri: vscode.Uri.file("/Users/test/workspace1/file.ts"),
 				status: "Modified",
 				isStaged: false,

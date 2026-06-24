@@ -65,6 +65,10 @@ export class GroupingTreeProvider
 	// State change subscription
 	private stateChangeDisposable: vscode.Disposable;
 
+	// Idempotency guard: dispose() may run more than once because the provider is
+	// registered in context.subscriptions AND disposed explicitly by the view manager.
+	private disposed = false;
+
 	// Static options (no async data loading needed)
 	private readonly options: GroupingOption[] = [
 		{
@@ -210,6 +214,10 @@ export class GroupingTreeProvider
 	 * Cleans up event subscriptions to prevent memory leaks
 	 */
 	dispose(): void {
+		if (this.disposed) {
+			return;
+		}
+		this.disposed = true;
 		this._onDidChangeTreeData.dispose();
 		this.stateChangeDisposable.dispose();
 	}

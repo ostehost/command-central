@@ -19,6 +19,7 @@
  *   bun dist --preid=beta   # Create beta prerelease
  *   bun dist --dry-run      # Preview changes without building
  *   bun dist --no-install   # Skip VS Code installation
+ *   bun dist --build-only   # Build VSIX only; no install/release/prune
  *   bun dist --help         # Show help
  */
 
@@ -43,6 +44,7 @@ const flags = {
 	prerelease: args.includes("--prerelease"),
 	dryRun: args.includes("--dry-run"),
 	noInstall: args.includes("--no-install"),
+	buildOnly: args.includes("--build-only") || args.includes("--no-release"),
 	help: args.includes("--help"),
 	preid: (() => {
 		const preidArg = args.find(arg => arg.startsWith("--preid="));
@@ -65,6 +67,8 @@ Options:
   --preid=<id>     Prerelease identifier (alpha, beta, rc)
   --dry-run        Preview changes without building
   --no-install     Skip VS Code installation
+  --build-only     Build the VSIX only (no install, no release move, no prune)
+  --no-release     Alias for --build-only
   --help           Show this help
 
 Examples:
@@ -103,7 +107,11 @@ async function main() {
 				console.log(`  1. Run: npm version ${versionBumpType}${flags.preid ? ` --preid=${flags.preid}` : ""} --no-git-tag-version`);
 				console.log(`  2. Build development VSIX`);
 				console.log(`  3. Build production VSIX if new version`);
-				console.log(`  4. Install to VS Code${flags.noInstall ? " (skipped with --no-install)" : ""}`);
+				if (flags.buildOnly) {
+					console.log(`  4. Build-only: skip release move, prune, and install`);
+				} else {
+					console.log(`  4. Install to VS Code${flags.noInstall ? " (skipped with --no-install)" : ""}`);
+				}
 			} else {
 				console.log(`Would build version ${currentVersion}`);
 			}
@@ -205,22 +213,28 @@ async function main() {
 				);
 			}
 
-			// Move production VSIX to releases
-			await fs.rename(prodVsixName, prodVsixPath);
-			console.log(`\n📁 Moved production VSIX to releases/`);
-			
-			// Clean up old releases
-			await cleanupOldReleases(maxReleases);
+			if (flags.buildOnly) {
+				// Build-only: leave the candidate in place; no release move/prune.
+				console.log(`\n🛠️  Build-only mode — VSIX left at ${prodVsixName} (not released)`);
+			} else {
+				// Move production VSIX to releases
+				await fs.rename(prodVsixName, prodVsixPath);
+				console.log(`\n📁 Moved production VSIX to releases/`);
+
+				// Clean up old releases
+				await cleanupOldReleases(maxReleases);
+			}
 		}
-		
-		// 10. Install production version to VS Code (unless --no-install)
-		if (!flags.noInstall) {
+
+		// 10. Install production version to VS Code (unless --no-install / --build-only)
+		if (!flags.noInstall && !flags.buildOnly) {
 			console.log("\n🚀 Installing production build to VS Code...");
 			// Install the production VSIX (either existing or newly built)
 			await installVSIX(prodVsixPath);
 			console.log("   ✓ Installed successfully");
 		} else {
-			console.log("\n⏭️  Skipping VS Code installation (--no-install flag)");
+			const reason = flags.buildOnly ? "--build-only" : "--no-install";
+			console.log(`\n⏭️  Skipping VS Code installation (${reason} flag)`);
 		}
 		
 		// 11. Clean up dev VSIX
@@ -233,13 +247,18 @@ async function main() {
 		
 		if (versionExists) {
 			console.log(`📊 Using existing release: v${currentVersion}`);
-			if (!flags.noInstall) {
+			if (!flags.noInstall && !flags.buildOnly) {
 				console.log("✅ Production version installed to VS Code");
 				console.log("\n⚠️  REQUIRED: Run 'Developer: Reload Window' to activate");
 				console.log("   → Press Cmd+Shift+P → type 'reload window'");
 			}
 			console.log(`\n📦 Production VSIX: releases/${prodVsixName}`);
 			console.log(`   → Share: code --install-extension releases/${prodVsixName}`);
+		} else if (flags.buildOnly) {
+			console.log(`📊 Built (build-only): v${currentVersion}`);
+			console.log(`\n📦 Production VSIX: ${prodVsixName} (not released)`);
+			const prodVsixSize = await getFileSize(prodVsixName);
+			console.log(`   → Size: ${formatSize(prodVsixSize)}`);
 		} else {
 			console.log(`📊 Created new release: v${currentVersion}`);
 			if (!flags.noInstall) {

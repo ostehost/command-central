@@ -1,6 +1,11 @@
 import * as path from "node:path";
 import { canonicalizeProjectDir } from "../utils/project-scope.js";
 import {
+	isReconciledGcVerdict,
+	type LaneProjectionGcReceipt,
+	lookupGcRowVerdict,
+} from "../utils/review-queue-health.js";
+import {
 	asNullableNumber,
 	asNumber,
 	asString,
@@ -361,6 +366,67 @@ export function normalizeProjectionLanes(
 	}
 
 	return normalized;
+}
+
+/**
+ * Resolve the provider-scoped lane id (`launcher:<task_id>`) a projection row
+ * was admitted under. `normalizeProjectionLanes` preserves it as
+ * `provenance.source_ref`; the GC receipt may key rows by it or by the bare
+ * task id.
+ */
+function laneIdFromTask(task: AgentTask): string | null {
+	const provenance = task.provenance;
+	if (
+		provenance &&
+		typeof provenance === "object" &&
+		!Array.isArray(provenance)
+	) {
+		const ref = (provenance as Record<string, unknown>)["source_ref"];
+		if (typeof ref === "string" && ref.length > 0) return ref;
+	}
+	return null;
+}
+
+/**
+ * CCSYNC-02: reconcile lane-projection rows against a lane-projection GC
+ * receipt. Pure — does not read the filesystem (callers inject the receipt via
+ * {@link readLaneProjectionGcReceipt}). For every projection row the GC pass
+ * classified as no longer live attention work (`downgraded`/`archived`/
+ * `removed`), stamp the row with a `gc_reconcile` marker so the tree provider
+ * routes it to reconciliation backlog (Needs Review) instead of the
+ * attention/action badge — the receipt is the authoritative reconciliation
+ * verdict, complementing the per-render `isStaleReviewProjection` heuristic.
+ *
+ * Non-projection rows and rows the receipt keeps (or does not cover) pass
+ * through untouched: the receipt only ever downgrades a row, never promotes one.
+ */
+export function applyGcReceiptReconciliation(
+	tasks: Record<string, AgentTask>,
+	receipt: LaneProjectionGcReceipt | null,
+): Record<string, AgentTask> {
+	if (!receipt) return tasks;
+
+	const reconciled: Record<string, AgentTask> = {};
+	for (const [key, task] of Object.entries(tasks)) {
+		if (task.lane_projection !== true) {
+			reconciled[key] = task;
+			continue;
+		}
+		const row = lookupGcRowVerdict(receipt, {
+			laneId: laneIdFromTask(task),
+			taskId: task.id,
+		});
+		if (!row || !isReconciledGcVerdict(row.verdict)) {
+			reconciled[key] = task;
+			continue;
+		}
+		reconciled[key] = {
+			...task,
+			gc_reconcile: row.verdict,
+			gc_reconcile_reason: row.reason,
+		};
+	}
+	return reconciled;
 }
 
 export function warnTaskRegistryFallback(

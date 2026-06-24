@@ -60,6 +60,13 @@ mock.module("../../src/utils/tmux-pane-health.js", () => ({
 	),
 	inspectTmuxPaneAgent: mockInspectTmuxPaneAgent,
 	inspectTmuxPaneById: mockInspectTmuxPaneById,
+	// CCSYNC-03 (PAR-228): the provider now also imports the live-pane attention
+	// classifier. These lanes have no real captured snippet here, so capture
+	// returns null → classifyPaneAttention → "unknown" → never benign, so the
+	// existing lifecycle-conflict grouping/badges are unaffected.
+	capturePaneSnippet: mock((_target: string, _socket?: string | null) => null),
+	classifyPaneAttention: mock(() => "unknown" as const),
+	isBenignLivePane: mock((_state: string) => false),
 	AGENT_PROCESS_NAMES: ["codex", "claude"],
 	PANE_ID_RE: /^%\d+$/,
 }));

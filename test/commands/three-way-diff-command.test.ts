@@ -25,7 +25,7 @@ describe("Three-Way Diff Command", () => {
 		mockExecuteCommand = mock(() => Promise.resolve());
 	});
 
-	test("executes successfully for MM file (smoke test)", async () => {
+	test("opens all three diff views with correct URIs, titles, and columns", async () => {
 		const vscode = await import("vscode");
 		vscode.commands.executeCommand = mockExecuteCommand;
 
@@ -100,10 +100,39 @@ describe("Three-Way Diff Command", () => {
 			order: 0,
 		};
 
-		// Assert: Function executes without throwing
-		// Note: Mock call verification skipped due to Bun ES module mocking limitations
-		// Implementation verified via manual testing and 100% code coverage
-		await expect(openThreeWayDiff(mmItem, mockGitApi)).resolves.toBeUndefined();
+		await openThreeWayDiff(mmItem, mockGitApi);
+
+		// Assert: exactly three diff views opened (one per column)
+		expect(mockExecuteCommand).toHaveBeenCalledTimes(3);
+
+		const [call1, call2, call3] = mockExecuteCommand.mock.calls;
+		if (!call1 || !call2 || !call3) {
+			throw new Error("Expected three vscode.diff calls to be recorded");
+		}
+
+		// Column 1: HEAD ↔ Index (staged changes)
+		const [cmd1, left1, right1, title1, opts1] = call1;
+		expect(cmd1).toBe("vscode.diff");
+		expect(left1.toString()).toBe(headUri.toString());
+		expect(right1.toString()).toBe(indexUri.toString());
+		expect(title1).toBe("file.ts (HEAD ↔ Staged)");
+		expect(opts1).toEqual({ viewColumn: vscode.ViewColumn.One });
+
+		// Column 2: Index ↔ Working Tree (unstaged changes)
+		const [cmd2, left2, right2, title2, opts2] = call2;
+		expect(cmd2).toBe("vscode.diff");
+		expect(left2.toString()).toBe(indexUri.toString());
+		expect(right2.toString()).toBe(fileUri.toString());
+		expect(title2).toBe("file.ts (Staged ↔ Working)");
+		expect(opts2).toEqual({ viewColumn: vscode.ViewColumn.Two });
+
+		// Column 3: HEAD ↔ Working Tree (complete changes)
+		const [cmd3, left3, right3, title3, opts3] = call3;
+		expect(cmd3).toBe("vscode.diff");
+		expect(left3.toString()).toBe(headUri.toString());
+		expect(right3.toString()).toBe(fileUri.toString());
+		expect(title3).toBe("file.ts (HEAD ↔ Working)");
+		expect(opts3).toEqual({ viewColumn: vscode.ViewColumn.Three });
 	});
 
 	test("shows warning for non-MM file (staged only)", async () => {
@@ -368,7 +397,7 @@ describe("Three-Way Diff Command", () => {
 		expect(mockExecuteCommand).not.toHaveBeenCalled();
 	});
 
-	test("executes successfully with proper Git state (smoke test)", async () => {
+	test("derives diff titles from the file basename and preserves column order", async () => {
 		const vscode = await import("vscode");
 		vscode.commands.executeCommand = mockExecuteCommand;
 
@@ -440,8 +469,23 @@ describe("Three-Way Diff Command", () => {
 			order: 0,
 		};
 
-		// Assert: Function executes without throwing
-		// Implementation verified via manual testing and 100% code coverage
-		await expect(openThreeWayDiff(mmItem, mockGitApi)).resolves.toBeUndefined();
+		await openThreeWayDiff(mmItem, mockGitApi);
+
+		// Assert: three diffs opened, titles built from the actual basename
+		expect(mockExecuteCommand).toHaveBeenCalledTimes(3);
+
+		const [call1, call2, call3] = mockExecuteCommand.mock.calls;
+		if (!call1 || !call2 || !call3) {
+			throw new Error("Expected three vscode.diff calls to be recorded");
+		}
+
+		const [, , , title1] = call1;
+		expect(title1).toBe("component.tsx (HEAD ↔ Staged)");
+
+		const [, , , title2] = call2;
+		expect(title2).toBe("component.tsx (Staged ↔ Working)");
+
+		const [, , , title3] = call3;
+		expect(title3).toBe("component.tsx (HEAD ↔ Working)");
 	});
 });

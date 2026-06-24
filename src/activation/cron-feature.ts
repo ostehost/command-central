@@ -76,12 +76,36 @@ export function registerCronCommands(
 }
 
 /**
+ * Read the contributed `commandCentral.cron.enabled` setting (default true).
+ */
+export function isCronFeatureEnabled(): boolean {
+	return vscode.workspace
+		.getConfiguration("commandCentral.cron")
+		.get<boolean>("enabled", true);
+}
+
+/**
  * Construct the cron service, tree provider, and tree view, start the
  * service, and register the cron commands onto the extension context.
+ *
+ * Honors the contributed `commandCentral.cron.enabled` setting: when it is
+ * false the view/service are not created and no commands are registered, so
+ * the Cron Jobs view stays empty/hidden. A context key mirroring the setting
+ * is published for the view's `when` clause.
  */
 export async function activateCronFeature(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
+	const enabled = isCronFeatureEnabled();
+	await vscode.commands.executeCommand(
+		"setContext",
+		"commandCentral.cron.enabled",
+		enabled,
+	);
+	if (!enabled) {
+		return;
+	}
+
 	const { CronService } = await import("../services/cron-service.js");
 	const { CronTreeProvider } = await import(
 		"../providers/cron-tree-provider.js"

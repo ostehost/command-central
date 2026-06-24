@@ -6,6 +6,7 @@
  */
 
 import { execFile } from "node:child_process";
+import path from "node:path";
 
 // Local promise wrapper — calls execFile fresh each invocation so test mocks
 // of node:child_process.execFile take effect even after mock.restore() runs
@@ -28,6 +29,29 @@ export interface ListeningPort {
 	port: number;
 	pid: number;
 	process: string;
+}
+
+/**
+ * Extract a process cwd from `lsof -Fn` output. The cwd is on the line that
+ * begins with "n" (e.g. `p1234\nn/Users/.../my-app\n`). Returns null if absent.
+ */
+function parseCwdFromLsof(lsofOutput: string): string | null {
+	for (const line of lsofOutput.split("\n")) {
+		if (line.startsWith("n")) {
+			return line.slice(1);
+		}
+	}
+	return null;
+}
+
+/**
+ * True when `cwd` is `projectDir` itself or a descendant of it, using
+ * path-boundary-aware containment (not substring matching, so a sibling such
+ * as `my-app-copy` is not treated as belonging to `my-app`).
+ */
+function isWithinProject(cwd: string, projectDir: string): boolean {
+	const rel = path.relative(path.resolve(projectDir), path.resolve(cwd));
+	return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
 /**
@@ -72,12 +96,13 @@ export async function detectListeningPortsAsync(
 		const ports: ListeningPort[] = [];
 		for (const candidate of candidatePorts) {
 			try {
-				const { stdout: cwd } = await execFileAsync(
+				const { stdout: cwdOutput } = await execFileAsync(
 					"lsof",
 					["-p", String(candidate.pid), "-d", "cwd", "-Fn"],
 					{ encoding: "utf-8", timeout: 2000 },
 				);
-				if (cwd.includes(projectDir)) {
+				const cwd = parseCwdFromLsof(cwdOutput);
+				if (cwd !== null && isWithinProject(cwd, projectDir)) {
 					ports.push(candidate);
 				}
 			} catch {

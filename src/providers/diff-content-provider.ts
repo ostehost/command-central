@@ -33,6 +33,14 @@ function decodeRelativePath(uriPath: string): string {
 		.join("/");
 }
 
+function isConfinedRelativePath(relativePath: string): boolean {
+	if (relativePath === "") return false;
+	if (path.isAbsolute(relativePath)) return false;
+	return relativePath
+		.split(/[/\\]/)
+		.every((segment) => segment !== ".." && segment !== "");
+}
+
 function decodeBuffer(content: Buffer | string): string {
 	const buffer = Buffer.isBuffer(content)
 		? content
@@ -104,6 +112,7 @@ export class DiffContentProvider implements vscode.TextDocumentContentProvider {
 	}
 
 	private readWorkingTree(projectDir: string, relativePath: string): string {
+		if (!isConfinedRelativePath(relativePath)) return "";
 		try {
 			const joinPath = this.dependencies.join ?? path.join;
 			const readFileSync = this.dependencies.readFileSync ?? fs.readFileSync;

@@ -5,6 +5,7 @@ import {
 	extensionId,
 	parseArgs,
 	parseInstalledVersion,
+	receiptFileName,
 	resolveDefaultExtensionsDir,
 	type VsixPackageIdentity,
 } from "../../scripts-v2/verify-vscode-extension-consumption.ts";
@@ -81,6 +82,29 @@ describe("verify-vscode-extension-consumption helpers", () => {
 		);
 		expect(resolveDefaultExtensionsDir()).not.toContain(
 			path.join(".openclaw", "agents", "main", "agent", "codex-home", "home"),
+		);
+	});
+});
+
+describe("receiptFileName (CCREL-05 per-RC per-node proof)", () => {
+	test("includes the node label so hub and node receipts do not collide", () => {
+		expect(receiptFileName("0.6.0-rc.71", "hub")).toBe(
+			"vscode-consumption-0.6.0-rc.71-hub.json",
+		);
+		expect(receiptFileName("0.6.0-rc.71", "node")).toBe(
+			"vscode-consumption-0.6.0-rc.71-node.json",
+		);
+	});
+
+	test("omits the suffix when no label is given", () => {
+		expect(receiptFileName("0.6.0-rc.71")).toBe(
+			"vscode-consumption-0.6.0-rc.71.json",
+		);
+	});
+
+	test("sanitizes unsafe label characters", () => {
+		expect(receiptFileName("0.6.0-rc.71", "Mike MacBook/Pro")).toBe(
+			"vscode-consumption-0.6.0-rc.71-Mike-MacBook-Pro.json",
 		);
 	});
 });

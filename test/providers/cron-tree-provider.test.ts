@@ -37,6 +37,10 @@ class FakeCronService {
 const { CronTreeProvider, getJobIcon, formatRelativeTime, formatDuration } =
 	await import("../../src/providers/cron-tree-provider.js");
 
+const { activateCronFeature, isCronFeatureEnabled } = await import(
+	"../../src/activation/cron-feature.js"
+);
+
 // ── Test data ───────────────────────────────────────────────────────
 
 function makeJob(overrides: Partial<CronJob> = {}): CronJob {
@@ -208,6 +212,48 @@ describe("CronTreeProvider", () => {
 	test("dispose cleans up", () => {
 		// Should not throw
 		provider.dispose();
+	});
+});
+
+describe("activateCronFeature — commandCentral.cron.enabled gate (PAR-45/CP-02)", () => {
+	function makeContext(): { subscriptions: Array<{ dispose: () => void }> } {
+		return { subscriptions: [] };
+	}
+
+	beforeEach(() => {
+		cronConfig = {};
+		vscodeMock.window.createTreeView.mockClear();
+		vscodeMock.commands.executeCommand.mockClear();
+	});
+
+	test("isCronFeatureEnabled defaults to true and reflects the setting", () => {
+		expect(isCronFeatureEnabled()).toBe(true);
+		cronConfig["enabled"] = false;
+		expect(isCronFeatureEnabled()).toBe(false);
+	});
+
+	test("cron.enabled=false skips view creation and sets context key false", async () => {
+		cronConfig["enabled"] = false;
+		const context = makeContext();
+
+		await activateCronFeature(
+			context as unknown as Parameters<typeof activateCronFeature>[0],
+		);
+
+		// No tree view / service / commands are created when disabled.
+		expect(vscodeMock.window.createTreeView).not.toHaveBeenCalled();
+		expect(context.subscriptions).toHaveLength(0);
+
+		// The view's `when` context key is published as false.
+		const setContextCalls =
+			vscodeMock.commands.executeCommand.mock.calls.filter(
+				([command]: unknown[]) => command === "setContext",
+			);
+		expect(setContextCalls).toContainEqual([
+			"setContext",
+			"commandCentral.cron.enabled",
+			false,
+		]);
 	});
 });
 

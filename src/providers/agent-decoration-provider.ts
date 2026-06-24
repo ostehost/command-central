@@ -25,13 +25,16 @@ export class AgentDecorationProvider
 	>();
 
 	markChanged(taskId: string): void {
-		this.recentChanges.set(taskId, Date.now());
+		const scheduledTs = Date.now();
+		this.recentChanges.set(taskId, scheduledTs);
 		const uri = vscode.Uri.parse(`agent-task:${taskId}`);
 		this._onDidChangeFileDecorations.fire(uri);
 
-		// Schedule auto-clear after TTL
+		// Schedule auto-clear after TTL. Guard against a re-mark within the TTL:
+		// only clear if this is still the latest scheduled change for the task,
+		// otherwise a stale timer would prematurely clear the newer decoration.
 		setTimeout(() => {
-			if (this.recentChanges.has(taskId)) {
+			if (this.recentChanges.get(taskId) === scheduledTs) {
 				this.recentChanges.delete(taskId);
 				this._onDidChangeFileDecorations.fire(
 					vscode.Uri.parse(`agent-task:${taskId}`),
@@ -42,12 +45,16 @@ export class AgentDecorationProvider
 
 	/** Mark an agent as just completed/failed — shows a glow badge for 10 seconds */
 	markCompleted(taskId: string, status: "completed" | "failed"): void {
-		this.recentCompletions.set(taskId, { timestamp: Date.now(), status });
+		const scheduledTs = Date.now();
+		this.recentCompletions.set(taskId, { timestamp: scheduledTs, status });
 		const uri = vscode.Uri.parse(`agent-task:${taskId}`);
 		this._onDidChangeFileDecorations.fire(uri);
 
+		// Guard against a re-mark within the TTL: only clear if this is still the
+		// latest scheduled completion for the task, otherwise a stale timer would
+		// prematurely clear the newer completion decoration.
 		setTimeout(() => {
-			if (this.recentCompletions.has(taskId)) {
+			if (this.recentCompletions.get(taskId)?.timestamp === scheduledTs) {
 				this.recentCompletions.delete(taskId);
 				this._onDidChangeFileDecorations.fire(
 					vscode.Uri.parse(`agent-task:${taskId}`),

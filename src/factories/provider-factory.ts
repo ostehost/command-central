@@ -82,6 +82,13 @@ import type { GroupingStateManager } from "../services/grouping-state-manager.js
 export class ProjectProviderFactory implements ProviderFactory {
 	private providers = new Map<string, SortedGitChangesProvider>();
 	private providersByWorkspace = new Map<string, SortedGitChangesProvider>();
+	// In-flight creation promises keyed by config.id (CP-04 / PAR-47).
+	// createProvider awaits storage creation and provider.initialize() before
+	// writing to `providers`, so without this guard two concurrent calls for the
+	// same id both miss the cache, both build a provider, and one overwrites the
+	// other in the map — the orphaned provider is then never disposed. Caching
+	// the promise makes concurrent callers share a single instance.
+	private inFlight = new Map<string, Promise<SortedGitChangesProvider>>();
 
 	constructor(
 		private logger: LoggerService,
@@ -90,15 +97,35 @@ export class ProjectProviderFactory implements ProviderFactory {
 		private groupingStateManager?: GroupingStateManager,
 	) {}
 
-	async createProvider(
-		config: ProjectViewConfig,
-	): Promise<SortedGitChangesProvider> {
-		// Check if provider already exists
+	createProvider(config: ProjectViewConfig): Promise<SortedGitChangesProvider> {
+		// Check if provider already exists (fully created and tracked)
 		const existing = this.providers.get(config.id);
 		if (existing) {
-			return existing;
+			return Promise.resolve(existing);
 		}
 
+		// Coalesce concurrent calls for the same id onto one in-flight creation.
+		// This synchronous check + set (before any await) closes the TOCTOU race
+		// that otherwise let two callers build duplicate, untracked providers.
+		const pending = this.inFlight.get(config.id);
+		if (pending) {
+			return pending;
+		}
+
+		// Always clear the in-flight entry once settled so a failed creation can
+		// be retried and a successful one is served from `providers` thereafter.
+		// `.finally` preserves the resolved provider, so every concurrent caller
+		// receives the same instance.
+		const creation = this.doCreateProvider(config).finally(() => {
+			this.inFlight.delete(config.id);
+		});
+		this.inFlight.set(config.id, creation);
+		return creation;
+	}
+
+	private async doCreateProvider(
+		config: ProjectViewConfig,
+	): Promise<SortedGitChangesProvider> {
 		// Create per-workspace storage using VS Code's native workspaceState
 		let storage: StorageAdapter | undefined;
 		try {
@@ -151,7 +178,11 @@ export class ProjectProviderFactory implements ProviderFactory {
 	getProviderForFile(
 		fileUri: vscode.Uri,
 	): SortedGitChangesProvider | undefined {
-		const filePath = fileUri.fsPath;
+		// Normalize to forward slashes so Windows backslash fsPaths
+		// (e.g. C:\repo\src\file.ts) still match their workspace key.
+		// Both sides are normalized before the boundary/longest-match
+		// comparison so containment is platform-independent (CP-16 / PAR-57).
+		const filePath = fileUri.fsPath.replace(/\\/g, "/");
 
 		// Find workspace using longest-match strategy (most specific wins)
 		let bestMatch:
@@ -162,17 +193,22 @@ export class ProjectProviderFactory implements ProviderFactory {
 			workspacePath,
 			provider,
 		] of this.providersByWorkspace.entries()) {
+			const normalizedWorkspace = workspacePath.replace(/\\/g, "/");
+
 			// Check if file is within this workspace
 			// IMPORTANT: Add path separator to prevent substring matches
 			// e.g., /workspace1 should NOT match /workspace10
-			const workspaceWithSep = workspacePath.endsWith("/")
-				? workspacePath
-				: `${workspacePath}/`;
+			const workspaceWithSep = normalizedWorkspace.endsWith("/")
+				? normalizedWorkspace
+				: `${normalizedWorkspace}/`;
 
-			if (filePath.startsWith(workspaceWithSep) || filePath === workspacePath) {
+			if (
+				filePath.startsWith(workspaceWithSep) ||
+				filePath === normalizedWorkspace
+			) {
 				// Choose longest match (most specific workspace)
-				if (!bestMatch || workspacePath.length > bestMatch.path.length) {
-					bestMatch = { path: workspacePath, provider };
+				if (!bestMatch || normalizedWorkspace.length > bestMatch.path.length) {
+					bestMatch = { path: normalizedWorkspace, provider };
 				}
 			}
 		}
@@ -181,6 +217,13 @@ export class ProjectProviderFactory implements ProviderFactory {
 	}
 
 	async dispose(): Promise<void> {
+		// Settle any in-flight creations first so a provider that finishes
+		// initializing during disposal is tracked in `providers` and cleaned up
+		// rather than leaking undisposed (CP-04 / PAR-47).
+		if (this.inFlight.size > 0) {
+			await Promise.allSettled(this.inFlight.values());
+		}
+
 		this.logger.debug(`Disposing ${this.providers.size} providers`);
 
 		for (const [id, provider] of this.providers.entries()) {
@@ -188,6 +231,7 @@ export class ProjectProviderFactory implements ProviderFactory {
 			this.logger.debug(`Disposed provider: ${id}`);
 		}
 
+		this.inFlight.clear();
 		this.providers.clear();
 		this.providersByWorkspace.clear();
 	}

@@ -59,6 +59,19 @@ describe("OpenClaw task nodes", () => {
 			runId: string;
 			progressSummary: string;
 			lastEventAt: number;
+			trackerKind: string;
+			issueId: string;
+			issueIdentifier: string;
+			issueState: string;
+			issueUrl: string;
+			workspacePath: string;
+			execMode: string;
+			execNodeName: string;
+			execNodeId: string;
+			host: string;
+			nodeConnected: boolean;
+			workflowName: string;
+			workflowPath: string;
 		}> = {},
 	) {
 		return {
@@ -2123,5 +2136,87 @@ describe("OpenClaw task nodes", () => {
 					entry.when === "viewItem =~ /^openclawTask\\./",
 			),
 		).toBe(true);
+	});
+
+	test("cross-project OpenClaw issues surface tracker, workspace, and node identity (CC-006)", async () => {
+		// A real dogfood lane: a Linear-tracked issue targeting a different
+		// project, executing on a remote node. The base detail rows
+		// (runtime/status) used to be all that rendered, so this looked
+		// identical to a local background task. The cross-project orchestration
+		// identity must now be visible.
+		const crossProjectTask = createTask({
+			taskId: "bg-cross-project",
+			task: "Dogfood cross-project orchestration",
+			status: "running",
+			trackerKind: "linear",
+			issueIdentifier: "PAR-158",
+			issueState: "In Progress",
+			issueUrl: "https://linear.app/partnerai/issue/PAR-158",
+			workspacePath: "/Users/ostemini/projects/ghostty-launcher",
+			execMode: "spoke",
+			execNodeName: "node-2",
+			nodeConnected: false,
+			workflowName: "release-prep",
+		});
+		const provider = await createProvider([crossProjectTask]);
+
+		const details = provider.getChildren({
+			type: "openclawTask",
+			task: crossProjectTask,
+		});
+		const detailRows = details.filter(
+			(node): node is Extract<AgentNode, { type: "detail" }> =>
+				node.type === "detail",
+		);
+		const rowsByLabel = new Map(detailRows.map((node) => [node.label, node]));
+
+		const trackedIssue = rowsByLabel.get("Tracked issue");
+		if (!trackedIssue) {
+			throw new Error("No Tracked issue detail row");
+		}
+		expect(trackedIssue.value).toBe("linear · PAR-158 · In Progress");
+		// The issue URL must be openable directly from the row.
+		expect(trackedIssue.command?.command).toBe("vscode.open");
+		expect(String(trackedIssue.command?.arguments?.[0])).toContain(
+			"https://linear.app/partnerai/issue/PAR-158",
+		);
+
+		expect(rowsByLabel.get("Project workspace")?.value).toBe(
+			"/Users/ostemini/projects/ghostty-launcher",
+		);
+		expect(rowsByLabel.get("Execution node")?.value).toBe(
+			"node-2 · disconnected",
+		);
+		expect(rowsByLabel.get("Workflow contract")?.value).toBe("release-prep");
+
+		// The inline tree item tooltip must also disclose the tracked issue so a
+		// cross-project lane is recognizable without expanding it.
+		const item = provider.getTreeItem({
+			type: "openclawTask",
+			task: crossProjectTask,
+		});
+		expect((item.tooltip as { value: string }).value).toContain(
+			"Tracked issue: linear · PAR-158 · In Progress",
+		);
+	});
+
+	test("plain local OpenClaw tasks add no cross-project orchestration rows (CC-006)", async () => {
+		const localTask = createTask({ taskId: "bg-local", status: "running" });
+		const provider = await createProvider([localTask]);
+
+		const details = provider.getChildren({
+			type: "openclawTask",
+			task: localTask,
+		});
+		const labels = details
+			.filter(
+				(node): node is Extract<AgentNode, { type: "detail" }> =>
+					node.type === "detail",
+			)
+			.map((node) => node.label);
+		expect(labels).not.toContain("Tracked issue");
+		expect(labels).not.toContain("Project workspace");
+		expect(labels).not.toContain("Execution node");
+		expect(labels).not.toContain("Workflow contract");
 	});
 });

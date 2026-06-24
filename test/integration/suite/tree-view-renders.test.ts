@@ -1,8 +1,80 @@
 import assert from "node:assert/strict";
 import * as vscode from "vscode";
+import type {
+	AgentNode,
+	AgentStatusTreeProvider,
+} from "../../../src/providers/agent-status-tree-provider.js";
+import { getTreeSnapshotForProvider } from "../../../src/services/integration-test-api.js";
 import { getTestApi, waitForIdleTurn } from "./helpers.js";
 
 export const scenarioName = "tree view renders";
+
+/**
+ * Regression for PAR-69 / CP-30: a required label on a node hidden past the
+ * snapshot child/root cap must still surface in `selected.requiredLabels`.
+ * Before the fix, root/child selection sliced to `maxChildrenPerNode` (and the
+ * only pre-cap escape hatch was for `requiredTaskId`), so a label on a
+ * capped-out node was never visited. Uses a fake provider so the cap is
+ * deterministic without depending on live host state.
+ */
+function buildFakeProviderWithCappedLabel(
+	rootCount: number,
+	requiredLabelIndex: number,
+	requiredLabel: string,
+): AgentStatusTreeProvider {
+	const roots: AgentNode[] = Array.from({ length: rootCount }, (_, index) => ({
+		type: "state",
+		label: index === requiredLabelIndex ? requiredLabel : `filler-${index}`,
+	}));
+	const fake = {
+		getChildren(element?: AgentNode): AgentNode[] {
+			return element ? [] : roots;
+		},
+		getTreeItem(element: AgentNode): vscode.TreeItem {
+			return new vscode.TreeItem(
+				element.type === "state" ? element.label : element.type,
+			);
+		},
+		getTasks(): unknown[] {
+			return [];
+		},
+	};
+	return fake as unknown as AgentStatusTreeProvider;
+}
+
+function runCappedRequiredLabelRegression(): void {
+	const maxChildrenPerNode = 3;
+	const requiredLabel = "PAR-69-capped-out-root";
+	// Place the required label on a root strictly beyond the cap so naive
+	// `.slice(0, maxChildrenPerNode)` selection drops it.
+	const provider = buildFakeProviderWithCappedLabel(
+		maxChildrenPerNode + 2,
+		maxChildrenPerNode + 1,
+		requiredLabel,
+	);
+
+	const snapshot = getTreeSnapshotForProvider(provider, {
+		maxDepth: 1,
+		maxChildrenPerNode,
+		requiredLabels: [requiredLabel],
+	});
+
+	const selected = snapshot.selected.requiredLabels[requiredLabel];
+	assert.ok(
+		selected?.length,
+		"A required label on a root past the snapshot cap must still be selected (PAR-69).",
+	);
+	assert.deepEqual(
+		selected?.[0]?.path,
+		[requiredLabel],
+		"The selected capped-out node must carry its own path.",
+	);
+	assert.equal(
+		selected?.[0]?.node.label,
+		requiredLabel,
+		"The selected node must be the capped-out root carrying the required label.",
+	);
+}
 
 export async function run(): Promise<void> {
 	const testApi = await getTestApi();
@@ -48,4 +120,6 @@ export async function run(): Promise<void> {
 		symphonyTree.selected.requiredLabels["Run Attempts"]?.length,
 		"Symphony view inspection should expose the static Run Attempts root.",
 	);
+
+	runCappedRequiredLabelRegression();
 }

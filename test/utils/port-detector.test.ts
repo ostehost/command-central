@@ -129,6 +129,44 @@ describe("detectListeningPortsAsync", () => {
 		expect(ports).toEqual([]);
 	});
 
+	test("ignores sibling dirs whose path is a prefix of the project dir", async () => {
+		// Regression for PAR-50 [CP-08]: substring matching wrongly classified a
+		// process in `/Users/test/projects/my-app-copy` as belonging to
+		// `/Users/test/projects/my-app` (the latter is a prefix of the former).
+		execFileMock.mockImplementation((cmd, args, _options, callback) => {
+			if (cmd === "lsof" && args[0] === "-iTCP" && args[1] === "-sTCP:LISTEN") {
+				callback(null, "p1234\ncnode\nn*:3000\n", "");
+			} else if (cmd === "lsof" && args[0] === "-p") {
+				callback(null, "p1234\nn/Users/test/projects/my-app-copy\n", "");
+			} else {
+				callback(null, "", "");
+			}
+		});
+
+		const ports = await detectListeningPortsAsync(
+			"/Users/test/projects/my-app",
+		);
+		expect(ports).toEqual([]);
+	});
+
+	test("matches processes in a subdirectory of the project dir", async () => {
+		execFileMock.mockImplementation((cmd, args, _options, callback) => {
+			if (cmd === "lsof" && args[0] === "-iTCP" && args[1] === "-sTCP:LISTEN") {
+				callback(null, "p1234\ncnode\nn*:3000\n", "");
+			} else if (cmd === "lsof" && args[0] === "-p") {
+				callback(null, "p1234\nn/Users/test/projects/my-app/server\n", "");
+			} else {
+				callback(null, "", "");
+			}
+		});
+
+		const ports = await detectListeningPortsAsync(
+			"/Users/test/projects/my-app",
+		);
+		expect(ports).toHaveLength(1);
+		expect(ports[0]?.port).toBe(3000);
+	});
+
 	test("handles multiple ports from different processes", async () => {
 		execFileMock.mockImplementation((cmd, args, _options, callback) => {
 			if (cmd === "lsof" && args[0] === "-iTCP" && args[1] === "-sTCP:LISTEN") {

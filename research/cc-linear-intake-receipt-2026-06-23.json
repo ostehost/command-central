@@ -1,0 +1,295 @@
+{
+  "date": "2026-06-23",
+  "applied": [
+    {
+      "identifier": "PAR-154",
+      "action": "comment+move-done",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-154/cc-003-project-taskflowlauncherlinear-workstreams-into-symphony-shaped#comment-33065709",
+      "moved_to": "Done"
+    },
+    {
+      "identifier": "PAR-195",
+      "action": "comment+move-done",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-195/agent-status-should-not-surface-completed-detached-symphony-lanes-as#comment-7410b620",
+      "moved_to": "Done"
+    },
+    {
+      "identifier": "PAR-38",
+      "action": "comment+move-done",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-38/cc-001-fix-false-or-stale-openclaw-down-indicator-in-command-central#comment-13cf28eb",
+      "moved_to": "Done"
+    },
+    {
+      "identifier": "PAR-71",
+      "action": "comment+move-done",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-71/cp-32-pgrep-failures-can-falsely-mark-a-tmux-agent-lane-dead#comment-8e265d9c",
+      "moved_to": "Done"
+    },
+    {
+      "identifier": "PAR-149",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-149/cc-000-command-central-project-openclaw-health-symphony-orchestration#comment-1ac9dd03"
+    },
+    {
+      "identifier": "PAR-152",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-152/cc-002-define-openclaw-health-truth-contract-for-command-central#comment-650e0d10"
+    },
+    {
+      "identifier": "PAR-156",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-156/cc-004-add-linear-intakemirror-receipts-for-command-central#comment-0e7e9320"
+    },
+    {
+      "identifier": "PAR-157",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-157/cc-005-design-conductor-daemon-slice-using-symphony-vocabulary-on#comment-333177ff"
+    },
+    {
+      "identifier": "PAR-158",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-158/cc-006-dogfood-command-central-cross-project-orchestration-with-real#comment-7b131f0b"
+    },
+    {
+      "identifier": "PAR-226",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-226/ccsync-01-agent-status-must-stop-showing-stale-laneread-model-rows-as#comment-105eceb7"
+    },
+    {
+      "identifier": "PAR-227",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-227/ccsync-02-add-a-lane-projection-rebuildgc-receipt-so-stale-command#comment-14445999"
+    },
+    {
+      "identifier": "PAR-228",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-228/ccsync-03-add-live-terminal-attention-classifier-for-idle-prompts#comment-6bdafc42"
+    },
+    {
+      "identifier": "PAR-229",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-229/ccsync-04-add-hubnode-sync-readiness-card-with-repo-parity-dirty-tree#comment-a1531b20"
+    },
+    {
+      "identifier": "PAR-230",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-230/ccsync-05-surface-openclaw-session-history-archiverecovery-risk#comment-ac4c3c63"
+    },
+    {
+      "identifier": "PAR-231",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-231/ccsync-06-add-manual-closeout-flow-for-stale-shells-and-completed-test#comment-6d3a5796"
+    },
+    {
+      "identifier": "PAR-237",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-237/ccrel-05-cut-the-next-command-central-rc-only-after-parity-and-daemon#comment-8939affc"
+    },
+    {
+      "identifier": "PAR-242",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-242/m1sql-01-plan-and-execute-sqlite-receipt-store-migration-for-symphony#comment-92bde53d"
+    },
+    {
+      "identifier": "PAR-44",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-44/cp-01-untrusted-workspace-restrictions-name-stale-settings#comment-d920ece1"
+    },
+    {
+      "identifier": "PAR-45",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-45/cp-02-contributed-settings-are-not-wired-to-behavior#comment-3498afb6"
+    },
+    {
+      "identifier": "PAR-46",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-46/cp-03-successful-three-way-diff-behavior-is-only-smoke-tested#comment-13c6898f"
+    },
+    {
+      "identifier": "PAR-47",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-47/cp-04-concurrent-createprovider-calls-can-create-duplicate-untracked#comment-2a9a65d4"
+    },
+    {
+      "identifier": "PAR-48",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-48/cp-05-windows-child-files-cannot-be-mapped-to-their-workspace-provider#comment-5af178c5"
+    },
+    {
+      "identifier": "PAR-49",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-49/cp-07-failed-extraction-leaves-the-existing-ghostty-install-renamed-as#comment-a9d90cb7"
+    },
+    {
+      "identifier": "PAR-50",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-50/cp-08-port-ownership-check-accepts-sibling-path-prefixes#comment-e3ae90d2"
+    },
+    {
+      "identifier": "PAR-51",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-51/cp-09-windows-repository-matching-uses-posix-separators#comment-1abfd65c"
+    },
+    {
+      "identifier": "PAR-52",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-52/cp-10-transcript-heuristic-selects-the-newest-later-session-not-the#comment-9f88586e"
+    },
+    {
+      "identifier": "PAR-53",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-53/cp-11-session-file-removals-do-not-evict-cached-agents#comment-1e50d0e4"
+    },
+    {
+      "identifier": "PAR-54",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-54/cp-12-default-launcher-task-discovery-ignores-additional-registry#comment-a60a871a"
+    },
+    {
+      "identifier": "PAR-55",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-55/cp-14-output-stream-cannot-switch-to-a-new-session-for-an-existing#comment-6d1b45e3"
+    },
+    {
+      "identifier": "PAR-56",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-56/cp-15-dotfiles-with-registered-extensions-are-counted-as-no-extension#comment-38e1b48a"
+    },
+    {
+      "identifier": "PAR-57",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-57/cp-16-git-sort-file-actions-fail-for-nested-workspace-files-on-windows#comment-5d4837a8"
+    },
+    {
+      "identifier": "PAR-58",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-58/cp-17-untrusted-workspace-restrictions-reference-stale-settings-and#comment-ecdc43e9"
+    },
+    {
+      "identifier": "PAR-59",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-59/cp-18-external-live-agents-disappear-after-four-hours-even-while-their#comment-6c6b732d"
+    },
+    {
+      "identifier": "PAR-60",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-60/cp-19-rejects-valid-svg-viewbox-values-outside-positive-integer-double#comment-08bef42d"
+    },
+    {
+      "identifier": "PAR-61",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-61/cp-21-malformed-config-reload-wipes-the-last-known-agent-models#comment-c7c9b7e8"
+    },
+    {
+      "identifier": "PAR-62",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-62/cp-22-task-reload-blocks-the-extension-host-on-a-synchronous-cli-call#comment-c856a96b"
+    },
+    {
+      "identifier": "PAR-63",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-63/cp-24-gitchangeitem-guard-rejects-valid-gitchangeitem-values#comment-10f8156e"
+    },
+    {
+      "identifier": "PAR-64",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-64/cp-25-deleted-file-timestamp-lookup-cannot-run-in-the-vs-code-node#comment-f2833cef"
+    },
+    {
+      "identifier": "PAR-65",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-65/cp-26-mock-storage-contradicts-the-storageadapter-save-contract#comment-a8b1ed9d"
+    },
+    {
+      "identifier": "PAR-66",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-66/cp-27-lifecycle-event-tests-exercise-the-mock-emitter-instead-of-the#comment-ca795d82"
+    },
+    {
+      "identifier": "PAR-67",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-67/cp-28-services-stop-watching-permanently-when-openclaw-directories-are#comment-489a7ef7"
+    },
+    {
+      "identifier": "PAR-68",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-68/cp-29-synchronous-cli-reloads-can-freeze-the-extension-host#comment-6d6fb094"
+    },
+    {
+      "identifier": "PAR-69",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-69/cp-30-required-label-selection-can-miss-nodes-hidden-by-snapshot-caps#comment-233ff397"
+    },
+    {
+      "identifier": "PAR-70",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-70/cp-31-filter-persistence-writes-can-complete-out-of-order#comment-baba264a"
+    },
+    {
+      "identifier": "PAR-72",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-72/cp-33-calendar-day-grouping-drifts-across-daylight-saving-boundaries#comment-549cccca"
+    },
+    {
+      "identifier": "PAR-73",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-73/cp-34-status-bar-visibility-setting-is-ignored#comment-0f908537"
+    },
+    {
+      "identifier": "PAR-74",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-74/cp-36-provider-state-subscription-is-not-registered-for-extension#comment-a40c963e"
+    },
+    {
+      "identifier": "PAR-75",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-75/cp-39-diff-content-working-tree-uris-can-escape-the-project-directory#comment-de283344"
+    },
+    {
+      "identifier": "PAR-76",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-76/cp-40-decoration-expiry-timers-can-clear-newer-decorations#comment-aea39ed2"
+    },
+    {
+      "identifier": "PAR-77",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-77/cp-41-extension-filter-refresh-rediscovers-from-already-filtered#comment-ee8eda95"
+    },
+    {
+      "identifier": "PAR-78",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-78/cp-42-build-script-inherits-distributioninstall-side-effects#comment-09493f64"
+    },
+    {
+      "identifier": "PAR-79",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-79/cp-43-workspace-display-name-setting-is-ignored#comment-d0e3891c"
+    },
+    {
+      "identifier": "PAR-80",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-80/ccstd-01-run-command-central-baseline-preserve-before-destroy-audit#comment-9e26c23b"
+    },
+    {
+      "identifier": "PAR-81",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-81/ccstd-02-audit-command-central-vsix-and-generated-artifact-policy#comment-29d084c7"
+    },
+    {
+      "identifier": "PAR-82",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-82/ccstd-03-verify-command-central-extension-host-runtime-and-workspace#comment-44c7c352"
+    },
+    {
+      "identifier": "PAR-83",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-83/ccstd-04-audit-command-central-typescriptnode-hermetic-build-and-env#comment-badb5767"
+    },
+    {
+      "identifier": "PAR-84",
+      "action": "comment",
+      "comment_url": "https://linear.app/partnerai/issue/PAR-84/ccstd-05-add-command-central-release-split-identity-and-push-target#comment-0668489b"
+    }
+  ],
+  "errors": []
+}

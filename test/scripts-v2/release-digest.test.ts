@@ -6,6 +6,7 @@ import * as path from "node:path";
 import {
 	type CommitRef,
 	CUT_SUBJECT_PREFIX,
+	collectGateEvidence,
 	collectSinceSection,
 	filterReleaseNoise,
 	formatDiscord,
@@ -384,5 +385,51 @@ describe("CLI smoke", () => {
 			},
 		);
 		expect(stdout).toContain("## 🚀 Command Central v");
+	});
+});
+
+describe("collectGateEvidence (CCREL-05 digest evidence)", () => {
+	test("projects the CCREL-05 checks from a gate artifact and omits plumbing", async () => {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), "cc-digest-gate-"));
+		try {
+			const dir = path.join(root, "research", "prerelease-gate");
+			await fs.mkdir(dir, { recursive: true });
+			await fs.writeFile(
+				path.join(dir, "latest.json"),
+				JSON.stringify({
+					generatedAt: "2026-06-23T00:00:00.000Z",
+					success: true,
+					checks: [
+						{ name: "command-central validation", status: "passed" },
+						{ name: "openclaw daemon smoke", status: "passed" },
+						{ name: "openclaw node readiness", status: "passed" },
+						{ name: "hub repo parity", status: "passed" },
+						{ name: "cross-repo launcher contract", status: "passed" },
+					],
+				}),
+				"utf8",
+			);
+			const evidence = collectGateEvidence(root);
+			expect(evidence?.success).toBe(true);
+			const labels = evidence?.checks.map((c) => c.label) ?? [];
+			expect(labels).toEqual([
+				"Daemon smoke",
+				"Node readiness",
+				"Hub repo parity",
+				"Launcher contract / sync",
+			]);
+			// markdown carries the section once evidence is present
+			const md = formatMarkdown("## [x]\n", null, evidence);
+			expect(md).toContain("### Release gate evidence");
+			expect(md).toContain("Daemon smoke: passed");
+		} finally {
+			await fs.rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("missing artifact yields null (digest omits the section)", () => {
+		expect(
+			collectGateEvidence(path.join(os.tmpdir(), "nope-cc-no-gate")),
+		).toBeNull();
 	});
 });

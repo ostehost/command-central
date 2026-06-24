@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { Uri } from "vscode";
-import { getDisplayName } from "./extension-display-names";
+import { getDisplayName, isKnownExtension } from "./extension-display-names";
 
 /**
  * Represents metadata about a file extension across workspaces
@@ -37,6 +37,32 @@ export interface WorkspaceChanges {
 }
 
 /**
+ * Resolves the extension key for a file path
+ *
+ * Single-segment dotfiles (e.g. ".env") report an empty extension via
+ * path.extname, which would bucket them under "No Extension". When the
+ * basename matches a known registered extension, treat the basename as the
+ * extension key so the file is grouped correctly. True extensionless files
+ * (e.g. "Makefile") still resolve to "".
+ *
+ * @param fsPath - Absolute or relative file path
+ * @returns Normalized extension key (e.g. ".ts", ".env", or "")
+ */
+function resolveExtensionKey(fsPath: string): string {
+	const ext = path.extname(fsPath).toLowerCase();
+	if (ext !== "") {
+		return ext;
+	}
+
+	const basename = path.basename(fsPath).toLowerCase();
+	if (isKnownExtension(basename)) {
+		return basename;
+	}
+
+	return ext;
+}
+
+/**
  * Counts file extensions per workspace
  *
  * @param workspaceData - Array of workspace changes
@@ -50,7 +76,7 @@ export function countExtensionsByWorkspace(
 	for (const { workspace, changes } of workspaceData) {
 		for (const change of changes) {
 			// Extract and normalize extension
-			const ext = path.extname(change.uri.fsPath).toLowerCase();
+			const ext = resolveExtensionKey(change.uri.fsPath);
 
 			// Get or create workspace counts map for this extension
 			if (!result.has(ext)) {

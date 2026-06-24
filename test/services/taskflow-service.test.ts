@@ -6,20 +6,21 @@ import {
 } from "../../src/types/taskflow-types.js";
 import { waitFor } from "../helpers/wait-for.js";
 
-let execFileSyncResult: string | Error = '{"count":0,"status":null,"flows":[]}';
-let execFileSyncCalls: Array<{ cmd: string; args: string[] }> = [];
-let execFileResult: string | Error = "";
+// Reload now flows through the async execFile path (PAR-68 / CP-29):
+// reload() returns synchronously and resolves the CLI off the event loop.
+// `execFileResult` drives the resolved stdout (or thrown Error) for reloads
+// AND mutating CLI commands; `execFilePending`, when set, holds the callback
+// so a test can control exactly when the CLI resolves.
+let execFileResult: string | Error = '{"count":0,"status":null,"flows":[]}';
 let execFileCalls: Array<{ cmd: string; args: string[] }> = [];
+let execFilePending:
+	| ((cb: (err: Error | null, stdout: string) => void) => void)
+	| null = null;
 
 let watchCallback: ((event: string, filename: string) => void) | null = null;
 let watchClosed = false;
 
 mock.module("node:child_process", () => ({
-	execFileSync: (cmd: string, args: string[], _opts?: unknown) => {
-		execFileSyncCalls.push({ cmd, args });
-		if (execFileSyncResult instanceof Error) throw execFileSyncResult;
-		return execFileSyncResult;
-	},
 	execFile: (
 		cmd: string,
 		args: string[],
@@ -27,6 +28,10 @@ mock.module("node:child_process", () => ({
 		cb: (err: Error | null, stdout: string) => void,
 	) => {
 		execFileCalls.push({ cmd, args });
+		if (execFilePending) {
+			execFilePending(cb);
+			return;
+		}
 		if (execFileResult instanceof Error) {
 			cb(execFileResult, "");
 		} else {
@@ -103,18 +108,18 @@ const sampleFlows = {
 
 describe("TaskFlowService", () => {
 	beforeEach(() => {
-		execFileSyncResult = '{"count":0,"status":null,"flows":[]}';
-		execFileSyncCalls = [];
-		execFileResult = "";
+		execFileResult = '{"count":0,"status":null,"flows":[]}';
 		execFileCalls = [];
+		execFilePending = null;
 		watchCallback = null;
 		watchClosed = false;
 	});
 
-	test("parses valid flow list output", () => {
-		execFileSyncResult = JSON.stringify(sampleFlows);
+	test("parses valid flow list output", async () => {
+		execFileResult = JSON.stringify(sampleFlows);
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 
 		const flows = service.getFlows();
 		expect(flows).toHaveLength(1);
@@ -122,8 +127,8 @@ describe("TaskFlowService", () => {
 		service.dispose();
 	});
 
-	test("preserves nested flow tasks from CLI output", () => {
-		execFileSyncResult = JSON.stringify({
+	test("preserves nested flow tasks from CLI output", async () => {
+		execFileResult = JSON.stringify({
 			count: 1,
 			status: null,
 			flows: [
@@ -153,6 +158,7 @@ describe("TaskFlowService", () => {
 		});
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 
 		const flow = at(service.getFlows(), 0);
 		expect(flow.tasks).toHaveLength(1);
@@ -161,12 +167,13 @@ describe("TaskFlowService", () => {
 		service.dispose();
 	});
 
-	test("calls correct CLI command", () => {
+	test("calls correct CLI command", async () => {
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 
-		expect(at(execFileSyncCalls, 0).cmd).toBe("openclaw");
-		expect(at(execFileSyncCalls, 0).args).toEqual([
+		expect(at(execFileCalls, 0).cmd).toBe("openclaw");
+		expect(at(execFileCalls, 0).args).toEqual([
 			"tasks",
 			"flow",
 			"list",
@@ -175,36 +182,38 @@ describe("TaskFlowService", () => {
 		service.dispose();
 	});
 
-	test("handles ENOENT (OpenClaw not installed)", () => {
+	test("handles ENOENT (OpenClaw not installed)", async () => {
 		const err = new Error("spawn openclaw ENOENT") as NodeJS.ErrnoException;
 		err.code = "ENOENT";
-		execFileSyncResult = err;
+		execFileResult = err;
 
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 
 		expect(service.getFlows()).toHaveLength(0);
 		expect(service.isInstalled).toBe(false);
 		service.dispose();
 	});
 
-	test("handles non-zero exit and keeps last known state", () => {
-		execFileSyncResult = JSON.stringify(sampleFlows);
+	test("handles non-zero exit and keeps last known state", async () => {
+		execFileResult = JSON.stringify(sampleFlows);
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 		expect(service.getFlows()).toHaveLength(1);
 
 		const err = new Error("exit code 1") as NodeJS.ErrnoException;
 		err.code = "ERR_CHILD_PROCESS";
-		execFileSyncResult = err;
-		service.reload();
+		execFileResult = err;
+		await service.reloadAsync();
 
 		expect(service.getFlows()).toHaveLength(1);
 		expect(service.isInstalled).toBe(true);
 		service.dispose();
 	});
 
-	test("getActiveFlows filters to active statuses", () => {
+	test("getActiveFlows filters to active statuses", async () => {
 		const flowsWithMixed = {
 			count: 3,
 			status: null,
@@ -243,9 +252,10 @@ describe("TaskFlowService", () => {
 				},
 			],
 		};
-		execFileSyncResult = JSON.stringify(flowsWithMixed);
+		execFileResult = JSON.stringify(flowsWithMixed);
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 
 		const active = service.getActiveFlows();
 		expect(active).toHaveLength(3);
@@ -253,7 +263,7 @@ describe("TaskFlowService", () => {
 		service.dispose();
 	});
 
-	test("getRecentFlows returns sorted and limited results", () => {
+	test("getRecentFlows returns sorted and limited results", async () => {
 		const manyFlows = {
 			count: 3,
 			status: null,
@@ -287,9 +297,10 @@ describe("TaskFlowService", () => {
 				},
 			],
 		};
-		execFileSyncResult = JSON.stringify(manyFlows);
+		execFileResult = JSON.stringify(manyFlows);
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 
 		const recent = service.getRecentFlows(2);
 		expect(recent).toHaveLength(2);
@@ -299,7 +310,7 @@ describe("TaskFlowService", () => {
 	});
 
 	test("debounce fires only once for rapid file changes", async () => {
-		execFileSyncResult = JSON.stringify(sampleFlows);
+		execFileResult = JSON.stringify(sampleFlows);
 		let callbackCount = 0;
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {
@@ -319,7 +330,7 @@ describe("TaskFlowService", () => {
 	});
 
 	test("file watcher triggers reload callback", async () => {
-		execFileSyncResult = JSON.stringify(sampleFlows);
+		execFileResult = JSON.stringify(sampleFlows);
 		let callbackCount = 0;
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {
@@ -337,6 +348,8 @@ describe("TaskFlowService", () => {
 	test("cancelFlow calls correct CLI command", async () => {
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
+		execFileCalls = [];
 
 		await service.cancelFlow("flow-1");
 		expect(at(execFileCalls, 0).cmd).toBe("openclaw");
@@ -358,16 +371,17 @@ describe("TaskFlowService", () => {
 		expect(service.getFlows()).toHaveLength(0);
 	});
 
-	test("handles empty string output", () => {
-		execFileSyncResult = "";
+	test("handles empty string output", async () => {
+		execFileResult = "";
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 
 		expect(service.getFlows()).toHaveLength(0);
 		service.dispose();
 	});
 
-	test("handles array format output", () => {
+	test("handles array format output", async () => {
 		const arrayFlows = [
 			{
 				flowId: "f1",
@@ -378,12 +392,66 @@ describe("TaskFlowService", () => {
 				failedCount: 0,
 			},
 		];
-		execFileSyncResult = JSON.stringify(arrayFlows);
+		execFileResult = JSON.stringify(arrayFlows);
 		const service = new TaskFlowService({ debounceMs: 1 });
 		service.start(() => {});
+		await service.reloadAsync();
 
 		expect(service.getFlows()).toHaveLength(1);
 		expect(at(service.getFlows(), 0).flowId).toBe("f1");
+		service.dispose();
+	});
+
+	// ── PAR-68 / CP-29 regression: non-blocking async reload ─────────────
+	// On the synchronous (execFileSync) implementation start() did not return
+	// until the CLI finished, and flows were populated before start() returned.
+	// These tests assert start() returns BEFORE the CLI resolves and that
+	// state lands only after the deferred CLI callback fires.
+	test("start() returns before the CLI resolves (non-blocking reload)", async () => {
+		const cli: { resolve: ((stdout: string) => void) | null } = {
+			resolve: null,
+		};
+		execFilePending = (cb) => {
+			cli.resolve = (stdout) => cb(null, stdout);
+		};
+
+		const service = new TaskFlowService({ debounceMs: 1 });
+		service.start(() => {});
+
+		// start() has returned but the CLI has not resolved yet — on the old
+		// execFileSync code this state was impossible (flows already populated).
+		expect(cli.resolve).not.toBeNull();
+		expect(service.getFlows()).toHaveLength(0);
+
+		cli.resolve?.(JSON.stringify(sampleFlows));
+		await waitFor(() => service.getFlows().length === 1, {
+			message: "flows should populate after the deferred CLI resolves",
+		});
+		expect(service.getFlows()).toHaveLength(1);
+		service.dispose();
+	});
+
+	test("concurrent reloads coalesce onto a single CLI invocation", async () => {
+		const cli: { resolve: ((stdout: string) => void) | null } = {
+			resolve: null,
+		};
+		execFilePending = (cb) => {
+			cli.resolve = (stdout) => cb(null, stdout);
+		};
+
+		const service = new TaskFlowService({ debounceMs: 1 });
+		const first = service.reloadAsync();
+		const second = service.reloadAsync();
+		const third = service.reloadAsync();
+
+		expect(execFileCalls).toHaveLength(1);
+		expect(second).toBe(first);
+		expect(third).toBe(first);
+
+		cli.resolve?.(JSON.stringify(sampleFlows));
+		await Promise.all([first, second, third]);
+		expect(execFileCalls).toHaveLength(1);
+		expect(service.getFlows()).toHaveLength(1);
 		service.dispose();
 	});
 });

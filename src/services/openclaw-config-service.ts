@@ -74,36 +74,43 @@ export class OpenClawConfigService implements vscode.Disposable {
 	}
 
 	reload(): void {
-		this.agents.clear();
-
 		let content: string;
 		try {
 			content = fs.readFileSync(this.configPath, "utf-8");
 		} catch {
+			// Config missing/deleted — drop stale models.
+			this.agents.clear();
 			return;
 		}
 
 		try {
 			const config = JSON.parse(content) as { agents?: OpenClawAgentsConfig };
 			const agents = config.agents;
-			if (!agents) return;
+			if (!agents) {
+				this.agents.clear();
+				return;
+			}
 
 			const globalModel = agents.defaults?.model?.primary ?? "";
 			const globalThinking = agents.defaults?.thinkingDefault;
 
+			const next = new Map<string, OpenClawAgentModel>();
 			for (const agent of agents.list ?? []) {
 				const agentModel = this.resolveModel(agent.model);
 				const isExplicit = agentModel !== null;
 
-				this.agents.set(agent.id, {
+				next.set(agent.id, {
 					id: agent.id,
 					model: agentModel ?? globalModel,
 					thinkingDefault: agent.thinkingDefault ?? globalThinking,
 					isExplicit,
 				});
 			}
+			// Swap only after a successful read+parse so a transiently
+			// malformed config can't wipe the last known-good models.
+			this.agents = next;
 		} catch {
-			// Parse error — config may be mid-edit
+			// Parse error — config may be mid-edit; keep last known-good models.
 		}
 	}
 

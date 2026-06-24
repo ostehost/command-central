@@ -17,7 +17,7 @@ import * as fs from "node:fs";
 import * as vscode from "vscode";
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
 import type { OpenClawTask } from "../types/openclaw-task-types.js";
-import { resolveTasksFilePath } from "../utils/tasks-file-resolver.js";
+import { resolveTasksFilePaths } from "../utils/tasks-file-resolver.js";
 import { defaultTimingRecorder } from "../utils/timing-recorder.js";
 import {
 	type ProcessScanDiagnostics,
@@ -464,14 +464,24 @@ export class AgentRegistry implements vscode.Disposable {
 	private readLauncherTasks(): AgentTask[] {
 		const config = vscode.workspace.getConfiguration("commandCentral");
 		const configuredPath = config.get<string>("agentTasksFile", "");
+		const additionalConfigValues = this.readAdditionalTasksFiles(config);
 		const legacyLauncherEnabled =
 			config.get<boolean>("legacyLauncherTasks.enabled", false) === true;
-		const tasksFilePath = this.resolveLauncherTasksFile(
+		const tasksFilePaths = this.resolveLauncherTasksFiles(
 			configuredPath,
+			additionalConfigValues,
 			legacyLauncherEnabled,
 		);
-		if (!tasksFilePath) return [];
+		if (tasksFilePaths.length === 0) return [];
 
+		const tasks: AgentTask[] = [];
+		for (const tasksFilePath of tasksFilePaths) {
+			tasks.push(...this.readTasksFromFile(tasksFilePath));
+		}
+		return tasks;
+	}
+
+	private readTasksFromFile(tasksFilePath: string): AgentTask[] {
 		try {
 			const content = fs.readFileSync(tasksFilePath, "utf-8");
 			const parsed = JSON.parse(content) as {
@@ -484,12 +494,23 @@ export class AgentRegistry implements vscode.Disposable {
 		}
 	}
 
-	private resolveLauncherTasksFile(
+	private readAdditionalTasksFiles(
+		config: vscode.WorkspaceConfiguration,
+	): string[] {
+		const value = config.get<unknown>("agentTasksFiles", []) ?? [];
+		return Array.isArray(value)
+			? value.filter((entry): entry is string => typeof entry === "string")
+			: [];
+	}
+
+	private resolveLauncherTasksFiles(
 		configuredPath: string,
+		additionalConfigValues: readonly string[],
 		legacyLauncherEnabled: boolean,
-	): string | null {
-		return resolveTasksFilePath(
+	): string[] {
+		return resolveTasksFilePaths(
 			configuredPath,
+			additionalConfigValues,
 			vscode.workspace.workspaceFolders,
 			{ legacyLauncherEnabled },
 		);

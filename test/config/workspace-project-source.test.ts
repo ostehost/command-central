@@ -281,4 +281,59 @@ describe("WorkspaceProjectSource", () => {
 
 		expect(projects[0]?.displayName).toBe("plain-project");
 	});
+
+	test("uses custom project.name in place of folder basename", async () => {
+		mockWorkspaceFolders = [
+			{
+				uri: { fsPath: "/home/user/cc-monorepo" },
+				name: "cc-monorepo",
+				index: 0,
+			},
+		];
+
+		configByScope.set("/home/user/cc-monorepo", {
+			"commandCentral.project.name": "Command Central",
+		});
+
+		const projects = await source.loadProjects();
+
+		expect(projects[0]?.displayName).toBe("Command Central");
+	});
+
+	test("combines custom project.icon and project.name", async () => {
+		mockWorkspaceFolders = [
+			{
+				uri: { fsPath: "/home/user/cc-monorepo" },
+				name: "cc-monorepo",
+				index: 0,
+			},
+		];
+
+		configByScope.set("/home/user/cc-monorepo", {
+			"commandCentral.project.icon": "🚀",
+			"commandCentral.project.name": "Command Central",
+		});
+
+		const projects = await source.loadProjects();
+
+		expect(projects[0]?.displayName).toBe("🚀 Command Central");
+	});
+
+	test("falls back to folder basename for whitespace-only project.name", async () => {
+		mockWorkspaceFolders = [
+			{
+				uri: { fsPath: "/home/user/cc-monorepo" },
+				name: "cc-monorepo",
+				index: 0,
+			},
+		];
+
+		configByScope.set("/home/user/cc-monorepo", {
+			"commandCentral.project.name": "   ",
+		});
+
+		const projects = await source.loadProjects();
+
+		expect(projects[0]?.displayName).toBe("cc-monorepo");
+	});
 });

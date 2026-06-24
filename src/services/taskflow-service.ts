@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -7,6 +7,7 @@ import type { TaskFlow } from "../types/taskflow-types.js";
 
 const DEFAULT_DEBOUNCE_MS = 150;
 const CLI_TIMEOUT_MS = 5000;
+const DEFAULT_WATCH_RETRY_MS = 5000;
 const LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 const TASKS_DIR = path.join(os.homedir(), ".openclaw", "tasks");
 const TASKS_DB = "runs.sqlite";
@@ -16,12 +17,17 @@ export class TaskFlowService implements vscode.Disposable {
 	private flows: TaskFlow[] = [];
 	private watcher: fs.FSWatcher | null = null;
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private watchRetryTimer: ReturnType<typeof setInterval> | null = null;
 	private onChange: (() => void) | null = null;
 	private _isInstalled = true;
 	private readonly debounceMs: number;
+	private readonly watchRetryMs: number;
+	private reloadInFlight: Promise<void> | null = null;
+	private reloadGeneration = 0;
 
-	constructor(opts: { debounceMs?: number } = {}) {
+	constructor(opts: { debounceMs?: number; watchRetryMs?: number } = {}) {
 		this.debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+		this.watchRetryMs = opts.watchRetryMs ?? DEFAULT_WATCH_RETRY_MS;
 	}
 
 	get isInstalled(): boolean {
@@ -34,16 +40,40 @@ export class TaskFlowService implements vscode.Disposable {
 		this.startWatching();
 	}
 
+	/**
+	 * Fire-and-forget reload. Returns synchronously so callers (start,
+	 * watcher) never block the extension host on the CLI. Concurrent calls
+	 * coalesce onto the in-flight run; the awaitable promise is exposed via
+	 * {@link reloadAsync} for tests and sequencing.
+	 */
 	reload(): void {
+		void this.reloadAsync();
+	}
+
+	/**
+	 * Async reload with in-flight coalescing + stale-result protection.
+	 * - Coalescing: a second call while one is running awaits the same promise.
+	 * - Stale-result protection: each run captures a generation; if a newer
+	 *   run started meanwhile, the older run's parsed output is discarded.
+	 */
+	reloadAsync(): Promise<void> {
+		if (this.reloadInFlight) return this.reloadInFlight;
+		const generation = ++this.reloadGeneration;
+		const run = this.runReload(generation).finally(() => {
+			this.reloadInFlight = null;
+		});
+		this.reloadInFlight = run;
+		return run;
+	}
+
+	private async runReload(generation: number): Promise<void> {
 		try {
-			const stdout = execFileSync(
-				"openclaw",
-				["tasks", "flow", "list", "--json"],
-				{ encoding: "utf-8", timeout: CLI_TIMEOUT_MS },
-			);
+			const stdout = await this.execCli(["tasks", "flow", "list", "--json"]);
+			if (generation !== this.reloadGeneration) return;
 			this.flows = this.parseFlowsOutput(stdout);
 			this._isInstalled = true;
 		} catch (error: unknown) {
+			if (generation !== this.reloadGeneration) return;
 			this.handleReloadError(error);
 		}
 	}
@@ -87,6 +117,10 @@ export class TaskFlowService implements vscode.Disposable {
 			clearTimeout(this.debounceTimer);
 			this.debounceTimer = null;
 		}
+		if (this.watchRetryTimer) {
+			clearInterval(this.watchRetryTimer);
+			this.watchRetryTimer = null;
+		}
 		this.onChange = null;
 		this.flows = [];
 	}
@@ -112,19 +146,62 @@ export class TaskFlowService implements vscode.Disposable {
 		}
 	}
 
+	/**
+	 * Install the tasks-dir watcher. If the OpenClaw tasks directory is absent
+	 * at startup (fs.watch throws ENOENT, or the watcher emits an error), fall
+	 * back to polling so the watcher self-heals once the ledger is created
+	 * later — instead of staying permanently blind until restart.
+	 */
 	private startWatching(): void {
+		if (this.tryInstallWatcher()) return;
+		this.scheduleWatchRetry();
+	}
+
+	private tryInstallWatcher(): boolean {
 		try {
-			this.watcher = fs.watch(TASKS_DIR, (_event, filename) => {
+			const watcher = fs.watch(TASKS_DIR, (_event, filename) => {
 				if (filename === TASKS_WAL || filename === TASKS_DB) {
 					this.debouncedReload();
 				}
 			});
-			this.watcher.on("error", () => {
-				// Directory may not exist yet.
+			watcher.on("error", () => {
+				// Directory was removed or became unwatchable — drop the dead
+				// watcher and poll until it can be reinstalled.
+				this.handleWatcherError();
 			});
+			this.watcher = watcher;
+			return true;
 		} catch {
-			// OpenClaw task ledger may not exist yet.
+			// OpenClaw task ledger may not exist yet — caller schedules a retry.
+			return false;
 		}
+	}
+
+	private scheduleWatchRetry(): void {
+		if (this.watchRetryTimer) return;
+		this.watchRetryTimer = setInterval(() => {
+			if (this.tryInstallWatcher()) {
+				this.stopWatchRetry();
+				// The ledger appeared while we were blind; pick up any changes
+				// that happened before the watcher was installed.
+				this.debouncedReload();
+			}
+		}, this.watchRetryMs);
+	}
+
+	private stopWatchRetry(): void {
+		if (this.watchRetryTimer) {
+			clearInterval(this.watchRetryTimer);
+			this.watchRetryTimer = null;
+		}
+	}
+
+	private handleWatcherError(): void {
+		if (this.watcher) {
+			this.watcher.close();
+			this.watcher = null;
+		}
+		this.scheduleWatchRetry();
 	}
 
 	private debouncedReload(): void {
@@ -132,8 +209,9 @@ export class TaskFlowService implements vscode.Disposable {
 			clearTimeout(this.debounceTimer);
 		}
 		this.debounceTimer = setTimeout(() => {
-			this.reload();
-			this.onChange?.();
+			void this.reloadAsync().then(() => {
+				this.onChange?.();
+			});
 		}, this.debounceMs);
 	}
 

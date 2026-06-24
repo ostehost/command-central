@@ -27,6 +27,29 @@ const DEFAULT_SVGS = [
 	"site/assets/filter.svg",
 ];
 
+/**
+ * Parse the width/height (3rd and 4th values) out of an SVG `viewBox`.
+ *
+ * The SVG spec allows numbers with optional signs and decimals, either
+ * whitespace or comma separators between them, and single or double quotes
+ * around the attribute value. Returns `null` when no viewBox is present.
+ */
+export function parseViewBoxDimensions(
+	svgContent: string,
+): { width: number; height: number } | null {
+	const viewBoxMatch = svgContent.match(
+		/viewBox=["']\s*(-?[\d.]+)[\s,]+(-?[\d.]+)[\s,]+(-?[\d.]+)[\s,]+(-?[\d.]+)\s*["']/,
+	);
+	if (!viewBoxMatch) {
+		return null;
+	}
+
+	return {
+		width: Number.parseFloat(viewBoxMatch[3] ?? "0"),
+		height: Number.parseFloat(viewBoxMatch[4] ?? "0"),
+	};
+}
+
 async function main() {
 	const args = process.argv.slice(2);
 	const svgPaths = args.length > 0 ? args : DEFAULT_SVGS;
@@ -41,16 +64,14 @@ async function main() {
 		}
 
 		const svgContent = readFileSync(absPath, "utf-8");
-		const viewBoxMatch = svgContent.match(
-			/viewBox="\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*"/,
-		);
-		if (!viewBoxMatch) {
+		const dimensions = parseViewBoxDimensions(svgContent);
+		if (!dimensions) {
 			console.error(`❌ No viewBox found in ${svgPath}`);
 			process.exit(1);
 		}
 
-		const svgWidth = Number.parseInt(viewBoxMatch[3] ?? "0", 10);
-		const svgHeight = Number.parseInt(viewBoxMatch[4] ?? "0", 10);
+		const svgWidth = dimensions.width;
+		const svgHeight = dimensions.height;
 		const pngName = `${basename(svgPath, ".svg")}.png`;
 		const pngPath = join(dirname(absPath), pngName);
 
@@ -66,7 +87,12 @@ async function main() {
 	for (const job of jobs) {
 		const page = await browser.newPage({
 			deviceScaleFactor: SCALE_FACTOR,
-			viewport: { width: job.svgWidth, height: job.svgHeight },
+			// Playwright viewports must be integers; round up so a fractional
+			// viewBox (e.g. "100.5") is never clipped.
+			viewport: {
+				width: Math.ceil(job.svgWidth),
+				height: Math.ceil(job.svgHeight),
+			},
 		});
 
 		// Inject SVG with explicit dimensions to ensure visibility
@@ -101,7 +127,9 @@ async function main() {
 	console.log("Done.");
 }
 
-main().catch((err) => {
-	console.error("❌ Fatal:", err.message);
-	process.exit(1);
-});
+if (import.meta.main) {
+	main().catch((err) => {
+		console.error("❌ Fatal:", err.message);
+		process.exit(1);
+	});
+}

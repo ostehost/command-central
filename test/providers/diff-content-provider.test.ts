@@ -93,6 +93,37 @@ describe("DiffContentProvider", () => {
 		expect(execFileSyncCalls).toHaveLength(0);
 	});
 
+	test("does not escape the project directory for ref=working-tree with ../ path", () => {
+		readFileSyncResult = "root:x:0:0:root:/root:/bin/bash\n";
+		const provider = createProvider();
+
+		const content = provider.provideTextDocumentContent(
+			createDiffUri(
+				"/..%2F..%2F..%2Fetc%2Fpasswd",
+				"project=%2Ftmp%2Fproject&ref=working-tree&taskId=task-1",
+			),
+		);
+
+		expect(content).toBe("");
+		expect(readFileSyncCalls).toHaveLength(0);
+		expect(execFileSyncCalls).toHaveLength(0);
+	});
+
+	test("does not read absolute decoded paths for ref=working-tree", () => {
+		readFileSyncResult = "root:x:0:0:root:/root:/bin/bash\n";
+		const provider = createProvider();
+
+		const content = provider.provideTextDocumentContent(
+			createDiffUri(
+				"/%2Fetc%2Fpasswd",
+				"project=%2Ftmp%2Fproject&ref=working-tree&taskId=task-1",
+			),
+		);
+
+		expect(content).toBe("");
+		expect(readFileSyncCalls).toHaveLength(0);
+	});
+
 	test("calls git show for commit refs", () => {
 		execFileSyncResult = "console.log('hello');\n";
 		const provider = createProvider();

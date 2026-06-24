@@ -20,6 +20,35 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+const realChildProcess = (globalThis as Record<string, unknown>)[
+	"__realNodeChildProcess"
+] as typeof import("node:child_process");
+
+// Mock node:child_process.execFile BEFORE importing the module under test, so
+// the production default git runner is driven without spawning real processes.
+// We spread `...realChildProcess` so sibling test files in this worker keep
+// working — only `execFile` is overridden. See PAR-64 / CP-25.
+type ExecFileCallback = (
+	err: Error | null,
+	stdout: string,
+	stderr: string,
+) => void;
+type MockExecFile = (
+	cmd: string,
+	args: readonly string[],
+	options: unknown,
+	callback: ExecFileCallback,
+) => void;
+
+const execFileMock = mock<MockExecFile>((_cmd, _args, _options, callback) =>
+	callback(null, "", ""),
+);
+
+mock.module("node:child_process", () => ({
+	...realChildProcess,
+	execFile: execFileMock,
+}));
+
 describe("git-timestamps - Async Operations & Error Handling", () => {
 	beforeEach(() => {
 		mock.restore();
@@ -87,6 +116,70 @@ describe("git-timestamps - Async Operations & Error Handling", () => {
 
 			// Await to prevent unhandled rejection
 			await result;
+		});
+
+		// PAR-64 / CP-25 regression: getDeletedFileTimestamp must run in the
+		// VS Code Node extension host, where globalThis.Bun is undefined. The old
+		// implementation called Bun.spawn directly, which throws a ReferenceError
+		// under Node — the broad catch then silently returned undefined. These
+		// tests drive the Node code path and assert a real numeric ms timestamp,
+		// so they FAIL against the Bun.spawn implementation and PASS after the fix.
+
+		test("returns numeric ms timestamp via injected Node git runner", async () => {
+			const { getDeletedFileTimestamp } = await import(
+				"../../src/git-sort/git-timestamps.js"
+			);
+
+			let receivedArgs: string[] | undefined;
+			// Unix seconds; the function must convert to milliseconds (× 1000).
+			const gitRunner = async (args: string[]): Promise<string> => {
+				receivedArgs = args;
+				return "1577836800\n";
+			};
+
+			const timestamp = await getDeletedFileTimestamp(
+				"/workspace",
+				"/workspace/src/file.ts",
+				gitRunner,
+			);
+
+			// Numeric millisecond timestamp (Bun.spawn path would have thrown and
+			// returned undefined in the Node test runtime).
+			expect(timestamp).toBe(1577836800 * 1000);
+
+			// Runner invoked with the expected `git log` args and relative path.
+			expect(receivedArgs).toEqual([
+				"log",
+				"-1",
+				"--format=%at",
+				"--",
+				"src/file.ts",
+			]);
+		});
+
+		test("default git runner uses node:child_process.execFile (not Bun.spawn)", async () => {
+			execFileMock.mockReset();
+			execFileMock.mockImplementation((cmd, _args, _options, callback) => {
+				if (cmd === "git") {
+					callback(null, "1577836800\n", "");
+				} else {
+					callback(new Error("unexpected command"), "", "");
+				}
+			});
+
+			const { getDeletedFileTimestamp } = await import(
+				"../../src/git-sort/git-timestamps.js"
+			);
+
+			// No runner injected — exercises the production default path that must
+			// shell out via node:child_process, not Bun.spawn.
+			const timestamp = await getDeletedFileTimestamp(
+				"/workspace",
+				"/workspace/src/file.ts",
+			);
+
+			expect(execFileMock).toHaveBeenCalledTimes(1);
+			expect(timestamp).toBe(1577836800 * 1000);
 		});
 	});
 });

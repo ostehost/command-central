@@ -31,6 +31,9 @@ const mockExecFile = mock(
 describe("ProcessScanner", () => {
 	let scanner: ProcessScanner;
 	let launcherTasks: Array<Record<string, unknown>>;
+	// Liveness is probed via signal 0; default to "dead" so age-based pruning
+	// tests stay deterministic regardless of which real PIDs exist on the host.
+	let livePids: Set<number>;
 
 	beforeEach(() => {
 		mockExecFile.mockClear();
@@ -42,6 +45,7 @@ describe("ProcessScanner", () => {
 				}>,
 		);
 		launcherTasks = [];
+		livePids = new Set();
 		// Inject the mock executor directly — no module mocking needed
 		scanner = new ProcessScanner(
 			mockExecFile as unknown as (typeof scanner)["execFileAsync"],
@@ -49,6 +53,7 @@ describe("ProcessScanner", () => {
 			{
 				launcherTasksProvider: () => launcherTasks,
 				nowProvider: () => FIXED_NOW,
+				pidLivenessProbe: (pid: number) => livePids.has(pid),
 			},
 		);
 	});
@@ -573,6 +578,44 @@ describe("ProcessScanner", () => {
 						(entry) => entry.pid === 88554 && entry.reason === "stale-process",
 					),
 			).toBe(true);
+		});
+
+		test("keeps an aged external agent whose PID is still alive (CP-18)", async () => {
+			// Regression for PAR-59 / CP-18: an external agent (no matching launcher
+			// task) older than the stale window must NOT be expired while its PID is
+			// still alive. Age alone is insufficient evidence of staleness.
+			livePids = new Set([88554]);
+			mockExecFile.mockImplementation(
+				(cmd: unknown, args: unknown, _opts: unknown) => {
+					if (cmd === "ps") {
+						return Promise.resolve({
+							stdout: [
+								"  PID  PPID STARTED                       COMMAND",
+								"88554 1 Thu Mar 26 20:10:00 2026 node /opt/homebrew/bin/codex exec 'run the task'",
+							].join("\n"),
+							stderr: "",
+						});
+					}
+					if (cmd === "lsof" && Array.isArray(args) && args[1] === "88554") {
+						return Promise.resolve({
+							stdout: "p88554\nfcwd\nn/home/user/project\n",
+							stderr: "",
+						});
+					}
+					return Promise.resolve({ stdout: "", stderr: "" });
+				},
+			);
+
+			const agents = await scanner.scan();
+			expect(agents).toHaveLength(1);
+			expect(agents[0]?.pid).toBe(88554);
+			expect(
+				scanner
+					.getLastDiagnostics()
+					.filtered.some(
+						(entry) => entry.pid === 88554 && entry.reason === "stale-process",
+					),
+			).toBe(false);
 		});
 
 		test("drops the exact stale and idle processes seen on this machine", async () => {

@@ -156,6 +156,55 @@ test("RED 2: Type guards safely identify all element types", async () => {
 });
 
 /**
+ * REGRESSION (PAR-63 / CP-24): GitChangeItem guard ⇄ interface contract
+ *
+ * Bug: GitChangeItem declared `type?: "gitChangeItem"` (optional) while
+ * isGitChangeItem only accepts `el.type === "gitChangeItem"`. A value that
+ * satisfied the exported interface (no `type` field) was rejected by the
+ * exported guard — a contract mismatch.
+ *
+ * Fix: the discriminant is now required on GitChangeItem, so every value that
+ * satisfies the interface also passes the guard, and a discriminant-less object
+ * is correctly rejected.
+ *
+ * Compile-time guard: `assertTypeRequired` only type-checks when `type` is a
+ * required key of GitChangeItem. Under the old optional discriminant this
+ * assignment would fail (`undefined` would be assignable), so this fails the
+ * build on the buggy contract and passes after the fix.
+ */
+test("REGRESSION PAR-63: GitChangeItem discriminant is required so valid values pass the guard", async () => {
+	const { isGitChangeItem } = await import(
+		"../../src/types/tree-element-guards.js"
+	);
+	const { GitChangeItemBuilder } = await import(
+		"../builders/tree-element-builder.js"
+	);
+	type RequiredKeys<T> = {
+		[K in keyof T]-?: undefined extends T[K] ? never : K;
+	}[keyof T];
+	type GitChangeItem = import("../../src/types/tree-element.js").GitChangeItem;
+	// Compile-time assertion: "type" must be a required key of GitChangeItem.
+	// Under the old optional discriminant, "type" is excluded from RequiredKeys
+	// and this assignment fails to type-check, breaking the build.
+	const _assertTypeRequired: "type" extends RequiredKeys<GitChangeItem>
+		? true
+		: never = true;
+	expect(_assertTypeRequired).toBe(true);
+
+	// A value satisfying the exported interface is accepted by the guard.
+	const validItem = new GitChangeItemBuilder().withUri("/src/a.ts").build();
+	expect(isGitChangeItem(validItem)).toBe(true);
+
+	// A structurally-valid object lacking the discriminant is rejected.
+	const noDiscriminant = {
+		uri: { fsPath: "/src/b.ts", toString: () => "file:///src/b.ts" },
+		status: "M",
+		isStaged: true,
+	};
+	expect(isGitChangeItem(noDiscriminant)).toBe(false);
+});
+
+/**
  * TEST 3: getChildren Handles All Hierarchy Levels
  *
  * Purpose: Validate proper parent-child relationships

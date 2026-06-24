@@ -23,6 +23,15 @@ export class ExtensionFilterState {
 	/** Storage key for workspaceState/globalState */
 	private readonly STORAGE_KEY = "commandCentral.extensionFilters";
 
+	/**
+	 * Serializes persistence writes so they run one-at-a-time in scheduling
+	 * order. Without this, concurrent `storage.update()` calls can resolve
+	 * out of order, letting an older write clobber newer in-memory state.
+	 * Each scheduled write captures the latest `this.filters` at execution
+	 * time, guaranteeing last-write-wins.
+	 */
+	private persistChain: Promise<void> = Promise.resolve();
+
 	constructor(
 		private context?: vscode.ExtensionContext,
 		private persistenceMode: "workspace" | "global" | "none" = "workspace",
@@ -78,6 +87,22 @@ export class ExtensionFilterState {
 	}
 
 	/**
+	 * Schedules a persistence write, serialized through a single promise chain.
+	 *
+	 * Appends the write to `persistChain` so it cannot run concurrently with a
+	 * prior write. Because each write reads the latest `this.filters` snapshot
+	 * at execution time (after the previous write resolves), the most recently
+	 * scheduled write always observes the newest in-memory state — last-write-wins.
+	 *
+	 * @returns the chained promise so callers/tests can await write completion
+	 * @private
+	 */
+	private schedulePersist(): Promise<void> {
+		this.persistChain = this.persistChain.then(() => this.persistToStorage());
+		return this.persistChain;
+	}
+
+	/**
 	 * Persists filter state to VS Code storage
 	 * @private
 	 */
@@ -115,6 +140,20 @@ export class ExtensionFilterState {
 			);
 			// Non-fatal: Continue without persistence
 		}
+	}
+
+	/**
+	 * Awaits all pending/in-flight persistence writes.
+	 *
+	 * Persistence is fire-and-forget at the mutation call sites, so callers that
+	 * need durability (e.g. before extension deactivation) or tests that need a
+	 * deterministic settle point can await this to know the serialized write
+	 * chain has drained.
+	 *
+	 * @returns a promise that resolves once the current write chain is idle
+	 */
+	flushPersistence(): Promise<void> {
+		return this.persistChain;
 	}
 
 	/**
@@ -183,8 +222,8 @@ export class ExtensionFilterState {
 			}
 		}
 
-		// Persist after state change (fire-and-forget with error logging)
-		void this.persistToStorage();
+		// Persist after state change (serialized; fire-and-forget with error logging)
+		void this.schedulePersist();
 	}
 
 	/**
@@ -244,7 +283,7 @@ export class ExtensionFilterState {
 			this.logger?.info(
 				`[${workspace}] Filter state cleaned, persisting changes`,
 			);
-			void this.persistToStorage();
+			void this.schedulePersist();
 		}
 
 		return modified;

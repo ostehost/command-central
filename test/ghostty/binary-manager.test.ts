@@ -145,6 +145,17 @@ function createMockRelease(tag = "cc-v1.2.3"): GhosttyRelease {
 function makeFsSetup() {
 	return () => {
 		mock.restore();
+		// Clear leaked call history so per-test call-count assertions
+		// (e.g. renameSync not-called on a fresh install) don't see calls
+		// from a prior test sharing these module-scoped mocks.
+		fsExistsSyncMock.mockClear();
+		fsReadFileSyncMock.mockClear();
+		fsMkdirSyncMock.mockClear();
+		fsRmSyncMock.mockClear();
+		fsRenameSyncMock.mockClear();
+		fsWriteFileSyncMock.mockClear();
+		execFileMock.mockClear();
+		vsCodeGetSessionMock.mockClear();
 		mock.module("node:fs", () => ({
 			...realFs,
 			existsSync: fsExistsSyncMock,
@@ -759,5 +770,110 @@ describe("BinaryManager authentication", () => {
 
 		expect(capturedHeaders.length).toBeGreaterThan(0);
 		expect(capturedHeaders[0]?.["Authorization"]).toBeUndefined();
+	});
+});
+
+// ── PAR-49 / [CP-07]: failed-extraction recovery ──────────────────────
+//
+// A failed extraction must NOT leave the user without a Ghostty.app.
+// downloadRelease renames the existing install to Ghostty.app.bak before
+// extracting; if extraction throws (corrupt zip, missing unzip, timeout,
+// interrupt) the backup must be restored. Previously the restore only fired on
+// post-extraction validation failure, so an extraction throw left .bak as the
+// user's only copy.
+
+/**
+ * Wires fetch so the release lookup, octet-stream download, and a matching
+ * .sha256 checksum all succeed — isolating extraction as the only failure.
+ */
+function setupHappyDownloadFetch(release: GhosttyRelease): void {
+	const matchingHash = createHash("sha256").update("").digest("hex");
+	setFetchMock((url: unknown) => {
+		const urlStr = String(url);
+		if (urlStr.includes("releases/tags")) {
+			return Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve(release),
+			});
+		}
+		if (urlStr.includes(".sha256")) {
+			return Promise.resolve({
+				ok: true,
+				text: () => Promise.resolve(matchingHash),
+			});
+		}
+		return Promise.resolve({
+			ok: true,
+			arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+		});
+	});
+}
+
+describe("BinaryManager.downloadRelease — failed extraction recovery (PAR-49)", () => {
+	beforeEach(makeFsSetup());
+
+	test("restores the backup to installPath when extractZip throws", async () => {
+		const installPath = "/tmp/test-ghostty/Ghostty.app";
+		const bakPath = "/tmp/test-ghostty/Ghostty.app.bak";
+		const release = createMockRelease("cc-v2.0.0");
+		setupHappyDownloadFetch(release);
+
+		// An existing install is present (so it gets renamed to .bak), and the
+		// .bak persists afterwards so restore can move it back.
+		fsExistsSyncMock.mockImplementation((p: unknown) => {
+			const ps = String(p);
+			if (ps === installPath) return true;
+			if (ps === bakPath) return true;
+			return false;
+		});
+		fsReadFileSyncMock.mockImplementation(() => "");
+
+		// Extraction fails — the regression scenario (corrupt zip / missing unzip).
+		execFileMock.mockImplementation(
+			(_f: string, _a: string[], _o: object, cb: ExecFileCallback) => {
+				cb(new Error("unzip: cannot find or open archive"), {
+					stdout: "",
+					stderr: "",
+				});
+			},
+		);
+
+		const mgr = new BinaryManager(createMockLogger() as never);
+		mgr.installPath = installPath;
+
+		await expect(mgr.downloadRelease("cc-v2.0.0")).rejects.toThrow(
+			"backup restored",
+		);
+
+		// The recovery rename restores bakPath -> installPath. Without the fix,
+		// only the backup rename fires and the restore below never happens.
+		expect(fsRenameSyncMock).toHaveBeenCalledWith(bakPath, installPath);
+	});
+
+	test("does not attempt a restore when there was no prior install", async () => {
+		const installPath = "/tmp/test-ghostty/Ghostty.app";
+		const release = createMockRelease("cc-v2.0.0");
+		setupHappyDownloadFetch(release);
+
+		// Nothing exists: no prior install, so no backup is ever created.
+		fsExistsSyncMock.mockImplementation(() => false);
+		fsReadFileSyncMock.mockImplementation(() => "");
+
+		execFileMock.mockImplementation(
+			(_f: string, _a: string[], _o: object, cb: ExecFileCallback) => {
+				cb(new Error("unzip failed"), { stdout: "", stderr: "" });
+			},
+		);
+
+		const mgr = new BinaryManager(createMockLogger() as never);
+		mgr.installPath = installPath;
+
+		await expect(mgr.downloadRelease("cc-v2.0.0")).rejects.toThrow(
+			"backup restored",
+		);
+
+		// No prior install means renameSync is never called (neither backup nor
+		// restore), so we must not corrupt a non-existent backup.
+		expect(fsRenameSyncMock).not.toHaveBeenCalled();
 	});
 });

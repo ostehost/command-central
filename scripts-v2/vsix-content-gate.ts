@@ -67,6 +67,7 @@ export const FORBIDDEN_DIR_PREFIXES: readonly string[] = [
 	"coverage-ci/",
 	"docs/",
 	"drafts/",
+	"logo-concepts/",
 	"logs/",
 	"memory/",
 	"node_modules/",
@@ -203,6 +204,68 @@ function checkBudget(
 	return violations;
 }
 
+/**
+ * Settings that drive a subprocess spawn or otherwise execute code, and so
+ * MUST be listed in `capabilities.untrustedWorkspaces.restrictedConfigurations`
+ * — a hostile workspace must not be able to point them at attacker-controlled
+ * binaries/paths. `commandCentral.ghostty.launcherPath` is the binary
+ * TerminalManager exec's; CCSTD-03 (PAR-82) pins it here so a future
+ * config edit that drops it from the restricted list fails the build.
+ */
+export const SUBPROCESS_SPAWNING_SETTINGS: readonly string[] = [
+	"commandCentral.ghostty.launcherPath",
+];
+
+type WorkspaceTrustManifest = {
+	capabilities?: {
+		untrustedWorkspaces?: {
+			supported?: unknown;
+			restrictedConfigurations?: unknown;
+		};
+	};
+};
+
+/**
+ * Validates the Workspace Trust posture declared in package.json. The
+ * extension executes project-defined shell via the launcher, so it must
+ * declare an `untrustedWorkspaces` capability and restrict every
+ * subprocess-spawning setting. This is the CCSTD-03 manifest receipt.
+ */
+export function evaluateWorkspaceTrustManifest(
+	manifest: WorkspaceTrustManifest,
+): VsixGateViolation[] {
+	const violations: VsixGateViolation[] = [];
+	const trust = manifest.capabilities?.untrustedWorkspaces;
+	if (!trust) {
+		violations.push({
+			rule: "missing untrustedWorkspaces capability",
+			detail: "capabilities.untrustedWorkspaces must be declared",
+		});
+		return violations;
+	}
+
+	const supported = trust.supported;
+	if (supported !== true && supported !== false && supported !== "limited") {
+		violations.push({
+			rule: "invalid untrustedWorkspaces.supported",
+			detail: `expected true | false | "limited", got ${JSON.stringify(supported)}`,
+		});
+	}
+
+	const restricted = Array.isArray(trust.restrictedConfigurations)
+		? new Set(trust.restrictedConfigurations.map(String))
+		: new Set<string>();
+	for (const setting of SUBPROCESS_SPAWNING_SETTINGS) {
+		if (!restricted.has(setting)) {
+			violations.push({
+				rule: "subprocess setting not trust-restricted",
+				detail: `${setting} must be in capabilities.untrustedWorkspaces.restrictedConfigurations`,
+			});
+		}
+	}
+	return violations;
+}
+
 export function evaluateVsixEntries(
 	vsixPath: string,
 	entries: VsixEntry[],
@@ -291,5 +354,22 @@ if (import.meta.main) {
 
 	const result = await gateVsix(vsixPath);
 	console.log(formatGateReport(result));
-	process.exit(result.ok ? 0 : 1);
+
+	// CCSTD-03 (PAR-82): the package must keep a valid Workspace Trust posture
+	// (untrustedWorkspaces capability + every subprocess-spawning setting
+	// trust-restricted). Validated against the repo manifest so a regression
+	// fails the build alongside the content/size budget.
+	const manifestPath = path.join(process.cwd(), "package.json");
+	const manifest = JSON.parse(await fs.readFile(manifestPath, "utf-8"));
+	const trustViolations = evaluateWorkspaceTrustManifest(manifest);
+	if (trustViolations.length > 0) {
+		console.log("Workspace Trust gate (CCSTD-03):");
+		for (const violation of trustViolations) {
+			console.log(`     • ${violation.rule}: ${violation.detail}`);
+		}
+	} else {
+		console.log("Workspace Trust gate (CCSTD-03): ✅ posture valid");
+	}
+
+	process.exit(result.ok && trustViolations.length === 0 ? 0 : 1);
 }

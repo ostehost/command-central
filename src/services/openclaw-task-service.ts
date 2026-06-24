@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -19,6 +19,7 @@ export class OpenClawTaskService implements vscode.Disposable {
 	private onChange: (() => void) | null = null;
 	private _isInstalled = true;
 	private readonly debounceMs: number;
+	private reloadInFlight: Promise<void> | null = null;
 
 	constructor(opts: { debounceMs?: number } = {}) {
 		this.debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
@@ -30,16 +31,24 @@ export class OpenClawTaskService implements vscode.Disposable {
 
 	start(onChange: () => void): void {
 		this.onChange = onChange;
-		this.reload();
+		// Fire-and-forget so extension activation never blocks on the CLI.
+		void this.reload();
 		this.startWatching();
 	}
 
-	reload(): void {
+	reload(): Promise<void> {
+		// Coalesce overlapping reloads so watcher bursts launch one CLI read.
+		if (this.reloadInFlight) return this.reloadInFlight;
+		this.reloadInFlight = this.runReload().finally(() => {
+			this.reloadInFlight = null;
+		});
+		return this.reloadInFlight;
+	}
+
+	private async runReload(): Promise<void> {
 		try {
-			const stdout = execFileSync("openclaw", ["tasks", "list", "--json"], {
-				encoding: "utf-8",
-				timeout: CLI_TIMEOUT_MS,
-			});
+			const stdout = await this.execCli(["tasks", "list", "--json"]);
+			// Assign only after a successful read so prior tasks survive failures.
 			this.tasks = this.parseTasksOutput(stdout);
 			this._isInstalled = true;
 		} catch (error: unknown) {
@@ -89,6 +98,7 @@ export class OpenClawTaskService implements vscode.Disposable {
 		}
 		this.onChange = null;
 		this.tasks = [];
+		this.reloadInFlight = null;
 	}
 
 	private parseTasksOutput(stdout: string): OpenClawTask[] {
@@ -136,8 +146,9 @@ export class OpenClawTaskService implements vscode.Disposable {
 			clearTimeout(this.debounceTimer);
 		}
 		this.debounceTimer = setTimeout(() => {
-			this.reload();
-			this.onChange?.();
+			void this.reload().then(() => {
+				this.onChange?.();
+			});
 		}, this.debounceMs);
 	}
 

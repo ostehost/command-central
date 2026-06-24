@@ -69,6 +69,15 @@ export class GroupingViewManager
 	/** Current visibility state */
 	private isViewVisible: boolean;
 
+	/**
+	 * Idempotency guard for dispose()
+	 *
+	 * The provider and TreeView are registered in context.subscriptions, so they
+	 * are disposed on extension shutdown. dispose() may also be called directly,
+	 * so guard against running teardown (and its log) more than once.
+	 */
+	private disposed = false;
+
 	/** Storage key for visibility persistence */
 	private static readonly VISIBILITY_KEY = "commandCentral.grouping.visible";
 
@@ -111,8 +120,10 @@ export class GroupingViewManager
 			showCollapseAll: false, // Flat list - no collapse needed
 		});
 
-		// Add to extension subscriptions for automatic disposal
-		context.subscriptions.push(this.treeView);
+		// Add provider + TreeView to extension subscriptions as one ownership unit
+		// so the provider's onDidChangeGrouping subscription is also torn down on
+		// extension shutdown (not just when dispose() is called directly).
+		context.subscriptions.push(this.provider, this.treeView);
 
 		// Apply initial visibility state
 		// Sets VS Code context for package.json when clause
@@ -190,11 +201,16 @@ export class GroupingViewManager
 	 *
 	 * Required by vscode.Disposable interface
 	 *
-	 * Cleans up:
-	 * - TreeView (already in context.subscriptions)
+	 * Cleans up (both also registered in context.subscriptions, so disposal is
+	 * idempotent and guarded to run exactly once):
 	 * - Provider (EventEmitter, state subscriptions)
+	 * - TreeView
 	 */
 	dispose(): void {
+		if (this.disposed) {
+			return;
+		}
+		this.disposed = true;
 		this.provider.dispose();
 		this.treeView.dispose();
 		this.logger.info("Grouping view manager disposed");

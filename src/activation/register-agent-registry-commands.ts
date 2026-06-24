@@ -1,7 +1,8 @@
 /**
  * Agent registry mutation command registration — the tasks.json lifecycle
  * surface: capture/kill a single agent, clear completed entries, mark/reap
- * stale entries, remove a task, and mark a task reviewed.
+ * stale entries, close out a benign live pane, remove a task, and mark a task
+ * reviewed.
  *
  * AgentStatusTreeProvider and TerminalManager are resettable module state in
  * extension.ts (cleared in deactivate()), so they are injected as getters and
@@ -33,6 +34,23 @@ import {
 	STALE_AGENT_STATUS_DESCRIPTION,
 	serializeTaskRegistry,
 } from "../utils/agent-task-registry.js";
+// PaneAttentionState + the pure classifier live in agent-status-sections; we
+// import them VIA tmux-pane-health (its delegating wrappers) so this module
+// never reaches across the mock boundary the tree-view suites shadow.
+import {
+	classifyPaneAttention,
+	capturePaneSnippet as defaultCapturePaneSnippet,
+	isBenignLivePane,
+} from "../utils/tmux-pane-health.js";
+
+/**
+ * CCSYNC-06 closeout reason recorded on the registry entry when an operator
+ * manually closes out a benign live pane (an idle/stale shell or a finished
+ * command sitting at its prompt). Distinct from the stale-reaper reason so the
+ * receipt makes clear this was an explicit, operator-invoked closeout.
+ */
+export const PANE_CLOSEOUT_STATUS_DESCRIPTION =
+	"Closed out — benign live pane reconciled by operator after sync";
 
 export interface AgentRegistryCommandDeps {
 	getAgentStatusProvider: () =>
@@ -48,6 +66,16 @@ export interface AgentRegistryCommandDeps {
 		vscode.OutputChannel,
 		"clear" | "appendLine" | "show"
 	>;
+	/**
+	 * READ-ONLY capture of a pane's trailing lines, used to classify whether a
+	 * live pane is benign before the manual closeout flow touches the registry.
+	 * Defaults to {@link capturePaneSnippet} (real tmux); injectable so tests can
+	 * supply a fixed snippet without spawning tmux. Never writes to the terminal.
+	 */
+	capturePaneSnippet?: (
+		target: string,
+		tmuxSocket?: string | null,
+	) => string | null;
 }
 
 const writeRegistryWithBackup = async (
@@ -96,7 +124,7 @@ const mutateAgentTaskRegistry = async (
 };
 
 /**
- * Register the seven agent registry mutation commands. Returns one disposable
+ * Register the eight agent registry mutation commands. Returns one disposable
  * per command; the caller owns their lifecycle.
  */
 export function registerAgentRegistryCommands(
@@ -104,6 +132,8 @@ export function registerAgentRegistryCommands(
 ): vscode.Disposable[] {
 	const { getAgentStatusProvider, getTerminalManager, agentOutputChannel } =
 		deps;
+	const capturePaneSnippet =
+		deps.capturePaneSnippet ?? defaultCapturePaneSnippet;
 	return [
 		vscode.commands.registerCommand(
 			"commandCentral.captureAgentOutput",
@@ -428,6 +458,88 @@ export function registerAgentRegistryCommands(
 					}
 					vscode.window.showErrorMessage(
 						`Failed to reap stale agents: ${err instanceof Error ? err.message : String(err)}`,
+					);
+				}
+			},
+		),
+		vscode.commands.registerCommand(
+			"commandCentral.closeoutBenignPane",
+			async (node?: { type: string; task?: AgentTask }) => {
+				const task = node?.task;
+				if (!task) {
+					vscode.window.showWarningMessage(
+						"No agent selected. Right-click an agent in the tree.",
+					);
+					return;
+				}
+				if (!isValidSessionId(task.session_id)) {
+					vscode.window.showErrorMessage("Invalid session ID.");
+					return;
+				}
+
+				const tasksFilePath = getAgentStatusProvider()?.filePath;
+				if (!tasksFilePath) {
+					vscode.window.showErrorMessage(
+						"Agent tasks file not configured. Set commandCentral.agentTasksFile in settings.",
+					);
+					return;
+				}
+
+				// Classify the live pane READ-ONLY before mutating anything. Only a
+				// benign pane (a finished command at its prompt or a bare/idle shell)
+				// may be closed out — an awaiting-user-input, active-agent, or unknown
+				// pane is preserved so we never reconcile a lane still doing work or
+				// waiting on the human.
+				const target = task.tmux_pane_id ?? task.session_id;
+				const snippet = capturePaneSnippet(target, task.tmux_socket) ?? "";
+				const attention = classifyPaneAttention(undefined, snippet);
+				if (!isBenignLivePane(attention)) {
+					vscode.window.showInformationMessage(
+						`Agent "${task.id}" is not a benign pane (${attention}); nothing closed out.`,
+					);
+					return;
+				}
+
+				const confirm = await vscode.window.showWarningMessage(
+					`Close out benign pane for agent "${task.id}"? The terminal is left running; only the registry entry is reconciled.`,
+					{ modal: true },
+					"Close Out",
+				);
+				if (confirm !== "Close Out") return;
+
+				try {
+					const updatedCount = await mutateAgentTaskRegistry(
+						tasksFilePath,
+						(tasks) =>
+							markTaskFailedInRegistryMap(
+								tasks,
+								task.id,
+								PANE_CLOSEOUT_STATUS_DESCRIPTION,
+							)
+								? 1
+								: 0,
+					);
+
+					if (updatedCount === 0) {
+						vscode.window.showInformationMessage(
+							`Agent "${task.id}" is already updated.`,
+						);
+						return;
+					}
+
+					getAgentStatusProvider()?.reload();
+					vscode.window.showInformationMessage(
+						`Closed out benign pane for agent "${task.id}".`,
+					);
+				} catch (err) {
+					if (err instanceof SyntaxError) {
+						vscode.window.showErrorMessage(
+							"Failed to close out pane: tasks.json is malformed.",
+						);
+						return;
+					}
+					vscode.window.showErrorMessage(
+						`Failed to close out pane: ${err instanceof Error ? err.message : String(err)}`,
 					);
 				}
 			},

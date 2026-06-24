@@ -119,15 +119,35 @@ describe("countExtensionsByWorkspace", () => {
 		expect(result.get(".json")?.get("backend")).toBe(1);
 	});
 
-	test("handles dotfiles (extension is full filename minus leading dot)", () => {
+	test("unregistered dotfiles count as no-extension files", () => {
 		const result = countExtensionsByWorkspace([
 			ws("ws1", ["/project/.gitignore"]),
 		]);
 
-		// path.extname(".gitignore") returns "" — no extension
-		// Actually, path.extname returns "" for dotfiles with no further extension
-		// Let's verify what the function produces
-		expect(result.has("") || result.has(".gitignore")).toBe(true);
+		// .gitignore is not a registered extension, so it stays under "No Extension"
+		expect(result.size).toBe(1);
+		expect(result.get("")?.get("ws1")).toBe(1);
+		expect(result.has(".gitignore")).toBe(false);
+	});
+
+	test("registered dotfiles count under their extension key, not no-extension", () => {
+		const result = countExtensionsByWorkspace([ws("ws1", ["/project/.env"])]);
+
+		// .env is a registered extension; it must NOT be bucketed under "No Extension"
+		expect(result.has("")).toBe(false);
+		expect(result.get(".env")?.get("ws1")).toBe(1);
+	});
+
+	test("registered dotfiles roll into buildExtensionMetadata with display name", () => {
+		const counts = countExtensionsByWorkspace([
+			ws("ws1", ["/project/.env", "/project/service/.env"]),
+		]);
+		const metadata = buildExtensionMetadata(counts);
+
+		const envInfo = metadata.find((m) => m.extension === ".env");
+		expect(envInfo?.displayName).toBe("Environment");
+		expect(envInfo?.totalCount).toBe(2);
+		expect(metadata.find((m) => m.extension === "")).toBeUndefined();
 	});
 
 	test("handles deeply nested paths", () => {
