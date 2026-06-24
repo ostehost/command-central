@@ -220,35 +220,64 @@ export function parseRemotes(remoteVerbose: string): Remote[] {
 }
 
 /**
- * Redact embedded credentials from a remote URL so it is safe to persist. A URL
- * like `https://user:token@host/repo.git` becomes `https://user:***@host/repo.git`.
- * Non-credentialed URLs are returned unchanged.
+ * Redact embedded credentials from a remote URL so it is safe to persist:
+ * - `https://user:token@host/repo.git` -> `https://user:***@host/repo.git`
+ *   (the WHOLE password is redacted even if it contains '@', since userinfo is
+ *   split at the LAST '@' before the authority).
+ * - `https://ghp_token@host/repo.git` (token-as-username, no colon) ->
+ *   `https://***@host/repo.git` — a bare userinfo on an http(s)-style scheme is
+ *   itself a secret (e.g. a GitHub PAT) and must be redacted.
+ * A bare userinfo on an ssh/git scheme (`ssh://git@host`) is the normal SSH
+ * identity, not a secret, and is left unchanged. Non-credentialed URLs are
+ * returned unchanged.
  */
 export function redactRemoteUrl(url: string): string {
-	// scheme://userinfo@host... — redact only the password portion of userinfo.
+	// scheme://userinfo@authority... — `[^/]*` is greedy and stops at the first
+	// '/', so the captured userinfo runs up to the LAST '@' before the path.
 	return url.replace(
-		/^([a-z][a-z0-9+.-]*:\/\/)([^/@:]+):([^/@]+)@/i,
-		(_full, scheme: string, user: string) => `${scheme}${user}:***@`,
+		/^([a-z][a-z0-9+.-]*:\/\/)([^/]*)@/i,
+		(full, scheme: string, userinfo: string) => {
+			// Empty userinfo (e.g. `https://@host`) carries no credential.
+			if (userinfo === "") return full;
+			const colon = userinfo.indexOf(":");
+			if (colon >= 0) {
+				// user:password — keep the user, redact the entire password.
+				return `${scheme}${userinfo.slice(0, colon)}:***@`;
+			}
+			// No colon: a bare token-as-username. Legitimate ONLY for ssh-transport
+			// schemes (ssh://, git://, *+ssh://, *+git://); on any other scheme it
+			// is a secret. Match the transport EXACTLY — a `startsWith` prefix would
+			// wrongly exempt git+https:// / gitlab:// / sshx:// and leak their token.
+			const transport = scheme.toLowerCase().replace(/:\/\/$/, "");
+			if (
+				transport === "ssh" ||
+				transport === "git" ||
+				transport.endsWith("+ssh") ||
+				transport.endsWith("+git")
+			) {
+				return full;
+			}
+			return `${scheme}***@`;
+		},
 	);
 }
 
 /**
  * Detect remotes whose URL embeds a credential/secret in userinfo. A force-push
  * or re-clone of such a remote would leak the token; the audit flags them (with
- * the secret redacted) so it can be rotated before any destructive action. Only
- * a `scheme://user:secret@host` userinfo PASSWORD counts — a bare `user@host`
- * (the normal SSH shorthand) is not a credential leak.
+ * the secret redacted) so it can be rotated before any destructive action.
+ * Kept in lockstep with {@link redactRemoteUrl}: a remote is flagged iff
+ * redaction actually removed something, so the two can never drift (a
+ * `ssh://git@host` SSH identity redacts to itself and is therefore not flagged).
  */
 export function detectCredentialInRemote(remotes: Remote[]): CredentialFinding[] {
 	const findings: CredentialFinding[] = [];
 	for (const remote of remotes) {
-		const match = remote.url.match(
-			/^[a-z][a-z0-9+.-]*:\/\/([^/@:]+):([^/@]+)@/i,
-		);
-		if (!match) continue;
+		const redactedUrl = redactRemoteUrl(remote.url);
+		if (redactedUrl === remote.url) continue;
 		findings.push({
 			remote: remote.name,
-			redactedUrl: redactRemoteUrl(remote.url),
+			redactedUrl,
 			reason: "remote URL embeds a credential/secret in userinfo",
 		});
 	}

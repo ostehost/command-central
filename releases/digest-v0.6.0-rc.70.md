@@ -12,4 +12,9 @@
   • **Review queue continuation gaps** — Completed runs with handoff evidence but missing review receipts now surface as review-queue gaps instead of silently looking finished.
 
 📦 **Since previous prerelease cut (rc69)**
+  • `c715ea0` feat(release): harden rc gates and status sync
+  • `01a01e3` chore: auto-commit agent work [symphony-PAR-234-8cbd0905]
   • `abb063b` feat(agent-status): make terminal focus first-class
+
+🛡️ **Release gate evidence**
+  • ✅ Launcher contract / sync: passed

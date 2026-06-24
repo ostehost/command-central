@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { Uri } from "vscode";
-import { getDisplayName, isKnownExtension } from "./extension-display-names";
+import { getDisplayName, isKnownExtension } from "./extension-display-names.js";
 
 /**
  * Represents metadata about a file extension across workspaces

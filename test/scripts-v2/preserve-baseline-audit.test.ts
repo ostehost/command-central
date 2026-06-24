@@ -124,6 +124,77 @@ describe("redactRemoteUrl + detectCredentialInRemote (CCSTD-01 credential-in-rem
 		expect(findings[0]?.redactedUrl).not.toContain("ghp_secretToken123");
 	});
 
+	test("flags a token-as-username remote (no colon) and redacts the whole token", () => {
+		const remotes = [
+			{ name: "origin", url: "https://ghp_secretToken123@github.com/o/cc.git" },
+		];
+		const findings = detectCredentialInRemote(remotes);
+		expect(findings).toHaveLength(1);
+		expect(findings[0]?.redactedUrl).toBe("https://***@github.com/o/cc.git");
+		expect(findings[0]?.redactedUrl).not.toContain("ghp_secretToken123");
+		expect(
+			redactRemoteUrl("https://ghp_secretToken123@github.com/o/cc.git"),
+		).not.toContain("ghp_secretToken123");
+	});
+
+	test("redacts the full password even when it contains an '@'", () => {
+		const url = "https://mike:p@ss:word@github.com/o/cc.git";
+		const redacted = redactRemoteUrl(url);
+		expect(redacted).toBe("https://mike:***@github.com/o/cc.git");
+		// No fragment of the password may survive.
+		expect(redacted).not.toContain("p@ss");
+		expect(redacted).not.toContain("word");
+	});
+
+	test("does NOT flag a bare ssh-scheme identity (ssh://git@host)", () => {
+		const remotes = [{ name: "node", url: "ssh://git@github.com/o/cc.git" }];
+		expect(detectCredentialInRemote(remotes)).toEqual([]);
+		expect(redactRemoteUrl("ssh://git@github.com/o/cc.git")).toBe(
+			"ssh://git@github.com/o/cc.git",
+		);
+	});
+
+	test("redacts a token on an https-transport scheme git accepts (git+https://)", () => {
+		// `git+https://`/`gitlab://`/`sshx://` are NOT ssh transports — a bare
+		// token-as-username on them is a secret and must be redacted+flagged.
+		// (Regression guard: a `startsWith("git"|"ssh")` prefix check leaks these.)
+		for (const url of [
+			"git+https://ghp_secretToken123@github.com/o/cc.git",
+			"git+http://ghp_secretToken123@host/cc.git",
+			"gitlab://ghp_secretToken123@host/cc.git",
+			"sshx://ghp_secretToken123@host/cc.git",
+		]) {
+			const redacted = redactRemoteUrl(url);
+			expect(redacted).not.toContain("ghp_secretToken123");
+			expect(redacted).toContain("***@");
+			const findings = detectCredentialInRemote([{ name: "origin", url }]);
+			expect(findings).toHaveLength(1);
+			expect(JSON.stringify(findings)).not.toContain("ghp_secretToken123");
+		}
+	});
+
+	test("does NOT flag a genuine ssh-transport scheme (git+ssh / ssh+git)", () => {
+		for (const url of [
+			"git+ssh://git@github.com/o/cc.git",
+			"ssh+git://git@github.com/o/cc.git",
+			"git://git@github.com/o/cc.git",
+		]) {
+			expect(redactRemoteUrl(url)).toBe(url);
+			expect(detectCredentialInRemote([{ name: "n", url }])).toEqual([]);
+		}
+	});
+
+	test("leaves an empty-userinfo URL (https://@host) unchanged", () => {
+		expect(redactRemoteUrl("https://@github.com/o/cc.git")).toBe(
+			"https://@github.com/o/cc.git",
+		);
+		expect(
+			detectCredentialInRemote([
+				{ name: "o", url: "https://@github.com/o/cc.git" },
+			]),
+		).toEqual([]);
+	});
+
 	test("does NOT flag a plain https or ssh-shorthand remote", () => {
 		const remotes = [
 			{ name: "origin", url: "https://github.com/o/cc.git" },
