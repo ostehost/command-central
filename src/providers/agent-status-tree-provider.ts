@@ -208,6 +208,24 @@ import {
 	normalizePromptSummaryLine,
 	truncatePromptSummary,
 } from "./prompt-display.js";
+import {
+	formatSymphonyDashboardDescription,
+	formatSymphonyRootDescription,
+	formatSymphonyRuntimeSnapshotStatus,
+	formatSymphonySnapshotValue,
+	getSymphonyReleasedRuns,
+	getSymphonyRetryQueuedRuns,
+	getSymphonyRunGroupCount,
+	getSymphonyRunGroupEmptyDescription,
+	getSymphonyRunGroupEmptyLabel,
+	getSymphonyRunGroupIcon,
+	getSymphonyRunGroupLabel,
+	getSymphonyRunGroupSnapshotEntries,
+	getSymphonyRunGroupSpecStatus,
+	getSymphonyRunningSessionRuns,
+	getSymphonyRuntimeSnapshot,
+	getSymphonySnapshotEntryIssue,
+} from "./symphony-projection.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
 export type {
@@ -4381,7 +4399,7 @@ export class AgentStatusTreeProvider
 		}
 
 		if (element.type === "symphonyRunGroup") {
-			const snapshotEntries = this.getSymphonyRunGroupSnapshotEntries(element);
+			const snapshotEntries = getSymphonyRunGroupSnapshotEntries(element);
 			if (snapshotEntries.length > 0) {
 				return snapshotEntries;
 			}
@@ -4389,8 +4407,8 @@ export class AgentStatusTreeProvider
 				return [
 					{
 						type: "state",
-						label: this.getSymphonyRunGroupEmptyLabel(element.kind),
-						description: this.getSymphonyRunGroupEmptyDescription(element.kind),
+						label: getSymphonyRunGroupEmptyLabel(element.kind),
+						description: getSymphonyRunGroupEmptyDescription(element.kind),
 						icon: "circle-slash",
 					},
 				];
@@ -6213,9 +6231,9 @@ export class AgentStatusTreeProvider
 	): DetailNode[] {
 		const taskId = "symphony-operations-dashboard";
 		const runs = node.runs;
-		const snapshot = this.getSymphonyRuntimeSnapshot(runs);
-		const retryQueued = this.getSymphonyRetryQueuedRuns(runs);
-		const released = this.getSymphonyReleasedRuns(runs);
+		const snapshot = getSymphonyRuntimeSnapshot(runs);
+		const retryQueued = getSymphonyRetryQueuedRuns(runs);
+		const released = getSymphonyReleasedRuns(runs);
 		const notProvided = "Not provided by lifecycle owner";
 		const sumProvided = (
 			pick: (run: CodexRunView) => number | undefined,
@@ -6240,12 +6258,12 @@ export class AgentStatusTreeProvider
 			.filter((value): value is string => Boolean(value));
 		const rateLimitsValue =
 			snapshot && snapshot.rateLimits !== undefined
-				? this.formatSymphonySnapshotValue(snapshot.rateLimits)
+				? formatSymphonySnapshotValue(snapshot.rateLimits)
 				: rateLimitSnapshots.length === 0
 					? notProvided
 					: [...new Set(rateLimitSnapshots)].join(" · ");
 		const snapshotStatusValue = snapshot
-			? this.formatSymphonyRuntimeSnapshotStatus(snapshot)
+			? formatSymphonyRuntimeSnapshotStatus(snapshot)
 			: notProvided;
 		const snapshotCounts = snapshot?.counts;
 		const snapshotCodexTotals = snapshot?.codexTotals;
@@ -6330,7 +6348,7 @@ export class AgentStatusTreeProvider
 				label: "running",
 				value:
 					snapshotCounts?.running == null
-						? `${this.getSymphonyRunningSessionRuns(runs).length}`
+						? `${getSymphonyRunningSessionRuns(runs).length}`
 						: `${snapshotCounts.running}`,
 				taskId,
 				icon: "pulse",
@@ -6507,7 +6525,7 @@ export class AgentStatusTreeProvider
 						{
 							type: "detail" as const,
 							label: "diagnostics.node_connected",
-							value: this.formatSymphonySnapshotValue(
+							value: formatSymphonySnapshotValue(
 								snapshotDiagnostics.nodeConnected,
 							),
 							taskId,
@@ -6661,13 +6679,13 @@ export class AgentStatusTreeProvider
 		pushDetail("generated_at", node.snapshot.generatedAt, "calendar");
 		pushDetail(
 			"Orchestrator Runtime State",
-			this.formatSymphonyRuntimeSnapshotStatus(node.snapshot),
+			formatSymphonyRuntimeSnapshotStatus(node.snapshot),
 			"broadcast",
 		);
 
 		if (node.kind === "running") {
 			const entry = node.entry as SymphonyRunningEntryView;
-			pushDetail("Issue", this.getSymphonySnapshotEntryIssue(entry), "issues");
+			pushDetail("Issue", getSymphonySnapshotEntryIssue(entry), "issues");
 			pushDetail("Run Attempt", entry.runAttempt, "run-all");
 			pushDetail("Live Session", entry.sessionId, "comment-discussion");
 			pushDetail("Workspace", entry.workspacePath, "folder");
@@ -6684,7 +6702,7 @@ export class AgentStatusTreeProvider
 		}
 
 		const entry = node.entry as SymphonyRetryEntryView;
-		pushDetail("Issue", this.getSymphonySnapshotEntryIssue(entry), "issues");
+		pushDetail("Issue", getSymphonySnapshotEntryIssue(entry), "issues");
 		pushDetail("Run Attempt", entry.runAttempt, "run-all");
 		pushDetail("attempt", entry.attempt, "debug-restart");
 		pushDetail("due_at", entry.dueAt, "clock");
@@ -6693,10 +6711,10 @@ export class AgentStatusTreeProvider
 	}
 
 	private getSymphonyChildren(node: SymphonyRootNode): AgentNode[] {
-		const snapshot = this.getSymphonyRuntimeSnapshot(node.runs);
-		const running = this.getSymphonyRunningSessionRuns(node.runs);
-		const retryQueued = this.getSymphonyRetryQueuedRuns(node.runs);
-		const released = this.getSymphonyReleasedRuns(node.runs);
+		const snapshot = getSymphonyRuntimeSnapshot(node.runs);
+		const running = getSymphonyRunningSessionRuns(node.runs);
+		const retryQueued = getSymphonyRetryQueuedRuns(node.runs);
+		const released = getSymphonyReleasedRuns(node.runs);
 		const children: AgentNode[] = [
 			{ type: "symphonyDashboard", runs: node.runs, flows: node.flows },
 			{ type: "symphonyRunGroup", kind: "running", runs: running, snapshot },
@@ -6753,8 +6771,8 @@ export class AgentStatusTreeProvider
 	): string {
 		const sources = V2_SECTION_HEADERS.sources;
 		if (runs.length === 0 && flows.length === 0) return sources;
-		const running = this.getSymphonyRunningSessionRuns(runs).length;
-		const retryQueued = this.getSymphonyRetryQueuedRuns(runs).length;
+		const running = getSymphonyRunningSessionRuns(runs).length;
+		const retryQueued = getSymphonyRetryQueuedRuns(runs).length;
 		const parts = [
 			flows.length > 0 ? `workstreams ${flows.length}` : null,
 			`run attempts ${runs.length}`,
@@ -6774,210 +6792,6 @@ export class AgentStatusTreeProvider
 			tooltip:
 				"Sources — read-only provenance feed. Symphony workstreams and run attempts contribute to Agent Status as a source; they do not compete as a separate status denominator. Open the Symphony view for the read-only Operations Dashboard, Running Sessions, Retry Queue, and Workstreams.",
 		};
-	}
-
-	private getSymphonyRunningSessionRuns(runs: CodexRunView[]): CodexRunView[] {
-		return runs.filter(
-			(run) =>
-				run.status === "running" &&
-				!this.isSymphonyRetryQueuedRun(run) &&
-				!this.isSymphonyReleasedRun(run),
-		);
-	}
-
-	private getSymphonyRetryQueuedRuns(runs: CodexRunView[]): CodexRunView[] {
-		return runs.filter((run) => this.isSymphonyRetryQueuedRun(run));
-	}
-
-	private getSymphonyReleasedRuns(runs: CodexRunView[]): CodexRunView[] {
-		return runs.filter((run) => this.isSymphonyReleasedRun(run));
-	}
-
-	private isSymphonyRetryQueuedRun(run: CodexRunView): boolean {
-		return (
-			this.normalizeSymphonySourceStatus(run.sourceStatus) === "retryqueued" ||
-			run.retryAttempt != null ||
-			run.retryDueAt != null ||
-			Boolean(run.retryError)
-		);
-	}
-
-	private isSymphonyReleasedRun(run: CodexRunView): boolean {
-		return this.normalizeSymphonySourceStatus(run.sourceStatus) === "released";
-	}
-
-	private normalizeSymphonySourceStatus(value: string | undefined): string {
-		return value?.replace(/[\s_-]+/g, "").toLowerCase() ?? "";
-	}
-
-	private getSymphonyRuntimeSnapshot(
-		runs: CodexRunView[],
-	): SymphonyRuntimeSnapshotView | undefined {
-		return runs.find((run) => run.symphonyRuntimeSnapshot)
-			?.symphonyRuntimeSnapshot;
-	}
-
-	private formatSymphonyRuntimeSnapshotStatus(
-		snapshot: SymphonyRuntimeSnapshotView,
-	): string {
-		if (snapshot.error) {
-			return `${snapshot.error.code}: ${snapshot.error.message}`;
-		}
-		return snapshot.status;
-	}
-
-	private formatSymphonySnapshotValue(value: unknown): string {
-		if (value == null) return "Not provided by lifecycle owner";
-		if (typeof value === "string") return value;
-		if (typeof value === "number" || typeof value === "boolean") {
-			return String(value);
-		}
-		try {
-			return JSON.stringify(value);
-		} catch {
-			return String(value);
-		}
-	}
-
-	private getSymphonyRunGroupCount(node: SymphonyRunGroupNode): number {
-		if (node.kind === "running" && node.snapshot?.running) {
-			return node.snapshot.running.length;
-		}
-		if (node.kind === "retryQueued" && node.snapshot?.retrying) {
-			return node.snapshot.retrying.length;
-		}
-		return node.runs.length;
-	}
-
-	private getSymphonyRunGroupSnapshotEntries(
-		node: SymphonyRunGroupNode,
-	): SymphonySnapshotEntryNode[] {
-		if (node.kind === "running" && node.snapshot?.running) {
-			return node.snapshot.running.map((entry, index) => ({
-				type: "symphonySnapshotEntry",
-				kind: "running",
-				entry,
-				index,
-				snapshot: node.snapshot as SymphonyRuntimeSnapshotView,
-			}));
-		}
-		if (node.kind === "retryQueued" && node.snapshot?.retrying) {
-			return node.snapshot.retrying.map((entry, index) => ({
-				type: "symphonySnapshotEntry",
-				kind: "retryQueued",
-				entry,
-				index,
-				snapshot: node.snapshot as SymphonyRuntimeSnapshotView,
-			}));
-		}
-		return [];
-	}
-
-	private getSymphonySnapshotEntryIssue(
-		entry: SymphonyRunningEntryView | SymphonyRetryEntryView,
-	): string | undefined {
-		const id = entry.issueIdentifier ?? entry.issueId;
-		return [id, entry.issueState].filter(Boolean).join(" · ") || undefined;
-	}
-
-	private formatSymphonyRootDescription(
-		runs: CodexRunView[],
-		flows: TaskFlow[],
-	): string {
-		const running = this.getSymphonyRunningSessionRuns(runs).length;
-		const retryQueued = this.getSymphonyRetryQueuedRuns(runs).length;
-		const runLabel =
-			runs.length === 0
-				? "no projected runs"
-				: flows.length === 0
-					? `${runs.length} standalone ${runs.length === 1 ? "run attempt" : "run attempts"}`
-					: `${runs.length} ${runs.length === 1 ? "run attempt" : "run attempts"}`;
-		const parts = [
-			runLabel,
-			flows.length > 0
-				? `${flows.length} ${flows.length === 1 ? "workstream" : "workstreams"}`
-				: null,
-			running > 0 ? `${running} running` : null,
-			retryQueued > 0 ? `${retryQueued} RetryQueued` : null,
-		].filter((part): part is string => part !== null);
-		// When nothing is actively running or retrying, state the live count
-		// explicitly ("0 live now") rather than implying absence. The historical
-		// attempt count stays in the label and every run stays shown/navigable in
-		// the tree — this only clarifies that none are live right now, so a large
-		// historical count reads as read-only history, not an actionable backlog.
-		// ("none active" was flagged as reading like an empty/absent state, which
-		// conflicts with the goal of preserving and surfacing all run history.)
-		if (runs.length > 0 && running === 0 && retryQueued === 0) {
-			parts.push("0 live now");
-		}
-		return parts.join(" · ");
-	}
-
-	private formatSymphonyDashboardDescription(runs: CodexRunView[]): string {
-		const snapshot = this.getSymphonyRuntimeSnapshot(runs);
-		const running =
-			snapshot?.counts?.running ??
-			this.getSymphonyRunningSessionRuns(runs).length;
-		const retryQueued =
-			snapshot?.counts?.retrying ??
-			this.getSymphonyRetryQueuedRuns(runs).length;
-		const rateLimited = runs.filter((run) => run.rateLimitSummary).length;
-		const parts = [
-			running > 0 ? `${running} running` : null,
-			retryQueued > 0 ? `${retryQueued} RetryQueued` : null,
-			snapshot?.rateLimits !== undefined
-				? "1 rate-limit snapshot"
-				: rateLimited > 0
-					? `${rateLimited} rate-limit snapshots`
-					: null,
-		].filter((part): part is string => part !== null);
-		return parts.length > 0 ? parts.join(" · ") : "read-only status surface";
-	}
-
-	private getSymphonyRunGroupLabel(kind: SymphonyRunGroupKind): string {
-		switch (kind) {
-			case "running":
-				return "Running Sessions";
-			case "retryQueued":
-				return "Retry Queue";
-			case "released":
-				return "Released";
-		}
-	}
-
-	private getSymphonyRunGroupSpecStatus(kind: SymphonyRunGroupKind): string {
-		switch (kind) {
-			case "running":
-				return "Running";
-			case "retryQueued":
-				return "RetryQueued";
-			case "released":
-				return "Released";
-		}
-	}
-
-	private getSymphonyRunGroupEmptyLabel(kind: SymphonyRunGroupKind): string {
-		switch (kind) {
-			case "running":
-				return "No running sessions";
-			case "retryQueued":
-				return "Retry queue empty";
-			case "released":
-				return "No released run attempts";
-		}
-	}
-
-	private getSymphonyRunGroupEmptyDescription(
-		kind: SymphonyRunGroupKind,
-	): string {
-		switch (kind) {
-			case "running":
-				return "Source-owned Running rows will appear here";
-			case "retryQueued":
-				return "Source-owned RetryQueued rows will appear here";
-			case "released":
-				return "Only shown when a source owner reports Released evidence";
-		}
 	}
 
 	private formatCodexRunLegacyOpenClawNote(task: OpenClawTask): string {
@@ -7487,14 +7301,14 @@ export class AgentStatusTreeProvider
 		}
 		if (element.type === "symphonySnapshotEntry") {
 			const runs = this.getVisibleCodexRuns();
-			const snapshot = this.getSymphonyRuntimeSnapshot(runs);
+			const snapshot = getSymphonyRuntimeSnapshot(runs);
 			return {
 				type: "symphonyRunGroup",
 				kind: element.kind,
 				runs:
 					element.kind === "running"
-						? this.getSymphonyRunningSessionRuns(runs)
-						: this.getSymphonyRetryQueuedRuns(runs),
+						? getSymphonyRunningSessionRuns(runs)
+						: getSymphonyRetryQueuedRuns(runs),
 				...(snapshot ? { snapshot } : {}),
 			};
 		}
@@ -8240,10 +8054,7 @@ export class AgentStatusTreeProvider
 			"Symphony",
 			vscode.TreeItemCollapsibleState.Expanded,
 		);
-		item.description = this.formatSymphonyRootDescription(
-			node.runs,
-			node.flows,
-		);
+		item.description = formatSymphonyRootDescription(node.runs, node.flows);
 		item.contextValue = "symphony";
 		item.iconPath = new vscode.ThemeIcon("server-process");
 		item.tooltip = new vscode.MarkdownString(
@@ -8263,7 +8074,7 @@ export class AgentStatusTreeProvider
 			"Operations Dashboard",
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
-		item.description = this.formatSymphonyDashboardDescription(node.runs);
+		item.description = formatSymphonyDashboardDescription(node.runs);
 		item.contextValue = "symphonyDashboard";
 		item.iconPath = new vscode.ThemeIcon("dashboard");
 		item.tooltip = new vscode.MarkdownString(
@@ -8279,19 +8090,19 @@ export class AgentStatusTreeProvider
 	private createSymphonyRunGroupItem(
 		node: SymphonyRunGroupNode,
 	): vscode.TreeItem {
-		const label = this.getSymphonyRunGroupLabel(node.kind);
-		const count = this.getSymphonyRunGroupCount(node);
+		const label = getSymphonyRunGroupLabel(node.kind);
+		const count = getSymphonyRunGroupCount(node);
 		const item = new vscode.TreeItem(
 			`${label} · ${count}`,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
-		item.description = this.getSymphonyRunGroupSpecStatus(node.kind);
+		item.description = getSymphonyRunGroupSpecStatus(node.kind);
 		item.contextValue = `symphonyRunGroup.${node.kind}`;
-		item.iconPath = this.getSymphonyRunGroupIcon(node.kind);
+		item.iconPath = getSymphonyRunGroupIcon(node.kind);
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${label}**`,
-				`Spec state: \`${this.getSymphonyRunGroupSpecStatus(node.kind)}\``,
+				`Spec state: \`${getSymphonyRunGroupSpecStatus(node.kind)}\``,
 				`${count} read-only projected ${
 					count === 1 ? "Run Attempt" : "Run Attempts"
 				}`,
@@ -8304,7 +8115,7 @@ export class AgentStatusTreeProvider
 		node: SymphonySnapshotEntryNode,
 	): vscode.TreeItem {
 		const running = node.kind === "running";
-		const issue = this.getSymphonySnapshotEntryIssue(node.entry);
+		const issue = getSymphonySnapshotEntryIssue(node.entry);
 		const session = running
 			? (node.entry as SymphonyRunningEntryView).sessionId
 			: undefined;
@@ -8322,34 +8133,12 @@ export class AgentStatusTreeProvider
 			[
 				`**${labelPrefix}**`,
 				"Read-only row from a source-owned Symphony runtime snapshot.",
-				`Snapshot status: \`${this.formatSymphonyRuntimeSnapshotStatus(
+				`Snapshot status: \`${formatSymphonyRuntimeSnapshotStatus(
 					node.snapshot,
 				)}\``,
 			].join("\n\n"),
 		);
 		return item;
-	}
-
-	private getSymphonyRunGroupIcon(
-		kind: SymphonyRunGroupKind,
-	): vscode.ThemeIcon {
-		switch (kind) {
-			case "running":
-				return new vscode.ThemeIcon(
-					"pulse",
-					new vscode.ThemeColor("charts.blue"),
-				);
-			case "retryQueued":
-				return new vscode.ThemeIcon(
-					"history",
-					new vscode.ThemeColor("charts.yellow"),
-				);
-			case "released":
-				return new vscode.ThemeIcon(
-					"check",
-					new vscode.ThemeColor("charts.green"),
-				);
-		}
 	}
 
 	private createBackgroundTasksItem(

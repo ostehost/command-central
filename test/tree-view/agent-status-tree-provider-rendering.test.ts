@@ -9,8 +9,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as path from "node:path";
 import { __setCurrentMachineHostOverrideForTests } from "../../src/providers/agent-status-tree-provider.js";
+import { formatSymphonyRootDescription } from "../../src/providers/symphony-projection.js";
 import { OpenClawConfigService } from "../../src/services/openclaw-config-service.js";
 import { ReviewTracker } from "../../src/services/review-tracker.js";
+import type { CodexRunView } from "../../src/types/codex-run-types.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 import {
 	AgentStatusTreeProvider,
@@ -1088,15 +1090,13 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 		});
 
 		test("idle Symphony summary states '0 live now' without implying history is gone", () => {
-			const fmt = (
-				provider as unknown as {
-					formatSymphonyRootDescription: (
-						runs: unknown[],
-						flows: unknown[],
-					) => string;
-				}
-			).formatSymphonyRootDescription.bind(provider);
-			const label = fmt([{ status: "succeeded" }, { status: "succeeded" }], []);
+			const label = formatSymphonyRootDescription(
+				[
+					{ status: "succeeded" },
+					{ status: "succeeded" },
+				] as unknown as CodexRunView[],
+				[],
+			);
 			// Historical attempt count is retained in the label — nothing dropped.
 			expect(label).toContain("2 standalone run attempts");
 			// Live state is stated explicitly; no absence/empty-state phrasing.
@@ -1106,17 +1106,12 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 		});
 
 		test("live Symphony summary omits the idle live-count suffix when a run is running", () => {
-			const fmt = (
-				provider as unknown as {
-					formatSymphonyRootDescription: (
-						runs: unknown[],
-						flows: unknown[],
-					) => string;
-				}
-			).formatSymphonyRootDescription.bind(provider);
-			expect(fmt([{ status: "running" }], [])).toBe(
-				"1 standalone run attempt · 1 running",
-			);
+			expect(
+				formatSymphonyRootDescription(
+					[{ status: "running" }] as unknown as CodexRunView[],
+					[],
+				),
+			).toBe("1 standalone run attempt · 1 running");
 		});
 	});
 });
