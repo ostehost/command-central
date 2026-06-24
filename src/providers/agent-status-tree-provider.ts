@@ -175,7 +175,6 @@ import {
 	getCodexRunStatusIcon,
 } from "./codex-run-format.js";
 import {
-	buildGitDiffArgs,
 	deriveFallbackFileChangeStatus,
 	extractCommitHash,
 	formatFileChangeDescription,
@@ -190,6 +189,12 @@ import {
 	formatRetainedDiscoveryEntry,
 	summarizeFilteredDiscoveryMatches,
 } from "./discovery-format.js";
+import {
+	getPerFileNumstatDiffs,
+	getTaskDiffEndCommit,
+	getTaskDiffStartCommit,
+	runGitDiffOutput,
+} from "./git-diff.js";
 import {
 	formatOpenClawAuditStatusLabel,
 	formatOpenClawTaskDuration,
@@ -4583,8 +4588,8 @@ export class AgentStatusTreeProvider
 		};
 
 		try {
-			const startCommit = this.getTaskDiffStartCommit(task);
-			const endCommit = this.getTaskDiffEndCommit(task);
+			const startCommit = getTaskDiffStartCommit(task);
+			const endCommit = getTaskDiffEndCommit(task);
 
 			// Non-running task with no valid end boundary — no diff available.
 			if (startCommit && !endCommit) return null;
@@ -5906,7 +5911,7 @@ export class AgentStatusTreeProvider
 			const gitHash =
 				t.status === "running"
 					? extractCommitHash(gitInfo.lastCommit)
-					: this.getTaskDiffEndCommit(t);
+					: getTaskDiffEndCommit(t);
 			const shortHash = gitHash ? shortenCommitHash(gitHash) : null;
 			const gitLabel = shortHash
 				? `${gitInfo.branch} · ${shortHash}`
@@ -6088,8 +6093,8 @@ export class AgentStatusTreeProvider
 		if (!fs.existsSync(t.project_dir)) return fallbackSummary;
 
 		try {
-			const startCommit = this.getTaskDiffStartCommit(t);
-			const endCommit = this.getTaskDiffEndCommit(t);
+			const startCommit = getTaskDiffStartCommit(t);
+			const endCommit = getTaskDiffEndCommit(t);
 			const fileDiffs = this.getPerFileDiffs(
 				t.project_dir,
 				startCommit,
@@ -6114,8 +6119,8 @@ export class AgentStatusTreeProvider
 	}
 
 	private getFileChangeChildren(t: AgentTask): FileChangeNode[] {
-		const startCommit = this.getTaskDiffStartCommit(t);
-		const endCommit = this.getTaskDiffEndCommit(t);
+		const startCommit = getTaskDiffStartCommit(t);
+		const endCommit = getTaskDiffEndCommit(t);
 		const fileDiffs = this.getPerFileDiffs(
 			t.project_dir,
 			startCommit,
@@ -6810,49 +6815,6 @@ export class AgentStatusTreeProvider
 		return "Also shown in Symphony / Run Attempts as a launcher-owned run attempt.";
 	}
 
-	private getTaskDiffStartCommit(t: AgentTask): string | undefined {
-		if (t.status === "running") return undefined;
-
-		if (t.start_commit && t.start_commit !== "unknown") {
-			return t.start_commit;
-		}
-		if (t.start_sha && t.start_sha !== "unknown") {
-			return t.start_sha;
-		}
-
-		if (t.started_at) {
-			try {
-				const commitHash = execFileSync(
-					"git",
-					[
-						"-C",
-						t.project_dir,
-						"log",
-						`--before=${t.started_at}`,
-						"-1",
-						"--format=%H",
-					],
-					{
-						encoding: "utf-8",
-						timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
-					},
-				).trim();
-				if (commitHash) return commitHash;
-			} catch {
-				// Fallback to HEAD~1 below
-			}
-		}
-
-		return "HEAD~1";
-	}
-
-	private getTaskDiffEndCommit(t: AgentTask): string | undefined {
-		if (t.end_commit && t.end_commit !== "unknown") {
-			return t.end_commit;
-		}
-		return undefined;
-	}
-
 	/** Kick off async port detection; fires onDidChangeTreeData when done */
 	private async _detectPortsAsync(task: AgentTask): Promise<void> {
 		try {
@@ -7156,62 +7118,12 @@ export class AgentStatusTreeProvider
 	/** Get a formatted diff summary for an agent's working directory */
 	getDiffSummary(projectDir: string, task: AgentTask): string | null {
 		return formatPerFileDiffSummary(
-			this.getPerFileNumstatDiffs(
+			getPerFileNumstatDiffs(
 				projectDir,
-				this.getTaskDiffStartCommit(task),
-				this.getTaskDiffEndCommit(task),
+				getTaskDiffStartCommit(task),
+				getTaskDiffEndCommit(task),
 			),
 		);
-	}
-
-	private runGitDiffOutput(
-		projectDir: string,
-		diffFlag: "--name-status" | "--numstat",
-		startCommit?: string,
-		endCommit?: string,
-	): string {
-		if (startCommit && !endCommit) return "";
-
-		const run = (args: string[]): string =>
-			execFileSync("git", args, {
-				encoding: "utf-8",
-				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
-			}).trim();
-
-		try {
-			let output = "";
-			try {
-				output = run(
-					buildGitDiffArgs(projectDir, diffFlag, startCommit, endCommit),
-				);
-			} catch {
-				if (!startCommit) return "";
-				output = run(["-C", projectDir, "diff", diffFlag, "HEAD~1..HEAD"]);
-			}
-
-			if (!output && startCommit) {
-				output = run(["-C", projectDir, "diff", diffFlag, "HEAD~1..HEAD"]);
-			}
-
-			return output;
-		} catch {
-			return "";
-		}
-	}
-
-	private getPerFileNumstatDiffs(
-		projectDir: string,
-		startCommit?: string,
-		endCommit?: string,
-	): PerFileDiff[] {
-		const output = this.runGitDiffOutput(
-			projectDir,
-			"--numstat",
-			startCommit,
-			endCommit,
-		);
-		if (!output) return [];
-		return parsePerFileDiffsFromNumstat(output);
 	}
 
 	/**
@@ -7226,20 +7138,11 @@ export class AgentStatusTreeProvider
 		startCommit?: string,
 		endCommit?: string,
 	): PerFileDiff[] {
-		const diffs = this.getPerFileNumstatDiffs(
-			projectDir,
-			startCommit,
-			endCommit,
-		);
+		const diffs = getPerFileNumstatDiffs(projectDir, startCommit, endCommit);
 		if (diffs.length === 0) return [];
 
 		const statuses = parsePerFileStatusesFromNameStatus(
-			this.runGitDiffOutput(
-				projectDir,
-				"--name-status",
-				startCommit,
-				endCommit,
-			),
+			runGitDiffOutput(projectDir, "--name-status", startCommit, endCommit),
 		);
 
 		return diffs.map((diff) => ({
