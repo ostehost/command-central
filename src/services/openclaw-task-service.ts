@@ -20,6 +20,7 @@ export class OpenClawTaskService implements vscode.Disposable {
 	private _isInstalled = true;
 	private readonly debounceMs: number;
 	private reloadInFlight: Promise<void> | null = null;
+	private disposed = false;
 
 	constructor(opts: { debounceMs?: number } = {}) {
 		this.debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
@@ -48,10 +49,14 @@ export class OpenClawTaskService implements vscode.Disposable {
 	private async runReload(): Promise<void> {
 		try {
 			const stdout = await this.execCli(["tasks", "list", "--json"]);
-			// Assign only after a successful read so prior tasks survive failures.
+			// Discard if disposed mid-flight so we never resurrect state on a
+			// torn-down service; assign only after a successful read so prior
+			// tasks survive failures.
+			if (this.disposed) return;
 			this.tasks = this.parseTasksOutput(stdout);
 			this._isInstalled = true;
 		} catch (error: unknown) {
+			if (this.disposed) return;
 			this.handleReloadError(error);
 		}
 	}
@@ -88,6 +93,9 @@ export class OpenClawTaskService implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		// Mark disposed first so an in-flight reload resolving after teardown
+		// discards its result instead of resurrecting state.
+		this.disposed = true;
 		if (this.watcher) {
 			this.watcher.close();
 			this.watcher = null;

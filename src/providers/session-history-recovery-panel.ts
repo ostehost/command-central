@@ -210,8 +210,7 @@ export interface SessionHistoryRecoveryCommandDeps {
 /**
  * Register the command that opens the recovery-risk panel. Mirrors the other
  * `register*Commands` activation helpers: returns one disposable per command so
- * the caller owns their lifecycle. Wiring this from `extension.ts` activates the
- * surface; until then the command id is still contributed and implemented here.
+ * the caller owns their lifecycle. Wired from `extension.ts` during activation.
  */
 export function registerSessionHistoryRecoveryCommands(
 	deps: SessionHistoryRecoveryCommandDeps,

@@ -310,6 +310,28 @@ describe("CronService", () => {
 		service.dispose();
 	});
 
+	test("a reload resolving after dispose() does not resurrect state", async () => {
+		const cli: { resolve: ((stdout: string) => void) | null } = {
+			resolve: null,
+		};
+		execFilePending = (cb) => {
+			cli.resolve = (stdout) => cb(null, stdout);
+		};
+
+		const service = new CronService({ debounceMs: 1 });
+		const run = service.reloadAsync();
+		expect(cli.resolve).not.toBeNull();
+		expect(service.getJobs()).toHaveLength(0);
+
+		// Tear down BEFORE the in-flight CLI resolves.
+		service.dispose();
+		// The CLI now returns — the late result must be discarded, not applied
+		// to the torn-down service.
+		cli.resolve?.(JSON.stringify(sampleJobs));
+		await run;
+		expect(service.getJobs()).toHaveLength(0);
+	});
+
 	// ── PAR-67 / CP-28 regression: resilient watcher install ─────────────
 	// On the buggy code startWatching() called fs.watch exactly once and
 	// swallowed the ENOENT throw, so a cron directory absent at startup was

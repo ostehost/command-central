@@ -171,6 +171,23 @@ describe("OpenClawTaskService", () => {
 		service.dispose();
 	});
 
+	test("a reload resolving after dispose() does not resurrect tasks", async () => {
+		// Slow CLI so the reload is still in flight when we dispose.
+		execFileResult = JSON.stringify(sampleTasks);
+		execFileDelayMs = 50;
+		const service = new OpenClawTaskService({ debounceMs: 1 });
+
+		const run = service.reload();
+		expect(service.getTasks()).toHaveLength(0);
+
+		// Tear down before the in-flight CLI resolves; the late result must be
+		// discarded, not applied to the torn-down service.
+		service.dispose();
+		await run;
+		await waitFor(() => true, { message: "let any late assignment flush" });
+		expect(service.getTasks()).toHaveLength(0);
+	});
+
 	test("coalesces overlapping reloads into a single in-flight CLI read", async () => {
 		execFileResult = JSON.stringify(sampleTasks);
 		execFileDelayMs = 50;

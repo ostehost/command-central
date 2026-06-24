@@ -30,7 +30,7 @@ export class AcpSessionService {
 	private readonly debounceMs: number;
 	private readonly watchRetryMs: number;
 	private reloadInFlight: Promise<void> | null = null;
-	private reloadGeneration = 0;
+	private disposed = false;
 
 	constructor(opts: { debounceMs?: number; watchRetryMs?: number } = {}) {
 		this.debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
@@ -58,22 +58,22 @@ export class AcpSessionService {
 	}
 
 	/**
-	 * Async reload with in-flight coalescing + stale-result protection.
+	 * Async reload with in-flight coalescing + post-dispose protection.
 	 * - Coalescing: a second call while one is running awaits the same promise.
-	 * - Stale-result protection: each run captures a generation; if a newer
-	 *   run started meanwhile, the older run's parsed output is discarded.
+	 * - Post-dispose protection: a run whose CLI result resolves after the
+	 *   service has been disposed discards its output instead of resurrecting
+	 *   state on a torn-down service.
 	 */
 	reloadAsync(): Promise<void> {
 		if (this.reloadInFlight) return this.reloadInFlight;
-		const generation = ++this.reloadGeneration;
-		const run = this.runReload(generation).finally(() => {
+		const run = this.runReload().finally(() => {
 			this.reloadInFlight = null;
 		});
 		this.reloadInFlight = run;
 		return run;
 	}
 
-	private async runReload(generation: number): Promise<void> {
+	private async runReload(): Promise<void> {
 		try {
 			const stdout = await this.execCli([
 				"tasks",
@@ -82,11 +82,11 @@ export class AcpSessionService {
 				"--runtime",
 				"acp",
 			]);
-			if (generation !== this.reloadGeneration) return;
+			if (this.disposed) return;
 			this.tasks = this.parseTasksOutput(stdout);
 			this._isInstalled = true;
 		} catch (error: unknown) {
-			if (generation !== this.reloadGeneration) return;
+			if (this.disposed) return;
 			this.handleReloadError(error);
 		}
 	}
@@ -110,6 +110,10 @@ export class AcpSessionService {
 	}
 
 	dispose(): void {
+		// Mark disposed first so an in-flight reload resolving after teardown
+		// discards its result instead of resurrecting state.
+		this.disposed = true;
+		this.reloadInFlight = null;
 		if (this.watcher) {
 			this.watcher.close();
 			this.watcher = null;
