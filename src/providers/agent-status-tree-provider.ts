@@ -1626,8 +1626,6 @@ export class AgentStatusTreeProvider
 	 * ingestion is never mistaken for the primary truth surface.
 	 */
 	private _legacyDiagnosticsEnabled = false;
-	/** Prevent stale async reload results from overwriting newer state */
-	private _reloadGeneration = 0;
 	private _agentStatusView: vscode.TreeView<AgentNode> | null = null;
 	private previousStuckStates = new Map<string, boolean>();
 	private hasInitializedStuckState = false;
@@ -3627,7 +3625,6 @@ export class AgentStatusTreeProvider
 
 	reload(): void {
 		const reloadStart = performance.now();
-		const generation = ++this._reloadGeneration;
 		const isInitial = this._initialReadInProgress;
 		if (isInitial) {
 			this._onDidChangeTreeData.fire(undefined);
@@ -3639,13 +3636,6 @@ export class AgentStatusTreeProvider
 			"tree.readRegistry",
 			performance.now() - readStart,
 		);
-		if (generation !== this._reloadGeneration) {
-			defaultTimingRecorder.record(
-				"tree.reload",
-				performance.now() - reloadStart,
-			);
-			return;
-		}
 		this.registry = nextRegistry;
 		// Invalidate per-render and TTL caches so downstream code sees the new
 		// registry and recomputed stream/commit state for the next render cycle.
