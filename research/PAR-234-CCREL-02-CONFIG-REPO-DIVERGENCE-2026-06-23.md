@@ -67,9 +67,11 @@ CCREL-01 (PAR-233), CCREL-03 (PAR-235), CCREL-04 (PAR-236).
 
 | Gate | Result |
 |---|---|
-| `just test` | PENDING — awaiting Tester |
-| `just check` | PENDING — awaiting Tester |
-| `git status --porcelain` (post-gates) | PENDING — awaiting Tester |
+| `just test` | 2323 pass / 1 skip / 0 fail — 6381 expect() calls, 167 test files, exit 0 |
+| `just check` | exit 0 — Biome CI checked 318 files (no fixes), tsc passed, Knip warnings informational only (not failures) |
+| `git status --porcelain` (post-gates) | empty — working tree clean |
+
+The lone skip is a Bun-level `todo()` registration, not a failure.
 
 ## Constraints honored
 
