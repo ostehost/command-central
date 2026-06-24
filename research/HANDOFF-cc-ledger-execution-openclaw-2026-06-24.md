@@ -55,8 +55,7 @@ Per-ticket status + caveats: `ledger.json` (worker queue) and `research/cc-work-
 1. **Linear status sync.** The 47 done tickets are still in their pre-execution Linear
    states. Moving them to **Done** + posting closeout comments is an external state change
    that was deliberately NOT performed. Recommend doing this via the
-   `openclaw-linear-intake` path (team `PAR`, project Command Central; Done state id
-   `861388a8-b7ba-4b5c-b2d3-2ee2e13b6fba`). The 5 partials should get progress comments,
+   `openclaw-linear-intake` path (team `PAR`, project Command Central; use the workspace Done state resolved live). The 5 partials should get progress comments,
    not a Done move. See `[[reference-linear-access]]` for the access contract.
 2. **Cross-repo launcher wiring** for PAR-227 (above) — coordinate command-central ↔ ghostty-launcher.
 3. **Live hub/node validation** for PAR-237 / PAR-229 / PAR-152 / PAR-84.

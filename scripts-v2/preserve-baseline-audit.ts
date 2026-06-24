@@ -224,7 +224,7 @@ export function parseRemotes(remoteVerbose: string): Remote[] {
  * - `https://user:token@host/repo.git` -> `https://user:***@host/repo.git`
  *   (the WHOLE password is redacted even if it contains '@', since userinfo is
  *   split at the LAST '@' before the authority).
- * - `https://ghp_token@host/repo.git` (token-as-username, no colon) ->
+ * - `https://TOKEN@host/repo.git` (token-as-username, no colon) ->
  *   `https://***@host/repo.git` — a bare userinfo on an http(s)-style scheme is
  *   itself a secret (e.g. a GitHub PAT) and must be redacted.
  * A bare userinfo on an ssh/git scheme (`ssh://git@host`) is the normal SSH

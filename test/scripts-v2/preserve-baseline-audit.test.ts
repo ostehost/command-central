@@ -111,7 +111,7 @@ describe("redactRemoteUrl + detectCredentialInRemote (CCSTD-01 credential-in-rem
 		const remotes = [
 			{
 				name: "origin",
-				url: "https://mike:ghp_secretToken123@github.com/o/cc.git",
+				url: "https://mike:TEST_TOKEN_SECRET_123@github.com/o/cc.git",
 			},
 		];
 		const findings = detectCredentialInRemote(remotes);
@@ -121,20 +121,23 @@ describe("redactRemoteUrl + detectCredentialInRemote (CCSTD-01 credential-in-rem
 			"https://mike:***@github.com/o/cc.git",
 		);
 		// The secret must NEVER appear in the finding.
-		expect(findings[0]?.redactedUrl).not.toContain("ghp_secretToken123");
+		expect(findings[0]?.redactedUrl).not.toContain("TEST_TOKEN_SECRET_123");
 	});
 
 	test("flags a token-as-username remote (no colon) and redacts the whole token", () => {
 		const remotes = [
-			{ name: "origin", url: "https://ghp_secretToken123@github.com/o/cc.git" },
+			{
+				name: "origin",
+				url: "https://TEST_TOKEN_SECRET_123@github.com/o/cc.git",
+			},
 		];
 		const findings = detectCredentialInRemote(remotes);
 		expect(findings).toHaveLength(1);
 		expect(findings[0]?.redactedUrl).toBe("https://***@github.com/o/cc.git");
-		expect(findings[0]?.redactedUrl).not.toContain("ghp_secretToken123");
+		expect(findings[0]?.redactedUrl).not.toContain("TEST_TOKEN_SECRET_123");
 		expect(
-			redactRemoteUrl("https://ghp_secretToken123@github.com/o/cc.git"),
-		).not.toContain("ghp_secretToken123");
+			redactRemoteUrl("https://TEST_TOKEN_SECRET_123@github.com/o/cc.git"),
+		).not.toContain("TEST_TOKEN_SECRET_123");
 	});
 
 	test("redacts the full password even when it contains an '@'", () => {
@@ -159,17 +162,17 @@ describe("redactRemoteUrl + detectCredentialInRemote (CCSTD-01 credential-in-rem
 		// token-as-username on them is a secret and must be redacted+flagged.
 		// (Regression guard: a `startsWith("git"|"ssh")` prefix check leaks these.)
 		for (const url of [
-			"git+https://ghp_secretToken123@github.com/o/cc.git",
-			"git+http://ghp_secretToken123@host/cc.git",
-			"gitlab://ghp_secretToken123@host/cc.git",
-			"sshx://ghp_secretToken123@host/cc.git",
+			"git+https://TEST_TOKEN_SECRET_123@github.com/o/cc.git",
+			"git+http://TEST_TOKEN_SECRET_123@host/cc.git",
+			"gitlab://TEST_TOKEN_SECRET_123@host/cc.git",
+			"sshx://TEST_TOKEN_SECRET_123@host/cc.git",
 		]) {
 			const redacted = redactRemoteUrl(url);
-			expect(redacted).not.toContain("ghp_secretToken123");
+			expect(redacted).not.toContain("TEST_TOKEN_SECRET_123");
 			expect(redacted).toContain("***@");
 			const findings = detectCredentialInRemote([{ name: "origin", url }]);
 			expect(findings).toHaveLength(1);
-			expect(JSON.stringify(findings)).not.toContain("ghp_secretToken123");
+			expect(JSON.stringify(findings)).not.toContain("TEST_TOKEN_SECRET_123");
 		}
 	});
 
@@ -290,7 +293,7 @@ describe("buildReceipt (CCSTD-01 host-labeled receipt)", () => {
 			ignoredZ: "node_modules/\0",
 			stashList: "stash@{0}: WIP\n",
 			remoteVerbose:
-				"origin\thttps://mike:ghp_tok@github.com/o/cc.git (fetch)\norigin\thttps://mike:ghp_tok@github.com/o/cc.git (push)",
+				"origin\thttps://mike:TEST_TOKEN_SHORT@github.com/o/cc.git (fetch)\norigin\thttps://mike:TEST_TOKEN_SHORT@github.com/o/cc.git (push)",
 		});
 
 		expect(receipt.version).toBe(1);
@@ -314,7 +317,7 @@ describe("buildReceipt (CCSTD-01 host-labeled receipt)", () => {
 
 		// Persisted remotes must be redacted — no secret leaks into the receipt.
 		const serialized = JSON.stringify(receipt);
-		expect(serialized).not.toContain("ghp_tok");
+		expect(serialized).not.toContain("TEST_TOKEN_SHORT");
 		expect(receipt.remotes[0]?.url).toBe(
 			"https://mike:***@github.com/o/cc.git",
 		);
