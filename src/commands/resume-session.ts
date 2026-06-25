@@ -52,14 +52,10 @@ export function supportsInteractiveResume(task: ResumeTask): boolean {
 const CLAUDE_SESSION_ID_REGEX =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function isValidClaudeSessionId(value?: string | null): boolean {
-	return Boolean(value?.trim() && CLAUDE_SESSION_ID_REGEX.test(value.trim()));
-}
-
 /**
  * Returns the trimmed UUID if it's a valid claude session id; null otherwise.
- * Use this instead of `isValidClaudeSessionId` + non-null assertion when you
- * need to pass the UUID forward to another call — keeps the type-narrowing
+ * Use this instead of duplicating the session-id regex plus a non-null assertion
+ * when you need to pass the UUID forward to another call — keeps the type-narrowing
  * inside one expression and avoids the `noNonNullAssertion` lint.
  */
 export function getValidClaudeSessionId(value?: string | null): string | null {

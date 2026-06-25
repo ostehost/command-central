@@ -30,7 +30,6 @@ export type AgentTaskStatus =
 	| "contract_failure";
 
 export type AgentRole = "developer" | "planner" | "reviewer" | "test";
-export type AgentStatusScope = "all";
 export type AgentStatusSortMode = "status-recency";
 
 /**

@@ -323,9 +323,6 @@ export function isValidSessionId(name: string): boolean {
 	return /^[a-zA-Z0-9._-]+$/.test(name);
 }
 
-/** @deprecated Use isValidSessionId */
-export const isValidTmuxSession = isValidSessionId;
-
 // ── Task registry & lane types ───────────────────────────────────────
 // AgentTask and the registry types live in ../types/agent-task.ts (a leaf
 // module with no provider dependency, which breaks the import cycle the sibling
@@ -333,7 +330,6 @@ export const isValidTmuxSession = isValidSessionId;
 // here so existing import sites stay stable.
 export type {
 	AgentRole,
-	AgentStatusScope,
 	AgentStatusSortMode,
 	AgentTask,
 	AgentTaskProjectRef,
