@@ -1107,6 +1107,17 @@ _terminate_pid_list() {
 cleanup_task_descendants() {
 	local task_id="$1"
 	local grace="${OSTE_CLEANUP_GRACE_SECONDS:-2}"
+	# Harden the graceful-kill sleep window (same class as OSTE_KILL_GRACEFUL_WAIT):
+	# 0 collapses the TERM->KILL grace, and a non-numeric/negative value aborts
+	# `sleep "$grace"` (via _terminate_pid_list) under set -e — leaking the very
+	# descendant tree this function exists to clean up. Sleep-consumed -> decimals
+	# are fine, so the number variant. Defensive source keeps cleanup working even
+	# if the validation lib is somehow unavailable (grace stays the raw value).
+	if [[ -n "${SCRIPT_DIR:-}" && -r "${SCRIPT_DIR}/lib/env-validation.sh" ]]; then
+		# shellcheck source=env-validation.sh
+		source "${SCRIPT_DIR}/lib/env-validation.sh"
+		grace="$(normalize_positive_number "$grace" 2 OSTE_CLEANUP_GRACE_SECONDS)"
+	fi
 	local pid_file="/tmp/oste-pid-${task_id}"
 	local agent_pid=""
 	local -a target_pids=()

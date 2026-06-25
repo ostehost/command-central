@@ -29,13 +29,22 @@ node_pending_review_fetch() {
 	local node_dir="${3:-${OSTE_NODE_PENDING_REVIEW_DIR:-/tmp/oste-pending-review}}"
 	[[ -n "$node_id" && -n "$task_id" ]] || return 1
 
-	local task_q dir_q remote_path
+	local task_q dir_q remote_path fallback_path
 	task_q=$(_node_pr_q "${task_id}.json")
 	dir_q=$(_node_pr_q "$node_dir")
 	remote_path="${dir_q}/${task_q}"
+	fallback_path=""
+	if [[ "$node_dir" == "/tmp/oste-pending-review" ]]; then
+		fallback_path="$(_node_pr_q "/private/tmp/oste-pending-review")/${task_q}"
+	fi
 
-	local out
-	out=$(node_exec "$node_id" "if [ -f ${remote_path} ]; then cat -- ${remote_path}; fi" 2>/dev/null) || return 1
+	local out remote_cmd
+	if [[ -n "$fallback_path" ]]; then
+		remote_cmd="if [ -f ${remote_path} ]; then cat -- ${remote_path}; elif [ -f ${fallback_path} ]; then cat -- ${fallback_path}; fi"
+	else
+		remote_cmd="if [ -f ${remote_path} ]; then cat -- ${remote_path}; fi"
+	fi
+	out=$(node_exec "$node_id" "$remote_cmd" 2>/dev/null) || return 1
 	[[ -n "$out" ]] || return 1
 	printf '%s' "$out"
 }

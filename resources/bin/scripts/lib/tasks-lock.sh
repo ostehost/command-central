@@ -133,3 +133,26 @@ unlock_tasks() {
 	[[ "$held_pid" == "$$" ]] || return 0
 	rm -rf "$lockdir" 2>/dev/null || true
 }
+
+# Apply a jq program to TASKS_FILE in place (write-or-rollback).
+#
+# Args are passed verbatim to jq, followed by TASKS_FILE — call as
+# `_tasks_json_apply --arg id "$id" '<filter>'`. The file is replaced only when
+# jq succeeds AND produces non-empty output; otherwise the original is left
+# intact. The temp file is always cleaned up (callers no longer need their own
+# mktemp/mv/rm ceremony). Returns 0 on a successful write, 1 otherwise.
+#
+# Locking is the caller's responsibility: this helper does NOT acquire the tasks
+# lock, so a sequence of calls inside one held lock stays a single critical
+# section (as the completion path requires).
+# shellcheck disable=SC2154  # TASKS_FILE is set by the sourcing script
+_tasks_json_apply() {
+	local _tmp
+	_tmp=$(mktemp) || return 1
+	if jq "$@" "$TASKS_FILE" >"$_tmp" 2>/dev/null && [[ -s "$_tmp" ]]; then
+		mv "$_tmp" "$TASKS_FILE"
+		return 0
+	fi
+	rm -f "$_tmp"
+	return 1
+}

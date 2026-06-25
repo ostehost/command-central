@@ -36,6 +36,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "${SCRIPT_DIR}/lib/pending-review.sh"
 # shellcheck source=lib/hook-trace.sh
 source "${SCRIPT_DIR}/lib/hook-trace.sh"
+# shellcheck source=lib/permission-broker.sh
+source "${SCRIPT_DIR}/lib/permission-broker.sh"
 
 input=$(cat)
 
@@ -119,6 +121,15 @@ if [[ -n "${TASKS_FILE:-}" && -f "${TASKS_FILE:-}" ]]; then
 			exit 0
 		fi
 	fi
+fi
+
+# Permission-pending lifecycle gate (PAR-85 regression guard).
+# Blocks completion while a permission prompt is awaiting resolution.
+if permission_broker_pending "$oste_task_id"; then
+	hook_trace_append "task-completed-hook-deferred-permission-pending" "$input" "$(jq -cn \
+		--arg task_id "$oste_task_id" '{task_id: $task_id, reason: "permission_prompt_pending"}')"
+	printf 'A permission prompt is still pending for this task; resolve it before completing.\n'
+	exit 2
 fi
 
 complete_script="${OSTE_COMPLETE_SCRIPT:-${SCRIPT_DIR}/oste-complete.sh}"

@@ -57,6 +57,23 @@ visible_launcher_hosts() {
 	fi
 }
 
+launcher_host_token_key() {
+	local value="${1:-}"
+	printf '%s' "$value" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cd '[:alnum:]'
+}
+
+launcher_host_token_matches() {
+	local actual="${1:-}"
+	local candidate="${2:-}"
+	[[ -n "$actual" && -n "$candidate" ]] || return 1
+	[[ "$actual" == "$candidate" ]] && return 0
+
+	local actual_key candidate_key
+	actual_key=$(launcher_host_token_key "$actual")
+	candidate_key=$(launcher_host_token_key "$candidate")
+	[[ -n "$actual_key" && "$actual_key" == "$candidate_key" ]]
+}
+
 csv_contains_host() {
 	local csv="$1"
 	local target="$2"
@@ -68,7 +85,7 @@ csv_contains_host() {
 		candidate="${candidate#"${candidate%%[![:space:]]*}"}"
 		candidate="${candidate%"${candidate##*[![:space:]]}"}"
 		[[ -n "$candidate" ]] || continue
-		[[ "$candidate" == "$target" ]] && return 0
+		launcher_host_token_matches "$target" "$candidate" && return 0
 	done
 
 	return 1
@@ -1162,6 +1179,30 @@ BG_CONF
 	# Authoritative backend marker for bundle_backend_for_path() in oste-spawn.sh.
 	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHL_MULTIPLEXER string ${multiplexer}" "$plist" 2>/dev/null ||
 		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHL_MULTIPLEXER ${multiplexer}" "$plist"
+	# Generation identity: lets a release gate / `just sync-launcher` detect when
+	# an on-disk bundle predates any launcher source, launcher version, Ghostty RC,
+	# or bundle-template/asset change. Mirrors compute_full_stamp() in
+	# scripts/oste-terminal-generation.sh.
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHL_LAUNCHER_VERSION string ${VERSION}" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHL_LAUNCHER_VERSION ${VERSION}" "$plist"
+	local git_sha rc_version template_generation ghostty_plist
+	git_sha=$(git -C "$LAUNCHER_DIR" rev-parse --short HEAD 2>/dev/null || true)
+	[[ -n "$git_sha" ]] || git_sha="unknown"
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHL_GIT_SHA string ${git_sha}" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHL_GIT_SHA ${git_sha}" "$plist"
+	ghostty_plist="${GHOSTTY_APP}/Contents/Info.plist"
+	if [[ -f "$ghostty_plist" ]]; then
+		rc_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$ghostty_plist" 2>/dev/null ||
+			defaults read "${GHOSTTY_APP}/Contents/Info" CFBundleShortVersionString 2>/dev/null || true)
+	fi
+	[[ -n "${rc_version:-}" ]] || rc_version="unknown"
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHL_RC_VERSION string ${rc_version}" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHL_RC_VERSION ${rc_version}" "$plist"
+	template_generation=$(git -C "$LAUNCHER_DIR" hash-object launcher 2>/dev/null | cut -c1-12 ||
+		{ [[ -f "${LAUNCHER_DIR}/launcher" ]] && shasum "${LAUNCHER_DIR}/launcher" 2>/dev/null | cut -c1-12; } || true)
+	[[ -n "$template_generation" ]] || template_generation="unknown"
+	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHL_TEMPLATE_GENERATION string ${template_generation}" "$plist" 2>/dev/null ||
+		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHL_TEMPLATE_GENERATION ${template_generation}" "$plist"
 	# Optional orchestrator task identity tag so bundle launches can be
 	# correlated back to the task that created them.
 	if [[ -n "${GHOSTTY_TASK_ID:-}" ]]; then

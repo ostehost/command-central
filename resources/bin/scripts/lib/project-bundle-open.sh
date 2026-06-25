@@ -47,6 +47,23 @@ _project_bundle_visible_launcher_hosts() {
 	fi
 }
 
+_project_bundle_host_token_key() {
+	local value="${1:-}"
+	printf '%s' "$value" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cd '[:alnum:]'
+}
+
+_project_bundle_host_token_matches() {
+	local actual="${1:-}"
+	local candidate="${2:-}"
+	[[ -n "$actual" && -n "$candidate" ]] || return 1
+	[[ "$actual" == "$candidate" ]] && return 0
+
+	local actual_key candidate_key
+	actual_key=$(_project_bundle_host_token_key "$actual")
+	candidate_key=$(_project_bundle_host_token_key "$candidate")
+	[[ -n "$actual_key" && "$actual_key" == "$candidate_key" ]]
+}
+
 _project_bundle_csv_contains_host() {
 	local csv="$1"
 	local target="$2"
@@ -58,7 +75,7 @@ _project_bundle_csv_contains_host() {
 		candidate="${candidate#"${candidate%%[![:space:]]*}"}"
 		candidate="${candidate%"${candidate##*[![:space:]]}"}"
 		[[ -n "$candidate" ]] || continue
-		[[ "$candidate" == "$target" ]] && return 0
+		_project_bundle_host_token_matches "$target" "$candidate" && return 0
 	done
 
 	return 1

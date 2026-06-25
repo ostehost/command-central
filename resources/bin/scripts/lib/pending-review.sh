@@ -227,6 +227,100 @@ pending_review_capture_completion_snapshot() {
 	fi
 }
 
+# Refresh a pending-review receipt from a TaskCompleted snapshot just before
+# review dispatch. This covers team/delegate lanes where an early parent Stop
+# can write stale pending-review commit metadata, then a later TaskCompleted
+# hook captures the actual agent-produced HEAD before review wakes up.
+#
+# Safety guard: only fast-forward stale/empty pending metadata to a snapshot
+# commit that exists in the same repo and descends from the existing pending
+# commit when one is present. This avoids silently reviewing unrelated future
+# work from the live branch.
+#
+# Usage: pending_review_refresh_from_completion_snapshot <task_id>
+pending_review_refresh_from_completion_snapshot() {
+	local task_id="$1"
+	local file="${PENDING_REVIEW_DIR}/${task_id}.json"
+	local snapshot_file=""
+	snapshot_file=$(pending_review_snapshot_file "$task_id")
+
+	[[ -f "$file" && -f "$snapshot_file" ]] || return 1
+
+	local project_dir=""
+	project_dir=$(jq -r '.project_dir // empty' "$snapshot_file" 2>/dev/null || true)
+	if [[ -z "$project_dir" ]]; then
+		project_dir=$(jq -r '.project_path // empty' "$file" 2>/dev/null || true)
+	fi
+	[[ -n "$project_dir" && -d "$project_dir" ]] || return 1
+	git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+
+	local snapshot_agent_commit=""
+	snapshot_agent_commit=$(jq -r '.agent_commit // .head_commit // empty' "$snapshot_file" 2>/dev/null || true)
+	[[ -n "$snapshot_agent_commit" ]] || return 1
+	pending_review_commit_exists "$project_dir" "$snapshot_agent_commit" || return 1
+
+	local pending_agent_commit=""
+	pending_agent_commit=$(jq -r '.agent_commit // .end_commit // .last_commit // empty' "$file" 2>/dev/null || true)
+	if [[ -n "$pending_agent_commit" ]]; then
+		pending_review_commit_exists "$project_dir" "$pending_agent_commit" || return 1
+		[[ "$pending_agent_commit" != "$snapshot_agent_commit" ]] || return 1
+		git -C "$project_dir" merge-base --is-ancestor "$pending_agent_commit" "$snapshot_agent_commit" >/dev/null 2>&1 || return 1
+	fi
+
+	local start_sha=""
+	start_sha=$(jq -r '.start_sha // empty' "$snapshot_file" 2>/dev/null || true)
+	if [[ -z "$start_sha" && -n "${TASKS_FILE:-}" && -f "$TASKS_FILE" ]]; then
+		start_sha=$(jq -r --arg id "$task_id" '.tasks[$id].start_sha // .tasks[$id].start_commit // empty' "$TASKS_FILE" 2>/dev/null || true)
+	fi
+	if [[ -z "$start_sha" ]]; then
+		start_sha=$(jq -r '.start_sha // .start_commit // empty' "$file" 2>/dev/null || true)
+	fi
+	if [[ -n "$start_sha" ]] && ! pending_review_commit_exists "$project_dir" "$start_sha"; then
+		start_sha=""
+	fi
+
+	local files_changed_json="[]"
+	if [[ -n "$start_sha" ]]; then
+		files_changed_json=$(pending_review_collect_committed_files_json "$project_dir" "$start_sha" "$snapshot_agent_commit")
+	else
+		files_changed_json=$(jq -c '.files_changed // []' "$snapshot_file" 2>/dev/null || echo '[]')
+		files_changed_json=$(printf '%s\n' "$files_changed_json" | pending_review_normalize_files_json)
+	fi
+
+	local last_commit=""
+	if [[ -n "$start_sha" ]]; then
+		last_commit=$(git -C "$project_dir" rev-list --reverse "${start_sha}..${snapshot_agent_commit}" 2>/dev/null | head -1 || true)
+	fi
+	if [[ -z "$last_commit" ]]; then
+		last_commit="$snapshot_agent_commit"
+	fi
+
+	local tmp now
+	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+	tmp=$(mktemp)
+	if jq \
+		--arg now "$now" \
+		--arg last_commit "$last_commit" \
+		--arg end_commit "$snapshot_agent_commit" \
+		--arg agent_commit "$snapshot_agent_commit" \
+		--arg manager_commit "$snapshot_agent_commit" \
+		--argjson files_changed "$files_changed_json" \
+		'.reconciled = true |
+		.reconciled_at = $now |
+		.reconciliation_reason = "task_completed_snapshot_at_review_dispatch" |
+		.last_commit = $last_commit |
+		.end_commit = $end_commit |
+		.agent_commit = $agent_commit |
+		.manager_commit = $manager_commit |
+		.files_changed = (if ($files_changed | type) == "array" and ($files_changed | length) > 0 then $files_changed else .files_changed end)' \
+		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+		mv "$tmp" "$file"
+	else
+		rm -f "$tmp"
+		return 1
+	fi
+}
+
 # Write a pending review file for a completed task
 # Usage: pending_review_write <task_id> <status> <exit_code> <completed_at> [project] [project_path] [last_commit] [agent_summary] [end_commit] [actual_model] [files_changed_json] [agent_commit] [manager_commit]
 pending_review_write() {
@@ -447,6 +541,11 @@ pending_review_mark_review_started() {
 		.review_started_at_epoch = $now_epoch |
 		.review_completed_at = null |
 		.review_blocker_count = null |
+		.review_dispatch_failed = false |
+		.review_dispatch_failed_at = null |
+		.review_dispatch_failed_reason = null |
+		.review_dispatch_failed_detail = null |
+		.review_dispatch_failed_log = null |
 		.review_dispatch_attempts = ((.review_dispatch_attempts // 0) + 1)' \
 		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
 		mv "$tmp" "$file"
@@ -460,6 +559,7 @@ pending_review_revert_review_started() {
 	local task_id="$1"
 	local reason="${2:-}"
 	local detail="${3:-}"
+	local log_path="${4:-}"
 	local file="${PENDING_REVIEW_DIR}/${task_id}.json"
 
 	[[ -f "$file" ]] || return 1
@@ -470,12 +570,14 @@ pending_review_revert_review_started() {
 	if jq \
 		--arg reason "$reason" \
 		--arg detail "$detail" \
+		--arg log_path "$log_path" \
 		--arg now "$now" \
 		'.review_state = "pending" |
 		.review_dispatch_failed = true |
 		.review_dispatch_failed_at = $now |
 		.review_dispatch_failed_reason = (if $reason == "" then null else $reason end) |
-		.review_dispatch_failed_detail = (if $detail == "" then null else $detail end)' \
+		.review_dispatch_failed_detail = (if $detail == "" then null else $detail end) |
+		.review_dispatch_failed_log = (if $log_path == "" then null else $log_path end)' \
 		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
 		mv "$tmp" "$file"
 	else
