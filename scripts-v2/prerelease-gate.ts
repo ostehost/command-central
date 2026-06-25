@@ -442,8 +442,12 @@ type DaemonSmokeResult = {
  * so the hub can dispatch to compute nodes during the release window. Parse
  * failures are issues (not crashes) so the caller can surface a clean check
  * failure and persist a structured artifact. The JSON shape is intentionally
- * tolerant: `running`/`alive`/`ok` are accepted truthiness signals and either a
- * `socket`/`socketPath` string or a `pid` integer counts as a live endpoint.
+ * tolerant across both the flat and the current nested openclaw status:
+ * running signals = top-level `running`/`alive`/`ok` === true, `state` ===
+ * "running", or nested `service.runtime.status`/`.state` === "running"
+ * (or "active"); a live endpoint = a `socket`/`socketPath` string, a
+ * `gateway.probeUrl` string, or a `pid`/`runtime.pid` integer. A stopped daemon
+ * (top-level/`stopped`/`inactive` state) is NOT misread as running.
  */
 function evaluateDaemonSmoke(statusOutput: string): DaemonSmokeResult {
 	let parsed: unknown;

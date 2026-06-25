@@ -6,6 +6,20 @@
 
 ---
 
+## ⚑ REVIEW OUTCOME (2026-06-25, adversarial pass w/ per-finding verification)
+
+**Code `3f8dd77..dcd1bad`: APPROVE.** Refactor preserves behaviour (tsc exit 0; 786 tree-view/provider/types tests green; reflection tests correctly migrated to the extracted modules). Daemon-smoke change (`a2fdea6`) is a verified **superset**, not a loosening — a stopped daemon still fails (49 gate tests green, negatives intact). The `ledger.json`-in-VSIX leak is genuinely fixed with a content-gate allowlist. No false-pass; nothing ships broken. (JSDoc for the new nested daemon shapes was the one nit — **fixed** in this pass.)
+
+**Hub↔node alignment: NOT GENUINELY PROVEN — one MAJOR to close.**
+- 🔴 **MAJOR (evidence integrity):** `research/prerelease-gate/vscode-consumption-0.6.0-rc.71-node.json` is **not** a real node-side receipt. It is byte-identical to the hub receipt (same `vsixSha256 f7e66a4b…`, identity, versions, success) except the timestamp (`13:14:30Z`→`13:37:28Z`) and three paths rewritten `ostemini`→`ostehost`, and it has **no `nodeLabel` key** — yet its `-node.json` filename is exactly what `receiptFileName(version,"node")` emits only from `--node-label node`. A genuine run would serialize `"nodeLabel":"node"`. So the node-consumption *proof* does not exist; parity is asserted, not demonstrated. **Mitigated:** the prerelease gate never reads consumption receipts, `.vscodeignore:41` excludes `research/**`, so nothing false-passes and nothing ships — but the parity *claim* is unbacked.
+  **Fix (needs node access — your job):** regenerate by running `scripts-v2/verify-vscode-extension-consumption.ts` **on the node** via openclaw dispatch with `--node-label node`, so the receipt carries a real `nodeLabel`, the node's own `generatedAt`, and a node-side `code --list-extensions`. Do **not** accept a path-rewritten copy.
+- 🟡 **MINOR (recurrence prevention):** the gate has no automated hub↔node receipt cross-validation. Add a step that loads both receipts and asserts equal `vsixSha256`+`version`+`success`, **distinct** host/`extensionsDir`, a non-empty `nodeLabel` on the node receipt, and freshness vs the gate's `generatedAt`. This would have caught the fabricated receipt automatically.
+- ⚪ nit: `latest.json` records the gate at `db7aa11` (parent of `dcd1bad`; the diff is artifacts-only) — cite `db7aa11` as the gate SHA or re-run at the final HEAD.
+
+**Net:** the rc71 **extension code is sign-off grade**; the **hub/node parity statement cannot be signed** until a genuine node receipt replaces the copied one. Flips to approve-with-followups the moment that lands.
+
+---
+
 ## 1. State of the hub (verified just now)
 
 - `main` @ **`dcd1bad`**, working tree **clean**, **`just ci` exit 0** (strict gate: biome + tsc + knip, warnings=errors).
