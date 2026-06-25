@@ -92,6 +92,20 @@ const FORBIDDEN_SUFFIXES: readonly string[] = [
 /** vsce lowercases the packaged readme/changelog/license entry names. */
 const ALLOWED_ROOT_MARKDOWN = new Set(["readme.md", "changelog.md", "license.md"]);
 
+/**
+ * Root-level non-markdown files permitted in the package. README/CHANGELOG/
+ * LICENSE markdown are governed by {@link ALLOWED_ROOT_MARKDOWN}; this set
+ * covers the remaining legitimate root entries. Anything else dropped at the
+ * repo root — e.g. an internal `ledger.json` work-queue — matches no forbidden
+ * directory or suffix and is not markdown, so without an allowlist it ships
+ * silently under the size budget. This list makes that a hard gate failure.
+ */
+export const ALLOWED_ROOT_FILES: ReadonlySet<string> = new Set([
+	"package.json",
+	"LICENSE",
+	"LICENSE.txt",
+]);
+
 /** Runtime payload that must survive any `.vscodeignore` tightening. */
 export const REQUIRED_ENTRIES: readonly string[] = [
 	"extension/package.json",
@@ -162,8 +176,20 @@ function checkEntryRules(entries: VsixEntry[]): VsixGateViolation[] {
 		}
 
 		const lower = relative.toLowerCase();
-		if (lower.endsWith(".md") && !ALLOWED_ROOT_MARKDOWN.has(lower)) {
-			violations.push({ rule: "markdown outside allowlist", detail: entry.path });
+		if (lower.endsWith(".md")) {
+			if (!ALLOWED_ROOT_MARKDOWN.has(lower)) {
+				violations.push({ rule: "markdown outside allowlist", detail: entry.path });
+			}
+			continue;
+		}
+
+		// Root-level non-source files must be explicitly allowlisted. A stray
+		// file at the repo root (e.g. an internal ledger.json) matches no
+		// forbidden directory or suffix and is not markdown, so without this it
+		// sails through under the size budget. Nested files are governed by the
+		// forbidden-directory rules above.
+		if (!relative.includes("/") && !ALLOWED_ROOT_FILES.has(relative)) {
+			violations.push({ rule: "unexpected root file", detail: entry.path });
 		}
 	}
 	return violations;

@@ -53,6 +53,9 @@ screenshots/**
 assets/**
 logo-concepts/**
 .oste-report.yaml
+# Internal work-tracking ledgers — leak internal project/infra data, never ship
+ledger.json
+WORK-LEDGER.md
 
 # Markdown — `**/*.md` also catches nested docs/receipts that a root-only
 # `*.md` glob misses (vsce minimatch); keep only README + CHANGELOG
