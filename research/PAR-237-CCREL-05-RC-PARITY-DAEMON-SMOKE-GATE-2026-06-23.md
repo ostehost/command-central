@@ -142,7 +142,7 @@ passing; the integrated gate is the hub release operator's entrypoint.
 
 | AC | Status | Evidence |
 |---|---|---|
-| AC1 — cut only after integrated parity + daemon smoke green | **done** | `prerelease-gate-2026-06-25T13-39-24.023Z.json` green (node readiness + daemon smoke + repo parity all passed); fresh HEAD gate `[FRESH-HEAD-RECEIPT]` also green (pending Tester confirmation); rc71 cut behind the gate |
+| AC1 — cut only after integrated parity + daemon smoke green | **done** | `prerelease-gate-2026-06-25T13-39-24.023Z.json` green (node readiness + daemon smoke + repo parity all passed); fresh HEAD gate `prerelease-gate-2026-06-25T18-14-32.820Z.json` also green (all four checks passed); rc71 cut behind the gate |
 | AC2/AC3 — install proof on hub AND node | **done** | `vscode-consumption-0.6.0-rc.71-hub.json` (`success: true`, hub) and `vscode-consumption-0.6.0-rc.71-node.json` (`success: true`, node) |
 | AC4 — record daemon/config-parity/launcher-sync/hub-node evidence in digest | **done** | `collectGateEvidence` + `GATE_EVIDENCE_LABELS` + "Release gate evidence" section |
 | AC5 — no push/tag/publish | **satisfied** | edits only; no git state change in this lane |
@@ -155,10 +155,11 @@ The live gate has run. Evidence on disk:
    node readiness passed (Mike MacBook Pro, OpenClaw 2026.6.10, connected); daemon
    smoke passed (gateway running, PID 16863, port 18789, RPC ok); hub repo parity
    passed (command-central, ghostty-launcher, config all clean at origin/main).
-2. **Gate proven green at current HEAD** — `[FRESH-HEAD-RECEIPT]`: a fresh gate run
-   at the current HEAD (post-rc71 integration) confirms no regression; the gate is
-   clear so the next cut is unblocked when warranted. (Filename to be substituted
-   once Tester confirms.)
+2. **Gate proven green at current HEAD** — `prerelease-gate-2026-06-25T18-14-32.820Z.json`:
+   a fresh gate run at the current HEAD (post-rc71 integration) confirms no
+   regression; node readiness, daemon smoke, hub repo parity, and cross-repo
+   launcher contract all passed. The gate is clear so the next cut is unblocked
+   when warranted.
 3. **Dual-host consumption receipts** — `vscode-consumption-0.6.0-rc.71-hub.json`
    (`success: true`, hub/ostemini, 2026-06-25T13:14) and
    `vscode-consumption-0.6.0-rc.71-node.json` (`success: true`, node/ostehost,
