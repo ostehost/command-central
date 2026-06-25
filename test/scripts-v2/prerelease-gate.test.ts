@@ -616,6 +616,14 @@ describe("evaluateDaemonSmoke (CCREL-05 daemon smoke)", () => {
 		expect(evaluateDaemonSmoke(out)).toEqual({ ok: true, issues: [] });
 	});
 
+	test("passes for current openclaw daemon status shape", () => {
+		const out = JSON.stringify({
+			service: { runtime: { status: "running", state: "active", pid: 4242 } },
+			gateway: { probeUrl: "ws://127.0.0.1:18789" },
+		});
+		expect(evaluateDaemonSmoke(out)).toEqual({ ok: true, issues: [] });
+	});
+
 	test("fails when daemon is not running", () => {
 		const out = JSON.stringify({
 			running: false,

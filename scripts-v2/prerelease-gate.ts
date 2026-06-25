@@ -458,18 +458,34 @@ function evaluateDaemonSmoke(statusOutput: string): DaemonSmokeResult {
 	const status = parsed as Record<string, unknown>;
 	const issues: string[] = [];
 
+	const service =
+		status["service"] && typeof status["service"] === "object"
+			? (status["service"] as Record<string, unknown>)
+			: undefined;
+	const runtime =
+		service?.["runtime"] && typeof service["runtime"] === "object"
+			? (service["runtime"] as Record<string, unknown>)
+			: undefined;
+
 	const running =
 		status["running"] === true ||
 		status["alive"] === true ||
 		status["ok"] === true ||
-		status["state"] === "running";
+		status["state"] === "running" ||
+		runtime?.["status"] === "running" ||
+		runtime?.["state"] === "running" ||
+		runtime?.["state"] === "active";
 	if (!running) {
 		issues.push("daemon is not reporting a running state");
 	}
 
-	const socket = status["socket"] ?? status["socketPath"];
+	const gateway =
+		status["gateway"] && typeof status["gateway"] === "object"
+			? (status["gateway"] as Record<string, unknown>)
+			: undefined;
+	const socket = status["socket"] ?? status["socketPath"] ?? gateway?.["probeUrl"];
 	const hasSocket = typeof socket === "string" && socket.length > 0;
-	const pid = status["pid"];
+	const pid = status["pid"] ?? runtime?.["pid"];
 	const hasPid = typeof pid === "number" && Number.isFinite(pid);
 	if (!hasSocket && !hasPid) {
 		issues.push("daemon status is missing a live endpoint (socket or pid)");
