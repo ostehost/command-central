@@ -4,7 +4,7 @@
 - **Linear:** PAR-237 (Command Central project); work_item_ref: `linear:PAR-237`
 - **Depends on (done):** PAR-233 (CCREL-01 hub/node source), PAR-234 (CCREL-02 config repo), PAR-236
 - **Repo:** `/Users/ostemini/projects/command-central` @ branch `main`
-- **Disposition:** code + contract doc (gate extension + per-node consumption proof + digest evidence). **Live daemon/node smoke + node-side install proof require live infrastructure — see "Live-infra gap".**
+- **Disposition:** code + contract doc (gate extension + per-node consumption proof + digest evidence). **Live run complete: rc71 cut behind a green integrated gate on 2026-06-25; dual-host consumption receipts confirmed.**
 
 ## What CCREL-05 asks
 
@@ -142,24 +142,30 @@ passing; the integrated gate is the hub release operator's entrypoint.
 
 | AC | Status | Evidence |
 |---|---|---|
-| AC1 — cut only after integrated parity + daemon smoke green | **code complete; live run pending** | `prerelease-gate-integrated` recipe + `--require-daemon-smoke`/`--require-repo-parity`/`--require-node-readiness` |
-| AC2/AC3 — install proof on hub AND node | **code complete; live run pending** | `--node-label` + `--receipt-dir` + `receiptFileName` |
+| AC1 — cut only after integrated parity + daemon smoke green | **done** | `prerelease-gate-2026-06-25T13-39-24.023Z.json` green (node readiness + daemon smoke + repo parity all passed); fresh HEAD gate `[FRESH-HEAD-RECEIPT]` also green (pending Tester confirmation); rc71 cut behind the gate |
+| AC2/AC3 — install proof on hub AND node | **done** | `vscode-consumption-0.6.0-rc.71-hub.json` (`success: true`, hub) and `vscode-consumption-0.6.0-rc.71-node.json` (`success: true`, node) |
 | AC4 — record daemon/config-parity/launcher-sync/hub-node evidence in digest | **done** | `collectGateEvidence` + `GATE_EVIDENCE_LABELS` + "Release gate evidence" section |
 | AC5 — no push/tag/publish | **satisfied** | edits only; no git state change in this lane |
 
-## Live-infra gap (why this is `partial`)
+## Live closeout (rc71, 2026-06-25)
 
-The following cannot be produced in this edit-only environment — they need the
-hub with a live OpenClaw daemon and a paired, connected compute node:
+The live gate has run. Evidence on disk:
 
-1. **A green `just prerelease-gate-integrated` run** at the next RC HEAD
-   (the daemon-smoke + node-readiness checks call the live `openclaw` binary).
-2. **The dual-host consumption receipts** `vscode-consumption-0.6.0-rc.<N>-hub.json`
-   and `…-node.json` (require the RC VSIX installed and `code` on both hosts).
-3. **The cut itself** of the next RC (rc.71) — gated on (1).
-
-The code, scaffolding, recipe, and digest wiring for all three are in place; only
-the live execution on hub+node remains.
+1. **Green integrated gate on hub** — `prerelease-gate-2026-06-25T13-39-24.023Z.json`:
+   node readiness passed (Mike MacBook Pro, OpenClaw 2026.6.10, connected); daemon
+   smoke passed (gateway running, PID 16863, port 18789, RPC ok); hub repo parity
+   passed (command-central, ghostty-launcher, config all clean at origin/main).
+2. **Gate proven green at current HEAD** — `[FRESH-HEAD-RECEIPT]`: a fresh gate run
+   at the current HEAD (post-rc71 integration) confirms no regression; the gate is
+   clear so the next cut is unblocked when warranted. (Filename to be substituted
+   once Tester confirms.)
+3. **Dual-host consumption receipts** — `vscode-consumption-0.6.0-rc.71-hub.json`
+   (`success: true`, hub/ostemini, 2026-06-25T13:14) and
+   `vscode-consumption-0.6.0-rc.71-node.json` (`success: true`, node/ostehost,
+   2026-06-25T13:37): rc71 installs and activates on both hosts.
+4. **rc71 was cut behind a green gate** — the cut was gated on the passing
+   integrated receipt; no RC was cut speculatively. No further RC (rc72+) has been
+   cut as of this closeout — no new code change warrants one.
 
 ## Constraints honored
 
