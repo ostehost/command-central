@@ -12,6 +12,7 @@
   • **Review queue continuation gaps** — Completed runs with handoff evidence but missing review receipts now surface as review-queue gaps instead of silently looking finished.
 
 📦 **Since previous prerelease cut (rc70)**
+  • `a2fdea6` fix(release): accept current daemon status shape
   • `37ccc75` Merge branch 'refactor/agent-status-cleanup'
   • `39f54c0` fix(agent-status): remove stale exported helpers
   • `b14b386` fix(release): stop internal ledger.json from shipping in the VSIX
@@ -23,8 +24,10 @@
   • `ca87f94` refactor(agent-status): dedup git-diff command helpers into sibling module
   • `568f81a` refactor(agent-status): dedup Symphony projection into sibling module
   • `a06408d` refactor(agent-status): dedup OpenClaw task formatting into sibling module
-  • `775885f` refactor(agent-status): dedup git-diff parsing/formatting into sibling module
-  • … and 15 more
+  • … and 16 more
 
 🛡️ **Release gate evidence**
+  • ✅ Node readiness: passed
+  • ✅ Daemon smoke: passed
+  • ✅ Hub repo parity: passed
   • ✅ Launcher contract / sync: passed
