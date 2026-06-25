@@ -8,21 +8,17 @@
  * Watches the file for changes and auto-refreshes.
  */
 
-import { execFile, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { promisify } from "node:util";
 import * as vscode from "vscode";
 import {
 	getValidClaudeSessionId,
 	resolveResumeBackend,
 } from "../commands/resume-session.js";
 import { AgentRegistry } from "../discovery/agent-registry.js";
-import type {
-	ProcessScanDiagnosticEntry,
-	ProcessScanFilterReason,
-} from "../discovery/process-scanner.js";
+import type { ProcessScanDiagnosticEntry } from "../discovery/process-scanner.js";
 import type { DiscoveredAgent } from "../discovery/types.js";
 import type { AgentEvent } from "../events/agent-events.js";
 import type { AcpSessionService } from "../services/acp-session-service.js";
@@ -40,14 +36,56 @@ import {
 	type SyncReadinessReceipt,
 } from "../services/sync-readiness-service.js";
 import type { TaskFlowService } from "../services/taskflow-service.js";
+import {
+	type AgentStatusSortMode,
+	type AgentTask,
+	type AgentTaskProjectRef,
+	type AgentTaskStatus,
+	createEmptyTaskRegistry,
+	type TaskRegistry,
+} from "../types/agent-task.js";
+
+// Tree node types live in ./agent-status-tree-nodes.ts (the single source of
+// truth for the AgentNode union); re-exported here so existing import sites stay
+// stable.
+export type {
+	AgentDiffMode,
+	AgentNode,
+	AgentStatusGroup,
+	BackgroundTasksNode,
+	CodexRunNode,
+	CodexRunsContainerNode,
+	DetailNode,
+	DiscoveredNode,
+	FileChangeNode,
+	FileChangeStatus,
+	FolderGroupNode,
+	OlderRunsNode,
+	OpenClawTaskNode,
+	PerFileDiff,
+	ProjectGroupNode,
+	StateNode,
+	StatusGroupNode,
+	StatusTimeGroupNode,
+	StatusTimeGroupPeriod,
+	SummaryNode,
+	SymphonyDashboardNode,
+	SymphonyRootNode,
+	SymphonyRunGroupKind,
+	SymphonyRunGroupNode,
+	SymphonySnapshotEntryNode,
+	TaskFlowChildNode,
+	TaskFlowGroupNode,
+	TaskFlowSingleNode,
+	TaskFlowsContainerNode,
+	TaskNode,
+	TreeElement,
+} from "./agent-status-tree-nodes.js";
+
 import type {
-	CodexRunSourceRef,
-	CodexRunStatus,
 	CodexRunView,
-	CodexRunViewField,
 	SymphonyRetryEntryView,
 	SymphonyRunningEntryView,
-	SymphonyRuntimeSnapshotView,
 } from "../types/codex-run-types.js";
 import {
 	type OpenClawTask,
@@ -108,7 +146,6 @@ import {
 	isReviewLifecycleResolved,
 	type LaneProjectionGcReceipt,
 	lookupGcRowVerdict,
-	type ReconciledGcVerdict,
 } from "../utils/review-queue-health.js";
 import {
 	type ResolvedTaskRegistrySource,
@@ -118,7 +155,6 @@ import {
 import {
 	groupByTimePeriod,
 	TIME_PERIOD_LABELS,
-	type TimePeriod,
 } from "../utils/time-grouping.js";
 import { defaultTimingRecorder } from "../utils/timing-recorder.js";
 import {
@@ -127,6 +163,42 @@ import {
 	inspectTmuxPaneById,
 	type TmuxPaneAgentEvidence,
 } from "../utils/tmux-pane-health.js";
+import {
+	formatDurationPrecise,
+	formatElapsed,
+	getStatusDisplayLabel,
+	getStatusThemeIcon,
+	ROLE_ICONS,
+} from "./agent-status-formatters.js";
+import type {
+	AgentNode,
+	AgentStatusGroup,
+	BackgroundTasksNode,
+	CodexRunNode,
+	CodexRunsContainerNode,
+	DetailNode,
+	DiscoveredNode,
+	FileChangeNode,
+	FolderGroupNode,
+	OlderRunsNode,
+	OpenClawTaskNode,
+	PerFileDiff,
+	ProjectGroupNode,
+	SortableAgentNode,
+	StateNode,
+	StatusGroupNode,
+	StatusTimeGroupNode,
+	StatusTimeGroupPeriod,
+	SummaryNode,
+	SymphonyDashboardNode,
+	SymphonyRootNode,
+	SymphonyRunGroupNode,
+	SymphonySnapshotEntryNode,
+	TaskFlowGroupNode,
+	TaskFlowsContainerNode,
+	TaskNode,
+	TreeElement,
+} from "./agent-status-tree-nodes.js";
 import {
 	classifyCompletionRouting,
 	classifyLifecycleConflict,
@@ -139,20 +211,90 @@ import {
 	isRemoteNodeTaskForCurrentHost,
 	isSymphonyLane,
 } from "./agent-task-classification.js";
-
-const CODEX_RUN_STATUS_ORDER: CodexRunStatus[] = [
-	"running",
-	"queued",
-	"waiting",
-	"blocked",
-	"failed",
-	"timed_out",
-	"lost",
-	"cancelled",
-	"stopped",
-	"unknown",
-	"succeeded",
-];
+import {
+	detectAgentType,
+	formatAgentTypeSummary,
+	getBackendLabel,
+	getTaskAgentIdentities,
+} from "./agent-type-detection.js";
+import {
+	createCodexRunsTooltip,
+	formatCodexRunAuthority,
+	formatCodexRunAutomationSource,
+	formatCodexRunFieldSourceDetails,
+	formatCodexRunIssue,
+	formatCodexRunLastEvent,
+	formatCodexRunOwnership,
+	formatCodexRunRetry,
+	formatCodexRunRuntime,
+	formatCodexRunSource,
+	formatCodexRunStatus,
+	formatCodexRunsDescription,
+	formatCodexRunTokens,
+	formatCodexRunTrackerSource,
+	formatCodexRunTurns,
+	formatCodexRunWorkflow,
+	getCodexRunActivityTimeMs,
+	getCodexRunEvidenceIcon,
+	getCodexRunStatusIcon,
+} from "./codex-run-format.js";
+import {
+	deriveFallbackFileChangeStatus,
+	extractCommitHash,
+	formatFileChangeDescription,
+	formatNotificationDiffSummary,
+	formatPerFileDiffSummary,
+	getFileChangePathParts,
+	parsePerFileStatusesFromNameStatus,
+	shortenCommitHash,
+} from "./diff-format.js";
+import {
+	formatRetainedDiscoveryEntry,
+	summarizeFilteredDiscoveryMatches,
+} from "./discovery-format.js";
+import {
+	computeDiffSummaryAsync,
+	getPerFileNumstatDiffs,
+	getTaskDiffEndCommit,
+	getTaskDiffStartCommit,
+	runGitDiffOutput,
+} from "./git-diff.js";
+import {
+	formatOpenClawAuditStatusLabel,
+	formatOpenClawTaskDuration,
+	getOpenClawRuntimeIcon,
+	getOpenClawTaskActivityTimeMs,
+	getOpenClawTaskDisplayTitle,
+	isOpenClawTaskActive,
+	isOpenClawTaskVisibleInRunningMode,
+	mapOpenClawTaskToAgentStatus,
+	openClawTaskMatchesLauncherTask,
+	toSyntheticOpenClawTask,
+} from "./openclaw-task-format.js";
+import {
+	cleanPromptForDisplay,
+	isPromptBoilerplateLine,
+	normalizePromptSummaryLine,
+	truncatePromptSummary,
+} from "./prompt-display.js";
+import {
+	formatSymphonyDashboardDescription,
+	formatSymphonyRootDescription,
+	formatSymphonyRuntimeSnapshotStatus,
+	formatSymphonySnapshotValue,
+	getSymphonyReleasedRuns,
+	getSymphonyRetryQueuedRuns,
+	getSymphonyRunGroupCount,
+	getSymphonyRunGroupEmptyDescription,
+	getSymphonyRunGroupEmptyLabel,
+	getSymphonyRunGroupIcon,
+	getSymphonyRunGroupLabel,
+	getSymphonyRunGroupSnapshotEntries,
+	getSymphonyRunGroupSpecStatus,
+	getSymphonyRunningSessionRuns,
+	getSymphonyRuntimeSnapshot,
+	getSymphonySnapshotEntryIssue,
+} from "./symphony-projection.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
 export type {
@@ -181,246 +323,19 @@ export function isValidSessionId(name: string): boolean {
 	return /^[a-zA-Z0-9._-]+$/.test(name);
 }
 
-/** @deprecated Use isValidSessionId */
-export const isValidTmuxSession = isValidSessionId;
-
-// ── Task registry types ──────────────────────────────────────────────
-
-export interface TaskRegistry {
-	version: number;
-	tasks: Record<string, AgentTask>;
-}
-
-function createEmptyTaskRegistry(): TaskRegistry {
-	return { version: 2, tasks: {} };
-}
-
-export type AgentTaskStatus =
-	| "running"
-	| "stopped"
-	| "killed"
-	| "completed"
-	| "completed_dirty"
-	| "completed_stale"
-	| "failed"
-	| "contract_failure";
-
-export type AgentRole = "developer" | "planner" | "reviewer" | "test";
-export type AgentStatusScope = "all";
-export type AgentStatusSortMode = "status-recency";
-
-/**
- * Embedded Work Registry resolution stamped on a lane record at spawn time.
- * Presence of a non-empty `id` is what marks a record as registry-backed —
- * the discriminator between active LaneRef records and stale launcher-era
- * rows (see {@link isRegistryBackedLaneTask}).
- */
-export interface AgentTaskProjectRef {
-	id: string;
-	displayName?: string | null;
-	status?: string | null;
-	registry_status?: string | null;
-	repoOrigins?: string[] | null;
-}
-
-export interface AgentTask {
-	task_id?: string | null;
-	id: string;
-	flow_id?: string | null;
-	project_id?: string | null;
-	project_ref?: AgentTaskProjectRef | null;
-	lane_kind?: string | null;
-	/**
-	 * Launcher-native lane kind retained verbatim when it differs from the
-	 * canonical `lane_kind` (e.g. `lane_kind: "review"` with
-	 * `lane_kind_source: "release-proof"`); null when the native kind is
-	 * already canonical or unset. Emitted by Work System `lane_ref_update`
-	 * envelopes and tolerated on plain task-registry rows.
-	 */
-	lane_kind_source?: string | null;
-	canonical_project_dir?: string | null;
-	execution_dir?: string | null;
-	/**
-	 * Internal normalization marker: `project_name` was derived from the
-	 * project_dir basename because the record carried no explicit name.
-	 * Derived names may label an individual lane but must never define a
-	 * top-level project group.
-	 */
-	project_name_derived?: boolean;
-	/**
-	 * Internal normalization marker: this row was transformed from a
-	 * `work-system-lanes-projection` `lane_ref_update` envelope. The
-	 * projection is a TRANSITIONAL bridge read-model, never authoritative
-	 * truth — a primary task-registry record with the same task id always
-	 * wins the merge over a projection row (see `readRegistry`).
-	 */
-	lane_projection?: boolean;
-	/**
-	 * CCSYNC-02 reconciliation marker: a lane-projection GC pass
-	 * (`scripts/oste-lanes-gc.sh`) classified this row as no longer live
-	 * attention work. `downgraded` means receipt-missing + no live evidence
-	 * (reconcile-needed limbo); `archived`/`removed` mean the GC pass took the
-	 * row out of the live read-model. Stamped by
-	 * {@link applyGcReceiptReconciliation} from the GC receipt; absent when no
-	 * authoritative GC pass covered the row (the row stays authoritative).
-	 */
-	gc_reconcile?: ReconciledGcVerdict;
-	/** Verbatim GC verdict reason from the receipt (audit detail). */
-	gc_reconcile_reason?: string | null;
-	/**
-	 * Launcher-projected attach affordance, mapped from a `lane_ref_update`
-	 * `attach` object (ghostty-launcher `scripts/laneref-update-schema.json`):
-	 * the writer-host `tmux has-session` probe result at emission time.
-	 * `false` means the executor could not attach (no session recorded /
-	 * session not found); `null` (or absent) when the backend was not probed.
-	 * The schema is explicit that consumers gate attach affordances on this,
-	 * never on a session id merely existing — so a `running` row reporting
-	 * `false` here has no live terminal to imply ongoing work in.
-	 */
-	launcher_attach_available?: boolean | null;
-	/** `attach.reason_if_unavailable` verbatim (e.g. `no-session-recorded`,
-	 *  `tmux-session-not-found`, `unprobed-backend:<backend>`). */
-	launcher_attach_reason?: string | null;
-	/**
-	 * Launcher-projected visibility verification, mapped from a
-	 * `lane_ref_update` `visibility` object: `degraded === true` means a
-	 * visible-bundle lane could not confirm an on-screen, focusable window
-	 * (e.g. AX/assistive-access denied); `null` (or absent) when the lane made
-	 * no visibility claim (tmux/headless lanes).
-	 */
-	launcher_visibility_degraded?: boolean | null;
-	/** `visibility.reason` verbatim (e.g. `ax_error_…`,
-	 *  `tmux_no_attached_clients`); null when no claim was made. */
-	launcher_visibility_reason?: string | null;
-	/** Work System workroom binding. Persisted in the task row at spawn from
-	 *  OSTE_WORKROOM_REF and row-backed at env-less emission points (hook/reaper). */
-	workroom_ref?: string | null;
-	/** Work System work-item binding. Persisted in the task row at spawn from
-	 *  OSTE_WORK_ITEM_REF and row-backed at env-less emission points (hook/reaper). */
-	work_item_ref?: string | null;
-	source_authority?: string | null;
-	owner_kind?: string | null;
-	owner_actions?: unknown[] | null;
-	workflow_run?: unknown;
-	provenance?: unknown;
-	tracker_kind?: string | null;
-	issue_id?: string | null;
-	issue_identifier?: string | null;
-	issue_state?: string | null;
-	issue_url?: string | null;
-	workflow_run_id?: string | null;
-	workflow_path?: string | null;
-	workflow_file?: string | null;
-	workflow_name?: string | null;
-	team?: string | null;
-	team_template?: string | null;
-	/**
-	 * Launcher flag: this lane was spawned as an Agent Teams lead (the launcher
-	 * passed `--team`). The teammates run as subagents of the lead's Claude
-	 * session (`--parent-session-id`), NOT as independent launcher tasks, so the
-	 * team never appears as sibling rows — only the lead carries this marker.
-	 * Used to badge the lead row as an Agent Team so an operator can tell a
-	 * solo lane from a fan-out lead at a glance.
-	 */
-	team_requested?: boolean | null;
-	agent_mode?: string | null;
-	orchestration_mode?: string | null;
-	status: AgentTaskStatus;
-	project_dir: string;
-	project_name: string;
-	visible_project_name?: string | null;
-	session_id: string;
-	stream_file?: string | null;
-	agent_backend?: string | null;
-	claude_session_id?: string | null;
-	cli_name?: string | null;
-	persist_socket?: string | null;
-	tmux_socket?: string | null;
-	tmux_conf?: string | null;
-	tmux_session?: string;
-	tmux_window_id?: string | null;
-	tmux_window_name?: string | null;
-	tmux_pane_id?: string | null;
-	bundle_path: string;
-	handoff_file?: string | null;
-	prompt_file: string;
-	started_at: string;
-	start_sha?: string | null;
-	start_commit?: string | null;
-	end_commit?: string | null;
-	attempts: number;
-	max_attempts: number;
-	pr_number?: number | null;
-	review_status?: "pending" | "approved" | "changes_requested" | null;
-	role?: AgentRole | null;
-	terminal_backend?: "tmux" | "persist" | "applescript";
-	ghostty_bundle_id?: string | null;
-	exec_mode?: string | null;
-	exec_node?: string | null;
-	exec_host?: string | null;
-	exec_visible?: boolean | null;
-	/**
-	 * Launcher-recorded liveness of the lane's terminal session at the moment
-	 * the launcher last wrote this record (it writes `tmux has-session` / window
-	 * presence here). The signal that matters most: a TERMINAL-status row
-	 * (`contract_failure`, `failed`, …) that still carries `session_live: true`
-	 * is the launcher contradicting itself — it finalized the lane while its
-	 * session was provably alive (premature/ races-the-handoff finalization).
-	 * CC consumes this as a CHEAP, host-agnostic corroboration of a lifecycle
-	 * conflict when no live tmux probe verdict is available (remote-node lanes,
-	 * cold hot-path cache). A real-time probe ("alive"/"dead") always wins over
-	 * this recorded belief — see {@link classifyLifecycleConflict}.
-	 */
-	session_live?: boolean | null;
-	/**
-	 * Release-hygiene marker: the canonical token identifying the GHOSTTY TERMINAL
-	 * APP / window generation this lane was created in. Normalized by
-	 * {@link canonicalGenerationToken} from, in order of preference, the
-	 * launcher's real per-lane `app_stamp` OBJECT (launcher_version / git_sha /
-	 * rc_version / template_generation — see
-	 * `ghostty-launcher/scripts/oste-terminal-generation.sh`), or the simpler
-	 * `release_generation` / `source_version` string forms. The unit recreated on
-	 * release is the actual Ghostty `.app`/window/bundle — NOT the tmux pane — so
-	 * a lane's tmux pane can be alive while its host Ghostty app belongs to a
-	 * prior release. When the CURRENT generation is known (the launcher's
-	 * `release-generation.json` baseline) and a lane carries a DIFFERENT token,
-	 * its Ghostty app/window is a pre-reset leftover: the pane inside it may still
-	 * be a live orphan, but it is NOT current work. CC uses this to keep stale
-	 * app/windows from being mistaken for current running agents (it never kills
-	 * them — see {@link isSupersededByReleaseReset}). The lane's per-app identity
-	 * is `ghostty_bundle_id`/`bundle_path`; this token is the cross-lane
-	 * generation they share. Absent on either side → not judged.
-	 */
-	release_generation?: string | null;
-	exec_cwd?: string | null;
-	callback_url?: string | null;
-	session_key?: string | null;
-	pending_review_path?: string | null;
-	pending_fixup_path?: string | null;
-	artifact_paths?: string[] | null;
-	review_state?: string | null;
-	fixup_state?: string | null;
-	project_icon?: string | null;
-	exit_code?: number | null;
-	error_message?: string | null;
-	completed_at?: string | null;
-	updated_at?: string | null;
-	model?: string | null;
-	actual_model?: string | null;
-	thinking_budget?: number | null;
-	prompt_summary?: string | null;
-	turn_count?: number | null;
-	codex_input_tokens?: number | null;
-	codex_output_tokens?: number | null;
-	codex_total_tokens?: number | null;
-	runtime_seconds?: number | null;
-	retry_attempt?: number | null;
-	retry_due_at?: string | null;
-	retry_error?: string | null;
-	rate_limit_summary?: string | null;
-	rate_limits?: unknown;
-	symphony_runtime_snapshot?: unknown;
-}
+// ── Task registry & lane types ───────────────────────────────────────
+// AgentTask and the registry types live in ../types/agent-task.ts (a leaf
+// module with no provider dependency, which breaks the import cycle the sibling
+// node/formatter/detection modules otherwise have with this file); re-exported
+// here so existing import sites stay stable.
+export type {
+	AgentRole,
+	AgentStatusSortMode,
+	AgentTask,
+	AgentTaskProjectRef,
+	AgentTaskStatus,
+	TaskRegistry,
+} from "../types/agent-task.js";
 
 /**
  * A `running` lane whose live work CC cannot substantiate, so it must NOT
@@ -472,142 +387,6 @@ export interface AgentStatusTreeProviderOptions {
 
 // ── Tree node types ──────────────────────────────────────────────────
 
-export type AgentNode =
-	| SummaryNode
-	| TreeElement
-	| DetailNode
-	| FileChangeNode
-	| DiscoveredNode
-	| OpenClawTaskNode
-	| BackgroundTasksNode
-	| SymphonyRootNode
-	| SymphonyDashboardNode
-	| SymphonyRunGroupNode
-	| SymphonySnapshotEntryNode
-	| TaskFlowGroupNode
-	| TaskFlowChildNode
-	| TaskFlowsContainerNode
-	| TaskFlowSingleNode
-	| CodexRunsContainerNode
-	| CodexRunNode
-	| StatusTimeGroupNode
-	| OlderRunsNode
-	| StateNode;
-
-export interface SymphonyRootNode {
-	type: "symphony";
-	runs: CodexRunView[];
-	flows: TaskFlow[];
-}
-
-export interface SymphonyDashboardNode {
-	type: "symphonyDashboard";
-	runs: CodexRunView[];
-	flows: TaskFlow[];
-}
-
-export type SymphonyRunGroupKind = "running" | "retryQueued" | "released";
-
-export interface SymphonyRunGroupNode {
-	type: "symphonyRunGroup";
-	kind: SymphonyRunGroupKind;
-	runs: CodexRunView[];
-	snapshot?: SymphonyRuntimeSnapshotView;
-}
-
-export interface SymphonySnapshotEntryNode {
-	type: "symphonySnapshotEntry";
-	kind: Extract<SymphonyRunGroupKind, "running" | "retryQueued">;
-	entry: SymphonyRunningEntryView | SymphonyRetryEntryView;
-	index: number;
-	snapshot: SymphonyRuntimeSnapshotView;
-}
-
-export interface TaskFlowGroupNode {
-	type: "taskFlowGroup";
-	flow: TaskFlow;
-}
-
-export interface TaskFlowChildNode {
-	type: "taskFlowChild";
-	taskId: string;
-	flowId: string;
-	label: string;
-	status: string;
-}
-
-export interface TaskFlowsContainerNode {
-	type: "taskflows";
-	flows: TaskFlow[];
-}
-
-export interface CodexRunsContainerNode {
-	type: "codexRuns";
-	runs: CodexRunView[];
-}
-
-export interface CodexRunNode {
-	type: "codexRun";
-	run: CodexRunView;
-	/**
-	 * Which projected container rendered this run. The same run can appear both
-	 * under a run-group fallback and under the Run Attempts container; keep the
-	 * container in the node identity so TreeItem ids and getParent remain stable.
-	 */
-	container?: SymphonyRunGroupKind | "runs";
-}
-
-export interface TaskFlowSingleNode {
-	type: "taskflow";
-	flow: TaskFlow;
-}
-
-export interface SummaryNode {
-	type: "summary";
-	label: string;
-	tooltip?: string;
-	/**
-	 * Discriminates the Sources provenance summary from the ordinary V2 count
-	 * summary. In flat root mode both render as siblings, so their stable
-	 * TreeItem.id must differ (a duplicate id is a hard "already registered"
-	 * tree crash). Only the Sources node sets this.
-	 */
-	kind?: "sources";
-}
-
-export interface TaskNode {
-	type: "task";
-	task: AgentTask;
-}
-
-export interface OpenClawTaskNode {
-	type: "openclawTask";
-	task: OpenClawTask;
-}
-
-export interface BackgroundTasksNode {
-	type: "backgroundTasks";
-	tasks: OpenClawTask[];
-}
-
-export interface ProjectGroupNode {
-	type: "projectGroup";
-	projectName: string;
-	projectDir?: string;
-	/** Authoritative grouping key assigned by buildProjectNodes. */
-	groupKey?: string;
-	tasks: AgentTask[];
-	discoveredAgents?: DiscoveredAgent[];
-	parentGroupKey?: string;
-	parentGroupName?: string;
-	/**
-	 * Synthetic bucket for records with no Work Registry identity and no
-	 * explicit launcher project name. Rendered with warning metadata and
-	 * pinned after real project groups.
-	 */
-	unregistered?: boolean;
-}
-
 const UNREGISTERED_PROJECT_GROUP_KEY = "unregistered:";
 export const UNREGISTERED_PROJECT_GROUP_NAME = "Unregistered projects";
 
@@ -623,356 +402,23 @@ function symphonyRunIdentity(run: CodexRunView): string {
 	return encodeURIComponent(run.runId);
 }
 
-export interface FolderGroupNode {
-	type: "folderGroup";
-	groupKey: string;
-	groupName: string;
-	projectCount: number;
-	projects: ProjectGroupNode[];
-}
-
-export type AgentStatusGroup = "running" | "done" | "attention" | "limbo";
-
-export interface StatusGroupNode {
-	type: "statusGroup";
-	status: AgentStatusGroup;
-	nodes: SortableAgentNode[];
-	parentProjectName?: string;
-	parentProjectDir?: string;
-	parentGroupKey?: string;
-}
-
-export type StatusTimeGroupPeriod = Extract<
-	TimePeriod,
-	"today" | "yesterday" | "last7days" | "last30days" | "older"
->;
-
-export interface StatusTimeGroupNode {
-	type: "statusTimeGroup";
-	status: AgentStatusGroup;
-	period: StatusTimeGroupPeriod;
-	label: string;
-	nodes: SortableAgentNode[];
-	collapsibleState: vscode.TreeItemCollapsibleState;
-	parentProjectName?: string;
-	parentProjectDir?: string;
-	parentGroupKey?: string;
-}
-
-export type TreeElement =
-	| TaskNode
-	| ProjectGroupNode
-	| FolderGroupNode
-	| StatusGroupNode
-	| StatusTimeGroupNode;
-
-export interface DetailNode {
-	type: "detail";
-	label: string;
-	value: string;
-	taskId: string;
-	description?: string;
-	icon?: string;
-	iconColor?: string;
-	command?: vscode.Command;
-}
-
-export interface PerFileDiff {
-	filePath: string;
-	additions: number;
-	deletions: number;
-	status?: FileChangeStatus;
-}
-
-export type FileChangeStatus = "A" | "M" | "D";
-
-/**
- * Explicit diff-routing intent carried on diff command payloads.
- * "workingTree" diffs startCommit (or HEAD) against the on-disk working
- * tree; "boundedCommit" diffs startCommit against endCommit and refuses
- * to open without an end ref.
- */
-export type AgentDiffMode = "workingTree" | "boundedCommit";
-
-export interface FileChangeNode {
-	type: "fileChange";
-	taskId: string;
-	projectDir: string;
-	projectName: string;
-	filePath: string;
-	additions: number;
-	deletions: number;
-	status: FileChangeStatus;
-	diffMode: AgentDiffMode;
-	startCommit?: string;
-	endCommit?: string;
-}
-
-export interface DiscoveredNode {
-	type: "discovered";
-	agent: DiscoveredAgent;
-}
-
-export interface OlderRunsNode {
-	type: "olderRuns";
-	label: string;
-	hiddenNodes: SortableAgentNode[];
-	parentProjectName?: string;
-	parentProjectDir?: string;
-	parentGroupKey?: string;
-	/**
-	 * The status group this bucket lives under, when emitted beneath a
-	 * `statusGroup` (project mode with >5 lanes). Part of the node's stable
-	 * identity so two sibling buckets under the same project — e.g. a `done`
-	 * bucket and a `limbo` bucket — never collide. Undefined at the flat-root
-	 * and background-tasks lanes, which host a single bucket each.
-	 */
-	parentStatus?: AgentStatusGroup;
-}
-
-export interface StateNode {
-	type: "state";
-	label: string;
-	description?: string;
-	icon?: string;
-}
-
-type SortableAgentNode =
-	| { type: "task"; task: AgentTask }
-	| { type: "discovered"; agent: DiscoveredAgent }
-	| { type: "openclawTask"; task: OpenClawTask };
-
-// ── Agent type detection for discovered agents ───────────────────────
-
-export type AgentType = "claude" | "codex" | "gemini" | "unknown";
-
-type AgentTypeDetectionInput = {
-	agent_backend?: string | null;
-	cli_name?: string | null;
-	process_name?: string | null;
-	command?: string | null;
-	model?: string | null;
-	session_id?: string | null;
-	id?: string | null;
-};
-
-function detectAgentTypeFromText(value: string): AgentType {
-	if (
-		value.includes("claude") ||
-		value.includes("anthropic") ||
-		value.includes("sonnet") ||
-		value.includes("opus") ||
-		value.includes("haiku")
-	) {
-		return "claude";
-	}
-	if (
-		value.includes("codex") ||
-		value.includes("openai") ||
-		value.includes("gpt") ||
-		/\bo1\b/.test(value) ||
-		/\bo3\b/.test(value) ||
-		/\bo4\b/.test(value)
-	) {
-		return "codex";
-	}
-	if (value.includes("gemini") || value.includes("google")) {
-		return "gemini";
-	}
-	return "unknown";
-}
-
-function extractProcessName(command?: string | null): string {
-	if (!command) return "";
-	const [firstToken] = command.trim().split(/\s+/);
-	if (!firstToken) return "";
-	return path.basename(firstToken).toLowerCase();
-}
-
-export function detectAgentType(agent: AgentTypeDetectionInput): AgentType {
-	const explicitHints = [
-		agent.agent_backend,
-		agent.cli_name,
-		agent.process_name,
-		extractProcessName(agent.command),
-	];
-	for (const hint of explicitHints) {
-		if (!hint) continue;
-		const detected = detectAgentTypeFromText(hint.toLowerCase());
-		if (detected !== "unknown") return detected;
-	}
-
-	const fallbackHints = [
-		agent.command,
-		agent.model,
-		agent.session_id,
-		agent.id,
-	];
-	for (const hint of fallbackHints) {
-		if (!hint) continue;
-		const detected = detectAgentTypeFromText(hint.toLowerCase());
-		if (detected !== "unknown") return detected;
-	}
-
-	return "unknown";
-}
-
-export function getAgentTypeIcon(
-	agent: DiscoveredAgent | AgentTask | AgentTypeDetectionInput,
-): vscode.ThemeIcon {
-	const type = detectAgentType(agent);
-	switch (type) {
-		case "claude":
-			return new vscode.ThemeIcon(
-				"hubot",
-				new vscode.ThemeColor("charts.purple"),
-			);
-		case "codex":
-			return new vscode.ThemeIcon(
-				"hubot",
-				new vscode.ThemeColor("charts.green"),
-			);
-		case "gemini":
-			return new vscode.ThemeIcon(
-				"hubot",
-				new vscode.ThemeColor("charts.blue"),
-			);
-		default:
-			return new vscode.ThemeIcon("hubot");
-	}
-}
-
-export function getStatusThemeIcon(
-	status: AgentTask["status"],
-): vscode.ThemeIcon {
-	switch (status) {
-		case "running":
-			return new vscode.ThemeIcon(
-				"sync~spin",
-				new vscode.ThemeColor("charts.yellow"),
-			);
-		case "completed":
-		case "completed_dirty":
-			return new vscode.ThemeIcon(
-				"check",
-				new vscode.ThemeColor("charts.green"),
-			);
-		case "completed_stale":
-			return new vscode.ThemeIcon(
-				"check-all",
-				new vscode.ThemeColor("charts.green"),
-			);
-		case "failed":
-			return new vscode.ThemeIcon("error", new vscode.ThemeColor("charts.red"));
-		case "contract_failure":
-			return new vscode.ThemeIcon(
-				"warning",
-				new vscode.ThemeColor("charts.orange"),
-			);
-		case "stopped":
-			return new vscode.ThemeIcon(
-				"debug-stop",
-				new vscode.ThemeColor("charts.purple"),
-			);
-		case "killed":
-			return new vscode.ThemeIcon("close", new vscode.ThemeColor("charts.red"));
-		default:
-			return new vscode.ThemeIcon("circle-outline");
-	}
-}
-
-function getStatusDisplayLabel(status: AgentTaskStatus): string {
-	switch (status) {
-		case "completed_dirty":
-			return "completed (dirty)";
-		case "completed_stale":
-			return "completed (stale)";
-		case "contract_failure":
-			return "contract failure";
-		default:
-			return status;
-	}
-}
-
-const ROLE_ICONS: Record<AgentRole, string> = {
-	planner: "🔬",
-	developer: "🔨",
-	reviewer: "🔍",
-	test: "🧪",
-};
-
-// ── Elapsed time formatting ──────────────────────────────────────────
-
-export function formatElapsed(startedAt: string, now?: Date): string {
-	const start = new Date(startedAt).getTime();
-	const current = (now ?? new Date()).getTime();
-	const diffMs = Math.max(0, current - start);
-	const totalSeconds = Math.floor(diffMs / 1000);
-	const hours = Math.floor(totalSeconds / 3600);
-	const minutes = Math.floor((totalSeconds % 3600) / 60);
-
-	if (hours > 0) {
-		if (minutes === 0) {
-			return `${hours}h`;
-		}
-		return `${hours}h ${minutes}m`;
-	}
-	return `${minutes}m`;
-}
-
-/**
- * Format duration between two ISO timestamps (or from start to now) with
- * minute+second precision, e.g. "4m 32s", "1h 12m", "< 1m".
- */
-function formatDurationPrecise(
-	startIso: string,
-	endIso?: string | null,
-): string {
-	const start = new Date(startIso).getTime();
-	const end = endIso ? new Date(endIso).getTime() : Date.now();
-	const diffMs = Math.max(0, end - start);
-	const totalSeconds = Math.floor(diffMs / 1000);
-	const hours = Math.floor(totalSeconds / 3600);
-	const minutes = Math.floor((totalSeconds % 3600) / 60);
-	const seconds = totalSeconds % 60;
-
-	if (hours > 0) {
-		return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-	}
-	if (minutes > 0) {
-		return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
-	}
-	return totalSeconds > 0 ? `${seconds}s` : "< 1s";
-}
-
-function getStatusElapsedReference(task: AgentTask): string {
-	if (task.status === "running") {
-		return task.started_at;
-	}
-	return task.completed_at ?? task.started_at;
-}
-
-export function formatTaskElapsedDescription(task: AgentTask): string {
-	const elapsed = formatElapsed(getStatusElapsedReference(task));
-	switch (task.status) {
-		case "running":
-			return `Running for ${elapsed}`;
-		case "completed":
-		case "completed_dirty":
-		case "completed_stale":
-			return `Completed ${elapsed} ago`;
-		case "failed":
-			return `Failed ${elapsed} ago`;
-		case "contract_failure":
-			return `Contract failure ${elapsed} ago`;
-		case "stopped":
-			return `Stopped ${elapsed} ago`;
-		case "killed":
-			return `Killed ${elapsed} ago`;
-		default:
-			return `Failed ${elapsed} ago`;
-	}
-}
+// ── Status formatting & elapsed time ─────────────────────────────────
+// These presentation helpers were extracted to agent-status-formatters.ts;
+// re-exported here so existing import sites stay stable. The provider consumes
+// getStatusThemeIcon / getStatusDisplayLabel / ROLE_ICONS / formatElapsed /
+// formatDurationPrecise via the import above.
+export {
+	formatElapsed,
+	formatTaskElapsedDescription,
+	getStatusThemeIcon,
+} from "./agent-status-formatters.js";
+export type { AgentType } from "./agent-type-detection.js";
+// ── Agent type detection ─────────────────────────────────────────────
+// detectAgentType / getAgentTypeIcon (and the AgentType union) were extracted
+// to agent-type-detection.ts; re-exported here so existing import sites stay
+// stable. The provider consumes them — plus getBackendLabel,
+// getTaskAgentIdentities, and formatAgentTypeSummary — via the import above.
+export { detectAgentType, getAgentTypeIcon } from "./agent-type-detection.js";
 
 // ── Task normalization (v1 → v2) ─────────────────────────────────────
 
@@ -1626,8 +1072,6 @@ export class AgentStatusTreeProvider
 	 * ingestion is never mistaken for the primary truth surface.
 	 */
 	private _legacyDiagnosticsEnabled = false;
-	/** Prevent stale async reload results from overwriting newer state */
-	private _reloadGeneration = 0;
 	private _agentStatusView: vscode.TreeView<AgentNode> | null = null;
 	private previousStuckStates = new Map<string, boolean>();
 	private hasInitializedStuckState = false;
@@ -3415,66 +2859,10 @@ export class AgentStatusTreeProvider
 		return agents;
 	}
 
-	private mapOpenClawTaskToAgentStatus(task: OpenClawTask): AgentTaskStatus {
-		switch (task.status) {
-			case "queued":
-			case "running":
-				return "running";
-			case "succeeded":
-			case "cancelled":
-				return "completed";
-			case "blocked":
-			case "failed":
-			case "timed_out":
-			case "lost":
-				return "failed";
-		}
-	}
-
-	private toSyntheticOpenClawTask(task: OpenClawTask): AgentTask {
-		const timestamp = task.startedAt ?? task.createdAt ?? Date.now();
-		return {
-			id: `openclaw-${task.taskId}`,
-			status: this.mapOpenClawTaskToAgentStatus(task),
-			project_dir: "",
-			project_name: "Background Tasks",
-			session_id: task.childSessionKey ?? task.taskId,
-			bundle_path: "",
-			prompt_file: "",
-			started_at: new Date(timestamp).toISOString(),
-			attempts: 0,
-			max_attempts: 0,
-			completed_at: task.endedAt ? new Date(task.endedAt).toISOString() : null,
-			updated_at: task.lastEventAt
-				? new Date(task.lastEventAt).toISOString()
-				: null,
-			error_message: task.error ?? null,
-			prompt_summary: task.progressSummary ?? task.terminalSummary ?? null,
-		};
-	}
-
-	private isOpenClawTaskActive(task: OpenClawTask): boolean {
-		return task.status === "queued" || task.status === "running";
-	}
-
-	private isOpenClawTaskVisibleInRunningMode(task: OpenClawTask): boolean {
-		return this.isOpenClawTaskActive(task);
-	}
-
-	private getOpenClawTaskActivityTimeMs(task: OpenClawTask): number {
-		return (
-			task.lastEventAt ?? task.endedAt ?? task.startedAt ?? task.createdAt ?? 0
-		);
-	}
-
-	private getOpenClawTaskDisplayTitle(task: OpenClawTask): string {
-		return task.label?.trim() || task.task.trim() || task.taskId;
-	}
-
 	private shouldDedupOpenClawTask(task: OpenClawTask): boolean {
 		const launcherTasks = this.getLauncherTasks();
 		return launcherTasks.some((launcherTask) =>
-			this.openClawTaskMatchesLauncherTask(task, launcherTask),
+			openClawTaskMatchesLauncherTask(task, launcherTask),
 		);
 	}
 
@@ -3533,12 +2921,12 @@ export class AgentStatusTreeProvider
 		tasks = this.getNonLauncherOpenClawTasks(),
 	): OpenClawTask[] {
 		const filtered = this.isRunningOnlyFilterEnabled()
-			? tasks.filter((task) => this.isOpenClawTaskVisibleInRunningMode(task))
+			? tasks.filter((task) => isOpenClawTaskVisibleInRunningMode(task))
 			: tasks;
 		return [...filtered].sort(
 			(left, right) =>
-				this.getOpenClawTaskActivityTimeMs(right) -
-				this.getOpenClawTaskActivityTimeMs(left),
+				getOpenClawTaskActivityTimeMs(right) -
+				getOpenClawTaskActivityTimeMs(left),
 		);
 	}
 
@@ -3559,7 +2947,7 @@ export class AgentStatusTreeProvider
 			max_attempts: 0,
 		}));
 		const syntheticOpenClaw = this.getVisibleOpenClawTasks().map((task) =>
-			this.toSyntheticOpenClawTask(task),
+			toSyntheticOpenClawTask(task),
 		);
 		return [...tasks, ...syntheticDiscovered, ...syntheticOpenClaw];
 	}
@@ -3627,7 +3015,6 @@ export class AgentStatusTreeProvider
 
 	reload(): void {
 		const reloadStart = performance.now();
-		const generation = ++this._reloadGeneration;
 		const isInitial = this._initialReadInProgress;
 		if (isInitial) {
 			this._onDidChangeTreeData.fire(undefined);
@@ -3639,13 +3026,6 @@ export class AgentStatusTreeProvider
 			"tree.readRegistry",
 			performance.now() - readStart,
 		);
-		if (generation !== this._reloadGeneration) {
-			defaultTimingRecorder.record(
-				"tree.reload",
-				performance.now() - reloadStart,
-			);
-			return;
-		}
 		this.registry = nextRegistry;
 		// Invalidate per-render and TTL caches so downstream code sees the new
 		// registry and recomputed stream/commit state for the next render cycle.
@@ -3713,7 +3093,7 @@ export class AgentStatusTreeProvider
 			}
 			if (masterEnabled && prev === "running") {
 				const elapsed = formatElapsed(task.started_at);
-				const backend = this.getBackendLabel(task);
+				const backend = getBackendLabel(task);
 				const isTerminalTransition =
 					task.status === "completed" ||
 					task.status === "completed_dirty" ||
@@ -3734,7 +3114,7 @@ export class AgentStatusTreeProvider
 					(task.status === "completed" || task.status === "completed_dirty") &&
 					onCompletion
 				) {
-					const diffSummary = this.formatNotificationDiffSummary(
+					const diffSummary = formatNotificationDiffSummary(
 						this.getDiffSummary(task.project_dir, task),
 					);
 					const exitSuffix =
@@ -3889,38 +3269,12 @@ export class AgentStatusTreeProvider
 		}
 	}
 
-	private formatNotificationDiffSummary(summary: string | null): string {
-		if (!summary) return "no changes detected";
-		const filesMatch = summary.match(/(\d+)\s+files?/i);
-		const additionsMatch = summary.match(/\+(\d+)/);
-		const deletionsMatch = summary.match(/-(\d+)/);
-		if (!filesMatch || !additionsMatch || !deletionsMatch) {
-			return summary;
-		}
-		const fileCount = Number.parseInt(filesMatch[1] ?? "0", 10);
-		const fileLabel = fileCount === 1 ? "1 file" : `${fileCount} files`;
-		return `${fileLabel} · +${additionsMatch[1]} -${deletionsMatch[1]}`;
-	}
-
-	private getBackendLabel(task: AgentTask): string {
-		const detected = detectAgentType(task);
-		if (detected !== "unknown") return detected;
-		const explicit = (task.agent_backend ?? task.cli_name ?? "").trim();
-		return explicit.length > 0 ? explicit.toLowerCase() : "unknown";
-	}
-
-	private getTaskAgentIdentities(task: AgentTask): string[] {
-		return [task.role, task.agent_backend, task.cli_name]
-			.map((value) => value?.trim())
-			.filter((value): value is string => Boolean(value));
-	}
-
 	private resolveInheritedTaskModel(
 		task: AgentTask,
 	): OpenClawAgentModel | null {
 		if (!this._openclawConfigService) return null;
 
-		for (const agentId of this.getTaskAgentIdentities(task)) {
+		for (const agentId of getTaskAgentIdentities(task)) {
 			const model = this._openclawConfigService.getAgentModel(agentId);
 			if (model?.model?.trim()) return model;
 		}
@@ -4853,7 +4207,7 @@ export class AgentStatusTreeProvider
 		}
 
 		if (element.type === "symphonyRunGroup") {
-			const snapshotEntries = this.getSymphonyRunGroupSnapshotEntries(element);
+			const snapshotEntries = getSymphonyRunGroupSnapshotEntries(element);
 			if (snapshotEntries.length > 0) {
 				return snapshotEntries;
 			}
@@ -4861,8 +4215,8 @@ export class AgentStatusTreeProvider
 				return [
 					{
 						type: "state",
-						label: this.getSymphonyRunGroupEmptyLabel(element.kind),
-						description: this.getSymphonyRunGroupEmptyDescription(element.kind),
+						label: getSymphonyRunGroupEmptyLabel(element.kind),
+						description: getSymphonyRunGroupEmptyDescription(element.kind),
 						icon: "circle-slash",
 					},
 				];
@@ -4978,7 +4332,7 @@ export class AgentStatusTreeProvider
 
 		if (!this._diffSummaryDetecting.has(cacheKey)) {
 			this._diffSummaryDetecting.add(cacheKey);
-			void this.computeDiffSummaryAsync(task.project_dir, task)
+			void computeDiffSummaryAsync(task.project_dir, task)
 				.then((summary) => {
 					this._diffSummaryCache.set(cacheKey, summary);
 					this.scheduleTreeRefresh(this.getTaskRefreshElement(task.id));
@@ -5008,7 +4362,7 @@ export class AgentStatusTreeProvider
 
 		if (!this._diffSummaryDetecting.has(cacheKey)) {
 			this._diffSummaryDetecting.add(cacheKey);
-			void this.computeDiffSummaryAsync(agent.projectDir, syntheticTask)
+			void computeDiffSummaryAsync(agent.projectDir, syntheticTask)
 				.then((summary) => {
 					this._diffSummaryCache.set(cacheKey, summary);
 					this.scheduleTreeRefresh({
@@ -5021,85 +4375,6 @@ export class AgentStatusTreeProvider
 				});
 		}
 		return null;
-	}
-
-	private formatPerFileDiffSummary(fileDiffs: PerFileDiff[]): string | null {
-		if (fileDiffs.length === 0) return null;
-
-		const additions = fileDiffs.reduce(
-			(total, diff) => total + Math.max(diff.additions, 0),
-			0,
-		);
-		const deletions = fileDiffs.reduce(
-			(total, diff) => total + Math.max(diff.deletions, 0),
-			0,
-		);
-		const fileLabel =
-			fileDiffs.length === 1 ? "1 file" : `${fileDiffs.length} files`;
-		return `${fileLabel} · +${additions} / -${deletions}`;
-	}
-
-	private async computeDiffSummaryAsync(
-		projectDir: string,
-		task: AgentTask,
-	): Promise<string | null> {
-		const execFileAsync = promisify(execFile);
-		const runNumstat = async (args: string[]): Promise<string> => {
-			const { stdout } = await execFileAsync("git", args, {
-				encoding: "utf-8",
-				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
-			});
-			return stdout.trim();
-		};
-
-		try {
-			const startCommit = this.getTaskDiffStartCommit(task);
-			const endCommit = this.getTaskDiffEndCommit(task);
-
-			// Non-running task with no valid end boundary — no diff available.
-			if (startCommit && !endCommit) return null;
-
-			const resolvedEnd = endCommit ?? "HEAD";
-			const primaryArgs = startCommit
-				? [
-						"-C",
-						projectDir,
-						"diff",
-						"--numstat",
-						`${startCommit}..${resolvedEnd}`,
-					]
-				: ["-C", projectDir, "diff", "--numstat"];
-
-			let output = "";
-			try {
-				output = await runNumstat(primaryArgs);
-			} catch {
-				if (!startCommit) return null;
-				output = await runNumstat([
-					"-C",
-					projectDir,
-					"diff",
-					"--numstat",
-					"HEAD~1..HEAD",
-				]);
-			}
-
-			if (!output && startCommit) {
-				output = await runNumstat([
-					"-C",
-					projectDir,
-					"diff",
-					"--numstat",
-					"HEAD~1..HEAD",
-				]);
-			}
-
-			return this.formatPerFileDiffSummary(
-				this.parsePerFileDiffsFromNumstat(output),
-			);
-		} catch {
-			return null;
-		}
 	}
 
 	/** Get detail children for discovered agents (no task record) */
@@ -5248,13 +4523,13 @@ export class AgentStatusTreeProvider
 		if (node.type === "discovered") {
 			return this.getDiscoveredActivityTimeMs(node.agent);
 		}
-		return this.getOpenClawTaskActivityTimeMs(node.task);
+		return getOpenClawTaskActivityTimeMs(node.task);
 	}
 
 	private getNodeStatus(node: SortableAgentNode): AgentTaskStatus {
 		if (node.type === "task") return node.task.status;
 		if (node.type === "discovered") return "running";
-		return this.mapOpenClawTaskToAgentStatus(node.task);
+		return mapOpenClawTaskToAgentStatus(node.task);
 	}
 
 	private compareActivityTimeDesc(
@@ -5600,7 +4875,7 @@ export class AgentStatusTreeProvider
 
 	private isAlwaysVisibleAgentNode(node: SortableAgentNode): boolean {
 		if (node.type === "openclawTask") {
-			return this.isOpenClawTaskActive(node.task);
+			return isOpenClawTaskActive(node.task);
 		}
 		return this.getNodeStatus(node) === "running";
 	}
@@ -6342,7 +5617,7 @@ export class AgentStatusTreeProvider
 		const promptValue =
 			isPromptFallback && t.prompt_summary ? t.prompt_summary : promptSummary;
 		if (promptValue && promptValue !== "---" && !promptValue.endsWith(".md")) {
-			const cleanedPrompt = this.cleanPromptForDisplay(promptValue);
+			const cleanedPrompt = cleanPromptForDisplay(promptValue);
 			if (cleanedPrompt) {
 				const truncatedPrompt =
 					cleanedPrompt.length > 80
@@ -6377,9 +5652,9 @@ export class AgentStatusTreeProvider
 		if (gitInfo) {
 			const gitHash =
 				t.status === "running"
-					? this.extractCommitHash(gitInfo.lastCommit)
-					: this.getTaskDiffEndCommit(t);
-			const shortHash = gitHash ? this.shortenCommitHash(gitHash) : null;
+					? extractCommitHash(gitInfo.lastCommit)
+					: getTaskDiffEndCommit(t);
+			const shortHash = gitHash ? shortenCommitHash(gitHash) : null;
 			const gitLabel = shortHash
 				? `${gitInfo.branch} · ${shortHash}`
 				: gitInfo.branch;
@@ -6546,25 +5821,6 @@ export class AgentStatusTreeProvider
 	 * Strip boilerplate prefixes (ULTRATHINK, system-reminder lines, etc.)
 	 * and return the first meaningful line, trimmed.
 	 */
-	private cleanPromptForDisplay(raw: string): string | null {
-		const lines = raw.split("\n");
-		const boilerplatePrefixes = [
-			"ULTRATHINK",
-			"<system-reminder>",
-			"---",
-			"##",
-			"# Task",
-			"task_id:",
-		];
-		for (const line of lines) {
-			const trimmed = line.trim();
-			if (!trimmed) continue;
-			if (boilerplatePrefixes.some((p) => trimmed.startsWith(p))) continue;
-			return trimmed;
-		}
-		return null;
-	}
-
 	/**
 	 * If ≤3 files changed, show file names inline; otherwise keep the count summary.
 	 * Uses cached per-file data from getFileChangeChildren to avoid extra git spawns.
@@ -6579,8 +5835,8 @@ export class AgentStatusTreeProvider
 		if (!fs.existsSync(t.project_dir)) return fallbackSummary;
 
 		try {
-			const startCommit = this.getTaskDiffStartCommit(t);
-			const endCommit = this.getTaskDiffEndCommit(t);
+			const startCommit = getTaskDiffStartCommit(t);
+			const endCommit = getTaskDiffEndCommit(t);
 			const fileDiffs = this.getPerFileDiffs(
 				t.project_dir,
 				startCommit,
@@ -6605,8 +5861,8 @@ export class AgentStatusTreeProvider
 	}
 
 	private getFileChangeChildren(t: AgentTask): FileChangeNode[] {
-		const startCommit = this.getTaskDiffStartCommit(t);
-		const endCommit = this.getTaskDiffEndCommit(t);
+		const startCommit = getTaskDiffStartCommit(t);
+		const endCommit = getTaskDiffEndCommit(t);
 		const fileDiffs = this.getPerFileDiffs(
 			t.project_dir,
 			startCommit,
@@ -6620,37 +5876,11 @@ export class AgentStatusTreeProvider
 			filePath: diff.filePath,
 			additions: diff.additions,
 			deletions: diff.deletions,
-			status: diff.status ?? this.deriveFallbackFileChangeStatus(diff),
+			status: diff.status ?? deriveFallbackFileChangeStatus(diff),
 			diffMode: t.status === "running" ? "workingTree" : "boundedCommit",
 			startCommit,
 			endCommit,
 		}));
-	}
-
-	private formatOpenClawTaskDuration(task: OpenClawTask): string | null {
-		const start = task.startedAt ?? task.createdAt;
-		if (!start) return null;
-		const end = task.endedAt ?? Date.now();
-		const durationMs = Math.max(0, end - start);
-		const totalMinutes = Math.floor(durationMs / 60_000);
-		const hours = Math.floor(totalMinutes / 60);
-		const minutes = totalMinutes % 60;
-		if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-		if (hours > 0) return `${hours}h`;
-		return `${minutes}m`;
-	}
-
-	private getOpenClawRuntimeIcon(runtime: OpenClawTask["runtime"]): string {
-		switch (runtime) {
-			case "cron":
-				return "clock";
-			case "acp":
-				return "hubot";
-			case "subagent":
-				return "organization";
-			case "cli":
-				return "terminal";
-		}
 	}
 
 	private getOpenClawTaskDetailChildren(task: OpenClawTask): DetailNode[] {
@@ -6661,7 +5891,7 @@ export class AgentStatusTreeProvider
 				label: "Runtime",
 				value: task.runtime,
 				taskId,
-				icon: this.getOpenClawRuntimeIcon(task.runtime),
+				icon: getOpenClawRuntimeIcon(task.runtime),
 			},
 			{
 				type: "detail",
@@ -6706,7 +5936,7 @@ export class AgentStatusTreeProvider
 			});
 		}
 
-		const duration = this.formatOpenClawTaskDuration(task);
+		const duration = formatOpenClawTaskDuration(task);
 		if (duration) {
 			details.push({
 				type: "detail",
@@ -6748,9 +5978,9 @@ export class AgentStatusTreeProvider
 	): DetailNode[] {
 		const taskId = "symphony-operations-dashboard";
 		const runs = node.runs;
-		const snapshot = this.getSymphonyRuntimeSnapshot(runs);
-		const retryQueued = this.getSymphonyRetryQueuedRuns(runs);
-		const released = this.getSymphonyReleasedRuns(runs);
+		const snapshot = getSymphonyRuntimeSnapshot(runs);
+		const retryQueued = getSymphonyRetryQueuedRuns(runs);
+		const released = getSymphonyReleasedRuns(runs);
 		const notProvided = "Not provided by lifecycle owner";
 		const sumProvided = (
 			pick: (run: CodexRunView) => number | undefined,
@@ -6775,12 +6005,12 @@ export class AgentStatusTreeProvider
 			.filter((value): value is string => Boolean(value));
 		const rateLimitsValue =
 			snapshot && snapshot.rateLimits !== undefined
-				? this.formatSymphonySnapshotValue(snapshot.rateLimits)
+				? formatSymphonySnapshotValue(snapshot.rateLimits)
 				: rateLimitSnapshots.length === 0
 					? notProvided
 					: [...new Set(rateLimitSnapshots)].join(" · ");
 		const snapshotStatusValue = snapshot
-			? this.formatSymphonyRuntimeSnapshotStatus(snapshot)
+			? formatSymphonyRuntimeSnapshotStatus(snapshot)
 			: notProvided;
 		const snapshotCounts = snapshot?.counts;
 		const snapshotCodexTotals = snapshot?.codexTotals;
@@ -6865,7 +6095,7 @@ export class AgentStatusTreeProvider
 				label: "running",
 				value:
 					snapshotCounts?.running == null
-						? `${this.getSymphonyRunningSessionRuns(runs).length}`
+						? `${getSymphonyRunningSessionRuns(runs).length}`
 						: `${snapshotCounts.running}`,
 				taskId,
 				icon: "pulse",
@@ -7042,7 +6272,7 @@ export class AgentStatusTreeProvider
 						{
 							type: "detail" as const,
 							label: "diagnostics.node_connected",
-							value: this.formatSymphonySnapshotValue(
+							value: formatSymphonySnapshotValue(
 								snapshotDiagnostics.nodeConnected,
 							),
 							taskId,
@@ -7086,27 +6316,19 @@ export class AgentStatusTreeProvider
 			});
 		};
 
-		pushDetail("Status", this.formatCodexRunStatus(run.status), "pulse");
+		pushDetail("Status", formatCodexRunStatus(run.status), "pulse");
 		pushDetail("Owner status", run.sourceStatus, "symbol-event");
-		pushDetail("Lifecycle owner", this.formatCodexRunAuthority(run), "shield");
-		pushDetail(
-			"Projection boundary",
-			this.formatCodexRunOwnership(run),
-			"account",
-		);
+		pushDetail("Lifecycle owner", formatCodexRunAuthority(run), "shield");
+		pushDetail("Projection boundary", formatCodexRunOwnership(run), "account");
 		pushDetail("Mode", run.orchestrationMode, "symbol-operator");
 		pushDetail("Next step", run.nextAction, "debug-step-into");
 		pushDetail(
 			"Automation source",
-			this.formatCodexRunAutomationSource(run),
+			formatCodexRunAutomationSource(run),
 			"git-pull-request",
 		);
-		pushDetail(
-			"Tracker source",
-			this.formatCodexRunTrackerSource(run),
-			"issues",
-		);
-		pushDetail("Issue", this.formatCodexRunIssue(run), "issue-opened");
+		pushDetail("Tracker source", formatCodexRunTrackerSource(run), "issues");
+		pushDetail("Issue", formatCodexRunIssue(run), "issue-opened");
 		pushDetail(
 			"Issue URL",
 			run.issueUrl,
@@ -7119,14 +6341,14 @@ export class AgentStatusTreeProvider
 					}
 				: undefined,
 		);
-		pushDetail("Workflow contract", this.formatCodexRunWorkflow(run), "book");
+		pushDetail("Workflow contract", formatCodexRunWorkflow(run), "book");
 		pushDetail("Role", run.role, "person");
 		pushDetail("Model", run.model, "symbol-constant");
 		pushDetail("Phase", run.phase, "debug-step-over");
-		pushDetail("Turns", this.formatCodexRunTurns(run), "list-ordered");
-		pushDetail("Tokens", this.formatCodexRunTokens(run), "dashboard");
-		pushDetail("Runtime", this.formatCodexRunRuntime(run), "clock");
-		pushDetail("Retry", this.formatCodexRunRetry(run), "debug-restart");
+		pushDetail("Turns", formatCodexRunTurns(run), "list-ordered");
+		pushDetail("Tokens", formatCodexRunTokens(run), "dashboard");
+		pushDetail("Runtime", formatCodexRunRuntime(run), "clock");
+		pushDetail("Retry", formatCodexRunRetry(run), "debug-restart");
 		pushDetail("Rate limits", run.rateLimitSummary, "pulse");
 		pushDetail("Current/last tool", run.currentTool, "tools");
 		pushDetail("Workspace", run.workspacePath, "folder");
@@ -7137,18 +6359,18 @@ export class AgentStatusTreeProvider
 			title: "Copy Run Attempt ID",
 			arguments: [run.runId],
 		});
-		pushDetail("Sources", this.formatCodexRunSource(run), "references");
-		for (const provenance of this.formatCodexRunFieldSourceDetails(run)) {
+		pushDetail("Sources", formatCodexRunSource(run), "references");
+		for (const provenance of formatCodexRunFieldSourceDetails(run)) {
 			pushDetail(provenance.label, provenance.value, "symbol-field");
 		}
-		pushDetail("Last event", this.formatCodexRunLastEvent(run), "pulse");
+		pushDetail("Last event", formatCodexRunLastEvent(run), "pulse");
 
 		if (run.evidence?.length) {
 			for (const evidence of run.evidence) {
 				pushDetail(
 					`Evidence: ${evidence.label}`,
 					evidence.value,
-					this.getCodexRunEvidenceIcon(evidence.kind),
+					getCodexRunEvidenceIcon(evidence.kind),
 					evidence.kind === "file"
 						? {
 								command: "vscode.open",
@@ -7204,13 +6426,13 @@ export class AgentStatusTreeProvider
 		pushDetail("generated_at", node.snapshot.generatedAt, "calendar");
 		pushDetail(
 			"Orchestrator Runtime State",
-			this.formatSymphonyRuntimeSnapshotStatus(node.snapshot),
+			formatSymphonyRuntimeSnapshotStatus(node.snapshot),
 			"broadcast",
 		);
 
 		if (node.kind === "running") {
 			const entry = node.entry as SymphonyRunningEntryView;
-			pushDetail("Issue", this.getSymphonySnapshotEntryIssue(entry), "issues");
+			pushDetail("Issue", getSymphonySnapshotEntryIssue(entry), "issues");
 			pushDetail("Run Attempt", entry.runAttempt, "run-all");
 			pushDetail("Live Session", entry.sessionId, "comment-discussion");
 			pushDetail("Workspace", entry.workspacePath, "folder");
@@ -7227,7 +6449,7 @@ export class AgentStatusTreeProvider
 		}
 
 		const entry = node.entry as SymphonyRetryEntryView;
-		pushDetail("Issue", this.getSymphonySnapshotEntryIssue(entry), "issues");
+		pushDetail("Issue", getSymphonySnapshotEntryIssue(entry), "issues");
 		pushDetail("Run Attempt", entry.runAttempt, "run-all");
 		pushDetail("attempt", entry.attempt, "debug-restart");
 		pushDetail("due_at", entry.dueAt, "clock");
@@ -7235,153 +6457,11 @@ export class AgentStatusTreeProvider
 		return details;
 	}
 
-	private getCodexRunEvidenceIcon(
-		kind: NonNullable<CodexRunView["evidence"]>[number]["kind"],
-	): string {
-		switch (kind) {
-			case "commit":
-				return "git-commit";
-			case "metadata":
-				return "symbol-field";
-			case "file":
-				return "file";
-		}
-	}
-
-	private formatCodexRunLastEvent(run: CodexRunView): string | undefined {
-		const timestamp = run.lastEventAt
-			? new Date(run.lastEventAt).toISOString()
-			: undefined;
-		return (
-			[run.lastEvent, timestamp]
-				.filter((part): part is string => Boolean(part))
-				.join(" · ") || undefined
-		);
-	}
-
-	private formatCodexRunAuthority(run: CodexRunView): string {
-		return this.formatCodexRunSourceRef(run.source);
-	}
-
-	private formatCodexRunOwnership(run: CodexRunView): string {
-		if (run.source.kind === "launcher") return "Launcher-only row";
-		const metadataSources = run.mergedFrom.filter(
-			(ref) => !this.codexRunRefsEqual(ref, run.source),
-		);
-		if (metadataSources.length === 0) return "Source-owned row";
-		return `Source-owned row with ${metadataSources
-			.map((ref) => this.formatCodexRunSourceKind(ref.kind))
-			.join(" + ")} metadata`;
-	}
-
-	private formatCodexRunAutomationSource(run: CodexRunView): string {
-		if (run.trackerKind || run.issueIdentifier || run.issueId) {
-			return run.trackerKind
-				? `Tracker-driven (${run.trackerKind})`
-				: "Tracker-driven";
-		}
-		if (run.flowId) return "Workstream-driven";
-		return "Launcher/manual";
-	}
-
-	private formatCodexRunTrackerSource(run: CodexRunView): string {
-		return run.trackerKind?.trim() || "Not provided by lifecycle owner";
-	}
-
-	private formatCodexRunIssue(run: CodexRunView): string | undefined {
-		const id = run.issueIdentifier ?? run.issueId;
-		if (!id) return undefined;
-		return [id, run.issueState].filter(Boolean).join(" · ");
-	}
-
-	private formatCodexRunWorkflow(run: CodexRunView): string | undefined {
-		return (
-			[run.workflowName, run.workflowPath, run.workflowRunId]
-				.filter((part): part is string => Boolean(part))
-				.join(" · ") || undefined
-		);
-	}
-
-	private formatCodexRunTurns(run: CodexRunView): string | undefined {
-		return run.turnCount == null ? undefined : `${run.turnCount}`;
-	}
-
-	private formatCodexRunTokens(run: CodexRunView): string | undefined {
-		const parts = [
-			run.inputTokens == null ? null : `input ${run.inputTokens}`,
-			run.outputTokens == null ? null : `output ${run.outputTokens}`,
-			run.totalTokens == null ? null : `total ${run.totalTokens}`,
-		].filter((part): part is string => part !== null);
-		return parts.length > 0 ? parts.join(" · ") : undefined;
-	}
-
-	private formatCodexRunRuntime(run: CodexRunView): string | undefined {
-		if (run.runtimeSeconds == null) return undefined;
-		return `${Math.round(run.runtimeSeconds)}s`;
-	}
-
-	private formatCodexRunRetry(run: CodexRunView): string | undefined {
-		const parts = [
-			run.retryAttempt == null ? null : `attempt ${run.retryAttempt}`,
-			run.retryDueAt ? `due ${run.retryDueAt}` : null,
-			run.retryError ? `error ${run.retryError}` : null,
-		].filter((part): part is string => part !== null);
-		return parts.length > 0 ? parts.join(" · ") : undefined;
-	}
-
-	private formatCodexRunFieldSourceDetails(run: CodexRunView): Array<{
-		label: string;
-		value: string;
-	}> {
-		const entries = Object.entries(run.fieldSources) as Array<
-			[CodexRunViewField, CodexRunSourceRef[] | undefined]
-		>;
-		const fieldsBySource = new Map<string, string[]>();
-
-		for (const [field, sources] of entries) {
-			if (!sources || sources.length === 0) continue;
-			for (const source of sources) {
-				const key = this.formatCodexRunSourceRef(source);
-				const fields = fieldsBySource.get(key) ?? [];
-				fields.push(this.formatCodexRunFieldName(field));
-				fieldsBySource.set(key, fields);
-			}
-		}
-
-		return [...fieldsBySource.entries()]
-			.sort(([left], [right]) => left.localeCompare(right))
-			.map(([source, fields]) => ({
-				label: `Provenance from ${source}`,
-				value: [...new Set(fields)].sort().join(", "),
-			}));
-	}
-
-	private formatCodexRunFieldName(field: CodexRunViewField): string {
-		return field.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
-	}
-
-	private getCodexRunActivityTimeMs(run: CodexRunView): number {
-		return run.lastEventAt ?? run.endedAt ?? run.startedAt ?? 0;
-	}
-
-	private isActiveCodexRunStatus(status: CodexRunStatus): boolean {
-		return (
-			status === "queued" ||
-			status === "running" ||
-			status === "waiting" ||
-			status === "blocked"
-		);
-	}
-
-	private isAttentionCodexRunStatus(status: CodexRunStatus): boolean {
-		return status === "failed" || status === "timed_out" || status === "lost";
-	}
-
 	private getSymphonyChildren(node: SymphonyRootNode): AgentNode[] {
-		const snapshot = this.getSymphonyRuntimeSnapshot(node.runs);
-		const running = this.getSymphonyRunningSessionRuns(node.runs);
-		const retryQueued = this.getSymphonyRetryQueuedRuns(node.runs);
-		const released = this.getSymphonyReleasedRuns(node.runs);
+		const snapshot = getSymphonyRuntimeSnapshot(node.runs);
+		const running = getSymphonyRunningSessionRuns(node.runs);
+		const retryQueued = getSymphonyRetryQueuedRuns(node.runs);
+		const released = getSymphonyReleasedRuns(node.runs);
 		const children: AgentNode[] = [
 			{ type: "symphonyDashboard", runs: node.runs, flows: node.flows },
 			{ type: "symphonyRunGroup", kind: "running", runs: running, snapshot },
@@ -7438,8 +6518,8 @@ export class AgentStatusTreeProvider
 	): string {
 		const sources = V2_SECTION_HEADERS.sources;
 		if (runs.length === 0 && flows.length === 0) return sources;
-		const running = this.getSymphonyRunningSessionRuns(runs).length;
-		const retryQueued = this.getSymphonyRetryQueuedRuns(runs).length;
+		const running = getSymphonyRunningSessionRuns(runs).length;
+		const retryQueued = getSymphonyRetryQueuedRuns(runs).length;
 		const parts = [
 			flows.length > 0 ? `workstreams ${flows.length}` : null,
 			`run attempts ${runs.length}`,
@@ -7461,416 +6541,6 @@ export class AgentStatusTreeProvider
 		};
 	}
 
-	private getSymphonyRunningSessionRuns(runs: CodexRunView[]): CodexRunView[] {
-		return runs.filter(
-			(run) =>
-				run.status === "running" &&
-				!this.isSymphonyRetryQueuedRun(run) &&
-				!this.isSymphonyReleasedRun(run),
-		);
-	}
-
-	private getSymphonyRetryQueuedRuns(runs: CodexRunView[]): CodexRunView[] {
-		return runs.filter((run) => this.isSymphonyRetryQueuedRun(run));
-	}
-
-	private getSymphonyReleasedRuns(runs: CodexRunView[]): CodexRunView[] {
-		return runs.filter((run) => this.isSymphonyReleasedRun(run));
-	}
-
-	private isSymphonyRetryQueuedRun(run: CodexRunView): boolean {
-		return (
-			this.normalizeSymphonySourceStatus(run.sourceStatus) === "retryqueued" ||
-			run.retryAttempt != null ||
-			run.retryDueAt != null ||
-			Boolean(run.retryError)
-		);
-	}
-
-	private isSymphonyReleasedRun(run: CodexRunView): boolean {
-		return this.normalizeSymphonySourceStatus(run.sourceStatus) === "released";
-	}
-
-	private normalizeSymphonySourceStatus(value: string | undefined): string {
-		return value?.replace(/[\s_-]+/g, "").toLowerCase() ?? "";
-	}
-
-	private getSymphonyRuntimeSnapshot(
-		runs: CodexRunView[],
-	): SymphonyRuntimeSnapshotView | undefined {
-		return runs.find((run) => run.symphonyRuntimeSnapshot)
-			?.symphonyRuntimeSnapshot;
-	}
-
-	private formatSymphonyRuntimeSnapshotStatus(
-		snapshot: SymphonyRuntimeSnapshotView,
-	): string {
-		if (snapshot.error) {
-			return `${snapshot.error.code}: ${snapshot.error.message}`;
-		}
-		return snapshot.status;
-	}
-
-	private formatSymphonySnapshotValue(value: unknown): string {
-		if (value == null) return "Not provided by lifecycle owner";
-		if (typeof value === "string") return value;
-		if (typeof value === "number" || typeof value === "boolean") {
-			return String(value);
-		}
-		try {
-			return JSON.stringify(value);
-		} catch {
-			return String(value);
-		}
-	}
-
-	private getSymphonyRunGroupCount(node: SymphonyRunGroupNode): number {
-		if (node.kind === "running" && node.snapshot?.running) {
-			return node.snapshot.running.length;
-		}
-		if (node.kind === "retryQueued" && node.snapshot?.retrying) {
-			return node.snapshot.retrying.length;
-		}
-		return node.runs.length;
-	}
-
-	private getSymphonyRunGroupSnapshotEntries(
-		node: SymphonyRunGroupNode,
-	): SymphonySnapshotEntryNode[] {
-		if (node.kind === "running" && node.snapshot?.running) {
-			return node.snapshot.running.map((entry, index) => ({
-				type: "symphonySnapshotEntry",
-				kind: "running",
-				entry,
-				index,
-				snapshot: node.snapshot as SymphonyRuntimeSnapshotView,
-			}));
-		}
-		if (node.kind === "retryQueued" && node.snapshot?.retrying) {
-			return node.snapshot.retrying.map((entry, index) => ({
-				type: "symphonySnapshotEntry",
-				kind: "retryQueued",
-				entry,
-				index,
-				snapshot: node.snapshot as SymphonyRuntimeSnapshotView,
-			}));
-		}
-		return [];
-	}
-
-	private getSymphonySnapshotEntryIssue(
-		entry: SymphonyRunningEntryView | SymphonyRetryEntryView,
-	): string | undefined {
-		const id = entry.issueIdentifier ?? entry.issueId;
-		return [id, entry.issueState].filter(Boolean).join(" · ") || undefined;
-	}
-
-	private formatSymphonyRootDescription(
-		runs: CodexRunView[],
-		flows: TaskFlow[],
-	): string {
-		const running = this.getSymphonyRunningSessionRuns(runs).length;
-		const retryQueued = this.getSymphonyRetryQueuedRuns(runs).length;
-		const runLabel =
-			runs.length === 0
-				? "no projected runs"
-				: flows.length === 0
-					? `${runs.length} standalone ${runs.length === 1 ? "run attempt" : "run attempts"}`
-					: `${runs.length} ${runs.length === 1 ? "run attempt" : "run attempts"}`;
-		const parts = [
-			runLabel,
-			flows.length > 0
-				? `${flows.length} ${flows.length === 1 ? "workstream" : "workstreams"}`
-				: null,
-			running > 0 ? `${running} running` : null,
-			retryQueued > 0 ? `${retryQueued} RetryQueued` : null,
-		].filter((part): part is string => part !== null);
-		// When nothing is actively running or retrying, state the live count
-		// explicitly ("0 live now") rather than implying absence. The historical
-		// attempt count stays in the label and every run stays shown/navigable in
-		// the tree — this only clarifies that none are live right now, so a large
-		// historical count reads as read-only history, not an actionable backlog.
-		// ("none active" was flagged as reading like an empty/absent state, which
-		// conflicts with the goal of preserving and surfacing all run history.)
-		if (runs.length > 0 && running === 0 && retryQueued === 0) {
-			parts.push("0 live now");
-		}
-		return parts.join(" · ");
-	}
-
-	private formatSymphonyDashboardDescription(runs: CodexRunView[]): string {
-		const snapshot = this.getSymphonyRuntimeSnapshot(runs);
-		const running =
-			snapshot?.counts?.running ??
-			this.getSymphonyRunningSessionRuns(runs).length;
-		const retryQueued =
-			snapshot?.counts?.retrying ??
-			this.getSymphonyRetryQueuedRuns(runs).length;
-		const rateLimited = runs.filter((run) => run.rateLimitSummary).length;
-		const parts = [
-			running > 0 ? `${running} running` : null,
-			retryQueued > 0 ? `${retryQueued} RetryQueued` : null,
-			snapshot?.rateLimits !== undefined
-				? "1 rate-limit snapshot"
-				: rateLimited > 0
-					? `${rateLimited} rate-limit snapshots`
-					: null,
-		].filter((part): part is string => part !== null);
-		return parts.length > 0 ? parts.join(" · ") : "read-only status surface";
-	}
-
-	private getSymphonyRunGroupLabel(kind: SymphonyRunGroupKind): string {
-		switch (kind) {
-			case "running":
-				return "Running Sessions";
-			case "retryQueued":
-				return "Retry Queue";
-			case "released":
-				return "Released";
-		}
-	}
-
-	private getSymphonyRunGroupSpecStatus(kind: SymphonyRunGroupKind): string {
-		switch (kind) {
-			case "running":
-				return "Running";
-			case "retryQueued":
-				return "RetryQueued";
-			case "released":
-				return "Released";
-		}
-	}
-
-	private getSymphonyRunGroupEmptyLabel(kind: SymphonyRunGroupKind): string {
-		switch (kind) {
-			case "running":
-				return "No running sessions";
-			case "retryQueued":
-				return "Retry queue empty";
-			case "released":
-				return "No released run attempts";
-		}
-	}
-
-	private getSymphonyRunGroupEmptyDescription(
-		kind: SymphonyRunGroupKind,
-	): string {
-		switch (kind) {
-			case "running":
-				return "Source-owned Running rows will appear here";
-			case "retryQueued":
-				return "Source-owned RetryQueued rows will appear here";
-			case "released":
-				return "Only shown when a source owner reports Released evidence";
-		}
-	}
-
-	private formatCodexRunsDescription(runs: CodexRunView[]): string {
-		const count = runs.length;
-		const workingCount = runs.filter((run) =>
-			this.isActiveCodexRunStatus(run.status),
-		).length;
-		const attentionCount = runs.filter((run) =>
-			this.isAttentionCodexRunStatus(run.status),
-		).length;
-		const stoppedCount = runs.filter((run) => run.status === "stopped").length;
-		const cancelledCount = runs.filter(
-			(run) => run.status === "cancelled",
-		).length;
-		const unknownCount = runs.filter((run) => run.status === "unknown").length;
-		const completedCount = runs.filter(
-			(run) => run.status === "succeeded",
-		).length;
-		const retryingCount = runs.filter(
-			(run) => run.retryAttempt != null || run.retryDueAt != null,
-		).length;
-		const tokenTotal = runs.reduce(
-			(total, run) => total + (run.totalTokens ?? 0),
-			0,
-		);
-
-		const parts = [
-			workingCount > 0 ? `${workingCount} working` : null,
-			retryingCount > 0 ? `${retryingCount} retrying` : null,
-			attentionCount > 0 ? `${attentionCount} needs attention` : null,
-			stoppedCount > 0 ? `${stoppedCount} stopped` : null,
-			cancelledCount > 0 ? `${cancelledCount} cancelled` : null,
-			unknownCount > 0 ? `${unknownCount} unknown` : null,
-			completedCount > 0 ? `${completedCount} completed` : null,
-			tokenTotal > 0 ? `${tokenTotal} tokens` : null,
-		].filter((part): part is string => part !== null);
-
-		if (parts.length > 0) {
-			return parts.join(" · ");
-		}
-
-		if (count === 0) {
-			return "no projected runs";
-		}
-
-		return count === 1 ? "1 run" : `${count} runs`;
-	}
-
-	private createCodexRunsTooltip(runs: CodexRunView[]): vscode.MarkdownString {
-		const statusCounts = new Map<CodexRunStatus, number>();
-		for (const run of runs) {
-			statusCounts.set(run.status, (statusCounts.get(run.status) ?? 0) + 1);
-		}
-
-		const statusLine = CODEX_RUN_STATUS_ORDER.filter((status) =>
-			statusCounts.has(status),
-		)
-			.map(
-				(status) =>
-					`${this.formatCodexRunStatus(status)}: ${statusCounts.get(status)}`,
-			)
-			.join(" · ");
-		const ownedCount = runs.filter(
-			(run) => run.source.kind !== "launcher",
-		).length;
-		const launcherOnlyCount = runs.length - ownedCount;
-		const retryingCount = runs.filter(
-			(run) => run.retryAttempt != null || run.retryDueAt != null,
-		).length;
-		const tokenTotal = runs.reduce(
-			(total, run) => total + (run.totalTokens ?? 0),
-			0,
-		);
-		const runtimeTotal = runs.reduce(
-			(total, run) => total + (run.runtimeSeconds ?? 0),
-			0,
-		);
-
-		return new vscode.MarkdownString(
-			[
-				"**Symphony / Run Attempts**",
-				`${runs.length} read-only projected ${runs.length === 1 ? "run attempt" : "run attempts"}`,
-				statusLine,
-				retryingCount > 0 ? `Retry queue rows: ${retryingCount}` : "",
-				tokenTotal > 0 ? `Total tokens: ${tokenTotal}` : "",
-				runtimeTotal > 0 ? `Runtime seconds: ${Math.round(runtimeTotal)}` : "",
-				runs.length > 0
-					? `${ownedCount} source-owned · ${launcherOnlyCount} launcher-only`
-					: "No source rows are currently projected into this view.",
-				"Lifecycle ownership stays with the source owner (OpenClaw, TaskFlow, or launcher).",
-			]
-				.filter((part) => part.length > 0)
-				.join("\n\n"),
-		);
-	}
-
-	private formatCodexRunStatus(status: CodexRunStatus): string {
-		switch (status) {
-			case "queued":
-				return "Queued";
-			case "running":
-				return "Running";
-			case "waiting":
-				return "Waiting";
-			case "blocked":
-				return "Blocked";
-			case "succeeded":
-				return "Succeeded";
-			case "failed":
-				return "Failed";
-			case "timed_out":
-				return "Timed Out";
-			case "cancelled":
-				return "Cancelled";
-			case "lost":
-				return "Lost";
-			case "stopped":
-				return "Stopped";
-			case "unknown":
-				return "Unknown";
-		}
-	}
-
-	private getCodexRunStatusIcon(status: CodexRunStatus): vscode.ThemeIcon {
-		switch (status) {
-			case "queued":
-				return new vscode.ThemeIcon(
-					"loading~spin",
-					new vscode.ThemeColor("charts.yellow"),
-				);
-			case "running":
-				return new vscode.ThemeIcon(
-					"pulse",
-					new vscode.ThemeColor("charts.blue"),
-				);
-			case "waiting":
-				return new vscode.ThemeIcon(
-					"watch",
-					new vscode.ThemeColor("charts.yellow"),
-				);
-			case "blocked":
-				return new vscode.ThemeIcon(
-					"shield",
-					new vscode.ThemeColor("charts.yellow"),
-				);
-			case "succeeded":
-				return new vscode.ThemeIcon(
-					"check",
-					new vscode.ThemeColor("charts.green"),
-				);
-			case "failed":
-			case "timed_out":
-				return new vscode.ThemeIcon(
-					"error",
-					new vscode.ThemeColor("charts.red"),
-				);
-			case "cancelled":
-			case "stopped":
-				return new vscode.ThemeIcon(
-					"circle-slash",
-					new vscode.ThemeColor("descriptionForeground"),
-				);
-			case "lost":
-				return new vscode.ThemeIcon(
-					"warning",
-					new vscode.ThemeColor("charts.yellow"),
-				);
-			case "unknown":
-				return new vscode.ThemeIcon(
-					"question",
-					new vscode.ThemeColor("descriptionForeground"),
-				);
-		}
-	}
-
-	private formatCodexRunSource(run: CodexRunView): string {
-		const refs = [
-			run.source,
-			...run.mergedFrom.filter(
-				(ref) => !this.codexRunRefsEqual(ref, run.source),
-			),
-		];
-		return refs.map((ref) => this.formatCodexRunSourceRef(ref)).join(" + ");
-	}
-
-	private formatCodexRunSourceRef(ref: CodexRunSourceRef): string {
-		const id = ref.id ? ` ${ref.id}` : "";
-		const pathPart = ref.path ? ` (${ref.path})` : "";
-		return `${this.formatCodexRunSourceKind(ref.kind)}${id}${pathPart}`;
-	}
-
-	private formatCodexRunSourceKind(kind: CodexRunSourceRef["kind"]): string {
-		switch (kind) {
-			case "openclaw-task":
-				return "OpenClaw task";
-			case "taskflow":
-				return "TaskFlow";
-			case "launcher":
-				return "Launcher";
-			case "codex-harness":
-				return "Codex harness";
-			case "trajectory":
-				return "Trajectory";
-			case "process":
-				return "Process";
-		}
-	}
-
 	private formatCodexRunLegacyOpenClawNote(task: OpenClawTask): string {
 		return `Also shown in Symphony / Run Attempts as OpenClaw task ${task.taskId}.`;
 	}
@@ -7878,97 +6548,13 @@ export class AgentStatusTreeProvider
 	private formatCodexRunLegacyLauncherNote(task: AgentTask): string | null {
 		const codexLauncher = detectAgentType(task) === "codex";
 		const matchedOwner = this.getAllOpenClawTaskSources().some((owner) =>
-			this.openClawTaskMatchesLauncherTask(owner, task),
+			openClawTaskMatchesLauncherTask(owner, task),
 		);
 		if (!codexLauncher && !matchedOwner) return null;
 		if (matchedOwner) {
 			return "Also represented in Symphony / Run Attempts through an explicit OpenClaw session join.";
 		}
 		return "Also shown in Symphony / Run Attempts as a launcher-owned run attempt.";
-	}
-
-	private openClawTaskMatchesLauncherTask(
-		owner: OpenClawTask,
-		task: AgentTask,
-	): boolean {
-		return (
-			owner.taskId === task.id ||
-			owner.runId === task.id ||
-			this.codexRunSessionsMatch(owner.childSessionKey, task.session_id)
-		);
-	}
-
-	private codexRunSessionsMatch(
-		left: string | undefined,
-		right: string | null | undefined,
-	): boolean {
-		if (!left || !right) return false;
-		const leftCandidates = this.codexRunSessionCandidates(left);
-		const rightCandidates = this.codexRunSessionCandidates(right);
-		return leftCandidates.some((candidate) =>
-			rightCandidates.includes(candidate),
-		);
-	}
-
-	private codexRunSessionCandidates(value: string): string[] {
-		const trimmed = value.trim();
-		if (!trimmed) return [];
-		const withoutPrefix = trimmed.replace(/^session:/, "");
-		return [...new Set([trimmed, withoutPrefix])];
-	}
-
-	private codexRunRefsEqual(
-		left: CodexRunSourceRef,
-		right: CodexRunSourceRef,
-	): boolean {
-		return (
-			left.kind === right.kind &&
-			left.id === right.id &&
-			left.path === right.path
-		);
-	}
-
-	private getTaskDiffStartCommit(t: AgentTask): string | undefined {
-		if (t.status === "running") return undefined;
-
-		if (t.start_commit && t.start_commit !== "unknown") {
-			return t.start_commit;
-		}
-		if (t.start_sha && t.start_sha !== "unknown") {
-			return t.start_sha;
-		}
-
-		if (t.started_at) {
-			try {
-				const commitHash = execFileSync(
-					"git",
-					[
-						"-C",
-						t.project_dir,
-						"log",
-						`--before=${t.started_at}`,
-						"-1",
-						"--format=%H",
-					],
-					{
-						encoding: "utf-8",
-						timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
-					},
-				).trim();
-				if (commitHash) return commitHash;
-			} catch {
-				// Fallback to HEAD~1 below
-			}
-		}
-
-		return "HEAD~1";
-	}
-
-	private getTaskDiffEndCommit(t: AgentTask): string | undefined {
-		if (t.end_commit && t.end_commit !== "unknown") {
-			return t.end_commit;
-		}
-		return undefined;
 	}
 
 	/** Kick off async port detection; fires onDidChangeTreeData when done */
@@ -8077,50 +6663,6 @@ export class AgentStatusTreeProvider
 		});
 	}
 
-	private truncatePromptSummary(value: string): string {
-		return value.length > 80 ? `${value.substring(0, 80)}…` : value;
-	}
-
-	private normalizePromptSummaryLine(line: string): string | null {
-		const normalized = line
-			.trim()
-			.replace(/^[-*+]\s+/, "")
-			.replace(/^\d+\.\s+/, "")
-			.replace(/^>\s+/, "")
-			.replace(/\s+/g, " ")
-			.trim();
-		return normalized.length > 0 ? normalized : null;
-	}
-
-	private isPromptBoilerplateLine(line: string): boolean {
-		return [
-			/^At the START of your work/i,
-			/^Use the task system/i,
-			/^As you work/i,
-			/^When ALL work is complete/i,
-			/^The TaskCompleted hook/i,
-			/^This is critical/i,
-			/^\d+\.\s+\*\*Commit all changes/i,
-			/^\d+\.\s+\*\*Verify clean working tree/i,
-			/^\d+\.\s+\*\*Do not exit with uncommitted work/i,
-			/^\d+\.\s+\*\*Fix hooks, never bypass them/i,
-			/^\d+\.\s+\*\*Write the handoff file/i,
-			/^\d+\.\s+\*\*Completion is automatic/i,
-			/^You MUST write a completion report/i,
-			/^This file is checked by the orchestrator/i,
-			// rc.37: defensive skip of harness role preambles synthesized by
-			// `~/projects/ghostty-launcher/scripts/write-prompt.sh` (lines
-			// ~117-131). The launcher wraps user prompts with one of these
-			// role declarations before claude sees them, and `prompt_file` in
-			// tasks.json points at the WRAPPED file — so without this skip
-			// every task row in the tree shows the harness boilerplate
-			// instead of the user's actual prompt content.
-			/^You are the implementation agent for task_id/i,
-			/^You are the team lead for task_id/i,
-			/^You are the test agent for task_id/i,
-		].some((pattern) => pattern.test(line));
-	}
-
 	private getPromptSummaryFromPreferredSection(lines: string[]): string | null {
 		const preferredSectionPatterns = [
 			// rc.37: launcher (write-prompt.sh) emits `## User Prompt`
@@ -8143,9 +6685,9 @@ export class AgentStatusTreeProvider
 				if (!inSection) continue;
 				if (/^#{1,6}\s+/.test(trimmed)) break;
 
-				const candidate = this.normalizePromptSummaryLine(line);
-				if (!candidate || this.isPromptBoilerplateLine(candidate)) continue;
-				return this.truncatePromptSummary(candidate);
+				const candidate = normalizePromptSummaryLine(line);
+				if (!candidate || isPromptBoilerplateLine(candidate)) continue;
+				return truncatePromptSummary(candidate);
 			}
 		}
 
@@ -8179,7 +6721,7 @@ export class AgentStatusTreeProvider
 					const trimmed = line.trim();
 					if (trimmed.length === 0) continue;
 					if (trimmed.startsWith("#")) break; // next section
-					const result = this.truncatePromptSummary(trimmed);
+					const result = truncatePromptSummary(trimmed);
 					this._promptCache.set(promptFile, result);
 					return result;
 				}
@@ -8202,9 +6744,9 @@ export class AgentStatusTreeProvider
 				if (trimmed.length === 0) continue;
 				if (trimmed.startsWith("#")) continue;
 
-				const candidate = this.normalizePromptSummaryLine(line);
-				if (!candidate || this.isPromptBoilerplateLine(candidate)) continue;
-				const result = this.truncatePromptSummary(candidate);
+				const candidate = normalizePromptSummaryLine(line);
+				if (!candidate || isPromptBoilerplateLine(candidate)) continue;
+				const result = truncatePromptSummary(candidate);
 				this._promptCache.set(promptFile, result);
 				return result;
 			}
@@ -8317,138 +6859,13 @@ export class AgentStatusTreeProvider
 
 	/** Get a formatted diff summary for an agent's working directory */
 	getDiffSummary(projectDir: string, task: AgentTask): string | null {
-		return this.formatPerFileDiffSummary(
-			this.getPerFileNumstatDiffs(
+		return formatPerFileDiffSummary(
+			getPerFileNumstatDiffs(
 				projectDir,
-				this.getTaskDiffStartCommit(task),
-				this.getTaskDiffEndCommit(task),
+				getTaskDiffStartCommit(task),
+				getTaskDiffEndCommit(task),
 			),
 		);
-	}
-
-	private parsePerFileStatusesFromNameStatus(
-		output: string,
-	): Map<string, FileChangeStatus> {
-		const statuses = new Map<string, FileChangeStatus>();
-		if (!output.trim()) return statuses;
-
-		for (const line of output.split("\n")) {
-			if (!line.trim()) continue;
-			const [statusRaw, ...fileParts] = line.split("\t");
-			if (!statusRaw || fileParts.length === 0) continue;
-			const filePath = fileParts[fileParts.length - 1]?.trim();
-			if (!filePath) continue;
-
-			const normalizedStatus = statusRaw.startsWith("A")
-				? "A"
-				: statusRaw.startsWith("D")
-					? "D"
-					: "M";
-			statuses.set(filePath, normalizedStatus);
-		}
-
-		return statuses;
-	}
-
-	private parsePerFileDiffsFromNumstat(output: string): PerFileDiff[] {
-		if (!output.trim()) return [];
-
-		const diffs: PerFileDiff[] = [];
-		for (const line of output.split("\n")) {
-			if (!line.trim()) continue;
-			const [additionsRaw, deletionsRaw, ...fileParts] = line.split("\t");
-			if (!additionsRaw || !deletionsRaw || fileParts.length === 0) continue;
-			const filePath = fileParts.join("\t").trim();
-			if (!filePath) continue;
-
-			const isBinary = additionsRaw === "-" || deletionsRaw === "-";
-			const additions = isBinary ? -1 : Number.parseInt(additionsRaw, 10);
-			const deletions = isBinary ? -1 : Number.parseInt(deletionsRaw, 10);
-
-			if (!isBinary && (Number.isNaN(additions) || Number.isNaN(deletions))) {
-				continue;
-			}
-
-			diffs.push({ filePath, additions, deletions });
-		}
-
-		return diffs;
-	}
-
-	private buildGitDiffArgs(
-		projectDir: string,
-		diffFlag: "--name-status" | "--numstat",
-		startCommit?: string,
-		endCommit?: string,
-	): string[] {
-		if (!startCommit) {
-			return ["-C", projectDir, "diff", diffFlag];
-		}
-
-		const resolvedEnd = endCommit ?? "HEAD";
-		return [
-			"-C",
-			projectDir,
-			"diff",
-			diffFlag,
-			`${startCommit}..${resolvedEnd}`,
-		];
-	}
-
-	private runGitDiffOutput(
-		projectDir: string,
-		diffFlag: "--name-status" | "--numstat",
-		startCommit?: string,
-		endCommit?: string,
-	): string {
-		if (startCommit && !endCommit) return "";
-
-		const run = (args: string[]): string =>
-			execFileSync("git", args, {
-				encoding: "utf-8",
-				timeout: AgentStatusTreeProvider.GIT_DIFF_TIMEOUT_MS,
-			}).trim();
-
-		try {
-			let output = "";
-			try {
-				output = run(
-					this.buildGitDiffArgs(projectDir, diffFlag, startCommit, endCommit),
-				);
-			} catch {
-				if (!startCommit) return "";
-				output = run(["-C", projectDir, "diff", diffFlag, "HEAD~1..HEAD"]);
-			}
-
-			if (!output && startCommit) {
-				output = run(["-C", projectDir, "diff", diffFlag, "HEAD~1..HEAD"]);
-			}
-
-			return output;
-		} catch {
-			return "";
-		}
-	}
-
-	private getPerFileNumstatDiffs(
-		projectDir: string,
-		startCommit?: string,
-		endCommit?: string,
-	): PerFileDiff[] {
-		const output = this.runGitDiffOutput(
-			projectDir,
-			"--numstat",
-			startCommit,
-			endCommit,
-		);
-		if (!output) return [];
-		return this.parsePerFileDiffsFromNumstat(output);
-	}
-
-	private deriveFallbackFileChangeStatus(diff: PerFileDiff): FileChangeStatus {
-		if (diff.additions === 0 && diff.deletions > 0) return "D";
-		if (diff.deletions === 0 && diff.additions > 0) return "A";
-		return "M";
 	}
 
 	/**
@@ -8463,61 +6880,18 @@ export class AgentStatusTreeProvider
 		startCommit?: string,
 		endCommit?: string,
 	): PerFileDiff[] {
-		const diffs = this.getPerFileNumstatDiffs(
-			projectDir,
-			startCommit,
-			endCommit,
-		);
+		const diffs = getPerFileNumstatDiffs(projectDir, startCommit, endCommit);
 		if (diffs.length === 0) return [];
 
-		const statuses = this.parsePerFileStatusesFromNameStatus(
-			this.runGitDiffOutput(
-				projectDir,
-				"--name-status",
-				startCommit,
-				endCommit,
-			),
+		const statuses = parsePerFileStatusesFromNameStatus(
+			runGitDiffOutput(projectDir, "--name-status", startCommit, endCommit),
 		);
 
 		return diffs.map((diff) => ({
 			...diff,
 			status:
-				statuses.get(diff.filePath) ??
-				this.deriveFallbackFileChangeStatus(diff),
+				statuses.get(diff.filePath) ?? deriveFallbackFileChangeStatus(diff),
 		}));
-	}
-
-	private extractCommitHash(value: string): string | undefined {
-		const firstToken = value.trim().split(/\s+/)[0];
-		return firstToken && /^[0-9a-f]{7,40}$/i.test(firstToken)
-			? firstToken
-			: undefined;
-	}
-
-	private shortenCommitHash(value: string): string {
-		return value.slice(0, 7);
-	}
-
-	private getFileChangePathParts(filePath: string): {
-		filename: string;
-		directory?: string;
-	} {
-		const normalized = filePath.replace(/\\/g, "/");
-		const segments = normalized.split("/").filter(Boolean);
-		const filename = segments.pop() ?? normalized;
-		return {
-			filename,
-			...(segments.length > 0 ? { directory: segments.join("/") } : {}),
-		};
-	}
-
-	private formatFileChangeDescription(node: FileChangeNode): string {
-		const { directory } = this.getFileChangePathParts(node.filePath);
-		const stats =
-			node.additions < 0 || node.deletions < 0
-				? `${node.status} binary`
-				: `${node.status} +${node.additions} -${node.deletions}`;
-		return directory ? `${directory} · ${stats}` : stats;
 	}
 
 	private async getLastOutputLine(
@@ -8572,14 +6946,14 @@ export class AgentStatusTreeProvider
 		}
 		if (element.type === "symphonySnapshotEntry") {
 			const runs = this.getVisibleCodexRuns();
-			const snapshot = this.getSymphonyRuntimeSnapshot(runs);
+			const snapshot = getSymphonyRuntimeSnapshot(runs);
 			return {
 				type: "symphonyRunGroup",
 				kind: element.kind,
 				runs:
 					element.kind === "running"
-						? this.getSymphonyRunningSessionRuns(runs)
-						: this.getSymphonyRetryQueuedRuns(runs),
+						? getSymphonyRunningSessionRuns(runs)
+						: getSymphonyRetryQueuedRuns(runs),
 				...(snapshot ? { snapshot } : {}),
 			};
 		}
@@ -8855,7 +7229,7 @@ export class AgentStatusTreeProvider
 			}),
 		);
 		const syntheticOpenClaw = this.getVisibleOpenClawTasks().map((task) =>
-			this.toSyntheticOpenClawTask(task),
+			toSyntheticOpenClawTask(task),
 		);
 		return [...launcherTasks, ...syntheticDiscovered, ...syntheticOpenClaw];
 	}
@@ -8868,7 +7242,7 @@ export class AgentStatusTreeProvider
 		);
 		const backgroundTasks = this.getVisibleOpenClawTasks();
 		const backgroundRunningCount = backgroundTasks.filter((task) =>
-			this.isOpenClawTaskActive(task),
+			isOpenClawTaskActive(task),
 		).length;
 		const backgroundSucceededCount = backgroundTasks.filter(
 			(task) => task.status === "succeeded",
@@ -8899,7 +7273,7 @@ export class AgentStatusTreeProvider
 
 		lines.push(`Agent Discovery Health: ${healthStatus}`);
 		lines.push(
-			`  Running agents: ${runningAgentSubjects.length} (${this.formatAgentTypeSummary(runningAgentSubjects)})`,
+			`  Running agents: ${runningAgentSubjects.length} (${formatAgentTypeSummary(runningAgentSubjects)})`,
 		);
 		lines.push(
 			`  Background tasks: ${backgroundTasks.length} (${this.formatBackgroundTaskSummary(backgroundRunningCount, backgroundSucceededCount, backgroundOtherCount)})`,
@@ -8946,7 +7320,7 @@ export class AgentStatusTreeProvider
 		const sessionFileAgentCount = discoveredAgents.filter(
 			(agent) => agent.source === "session-file",
 		).length;
-		const filteredGroups = this.summarizeFilteredDiscoveryMatches(
+		const filteredGroups = summarizeFilteredDiscoveryMatches(
 			processDiagnostics.filtered,
 		);
 
@@ -8974,7 +7348,7 @@ export class AgentStatusTreeProvider
 			lines.push("");
 			lines.push(`Active agents (${processDiagnostics.retained.length}):`);
 			for (const entry of processDiagnostics.retained) {
-				lines.push(`  ${this.formatRetainedDiscoveryEntry(entry, now)}`);
+				lines.push(`  ${formatRetainedDiscoveryEntry(entry, now)}`);
 			}
 		}
 
@@ -9026,7 +7400,7 @@ export class AgentStatusTreeProvider
 		const lines = [
 			"OpenClaw Task Ledger:",
 			` Total: ${tasks.length} tasks (7-day window)`,
-			` Running: ${runningCount}${staleRunningCount > 0 ? ` (${this.formatOpenClawAuditStatusLabel("stale_running", staleRunningCount)})` : ""}`,
+			` Running: ${runningCount}${staleRunningCount > 0 ? ` (${formatOpenClawAuditStatusLabel("stale_running", staleRunningCount)})` : ""}`,
 			` Succeeded: ${succeededCount}`,
 			` Failed: ${failedCount}`,
 			"",
@@ -9147,37 +7521,6 @@ export class AgentStatusTreeProvider
 		}
 	}
 
-	private formatOpenClawAuditStatusLabel(code: string, count: number): string {
-		if (code === "stale_running") {
-			return count === 1
-				? "stale_running error detected"
-				: "stale_running errors detected";
-		}
-		return count === 1 ? `${code} detected` : `${code} findings detected`;
-	}
-
-	private formatAgentTypeSummary(
-		agents: Array<DiscoveredAgent | AgentTask>,
-	): string {
-		if (agents.length === 0) return "none";
-
-		const counts = new Map<string, number>();
-		for (const agent of agents) {
-			const type = detectAgentType(agent);
-			const label = type === "unknown" ? "unknown" : type;
-			counts.set(label, (counts.get(label) ?? 0) + 1);
-		}
-
-		return [...counts.entries()]
-			.sort((left, right) =>
-				right[1] === left[1]
-					? left[0].localeCompare(right[0])
-					: right[1] - left[1],
-			)
-			.map(([label, count]) => `${count} ${label}`)
-			.join(", ");
-	}
-
 	private formatBackgroundTaskSummary(
 		runningCount: number,
 		succeededCount: number,
@@ -9225,127 +7568,6 @@ export class AgentStatusTreeProvider
 		).length;
 		const archivedCount = tasks.length - runningCount;
 		return `${runningCount} running, ${archivedCount} completed`;
-	}
-
-	private summarizeFilteredDiscoveryMatches(
-		entries: ProcessScanDiagnosticEntry[],
-	): Array<{ label: string; count: number; names: string; note?: string }> {
-		const groups = new Map<
-			string,
-			{
-				label: string;
-				note?: string;
-				count: number;
-				nameCounts: Map<string, number>;
-			}
-		>();
-
-		for (const entry of entries) {
-			const category = this.getDiscoveryFilterCategory(entry.reason);
-			const group = groups.get(category.key) ?? {
-				label: category.label,
-				note: category.note,
-				count: 0,
-				nameCounts: new Map<string, number>(),
-			};
-			group.count += 1;
-			const name = this.getDiscoveryDiagnosticName(entry);
-			group.nameCounts.set(name, (group.nameCounts.get(name) ?? 0) + 1);
-			groups.set(category.key, group);
-		}
-
-		return [...groups.values()]
-			.sort((left, right) => right.count - left.count)
-			.map((group) => ({
-				label: group.label,
-				count: group.count,
-				names: this.formatDiscoveryNameCounts(group.nameCounts),
-				note: group.note,
-			}));
-	}
-
-	private getDiscoveryFilterCategory(
-		reason: ProcessScanFilterReason | undefined,
-	): { key: string; label: string; note?: string } {
-		switch (reason) {
-			case "excluded-binary":
-				return {
-					key: "helper-binaries",
-					label: "Helper binaries",
-					note: "consider killing stale processes",
-				};
-			case "interactive-process":
-			case "shell-process":
-				return {
-					key: "interactive-cli",
-					label: "Interactive CLIs",
-					note: "idle sessions, not agents",
-				};
-			case "noise-process":
-				return {
-					key: "ui-noise",
-					label: "UI/helper noise",
-					note: "renderer/helper processes",
-				};
-			case "stale-process":
-				return {
-					key: "stale-processes",
-					label: "Stale processes",
-					note: "inactive streams or long-idle shells",
-				};
-			case "cwd-unresolved":
-				return {
-					key: "cwd-unresolved",
-					label: "CWD lookup failures",
-					note: "missing usable project directories",
-				};
-			case "internal-tool-dir":
-				return {
-					key: "internal-tools",
-					label: "Internal tool directories",
-					note: "internal tooling, not user agents",
-				};
-			default:
-				return { key: "other", label: "Other filtered matches" };
-		}
-	}
-
-	private getDiscoveryDiagnosticName(
-		entry: ProcessScanDiagnosticEntry,
-	): string {
-		const binaryName = entry.binaryName?.trim().toLowerCase();
-		if (binaryName) return binaryName;
-		const detected = detectAgentType({
-			process_name: entry.binaryName,
-			command: entry.command,
-		});
-		return detected === "unknown" ? "unknown" : detected;
-	}
-
-	private formatDiscoveryNameCounts(nameCounts: Map<string, number>): string {
-		const entries = [...nameCounts.entries()].sort((left, right) =>
-			right[1] === left[1]
-				? left[0].localeCompare(right[0])
-				: right[1] - left[1],
-		);
-		return entries
-			.slice(0, 3)
-			.map(([name, count]) => (count > 1 ? `${count} ${name}` : name))
-			.join(", ");
-	}
-
-	private formatRetainedDiscoveryEntry(
-		entry: ProcessScanDiagnosticEntry,
-		now = new Date(),
-	): string {
-		const agentType = detectAgentType({
-			process_name: entry.binaryName,
-			command: entry.command,
-		});
-		const projectName = entry.projectDir
-			? path.basename(entry.projectDir) || entry.projectDir
-			: "unknown";
-		return `${agentType === "unknown" ? (entry.binaryName ?? "unknown") : agentType} · ${projectName} · PID ${entry.pid} · running ${formatElapsed(entry.startTime.toISOString(), now)}`;
 	}
 
 	private getDiscoveryRecommendationLines(args: {
@@ -9477,10 +7699,7 @@ export class AgentStatusTreeProvider
 			"Symphony",
 			vscode.TreeItemCollapsibleState.Expanded,
 		);
-		item.description = this.formatSymphonyRootDescription(
-			node.runs,
-			node.flows,
-		);
+		item.description = formatSymphonyRootDescription(node.runs, node.flows);
 		item.contextValue = "symphony";
 		item.iconPath = new vscode.ThemeIcon("server-process");
 		item.tooltip = new vscode.MarkdownString(
@@ -9500,7 +7719,7 @@ export class AgentStatusTreeProvider
 			"Operations Dashboard",
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
-		item.description = this.formatSymphonyDashboardDescription(node.runs);
+		item.description = formatSymphonyDashboardDescription(node.runs);
 		item.contextValue = "symphonyDashboard";
 		item.iconPath = new vscode.ThemeIcon("dashboard");
 		item.tooltip = new vscode.MarkdownString(
@@ -9516,19 +7735,19 @@ export class AgentStatusTreeProvider
 	private createSymphonyRunGroupItem(
 		node: SymphonyRunGroupNode,
 	): vscode.TreeItem {
-		const label = this.getSymphonyRunGroupLabel(node.kind);
-		const count = this.getSymphonyRunGroupCount(node);
+		const label = getSymphonyRunGroupLabel(node.kind);
+		const count = getSymphonyRunGroupCount(node);
 		const item = new vscode.TreeItem(
 			`${label} · ${count}`,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
-		item.description = this.getSymphonyRunGroupSpecStatus(node.kind);
+		item.description = getSymphonyRunGroupSpecStatus(node.kind);
 		item.contextValue = `symphonyRunGroup.${node.kind}`;
-		item.iconPath = this.getSymphonyRunGroupIcon(node.kind);
+		item.iconPath = getSymphonyRunGroupIcon(node.kind);
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${label}**`,
-				`Spec state: \`${this.getSymphonyRunGroupSpecStatus(node.kind)}\``,
+				`Spec state: \`${getSymphonyRunGroupSpecStatus(node.kind)}\``,
 				`${count} read-only projected ${
 					count === 1 ? "Run Attempt" : "Run Attempts"
 				}`,
@@ -9541,7 +7760,7 @@ export class AgentStatusTreeProvider
 		node: SymphonySnapshotEntryNode,
 	): vscode.TreeItem {
 		const running = node.kind === "running";
-		const issue = this.getSymphonySnapshotEntryIssue(node.entry);
+		const issue = getSymphonySnapshotEntryIssue(node.entry);
 		const session = running
 			? (node.entry as SymphonyRunningEntryView).sessionId
 			: undefined;
@@ -9559,34 +7778,12 @@ export class AgentStatusTreeProvider
 			[
 				`**${labelPrefix}**`,
 				"Read-only row from a source-owned Symphony runtime snapshot.",
-				`Snapshot status: \`${this.formatSymphonyRuntimeSnapshotStatus(
+				`Snapshot status: \`${formatSymphonyRuntimeSnapshotStatus(
 					node.snapshot,
 				)}\``,
 			].join("\n\n"),
 		);
 		return item;
-	}
-
-	private getSymphonyRunGroupIcon(
-		kind: SymphonyRunGroupKind,
-	): vscode.ThemeIcon {
-		switch (kind) {
-			case "running":
-				return new vscode.ThemeIcon(
-					"pulse",
-					new vscode.ThemeColor("charts.blue"),
-				);
-			case "retryQueued":
-				return new vscode.ThemeIcon(
-					"history",
-					new vscode.ThemeColor("charts.yellow"),
-				);
-			case "released":
-				return new vscode.ThemeIcon(
-					"check",
-					new vscode.ThemeColor("charts.green"),
-				);
-		}
 	}
 
 	private createBackgroundTasksItem(
@@ -9632,8 +7829,8 @@ export class AgentStatusTreeProvider
 			count === 1 ? "Run Attempts · 1" : `Run Attempts · ${count}`,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
-		item.description = this.formatCodexRunsDescription(node.runs);
-		item.tooltip = this.createCodexRunsTooltip(node.runs);
+		item.description = formatCodexRunsDescription(node.runs);
+		item.tooltip = createCodexRunsTooltip(node.runs);
 		item.id = "symphony:codex-runs";
 		item.contextValue = "codexRuns";
 		item.iconPath = new vscode.ThemeIcon("run-all");
@@ -9643,10 +7840,10 @@ export class AgentStatusTreeProvider
 	private createCodexRunItem(node: CodexRunNode): vscode.TreeItem {
 		const { run } = node;
 		const container = node.container ?? "runs";
-		const activity = this.getCodexRunActivityTimeMs(run);
+		const activity = getCodexRunActivityTimeMs(run);
 		const descriptionParts = [
-			this.formatCodexRunStatus(run.status),
-			this.formatCodexRunOwnership(run),
+			formatCodexRunStatus(run.status),
+			formatCodexRunOwnership(run),
 			run.orchestrationMode,
 			run.role,
 			run.runtime,
@@ -9663,14 +7860,14 @@ export class AgentStatusTreeProvider
 			[
 				`**${run.title}**`,
 				`Run Attempt ID: \`${run.runId}\``,
-				`Status: ${this.formatCodexRunStatus(run.status)}`,
+				`Status: ${formatCodexRunStatus(run.status)}`,
 				run.sourceStatus ? `Owner Status: \`${run.sourceStatus}\`` : null,
-				`Lifecycle Owner: ${this.formatCodexRunAuthority(run)}`,
-				`Projection Boundary: ${this.formatCodexRunOwnership(run)}`,
+				`Lifecycle Owner: ${formatCodexRunAuthority(run)}`,
+				`Projection Boundary: ${formatCodexRunOwnership(run)}`,
 				run.orchestrationMode ? `Mode: \`${run.orchestrationMode}\`` : null,
 				run.nextAction ? `Next Step: ${run.nextAction}` : null,
 				run.role ? `Role: \`${run.role}\`` : null,
-				`Sources: ${this.formatCodexRunSource(run)}`,
+				`Sources: ${formatCodexRunSource(run)}`,
 				run.execMode ? `Execution Mode: \`${run.execMode}\`` : null,
 				run.execNodeName ? `Execution Node: \`${run.execNodeName}\`` : null,
 				run.host ? `Host: \`${run.host}\`` : null,
@@ -9681,7 +7878,7 @@ export class AgentStatusTreeProvider
 				.filter(Boolean)
 				.join("\n\n"),
 		);
-		item.iconPath = this.getCodexRunStatusIcon(run.status);
+		item.iconPath = getCodexRunStatusIcon(run.status);
 		item.contextValue = `codexRun.${run.status}`;
 		item.resourceUri = vscode.Uri.parse(
 			`codex-run:${encodeURIComponent(run.runId)}`,
@@ -9854,7 +8051,7 @@ export class AgentStatusTreeProvider
 			type: "taskFlowChild",
 			taskId: task.taskId,
 			flowId: flow.flowId,
-			label: this.getOpenClawTaskDisplayTitle(task),
+			label: getOpenClawTaskDisplayTitle(task),
 			status: openclawStatusToLabel(task.status),
 		};
 	}
@@ -9880,7 +8077,7 @@ export class AgentStatusTreeProvider
 	private findLauncherTaskForFlowTask(task: TaskFlowTask): AgentTask | null {
 		return (
 			this.getLauncherTasks().find((launcherTask) =>
-				this.openClawTaskMatchesLauncherTask(task, launcherTask),
+				openClawTaskMatchesLauncherTask(task, launcherTask),
 			) ?? null
 		);
 	}
@@ -10046,7 +8243,7 @@ export class AgentStatusTreeProvider
 		const hasRunning =
 			tasks.some((t) => t.status === "running") ||
 			discovered.length > 0 ||
-			openclawTasks.some((task) => this.isOpenClawTaskActive(task));
+			openclawTasks.some((task) => isOpenClawTaskActive(task));
 		const hasFailed =
 			tasks.some((t) => t.status === "failed" || t.status === "killed") ||
 			openclawTasks.some(
@@ -10519,8 +8716,8 @@ export class AgentStatusTreeProvider
 	}
 
 	private createOpenClawTaskItem(task: OpenClawTask): vscode.TreeItem {
-		const title = this.getOpenClawTaskDisplayTitle(task);
-		const activity = relativeTime(this.getOpenClawTaskActivityTimeMs(task));
+		const title = getOpenClawTaskDisplayTitle(task);
+		const activity = relativeTime(getOpenClawTaskActivityTimeMs(task));
 		const summary =
 			task.status === "queued" || task.status === "running"
 				? task.progressSummary?.trim()
@@ -10612,12 +8809,12 @@ export class AgentStatusTreeProvider
 	}
 
 	private createFileChangeItem(node: FileChangeNode): vscode.TreeItem {
-		const { filename } = this.getFileChangePathParts(node.filePath);
+		const { filename } = getFileChangePathParts(node.filePath);
 		const item = new vscode.TreeItem(
 			filename,
 			vscode.TreeItemCollapsibleState.None,
 		);
-		item.description = this.formatFileChangeDescription(node);
+		item.description = formatFileChangeDescription(node);
 		item.tooltip = path.join(node.projectDir, node.filePath);
 		item.resourceUri = vscode.Uri.file(
 			path.join(node.projectDir, node.filePath),

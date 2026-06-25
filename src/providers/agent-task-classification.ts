@@ -19,11 +19,8 @@
 
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AgentTask, AgentTaskStatus } from "../types/agent-task.js";
 import type { OpenClawTask } from "../types/openclaw-task-types.js";
-import type {
-	AgentTask,
-	AgentTaskStatus,
-} from "./agent-status-tree-provider.js";
 
 /**
  * Static classification of a task's terminal surface, derived only from the

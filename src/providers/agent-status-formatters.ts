@@ -3,7 +3,7 @@ import type {
 	AgentRole,
 	AgentTask,
 	AgentTaskStatus,
-} from "./agent-status-tree-provider.js";
+} from "../types/agent-task.js";
 
 export function getStatusThemeIcon(
 	status: AgentTask["status"],

@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { DiscoveredAgent } from "../discovery/types.js";
-import type { AgentTask } from "./agent-status-tree-provider.js";
+import type { AgentTask } from "../types/agent-task.js";
 
 export type AgentType = "claude" | "codex" | "gemini" | "unknown";
 

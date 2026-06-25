@@ -153,6 +153,16 @@ export function formatSymphonyRootDescription(
 		running > 0 ? `${running} running` : null,
 		retryQueued > 0 ? `${retryQueued} RetryQueued` : null,
 	].filter((part): part is string => part !== null);
+	// When nothing is actively running or retrying, state the live count
+	// explicitly ("0 live now") rather than implying absence. The historical
+	// attempt count stays in the label and every run stays shown/navigable in
+	// the tree — this only clarifies that none are live right now, so a large
+	// historical count reads as read-only history, not an actionable backlog.
+	// ("none active" was flagged as reading like an empty/absent state, which
+	// conflicts with the goal of preserving and surfacing all run history.)
+	if (runs.length > 0 && running === 0 && retryQueued === 0) {
+		parts.push("0 live now");
+	}
 	return parts.join(" · ");
 }
 
