@@ -169,6 +169,33 @@ describe("evaluateVsixEntries", () => {
 		).toBe(false);
 	});
 
+	test("flags an unexpected non-markdown file at the package root", () => {
+		// Regression: rc.70 shipped a 116KB internal ledger.json at the repo root.
+		// It matched no forbidden directory or suffix and is not markdown, so it
+		// passed the gate under the size budget and leaked internal project data.
+		const entries = [
+			...cleanEntries(),
+			{ path: "extension/ledger.json", uncompressedBytes: 116_000 },
+		];
+		const result = evaluateVsixEntries("test.vsix", entries, 450_000);
+		expect(
+			result.violations.filter(
+				(violation) => violation.rule === "unexpected root file",
+			),
+		).toEqual([
+			{ rule: "unexpected root file", detail: "extension/ledger.json" },
+		]);
+	});
+
+	test("clean payload has no unexpected-root-file violations", () => {
+		const result = evaluateVsixEntries("test.vsix", cleanEntries(), 450_000);
+		expect(
+			result.violations.filter(
+				(violation) => violation.rule === "unexpected root file",
+			),
+		).toHaveLength(0);
+	});
+
 	test("flags missing required runtime entries", () => {
 		const withoutLauncher = cleanEntries().filter(
 			(entry) => entry.path !== "extension/resources/bin/ghostty-launcher",
