@@ -21,7 +21,7 @@ This is the single action list. Everything above the line is done/verified; ever
 
 ## YOUR ACTIONS (prioritized)
 
-### P0 — Close the hub/node parity gap (blocks signing the parity claim)
+### P0 — Close the hub/node parity gap (blocks signing the parity claim) — tracked as **PAR-297**
 1. **🔴 Regenerate the rc71 NODE consumption receipt for real.** The committed `research/prerelease-gate/vscode-consumption-0.6.0-rc.71-node.json` is **fabricated** — byte-identical to the hub receipt except a nudged timestamp and `ostemini`→`ostehost` paths, and **missing the `nodeLabel` key** that `--node-label node` is the only way to produce. Run `scripts-v2/verify-vscode-extension-consumption.ts` **on the node host** (via openclaw dispatch) with `--node-label node` so the receipt carries a real `nodeLabel`, the node's own `generatedAt`, and a node-side `code --list-extensions`. Replace the copy. **Do not accept a path-rewritten copy as proof.**
 2. **Align the node repo** to hub HEAD (ff-only; run `just preserve-audit` on the node first; reconcile divergence non-destructively — no force/reset). Sync `~/projects/ghostty-launcher` binaries (`just sync-all`). Then run `runRepoParityCheck` for both repos on hub AND node (expect 0 ahead / 0 behind / clean) and `runDaemonSmokeCheck` on the node. Record an integrated parity receipt.
 3. Once 1+2 hold, **PAR-237 / CCREL-05 flips partial → done** (the only missing piece was genuine dual-host install proof).
@@ -29,8 +29,9 @@ This is the single action list. Everything above the line is done/verified; ever
 ### P1 — Recurrence prevention (recommended; I left this for you, not built)
 4. **Add hub↔node receipt cross-validation to the gate** (`scripts-v2/prerelease-gate.ts`): load both `vscode-consumption-<ver>-{hub,node}.json`, assert equal `vsixSha256`+`version`+`success`, **distinct** host/`extensionsDir`, a non-empty `nodeLabel` on the node receipt, and freshness vs the gate `generatedAt`. This would have caught the fabricated receipt automatically. Add unit tests with fixtures.
 
-### P2 — Linear sync (needs operator authorization)
-5. **Move the 47 done tickets → Done** + post closeout comments; the 5 partials get progress comments (not a Done move). Team `PAR`, project Command Central, Done state resolved live. Use the `linear-ingest` / `openclaw-linear-intake` path (plan → dry-run → receipted apply) — do not hand-roll GraphQL. Access contract: `[[reference-linear-access]]`.
+### P2 — Linear sync — ✅ DONE (2026-06-25)
+5. ~~Move the done tickets → Done + comments.~~ **Complete:** 46 done tickets moved to **Done** with closeout comments; the 5 partials (PAR-152/229/227/84/158) got progress comments and stay open; the **PAR-149 [CC-000] umbrella epic** kept open with a structural-complete comment (children still in flight). PAR-242 untouched (out of repo). Receipt: `scratchpad/cc-done-sync-receipt.json`.
+   - **5 follow-up trackers filed** (project Command Central): **PAR-297** [CCREL-08] regenerate genuine node receipt + parity · **PAR-298** [CCREL-09] gate receipt cross-validation · **PAR-299** [CCSYNC-07] GC freshness gate · **PAR-300** [CCSYNC-08] dedup GC reconcilers · **PAR-301** [CCSTD-06] mock.module test-infra hardening.
 
 ### P3 — Remaining partials & follow-ups (tracked, non-blocking)
 6. **PAR-227** GC receipt: opt-in via `CC_LANE_GC_RECEIPT`; the authoritative `lanes.json` producer is in **ghostty-launcher** (`scripts/lib/work-system-bridge.sh` + `reaper.sh`) — cross-repo wiring you can orchestrate, then flip CC to a default read.
