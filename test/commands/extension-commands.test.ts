@@ -927,3 +927,99 @@ describe("shouldTrustBundleSurface (launcher-truth gate)", () => {
 		expect(shouldTrustBundleSurface(task, null)).toBe(true);
 	});
 });
+
+describe("resolveAuthorizationTmuxLiveness (native-room fast path)", () => {
+	test("cached probe present and returns true → resolves true; fresh probe never invoked", async () => {
+		const { resolveAuthorizationTmuxLiveness } = await import(
+			"../../src/extension.js"
+		);
+		const task = createTask({
+			status: "running",
+			terminal_backend: "tmux",
+			session_id: "agent-project",
+			ghostty_bundle_id: "dev.partnerai.ghostty.project",
+		});
+		let freshCalled = false;
+		const result = await resolveAuthorizationTmuxLiveness(
+			task,
+			() => true,
+			async () => {
+				freshCalled = true;
+				return false;
+			},
+		);
+		expect(result).toBe(true);
+		expect(freshCalled).toBe(false);
+	});
+
+	test("cached probe present and returns false → resolves false; fresh probe never invoked", async () => {
+		const { resolveAuthorizationTmuxLiveness } = await import(
+			"../../src/extension.js"
+		);
+		const task = createTask({
+			status: "running",
+			terminal_backend: "tmux",
+			session_id: "agent-project",
+			ghostty_bundle_id: "dev.partnerai.ghostty.project",
+		});
+		let freshCalled = false;
+		const result = await resolveAuthorizationTmuxLiveness(
+			task,
+			() => false,
+			async () => {
+				freshCalled = true;
+				return true;
+			},
+		);
+		expect(result).toBe(false);
+		expect(freshCalled).toBe(false);
+	});
+
+	test("no cached probe (undefined) → falls back to fresh async probe; fresh probe WAS invoked", async () => {
+		const { resolveAuthorizationTmuxLiveness } = await import(
+			"../../src/extension.js"
+		);
+		const task = createTask({
+			status: "running",
+			terminal_backend: "tmux",
+			session_id: "agent-project",
+			ghostty_bundle_id: "dev.partnerai.ghostty.project",
+		});
+		let freshCalled = false;
+		const result = await resolveAuthorizationTmuxLiveness(
+			task,
+			undefined,
+			async () => {
+				freshCalled = true;
+				return true;
+			},
+		);
+		expect(result).toBe(true);
+		expect(freshCalled).toBe(true);
+	});
+
+	test("integration with authorization gate: cached=false on running tmux task → shouldTrustBundleSurface false; cached=true → true", async () => {
+		const { resolveAuthorizationTmuxLiveness, shouldTrustBundleSurface } =
+			await import("../../src/extension.js");
+		const task = createTask({
+			status: "running",
+			terminal_backend: "tmux",
+			session_id: "agent-project",
+			ghostty_bundle_id: "dev.partnerai.ghostty.project",
+		});
+
+		const resolvedFalse = await resolveAuthorizationTmuxLiveness(
+			task,
+			() => false,
+			async () => true,
+		);
+		expect(shouldTrustBundleSurface(task, resolvedFalse)).toBe(false);
+
+		const resolvedTrue = await resolveAuthorizationTmuxLiveness(
+			task,
+			() => true,
+			async () => false,
+		);
+		expect(shouldTrustBundleSurface(task, resolvedTrue)).toBe(true);
+	});
+});
