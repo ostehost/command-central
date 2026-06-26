@@ -188,6 +188,32 @@ export function shouldTrustBundleSurface(
 	return tmuxSessionAlive;
 }
 
+/**
+ * Resolve the up-front tmux-liveness verdict that authorizes the native-room
+ * launch decision (fed into {@link shouldTrustBundleSurface}).
+ *
+ * Fast path: when the Agent Status tree provider is available, reuse its
+ * 5s-TTL cached `has-session` probe — the same liveness the most recent tree
+ * render already computed — instead of shelling out a fresh `tmux has-session`
+ * per focus click. Only when no provider is available (e.g. the integration
+ * test harness) do we fall back to a direct async probe.
+ *
+ * This mirrors the cached-probe reuse Strategy 3 already performs for the
+ * fresh-attach decision, so the authorization gate and the attach decision read
+ * the same liveness for a click. Remote-node tasks never reach this gate (they
+ * are diverted to the node surface menu earlier), so this only fast-paths
+ * native (local-host) rooms.
+ */
+export async function resolveAuthorizationTmuxLiveness(
+	task: AgentTask,
+	cachedLivenessProbe: ((task: AgentTask) => boolean) | undefined,
+	freshLivenessProbe: (task: AgentTask) => Promise<boolean>,
+): Promise<boolean> {
+	const cached = cachedLivenessProbe?.(task);
+	if (cached !== undefined) return cached;
+	return freshLivenessProbe(task);
+}
+
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<CommandCentralIntegrationTestApi | undefined> {
@@ -1126,7 +1152,15 @@ export async function activate(
 						isValidSessionId(task.session_id);
 					let probedTmuxSessionAlive: boolean | null = null;
 					if (runningTmuxTaskWithSession && task) {
-						probedTmuxSessionAlive = await isTaskTmuxSessionAlive(task);
+						// Fast path: reuse the provider's cached 5s-TTL liveness probe for the
+						// native-room launch-decision authorization, mirroring Strategy 3's reuse
+						// below; fall back to a fresh probe only when no provider is available.
+						const provider = agentStatusProvider;
+						probedTmuxSessionAlive = await resolveAuthorizationTmuxLiveness(
+							task,
+							provider ? (t) => provider.isTaskTmuxSessionAlive(t) : undefined,
+							isTaskTmuxSessionAlive,
+						);
 					}
 					const bundleSurfaceTrusted = task
 						? shouldTrustBundleSurface(task, probedTmuxSessionAlive)
