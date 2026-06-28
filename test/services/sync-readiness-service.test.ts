@@ -12,12 +12,15 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+	buildSyncReadinessEvidenceRows,
 	buildUnreachableNodeCard,
 	collectHubSyncReadiness,
 	evaluateSyncReadiness,
 	formatSyncReadinessSummary,
+	formatSyncReadinessTooltip,
 	type GitQueryRunner,
 	isReachable,
+	syncReadinessIconId,
 } from "../../src/services/sync-readiness-service.js";
 
 const CLEAN: Parameters<typeof evaluateSyncReadiness>[0] = {
@@ -285,5 +288,181 @@ describe("collectHubSyncReadiness — read-only live collector", () => {
 		});
 		expect(r.blockers.map((b) => b.code)).toEqual(["git-error"]);
 		expect(r.reachability).toBe("local-hub");
+	});
+});
+
+describe("syncReadinessIconId", () => {
+	test("ready hub → pass-filled", () => {
+		expect(syncReadinessIconId(evaluateSyncReadiness(CLEAN))).toBe(
+			"pass-filled",
+		);
+	});
+
+	test("blocked hub → warning", () => {
+		expect(
+			syncReadinessIconId(
+				evaluateSyncReadiness({ ...CLEAN, porcelain: " M a\n" }),
+			),
+		).toBe("warning");
+	});
+
+	test("unreachable node → question", () => {
+		expect(
+			syncReadinessIconId(
+				buildUnreachableNodeCard({
+					project: "x",
+					projectDir: "/x",
+					host: "node-7",
+					reachability: "not-yet-queried",
+				}),
+			),
+		).toBe("question");
+	});
+
+	test("git-error → error (wins over reachability)", () => {
+		expect(
+			syncReadinessIconId(
+				evaluateSyncReadiness({
+					project: "x",
+					projectDir: "/x",
+					host: "rocinante",
+					reachability: "local-hub",
+					gitError: "fatal: not a git repository",
+				}),
+			),
+		).toBe("error");
+	});
+});
+
+describe("buildSyncReadinessEvidenceRows", () => {
+	test("clean repo renders branch/parity/dirty/queue/HEAD, all green", () => {
+		const rows = buildSyncReadinessEvidenceRows(evaluateSyncReadiness(CLEAN));
+		const byLabel = Object.fromEntries(rows.map((r) => [r.label, r]));
+		expect(byLabel["Branch"]?.description).toBe("main → origin/main");
+		expect(byLabel["Repo parity"]?.description).toBe(
+			"in sync (0 ahead · 0 behind)",
+		);
+		expect(byLabel["Working tree"]?.description).toBe("clean");
+		expect(byLabel["Review queue"]?.description).toBe("clear");
+		expect(byLabel["HEAD"]?.description).toBe("abc1234 · tree def5678");
+		// Clean dimensions never wear a warning icon.
+		for (const label of ["Repo parity", "Working tree", "Review queue"]) {
+			expect(byLabel[label]?.icon).not.toBe("warning");
+		}
+	});
+
+	test("dirty + diverged + pending-review flag each dimension as a warning", () => {
+		const rows = buildSyncReadinessEvidenceRows(
+			evaluateSyncReadiness({
+				...CLEAN,
+				porcelain: " M a\n?? b\n",
+				aheadBehind: "2\t3",
+				pendingReviewCount: 4,
+			}),
+		);
+		const byLabel = Object.fromEntries(rows.map((r) => [r.label, r]));
+		expect(byLabel["Working tree"]).toEqual({
+			label: "Working tree",
+			description: "2 uncommitted change(s)",
+			icon: "warning",
+		});
+		expect(byLabel["Repo parity"]?.description).toBe(
+			"diverged — 3 ahead · 2 behind",
+		);
+		expect(byLabel["Repo parity"]?.icon).toBe("warning");
+		expect(byLabel["Review queue"]?.description).toBe(
+			"4 lane(s) pending review",
+		);
+		expect(byLabel["Review queue"]?.icon).toBe("warning");
+	});
+
+	test("detached HEAD and missing upstream surface on the branch row", () => {
+		const detached = buildSyncReadinessEvidenceRows(
+			evaluateSyncReadiness({
+				...CLEAN,
+				branch: "HEAD",
+				upstream: undefined,
+				aheadBehind: undefined,
+			}),
+		).find((r) => r.label === "Branch");
+		expect(detached?.description).toContain("detached HEAD");
+		expect(detached?.icon).toBe("warning");
+
+		const noUpstream = buildSyncReadinessEvidenceRows(
+			evaluateSyncReadiness({
+				...CLEAN,
+				upstream: undefined,
+				aheadBehind: undefined,
+			}),
+		).find((r) => r.label === "Branch");
+		expect(noUpstream?.description).toBe("main · no upstream");
+		expect(noUpstream?.icon).toBe("warning");
+	});
+
+	test("unreachable node yields ONLY its gap blocker — no fabricated facts", () => {
+		const rows = buildSyncReadinessEvidenceRows(
+			buildUnreachableNodeCard({
+				project: "infra",
+				projectDir: "/srv/infra",
+				host: "node-7",
+				reachability: "node-unavailable",
+			}),
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.icon).toBe("question");
+		expect(rows[0]?.description).toContain("node-7");
+		// No branch/parity/dirty rows are invented for an unreachable node.
+		expect(rows.some((r) => r.label === "Repo parity")).toBe(false);
+	});
+
+	test("git-error yields a single error row", () => {
+		const rows = buildSyncReadinessEvidenceRows(
+			evaluateSyncReadiness({
+				project: "x",
+				projectDir: "/x",
+				host: "rocinante",
+				reachability: "local-hub",
+				gitError: "fatal: not a git repository",
+			}),
+		);
+		expect(rows).toEqual([
+			{
+				label: "Error",
+				description:
+					"git query failed on rocinante: fatal: not a git repository",
+				icon: "error",
+			},
+		]);
+	});
+});
+
+describe("formatSyncReadinessTooltip", () => {
+	test("ready card states host, evidence, and Ready to sync", () => {
+		const tip = formatSyncReadinessTooltip(evaluateSyncReadiness(CLEAN));
+		expect(tip).toContain("Host: rocinante (local-hub)");
+		expect(tip).toContain("Repo parity: in sync (0 ahead · 0 behind)");
+		expect(tip).toContain("Ready to sync.");
+	});
+
+	test("blocked card lists prioritized blockers, not 'Ready'", () => {
+		const tip = formatSyncReadinessTooltip(
+			evaluateSyncReadiness({ ...CLEAN, porcelain: " M a\n" }),
+		);
+		expect(tip).toContain("Blockers:");
+		expect(tip).toContain("uncommitted change");
+		expect(tip).not.toContain("Ready to sync.");
+	});
+
+	test("unreachable card states the gap, fabricates no parity line", () => {
+		const tip = formatSyncReadinessTooltip(
+			buildUnreachableNodeCard({
+				project: "infra",
+				projectDir: "/srv/infra",
+				host: "node-7",
+				reachability: "not-yet-queried",
+			}),
+		);
+		expect(tip).toContain("node-7");
+		expect(tip).not.toContain("Repo parity:");
 	});
 });

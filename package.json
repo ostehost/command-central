@@ -197,6 +197,12 @@
           "markdownDeprecationMessage": "**Deprecated.** Full launcher `tasks.json` ingestion is a diagnostics-only escape hatch slated for removal. Active lanes are read from `#commandCentral.laneRegistry.files#`, which only admits Work Registry-backed LaneRef records (`project_ref`). While this is `true`, Agent Status shows a warning row and stale launcher-era records can resurface — leave it `false` outside short-lived diagnostics sessions.",
           "scope": "machine"
         },
+        "commandCentral.syncReadiness.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Pin a read-only **hub/node sync-readiness card** in Agent Status for each open workspace folder. The card reports whether the repo on this host is ready to participate in a hub/node sync: its branch and upstream, repo parity (ahead/behind vs upstream), working-tree dirty count, and pending-review queue depth, with a prioritized blocker list. Runs git **query** commands only (`rev-parse`, `status --porcelain`, `rev-list`) and never mutates a repo. A project whose lanes ran on a remote node the hub cannot reach shows an explicit `not-yet-queried` card with no fabricated git facts. Off by default; turning it on adds one collapsible card per workspace folder.",
+          "scope": "machine"
+        },
         "commandCentral.agentTasksFile": {
           "type": "string",
           "default": "",

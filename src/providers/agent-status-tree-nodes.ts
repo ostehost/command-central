@@ -10,6 +10,7 @@
 
 import type * as vscode from "vscode";
 import type { DiscoveredAgent } from "../discovery/types.js";
+import type { SyncReadinessReceipt } from "../services/sync-readiness-service.js";
 import type { AgentTask } from "../types/agent-task.js";
 import type {
 	CodexRunView,
@@ -41,6 +42,7 @@ export type AgentNode =
 	| CodexRunNode
 	| StatusTimeGroupNode
 	| OlderRunsNode
+	| SyncReadinessNode
 	| StateNode;
 
 export interface SymphonyRootNode {
@@ -276,6 +278,18 @@ export interface StateNode {
 	label: string;
 	description?: string;
 	icon?: string;
+}
+
+/**
+ * A read-only hub/node sync-readiness card (CCSYNC-04 / PAR-229). Carries the
+ * already-collected {@link SyncReadinessReceipt} so the card row and its
+ * expandable evidence children render with no further git I/O. Pinned in the
+ * read-only Sources/provenance area of the root; opt-in behind
+ * `commandCentral.syncReadiness.enabled`.
+ */
+export interface SyncReadinessNode {
+	type: "syncReadiness";
+	receipt: SyncReadinessReceipt;
 }
 
 export type SortableAgentNode =

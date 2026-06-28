@@ -31,9 +31,13 @@ import type { OpenClawTaskService } from "../services/openclaw-task-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
 import { ReviewTracker } from "../services/review-tracker.js";
 import {
+	buildSyncReadinessEvidenceRows,
 	buildUnreachableNodeCard,
 	collectHubSyncReadiness,
+	formatSyncReadinessSummary,
+	formatSyncReadinessTooltip,
 	type SyncReadinessReceipt,
+	syncReadinessIconId,
 } from "../services/sync-readiness-service.js";
 import type { TaskFlowService } from "../services/taskflow-service.js";
 import {
@@ -74,6 +78,7 @@ export type {
 	SymphonyRunGroupKind,
 	SymphonyRunGroupNode,
 	SymphonySnapshotEntryNode,
+	SyncReadinessNode,
 	TaskFlowChildNode,
 	TaskFlowGroupNode,
 	TaskFlowSingleNode,
@@ -194,6 +199,7 @@ import type {
 	SymphonyRootNode,
 	SymphonyRunGroupNode,
 	SymphonySnapshotEntryNode,
+	SyncReadinessNode,
 	TaskFlowGroupNode,
 	TaskFlowsContainerNode,
 	TaskNode,
@@ -1205,6 +1211,9 @@ export class AgentStatusTreeProvider
 				if (e.affectsConfiguration("commandCentral.laneRegistry.files")) {
 					this.setupFileWatch();
 					void this.reload();
+				}
+				if (e.affectsConfiguration("commandCentral.syncReadiness.enabled")) {
+					this.scheduleTreeRefresh();
 				}
 				if (
 					e.affectsConfiguration("commandCentral.agentStatus.groupByProject") ||
@@ -3905,6 +3914,10 @@ export class AgentStatusTreeProvider
 				return "symphony:taskflows";
 			case "codexRuns":
 				return "symphony:codex-runs";
+			case "syncReadiness":
+				// One card per project dir; the dir is the stable, render-invariant
+				// identity (project name / counts can churn, the path cannot).
+				return `sync-readiness:${element.receipt.projectDir}`;
 			default:
 				return undefined;
 		}
@@ -3970,6 +3983,9 @@ export class AgentStatusTreeProvider
 		}
 		if (element.type === "olderRuns") {
 			return this.createOlderRunsItem(element);
+		}
+		if (element.type === "syncReadiness") {
+			return this.createSyncReadinessItem(element);
 		}
 		if (element.type === "state") {
 			return this.createStateItem(element);
@@ -4065,6 +4081,7 @@ export class AgentStatusTreeProvider
 				return [
 					...legacyDiagnosticsNodes,
 					this.createSourcesProvenanceSummaryNode(symphonyNode),
+					...this.createSyncReadinessCardNodes(),
 					{
 						type: "state",
 						label: "Waiting for agents...",
@@ -4150,6 +4167,7 @@ export class AgentStatusTreeProvider
 				...legacyDiagnosticsNodes,
 				...summaryNodes,
 				this.createSourcesProvenanceSummaryNode(symphonyNode),
+				...this.createSyncReadinessCardNodes(),
 				...(!showOpenClawInline && openclawTasks.length > 0
 					? [
 							{
@@ -4298,6 +4316,17 @@ export class AgentStatusTreeProvider
 
 		if (element.type === "discovered") {
 			return this.getDiscoveredChildren(element.agent);
+		}
+
+		if (element.type === "syncReadiness") {
+			return buildSyncReadinessEvidenceRows(element.receipt).map(
+				(row): StateNode => ({
+					type: "state",
+					label: row.label,
+					description: row.description,
+					icon: row.icon,
+				}),
+			);
 		}
 
 		return [];
@@ -6677,6 +6706,66 @@ export class AgentStatusTreeProvider
 			project,
 			pendingReviewCount,
 		});
+	}
+
+	/** Cap on sync-readiness cards built per render — bounds the synchronous git
+	 * query cost of an opt-in diagnostics surface; operators have a handful of
+	 * open repos in practice. */
+	private static readonly SYNC_READINESS_CARD_LIMIT = 6;
+
+	/**
+	 * The repos to build sync-readiness cards for: the open workspace folders —
+	 * the hub's checkouts the operator is actually working in. De-duplicated,
+	 * resolved, and capped. Each is run through {@link getSyncReadiness}, which
+	 * collects the hub repo live or, when a project's lanes ran on a remote node,
+	 * emits the explicit not-yet-queried node card instead.
+	 */
+	private getSyncReadinessProjectDirs(): string[] {
+		const dirs: string[] = [];
+		const seen = new Set<string>();
+		for (const folder of vscode.workspace.workspaceFolders ?? []) {
+			const dir = path.resolve(folder.uri.fsPath);
+			if (seen.has(dir)) continue;
+			seen.add(dir);
+			dirs.push(dir);
+			if (dirs.length >= AgentStatusTreeProvider.SYNC_READINESS_CARD_LIMIT) {
+				break;
+			}
+		}
+		return dirs;
+	}
+
+	/**
+	 * CCSYNC-04 / PAR-229: build the read-only hub/node sync-readiness card(s)
+	 * pinned in the root provenance area. Opt-in behind
+	 * `commandCentral.syncReadiness.enabled` (default off) — the same diagnostics
+	 * escape-hatch posture as the legacy launcher marker, so the default tree is
+	 * untouched. Returns one card per open workspace folder.
+	 */
+	private createSyncReadinessCardNodes(): SyncReadinessNode[] {
+		const enabled =
+			vscode.workspace
+				.getConfiguration("commandCentral")
+				.get<boolean>("syncReadiness.enabled", false) === true;
+		if (!enabled) return [];
+		return this.getSyncReadinessProjectDirs().map((projectDir) => ({
+			type: "syncReadiness" as const,
+			receipt: this.getSyncReadiness(projectDir),
+		}));
+	}
+
+	private createSyncReadinessItem(node: SyncReadinessNode): vscode.TreeItem {
+		const item = new vscode.TreeItem(
+			`Sync Readiness — ${node.receipt.project}`,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description = formatSyncReadinessSummary(node.receipt);
+		item.iconPath = new vscode.ThemeIcon(syncReadinessIconId(node.receipt));
+		item.tooltip = new vscode.MarkdownString(
+			formatSyncReadinessTooltip(node.receipt),
+		);
+		item.contextValue = "syncReadinessCard";
+		return item;
 	}
 
 	private getPromptSummaryFromPreferredSection(lines: string[]): string | null {

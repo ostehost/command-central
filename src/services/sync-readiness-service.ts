@@ -452,3 +452,195 @@ export function buildUnreachableNodeCard(args: {
 		reachability: args.reachability,
 	});
 }
+
+// ── Card rendering (pure) ────────────────────────────────────────────────────
+//
+// The tree provider owns *how* a card becomes a TreeItem; these pure helpers own
+// *what* it says. Kept here (not in the provider) so the icon, the evidence
+// breakdown, and the tooltip are unit-testable without driving the tree or
+// touching git — the same I/O-free doctrine as agent-status-sections.ts.
+
+/**
+ * Codicon id for the card row, reflecting the receipt's headline state:
+ *  - unreachable node → `question` (parity unknown, never a false green)
+ *  - git query failed → `error`
+ *  - reachable + ready → `pass-filled`
+ *  - reachable + blocked → `warning`
+ */
+export function syncReadinessIconId(receipt: SyncReadinessReceipt): string {
+	if (receipt.blockers.some((b) => b.code === "git-error")) return "error";
+	if (!isReachable(receipt.reachability)) return "question";
+	return receipt.ready ? "pass-filled" : "warning";
+}
+
+/** One expandable evidence row beneath a sync-readiness card. */
+export interface SyncReadinessEvidenceRow {
+	/** Dimension name, e.g. "Repo parity" / "Working tree". */
+	label: string;
+	/** The dimension's value, e.g. "main → origin/main" / "clean". */
+	description: string;
+	/** Codicon id signalling whether this dimension is a blocker. */
+	icon: string;
+}
+
+function branchEvidenceRow(
+	receipt: SyncReadinessReceipt,
+): SyncReadinessEvidenceRow {
+	if (receipt.detachedHead) {
+		return {
+			label: "Branch",
+			description: "detached HEAD — no branch to sync",
+			icon: "warning",
+		};
+	}
+	const branch = receipt.branch ?? "(unknown branch)";
+	if (!receipt.upstream) {
+		return {
+			label: "Branch",
+			description: `${branch} · no upstream`,
+			icon: "warning",
+		};
+	}
+	return {
+		label: "Branch",
+		description: `${branch} → ${receipt.upstream}`,
+		icon: "git-branch",
+	};
+}
+
+function parityEvidenceRow(
+	receipt: SyncReadinessReceipt,
+): SyncReadinessEvidenceRow {
+	const { ahead, behind } = receipt;
+	if (ahead === null || behind === null) {
+		return {
+			label: "Repo parity",
+			description: "unknown (no upstream)",
+			icon: "dash",
+		};
+	}
+	if (ahead === 0 && behind === 0) {
+		return {
+			label: "Repo parity",
+			description: "in sync (0 ahead · 0 behind)",
+			icon: "check",
+		};
+	}
+	if (ahead > 0 && behind > 0) {
+		return {
+			label: "Repo parity",
+			description: `diverged — ${ahead} ahead · ${behind} behind`,
+			icon: "warning",
+		};
+	}
+	return {
+		label: "Repo parity",
+		description: ahead > 0 ? `${ahead} ahead` : `${behind} behind`,
+		icon: "warning",
+	};
+}
+
+function dirtyTreeEvidenceRow(
+	receipt: SyncReadinessReceipt,
+): SyncReadinessEvidenceRow {
+	if (receipt.dirtyCount === null) {
+		return { label: "Working tree", description: "unknown", icon: "dash" };
+	}
+	if (receipt.dirtyCount === 0) {
+		return { label: "Working tree", description: "clean", icon: "check" };
+	}
+	return {
+		label: "Working tree",
+		description: `${receipt.dirtyCount} uncommitted change(s)`,
+		icon: "warning",
+	};
+}
+
+function reviewQueueEvidenceRow(
+	receipt: SyncReadinessReceipt,
+): SyncReadinessEvidenceRow {
+	if (receipt.pendingReviewCount === 0) {
+		return { label: "Review queue", description: "clear", icon: "check" };
+	}
+	return {
+		label: "Review queue",
+		description: `${receipt.pendingReviewCount} lane(s) pending review`,
+		icon: "warning",
+	};
+}
+
+/**
+ * The card's expandable children: one row per evidence dimension named in the
+ * card's contract — branch, repo parity, working tree (dirty), and review queue
+ * — plus a HEAD/tree provenance row. An unreachable node yields ONLY its
+ * explicit gap blocker(s) (no fabricated git facts); a git-error yields a single
+ * error row.
+ */
+export function buildSyncReadinessEvidenceRows(
+	receipt: SyncReadinessReceipt,
+): SyncReadinessEvidenceRow[] {
+	const gitError = receipt.blockers.find((b) => b.code === "git-error");
+	if (gitError) {
+		return [{ label: "Error", description: gitError.message, icon: "error" }];
+	}
+	if (!isReachable(receipt.reachability)) {
+		return receipt.blockers.map((b) => ({
+			label: "Status",
+			description: b.message,
+			icon: "question",
+		}));
+	}
+
+	const rows: SyncReadinessEvidenceRow[] = [
+		branchEvidenceRow(receipt),
+		parityEvidenceRow(receipt),
+		dirtyTreeEvidenceRow(receipt),
+		reviewQueueEvidenceRow(receipt),
+	];
+	if (receipt.head) {
+		rows.push({
+			label: "HEAD",
+			description: receipt.tree
+				? `${receipt.head} · tree ${receipt.tree}`
+				: receipt.head,
+			icon: "git-commit",
+		});
+	}
+	return rows;
+}
+
+/**
+ * Multi-line hover tooltip for the card. States the host and reachability up
+ * front, then the evidence breakdown, then either "Ready to sync." or the
+ * prioritized blocker list. Honors the unreachable contract: a node we cannot
+ * reach lists its gap, never invented parity facts.
+ */
+export function formatSyncReadinessTooltip(
+	receipt: SyncReadinessReceipt,
+): string {
+	const lines = [
+		`Sync readiness — ${receipt.project}`,
+		`Host: ${receipt.host} (${receipt.reachability})`,
+	];
+	if (receipt.blockers.some((b) => b.code === "git-error")) {
+		lines.push("", ...receipt.blockers.map((b) => `• ${b.message}`));
+		return lines.join("\n");
+	}
+	if (!isReachable(receipt.reachability)) {
+		lines.push("", ...receipt.blockers.map((b) => `• ${b.message}`));
+		return lines.join("\n");
+	}
+	for (const row of buildSyncReadinessEvidenceRows(receipt)) {
+		lines.push(`${row.label}: ${row.description}`);
+	}
+	if (receipt.ready) {
+		lines.push("", "Ready to sync.");
+	} else {
+		lines.push(
+			"",
+			"Blockers:",
+			...receipt.blockers.map((b) => `• ${b.message}`),
+		);
+	}
+	return lines.join("\n");
+}
