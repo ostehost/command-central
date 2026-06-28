@@ -15,6 +15,14 @@ if [[ -z "${PENDING_REVIEW_DIR+x}" ]]; then
 	PENDING_REVIEW_DIR="${OSTE_PENDING_REVIEW_DIR:-/tmp/oste-pending-review}"
 fi
 
+# Shared review-gate verdict-marker writer (PAR-290 / LANE-HOOK-02). Sourced
+# DEFENSIVELY: a missing/broken lib must never break the review pipeline, so a
+# failed source is swallowed and the emit calls below are command-guarded.
+if [[ -z "${__OSTE_REVIEW_VERDICT_SH:-}" ]]; then
+	# shellcheck source=review-verdict.sh
+	source "$(dirname "${BASH_SOURCE[0]}")/review-verdict.sh" 2>/dev/null || true
+fi
+
 # TaskCompleted-time snapshot path for canonical review metadata.
 pending_review_snapshot_file() {
 	local task_id="$1"
@@ -449,6 +457,12 @@ pending_review_mark_reviewed() {
 		return 1
 	fi
 
+	# PAR-290 / LANE-HOOK-02: emit the authoritative review-gate verdict marker
+	# the moment the review lands approved. Command-guarded + fail-open.
+	if command -v oste_review_verdict_write >/dev/null 2>&1; then
+		oste_review_verdict_write "$task_id" "approved" 0 "" "pending_review_transition" "reviewed" "review_complete"
+	fi
+
 	# Snapshot the reviewed payload to reviewed/<task_id>.json so audits
 	# (e.g. the autonomy canary at openclaw-autonomy-canary.sh) can see a
 	# real archived artifact alongside the active queue entry. The reviewed/
@@ -490,6 +504,13 @@ pending_review_mark_fixup_requested() {
 	else
 		rm -f "$tmp"
 		return 1
+	fi
+
+	# PAR-290 / LANE-HOOK-02: emit the authoritative review-gate verdict marker
+	# the moment the review lands with requested changes. Command-guarded +
+	# fail-open.
+	if command -v oste_review_verdict_write >/dev/null 2>&1; then
+		oste_review_verdict_write "$task_id" "changes_requested" "$blocker_count" "${blocker_count} review blocker(s)" "pending_review_transition" "awaiting_fixup" "review_complete"
 	fi
 }
 
@@ -611,6 +632,13 @@ pending_review_mark_retry_disabled() {
 	else
 		rm -f "$tmp"
 		return 1
+	fi
+
+	# PAR-290 / LANE-HOOK-02: emit the authoritative review-gate verdict marker
+	# when review retry is disabled (terminal blocked). Command-guarded +
+	# fail-open.
+	if command -v oste_review_verdict_write >/dev/null 2>&1; then
+		oste_review_verdict_write "$task_id" "blocked" 0 "${reason:-retry disabled}" "pending_review_transition" "blocked" "review_complete"
 	fi
 }
 

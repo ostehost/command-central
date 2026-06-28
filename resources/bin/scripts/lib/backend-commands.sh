@@ -152,6 +152,7 @@ build_agent_command() {
 	# is created with a known identifier — the same one the task registry
 	# records — letting the IDE resume the exact conversation later.
 	local session_id=""
+	local settings_file=""
 
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -193,6 +194,10 @@ build_agent_command() {
 				;;
 			--session-id)
 				session_id="$2"
+				shift 2
+				;;
+			--settings-file)
+				settings_file="$2"
 				shift 2
 				;;
 			*)
@@ -272,6 +277,13 @@ build_agent_command() {
 		session_id_flag=" --session-id $(backend_shell_quote_arg "$session_id")"
 	fi
 
+	# Per-lane settings file: additive merge on top of global ~/.claude/settings.json.
+	# Only applies to the claude backend — codex and gemini have no equivalent flag.
+	local settings_flag=""
+	if [[ -n "$settings_file" ]] && [[ "$backend" == "claude" ]]; then
+		settings_flag=" --settings $(backend_shell_quote_arg "$settings_file")"
+	fi
+
 	# Stream file prefix differs by backend
 	local stream_prefix
 	case "$backend" in
@@ -341,7 +353,7 @@ build_agent_command() {
 			;;
 		claude | *)
 			if [[ -n "$interactive" ]]; then
-				cmd="claude \"\$(cat ${prompt_file_arg})\" --dangerously-skip-permissions --chrome${session_id_flag}${model_flag}${max_turns_flag}${thinking_budget_flag}${effort_flag}"
+				cmd="claude \"\$(cat ${prompt_file_arg})\" --dangerously-skip-permissions --chrome${session_id_flag}${model_flag}${max_turns_flag}${thinking_budget_flag}${effort_flag}${settings_flag}"
 			else
 				echo "build_agent_command: Claude launcher lanes require --interactive; refusing print mode" >&2
 				return 1
