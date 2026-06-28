@@ -36,6 +36,7 @@ const STATUS_ICONS: Record<string, string> = {
 	contract_failure: "⚠️",
 	stopped: "⏹️",
 	killed: "💀",
+	paused: "⏸️",
 };
 
 const STATUS_LABELS: Record<AgentTask["status"], string> = {
@@ -47,6 +48,7 @@ const STATUS_LABELS: Record<AgentTask["status"], string> = {
 	contract_failure: "contract failure",
 	stopped: "stopped",
 	killed: "killed",
+	paused: "paused",
 };
 
 const ROLE_ICONS: Record<string, string> = {
@@ -120,6 +122,7 @@ export class AgentDashboardPanel implements vscode.Disposable {
 		const taskList = Object.values(tasks);
 		const counts = countAgentStatuses(taskList);
 		const running: AgentTask[] = [];
+		const paused: AgentTask[] = [];
 		const completed: AgentTask[] = [];
 		const failed: AgentTask[] = [];
 		const stopped: AgentTask[] = [];
@@ -127,6 +130,9 @@ export class AgentDashboardPanel implements vscode.Disposable {
 			switch (task.status) {
 				case "running":
 					running.push(task);
+					break;
+				case "paused":
+					paused.push(task);
 					break;
 				case "completed":
 				case "completed_dirty":
@@ -177,6 +183,7 @@ body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); 
 .card.contract_failure { border-left: 3px solid var(--vscode-charts-orange); }
 .card.stopped { border-left: 3px solid var(--vscode-charts-yellow); }
 .card.killed { border-left: 3px solid var(--vscode-charts-red); }
+.card.paused { border-left: 3px solid var(--vscode-charts-blue); }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .card-title { font-weight: bold; font-size: 14px; }
 .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; }
@@ -186,6 +193,7 @@ body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); 
 .status-badge.contract_failure { background: var(--vscode-charts-orange); color: black; }
 .status-badge.stopped { background: var(--vscode-charts-yellow); color: black; }
 .status-badge.killed { background: var(--vscode-charts-red); color: white; }
+.status-badge.paused { background: var(--vscode-charts-blue); color: white; }
 .detail { color: var(--vscode-descriptionForeground); font-size: 12px; margin: 4px 0; }
 .summary { display: flex; gap: 16px; margin-bottom: 16px; padding: 12px; background: var(--vscode-sideBar-background); border-radius: 6px; }
 .summary-item { text-align: center; }
@@ -203,6 +211,7 @@ ${summaryHtml}
 ${attentionHintHtml}
 ${emptyMessage}
 ${running.length > 0 ? `<h2>Running</h2><div class="grid">${running.map((t) => this.renderCard(t)).join("")}</div>` : ""}
+${paused.length > 0 ? `<h2>Paused</h2><div class="grid">${paused.map((t) => this.renderCard(t)).join("")}</div>` : ""}
 ${completed.length > 0 ? `<h2>Completed</h2><div class="grid">${completed.map((t) => this.renderCard(t)).join("")}</div>` : ""}
 ${failed.length > 0 ? `<h2>Failed</h2><div class="grid">${failed.map((t) => this.renderCard(t)).join("")}</div>` : ""}
 ${stopped.length > 0 ? `<h2>Stopped</h2><div class="grid">${stopped.map((t) => this.renderCard(t)).join("")}</div>` : ""}

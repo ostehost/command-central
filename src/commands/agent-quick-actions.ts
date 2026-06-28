@@ -76,6 +76,11 @@ const STATUS_ACTIONS: Partial<Record<AgentTaskStatus, AgentQuickActionId[]>> = {
 	contract_failure: ["viewTranscript", "showOutput", "viewDiff", "remove"],
 	stopped: ["viewTranscript", "showOutput", "viewDiff", "remove"],
 	killed: ["viewTranscript", "showOutput", "viewDiff", "remove"],
+	// A parked lane must stay inspectable. Inspect actions only — a paused lane is
+	// cleared via kill-to-clear (the Kill tree menu), NOT an in-place restart, and
+	// `remove` is omitted because the process is still alive (the row must not be
+	// dropped out from under it).
+	paused: ["viewTranscript", "viewDiff", "showOutput"],
 };
 
 const OPENCLAW_QUICK_ACTIONS: Record<
@@ -122,7 +127,11 @@ export function getAgentQuickActions(
 	ids.push(...base);
 	if (normalizedOptions.includeAdvancedActions && status !== "running") {
 		if (normalizedOptions.hasResumeSession) ids.push("resumeSession");
-		if (STATUS_ACTIONS[status]) ids.push("restart");
+		// `restart` is an in-place same-id respawn — NOT a valid exit from paused
+		// (kill-to-clear: a parked lane is cleared by kill, then relaunched as a new
+		// lane). restartAgent only kills a `running` task, so restarting a paused
+		// lane would orphan its live process and duplicate the row.
+		if (STATUS_ACTIONS[status] && status !== "paused") ids.push("restart");
 	}
 	return ids.map((id) => QUICK_ACTIONS[id]);
 }

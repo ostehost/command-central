@@ -39,14 +39,15 @@ describe("countAgentStatuses", () => {
 			makeTask("f2", "killed"),
 			makeTask("f3", "contract_failure"),
 			makeTask("s1", "stopped"),
+			makeTask("p1", "paused"),
 		];
 
 		expect(countAgentStatuses(tasks)).toEqual({
 			working: 2,
 			attention: 4,
-			limbo: 2,
+			limbo: 3,
 			done: 1,
-			total: 9,
+			total: 10,
 		});
 	});
 
@@ -58,6 +59,16 @@ describe("countAgentStatuses", () => {
 			done: 0,
 			total: 0,
 		});
+	});
+
+	test("a paused lane counts as Needs Review (limbo), never silently dropped", () => {
+		// Regression: the defaultless switch must bucket `paused` → limbo. Otherwise
+		// a paused-only scope reports every bucket 0 and the status bar renders the
+		// green "No agents" all-clear while a lane is actually parked.
+		const counts = countAgentStatuses([makeTask("p1", "paused")]);
+		expect(counts.limbo).toBe(1);
+		expect(counts.total).toBe(1);
+		expect(formatCountSummary(counts)).not.toBe("No agents");
 	});
 });
 

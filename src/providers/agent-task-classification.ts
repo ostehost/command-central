@@ -336,6 +336,22 @@ export interface CompletionRoutingInfo {
 export function classifyCompletionRouting(
 	task: AgentTask,
 ): CompletionRoutingInfo {
+	// A paused lane is parked, not completing: completion routing is N/A until it
+	// relaunches or is killed. Returning a kind the tooltip's routing line does
+	// not render (only owner-bound/detached produce a line) means the dedicated
+	// "Paused: Parked — process still alive…" honesty line is the single source of
+	// truth — no past-tense "completion was not auto-reported" copy contradicting
+	// a still-alive lane.
+	if (task.status === "paused") {
+		return {
+			kind: "not-applicable",
+			label: "Paused — parked",
+			detail:
+				"Lane is parked (status=paused); completion routing N/A until relaunch or kill",
+			icon: "debug-pause",
+			iconColor: "charts.blue",
+		};
+	}
 	const isTerminal =
 		task.status === "completed" ||
 		task.status === "completed_dirty" ||

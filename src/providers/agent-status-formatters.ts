@@ -39,6 +39,11 @@ export function getStatusThemeIcon(
 			);
 		case "killed":
 			return new vscode.ThemeIcon("close", new vscode.ThemeColor("charts.red"));
+		case "paused":
+			return new vscode.ThemeIcon(
+				"debug-pause",
+				new vscode.ThemeColor("charts.blue"),
+			);
 		default:
 			return new vscode.ThemeIcon("circle-outline");
 	}
@@ -52,6 +57,8 @@ export function getStatusDisplayLabel(status: AgentTaskStatus): string {
 			return "completed (stale)";
 		case "contract_failure":
 			return "contract failure";
+		case "paused":
+			return "paused";
 		default:
 			return status;
 	}
@@ -109,7 +116,9 @@ export function formatDurationPrecise(
 }
 
 function getStatusElapsedReference(task: AgentTask): string {
-	if (task.status === "running") {
+	// `paused` is non-terminal (no completed_at), so measure elapsed from the
+	// original start, the same as `running`.
+	if (task.status === "running" || task.status === "paused") {
 		return task.started_at;
 	}
 	return task.completed_at ?? task.started_at;
@@ -132,6 +141,11 @@ export function formatTaskElapsedDescription(task: AgentTask): string {
 			return `Stopped ${elapsed} ago`;
 		case "killed":
 			return `Killed ${elapsed} ago`;
+		case "paused":
+			// Non-terminal: parked and still ticking, like `running`. The
+			// liveness-aware "parked" vs "ended" qualifier is layered on at the
+			// tree-item level where the process-liveness probe is available.
+			return `Paused for ${elapsed}`;
 		default:
 			return `Failed ${elapsed} ago`;
 	}

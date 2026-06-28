@@ -69,6 +69,35 @@ describe("AgentStatusTreeProvider — rendering & metadata", () => {
 			expect(item.description).toContain("1h ago");
 			expect(item.description).not.toContain("My App");
 		});
+
+		test("a paused lane renders the honest parked/ended label without auto-flipping status (§6)", () => {
+			const task = createMockTask({
+				status: "paused",
+				started_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+			});
+			provider.getDiffSummary = () => null;
+			type LivenessPatch = {
+				isTaskSessionConfirmedDead: (t: unknown) => boolean;
+			};
+
+			// Process still alive (not positively confirmed dead) → "parked".
+			(provider as unknown as LivenessPatch).isTaskSessionConfirmedDead = () =>
+				false;
+			const alive = provider.getTreeItem({ type: "task", task });
+			expect(alive.contextValue?.startsWith("agentTask.paused")).toBe(true);
+			expect(String(alive.description)).toContain("parked");
+			expect(String(alive.description)).not.toContain("ended");
+
+			// Process later confirmed dead → honest "ended — relaunch as new lane".
+			// The STATUS stays paused (no auto-flip) — only the label reflects death.
+			(provider as unknown as LivenessPatch).isTaskSessionConfirmedDead = () =>
+				true;
+			const dead = provider.getTreeItem({ type: "task", task });
+			expect(String(dead.description)).toContain(
+				"ended — relaunch as new lane",
+			);
+			expect(dead.contextValue?.startsWith("agentTask.paused")).toBe(true);
+		});
 	});
 
 	describe("git info in tree", () => {

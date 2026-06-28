@@ -25,7 +25,11 @@ const VERSION_FILE = "resources/bin/.launcher-version";
 // to the launcher binary (`resources/bin/scripts/<name>`).
 const SOURCE_SCRIPTS_DIR = path.join(SOURCE_REPO, "scripts");
 const DEST_SCRIPTS_DIR = "resources/bin/scripts";
-const HELPER_TOP_LEVEL_FILES = ["oste-steer.sh", "routing-policy.json"];
+const HELPER_TOP_LEVEL_FILES = [
+	"oste-pause.sh",
+	"oste-steer.sh",
+	"routing-policy.json",
+];
 
 // `scripts/lib/` entries worth mirroring: only the runtime types the bundled
 // launcher actually executes (bash, python, osascript — bundle-runtime.sh

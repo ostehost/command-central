@@ -41,6 +41,7 @@ type AgentRegistryCommandDeps = Parameters<
 const EXPECTED_COMMAND_IDS = [
 	"commandCentral.captureAgentOutput",
 	"commandCentral.killAgent",
+	"commandCentral.pauseAgent",
 	"commandCentral.clearCompletedAgents",
 	"commandCentral.markStaleAgentFailed",
 	"commandCentral.reapStaleAgents",
@@ -318,6 +319,30 @@ describe("registerAgentRegistryCommands", () => {
 		);
 	});
 
+	test("killAgent surfaces the script's stderr when oste-kill.sh refuses (async exec)", async () => {
+		const tasksFilePath = makeTasksFile({});
+		statusProvider = providerWithFile(tasksFilePath);
+		// A non-force refusal: oste-kill.sh exits non-zero with the reason on stderr.
+		const scriptPath = makeHelperScript(
+			'echo "Agent still running after 5s. Use --force to kill." >&2\nexit 1',
+		);
+		terminalManager = {
+			resolveLauncherHelperScriptPath: mock(() => Promise.resolve(scriptPath)),
+		};
+		vscodeMock.window.showWarningMessage = mock(() => Promise.resolve("Kill"));
+		registerAgentRegistryCommands(deps);
+
+		await handler("commandCentral.killAgent")({
+			type: "task",
+			task: { id: "task-1", session_id: "sess-123" },
+		});
+
+		expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith(
+			"Failed to kill agent: Agent still running after 5s. Use --force to kill.",
+		);
+		expect(statusProvider.reload).not.toHaveBeenCalled();
+	});
+
 	test("killAgent rejects an invalid launcher-task session ID before prompting", async () => {
 		registerAgentRegistryCommands(deps);
 
@@ -330,6 +355,101 @@ describe("registerAgentRegistryCommands", () => {
 			"Invalid session ID.",
 		);
 		expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalled();
+	});
+
+	test("pauseAgent warns when no node is provided", async () => {
+		registerAgentRegistryCommands(deps);
+
+		await handler("commandCentral.pauseAgent")();
+
+		expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+			"No agent selected. Right-click an agent in the tree.",
+		);
+	});
+
+	test("pauseAgent rejects an invalid session ID before prompting", async () => {
+		registerAgentRegistryCommands(deps);
+
+		await handler("commandCentral.pauseAgent")({
+			type: "task",
+			task: { id: "task-1", session_id: "bad session!" },
+		});
+
+		expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith(
+			"Invalid session ID.",
+		);
+		expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalled();
+	});
+
+	test("pauseAgent runs oste-pause.sh with the session id after confirmation — never SIGTERM", async () => {
+		const tasksFilePath = makeTasksFile({});
+		statusProvider = providerWithFile(tasksFilePath);
+		const markerPath = path.join(path.dirname(tasksFilePath), "paused-arg");
+		const scriptPath = makeHelperScript(`printf "%s" "$1" > "${markerPath}"`);
+		terminalManager = {
+			resolveLauncherHelperScriptPath: mock(() => Promise.resolve(scriptPath)),
+		};
+		vscodeMock.window.showWarningMessage = mock(() => Promise.resolve("Pause"));
+		registerAgentRegistryCommands(deps);
+
+		await handler("commandCentral.pauseAgent")({
+			type: "task",
+			task: { id: "task-1", session_id: "sess-123" },
+		});
+
+		expect(
+			terminalManager.resolveLauncherHelperScriptPath,
+		).toHaveBeenCalledWith("oste-pause.sh");
+		expect(fs.readFileSync(markerPath, "utf-8")).toBe("sess-123");
+		expect(statusProvider.reload).toHaveBeenCalled();
+		expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+			'Agent "task-1" paused — parked in Needs Review.',
+		);
+	});
+
+	test("pauseAgent does nothing when confirmation is declined", async () => {
+		const tasksFilePath = makeTasksFile({});
+		statusProvider = providerWithFile(tasksFilePath);
+		const scriptPath = makeHelperScript("exit 0");
+		terminalManager = {
+			resolveLauncherHelperScriptPath: mock(() => Promise.resolve(scriptPath)),
+		};
+		registerAgentRegistryCommands(deps);
+
+		await handler("commandCentral.pauseAgent")({
+			type: "task",
+			task: { id: "task-1", session_id: "sess-123" },
+		});
+
+		expect(
+			terminalManager.resolveLauncherHelperScriptPath,
+		).not.toHaveBeenCalled();
+		expect(statusProvider.reload).not.toHaveBeenCalled();
+		expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+	});
+
+	test("pauseAgent surfaces the script's stderr when oste-pause.sh refuses", async () => {
+		const tasksFilePath = makeTasksFile({});
+		statusProvider = providerWithFile(tasksFilePath);
+		// A refusal: the script exits non-zero and explains why on stderr.
+		const scriptPath = makeHelperScript(
+			'echo "Refusing to pause: lane is actively working." >&2\nexit 1',
+		);
+		terminalManager = {
+			resolveLauncherHelperScriptPath: mock(() => Promise.resolve(scriptPath)),
+		};
+		vscodeMock.window.showWarningMessage = mock(() => Promise.resolve("Pause"));
+		registerAgentRegistryCommands(deps);
+
+		await handler("commandCentral.pauseAgent")({
+			type: "task",
+			task: { id: "task-1", session_id: "sess-123" },
+		});
+
+		expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith(
+			"Failed to pause agent: Refusing to pause: lane is actively working.",
+		);
+		expect(statusProvider.reload).not.toHaveBeenCalled();
 	});
 
 	test("clearCompletedAgents errors while the provider is missing", async () => {

@@ -28,6 +28,15 @@ describe("git-diff commit-boundary resolution", () => {
 		).toBeUndefined();
 	});
 
+	test("getTaskDiffStartCommit returns undefined for paused tasks (alive WIP → working-tree diff, not an empty bounded range)", () => {
+		// A paused lane is non-terminal: still alive with uncommitted WIP and no
+		// end_commit, so it must diff the working tree like running — otherwise its
+		// File Changes / View Diff render empty.
+		expect(
+			getTaskDiffStartCommit(makeTask({ status: "paused" })),
+		).toBeUndefined();
+	});
+
 	test("getTaskDiffStartCommit prefers explicit start_commit, then start_sha", () => {
 		expect(getTaskDiffStartCommit(makeTask({ start_commit: "abc123" }))).toBe(
 			"abc123",

@@ -252,7 +252,11 @@ export function registerAgentDiffCommands(): vscode.Disposable[] {
 					}
 				}
 
-				const isRunningTask = task.status === "running";
+				// paused is non-terminal (alive WIP, no end_commit) → working-tree
+				// diff like running, so View Diff on a parked lane shows its WIP
+				// instead of dead-ending on the missing end commit.
+				const isRunningTask =
+					task.status === "running" || task.status === "paused";
 				const endRef =
 					task.end_commit && task.end_commit !== "unknown"
 						? task.end_commit

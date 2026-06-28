@@ -422,8 +422,12 @@ export { detectAgentType, getAgentTypeIcon } from "./agent-type-detection.js";
 
 // ── Task normalization (v1 → v2) ─────────────────────────────────────
 
+// NOTE: a byte-identical twin lives in agent-task-normalize.ts — keep both in
+// sync. A status missing from this set is coerced to "stopped" by normalizeTask
+// (a `paused` row would land in Action instead of Needs Review).
 const VALID_TASK_STATUSES = new Set<AgentTaskStatus>([
 	"running",
+	"paused",
 	"stopped",
 	"killed",
 	"completed",
@@ -4610,6 +4614,13 @@ export class AgentStatusTreeProvider
 
 		if (status === "running") return "running";
 
+		// A paused lane is intentionally parked, awaiting an operator decision
+		// (relaunch or kill) — that is Needs Review (limbo), not "broke" (action)
+		// or "gone" (history). Resolved BEFORE the lifecycle-conflict block so a
+		// paused-but-alive lane is never reclassified as a live-process conflict
+		// (paused is deliberately kept out of CONFLICT_ELIGIBLE_STATUSES).
+		if (status === "paused") return "limbo";
+
 		// Lifecycle conflict: the launcher recorded a TERMINAL status but the
 		// session is provably alive — surface in attention ("live attention
 		// required") so the contradiction is visible, never silently grouped as a
@@ -5877,7 +5888,12 @@ export class AgentStatusTreeProvider
 			additions: diff.additions,
 			deletions: diff.deletions,
 			status: diff.status ?? deriveFallbackFileChangeStatus(diff),
-			diffMode: t.status === "running" ? "workingTree" : "boundedCommit",
+			// paused is non-terminal (alive WIP, no end_commit) → working-tree diff
+			// like running, not a bounded commit range.
+			diffMode:
+				t.status === "running" || t.status === "paused"
+					? "workingTree"
+					: "boundedCommit",
 			startCommit,
 			endCommit,
 		}));
@@ -8257,6 +8273,7 @@ export class AgentStatusTreeProvider
 			openclawTasks.some(
 				(task) => task.status === "blocked" || task.status === "lost",
 			);
+		const hasPaused = tasks.some((t) => t.status === "paused");
 
 		if (hasFailed) {
 			return new vscode.ThemeIcon("error", new vscode.ThemeColor("charts.red"));
@@ -8277,6 +8294,14 @@ export class AgentStatusTreeProvider
 			return new vscode.ThemeIcon(
 				"sync~spin",
 				new vscode.ThemeColor("charts.yellow"),
+			);
+		}
+		if (hasPaused) {
+			// Paused lanes are Needs Review (limbo) — a paused-only scope must not
+			// render the green "all clear" check.
+			return new vscode.ThemeIcon(
+				"debug-pause",
+				new vscode.ThemeColor("charts.blue"),
 			);
 		}
 		return new vscode.ThemeIcon(
@@ -8480,6 +8505,19 @@ export class AgentStatusTreeProvider
 		} else {
 			descriptionParts.push(relativeTime(this.getTaskActivityTimeMs(task)));
 		}
+		// Honesty (DESIGN-paused-lane-lifecycle-v2 §6): a paused lane keeps
+		// status=paused even after its process later dies (no auto-flip), so the
+		// LABEL — not the status — must reflect liveness. A confirmed-dead parked
+		// lane is "ended", never implying impossible in-place resumption. The
+		// probe is conservative (false unless POSITIVELY confirmed dead), so an
+		// unprobeable/remote paused lane honestly stays "parked".
+		const pausedConfirmedDead =
+			task.status === "paused" && this.isTaskSessionConfirmedDead(task);
+		if (task.status === "paused") {
+			descriptionParts.push(
+				pausedConfirmedDead ? "ended — relaunch as new lane" : "parked",
+			);
+		}
 		if (isReviewed) {
 			descriptionParts.push("✓");
 		}
@@ -8635,6 +8673,11 @@ export class AgentStatusTreeProvider
 				`Status: ${getStatusDisplayLabel(task.status)}`,
 				lifecycleConflictLine,
 				detachedLivenessLine,
+				task.status === "paused"
+					? pausedConfirmedDead
+						? "**$(debug-pause) Paused:** Process ended — relaunch as a new lane (in-place resume not possible)."
+						: "**$(debug-pause) Paused:** Parked — process still alive, awaiting relaunch or kill."
+					: null,
 				codexRunNote,
 				fallback
 					? `Model: ${fallback.actualFull} (fallback from ${fallback.requestedFull})`

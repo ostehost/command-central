@@ -23,7 +23,11 @@ import {
 export const GIT_DIFF_TIMEOUT_MS = 1_500;
 
 export function getTaskDiffStartCommit(t: AgentTask): string | undefined {
-	if (t.status === "running") return undefined;
+	// `paused` is non-terminal: the process is typically still alive with
+	// uncommitted WIP and no end_commit, so it diffs the working tree like a
+	// running lane (returning undefined here routes to the working-tree path),
+	// NOT a bounded start..end range that would render empty.
+	if (t.status === "running" || t.status === "paused") return undefined;
 
 	if (t.start_commit && t.start_commit !== "unknown") {
 		return t.start_commit;

@@ -17,8 +17,12 @@ import type {
 } from "./agent-status-tree-provider.js";
 import { canonicalGenerationToken } from "./agent-task-classification.js";
 
+// NOTE: a byte-identical twin lives in agent-status-tree-provider.ts — keep
+// both in sync. A status missing from this set is coerced to "stopped" below
+// (a `paused` row would land in Action instead of Needs Review).
 const VALID_TASK_STATUSES = new Set<AgentTaskStatus>([
 	"running",
+	"paused",
 	"stopped",
 	"killed",
 	"completed",

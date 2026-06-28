@@ -57,6 +57,11 @@ export function countAgentStatuses(
 				break;
 			case "completed_dirty":
 			case "completed_stale":
+			// `paused` is Needs Review (limbo) — same bucket as getNodeStatusGroup
+			// and sectionFromSignals. Without this case the defaultless switch
+			// drops it into no bucket, so a paused-only scope renders the green
+			// "No agents" all-clear in the status bar/dashboard summary.
+			case "paused":
 				counts.limbo++;
 				break;
 			case "failed":

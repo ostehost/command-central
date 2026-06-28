@@ -1891,6 +1891,32 @@ describe("AgentStatusTreeProvider — discovery", () => {
 		expect(icon.color?.id).toBe("charts.green");
 	});
 
+	test("summary icon is blue (needs-review), NOT green all-clear, for a paused-only scope (C5)", () => {
+		const paused = createMockTask({ id: "t1", status: "paused" });
+		provider.readRegistry = () => createMockRegistry({ t1: paused });
+		provider.reload();
+
+		const summary = getSummaryNode(provider.getChildren());
+		const item = provider.getTreeItem(summary);
+		const icon = item.iconPath as { id: string; color?: { id: string } };
+		expect(icon.id).toBe("debug-pause");
+		expect(icon.color?.id).toBe("charts.blue");
+		expect(icon.id).not.toBe("check-all");
+	});
+
+	test("a failed task still outranks paused in the summary icon (ordering)", () => {
+		const paused = createMockTask({ id: "t1", status: "paused" });
+		const failed = createMockTask({ id: "t2", status: "failed" });
+		provider.readRegistry = () =>
+			createMockRegistry({ t1: paused, t2: failed });
+		provider.reload();
+
+		const summary = getSummaryNode(provider.getChildren());
+		const item = provider.getTreeItem(summary);
+		const icon = item.iconPath as { id: string; color?: { id: string } };
+		expect(icon.color?.id).toBe("charts.red");
+	});
+
 	test("summary icon is orange for contract failure when no running/failed", () => {
 		const contractFailure = createMockTask({
 			id: "t1",

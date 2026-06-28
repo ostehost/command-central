@@ -69,7 +69,11 @@ const REQUIRED_LAUNCHER_FLAGS = [
 	"--parse-icon",
 	"--session-id",
 ];
-const REQUIRED_LAUNCHER_HELPERS = ["oste-capture.sh", "oste-kill.sh"];
+const REQUIRED_LAUNCHER_HELPERS = [
+	"oste-capture.sh",
+	"oste-kill.sh",
+	"oste-pause.sh",
+];
 
 const REQUIRED_STEER_FLAGS = ["--raw", "--by-task-id"];
 

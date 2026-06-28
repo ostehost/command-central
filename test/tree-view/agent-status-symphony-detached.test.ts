@@ -237,6 +237,26 @@ describe("classifyCompletionRouting — Symphony lane handling", () => {
 		expect(routing.iconColor).toBe("charts.yellow");
 	});
 
+	test("REGRESSION: paused lane gets a not-applicable routing kind (no in-flight AND no terminal 'detached' copy)", () => {
+		// A parked (paused) lane is non-running but NOT mid-flight awaiting
+		// completion routing, AND not terminal/detached — it is parked. It must
+		// skip BOTH the running branch's present-tense "will not auto-report"
+		// detail and the terminal "detached / completion was not auto-reported"
+		// copy, which would contradict the dedicated "Paused: Parked" honesty line.
+		// kind:"not-applicable" suppresses the tooltip's routing line entirely.
+		const task = makeCompletedDetachedTask({
+			id: "manual-PAR-319-native-workroom",
+			status: "paused",
+			completed_at: undefined,
+			orchestration_mode: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("not-applicable");
+		expect(routing.label).toBe("Paused — parked");
+		expect(routing.detail).not.toContain("will not auto-report");
+		expect(routing.detail).not.toContain("auto-reported");
+	});
+
 	test("failed Symphony lane (status 'failed') also gets muted copy", () => {
 		const task = makeCompletedDetachedTask({
 			id: "symphony-PAR-195-19fde801",

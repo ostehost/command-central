@@ -147,6 +147,31 @@ describe("AgentStatusBar", () => {
 		expect(mockStatusBarItem.text).toBe("$(check) 1 done");
 	});
 
+	test("paused-only scope shows the needs-review pause icon, not green check", async () => {
+		const { AgentStatusBar } = await loadModule();
+		const bar = new AgentStatusBar();
+
+		bar.update([createTask({ id: "t1", status: "paused" })]);
+
+		// Regression: a parked lane is Needs Review (limbo) and must NOT render the
+		// green all-clear `$(check)` (visually "everything finished, nothing to do").
+		expect(mockStatusBarItem.text).toBe("$(debug-pause) 1 done");
+		expect(mockStatusBarItem.backgroundColor).toBeUndefined();
+	});
+
+	test("running outranks paused in the status bar icon", async () => {
+		const { AgentStatusBar } = await loadModule();
+		const bar = new AgentStatusBar();
+
+		bar.update([
+			createTask({ id: "t1", status: "running" }),
+			createTask({ id: "t2", status: "paused" }),
+		]);
+
+		// Mirrors getSummaryIcon precedence: a live lane still shows the running icon.
+		expect(mockStatusBarItem.text).toBe("$(pulse) 1 working · 1 done");
+	});
+
 	test("shows failed with warning icon and error background", async () => {
 		const { AgentStatusBar } = await loadModule();
 		const bar = new AgentStatusBar();

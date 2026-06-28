@@ -118,6 +118,7 @@ describe("status icon mapping", () => {
 			["contract_failure", "warning", "charts.orange"],
 			["stopped", "debug-stop", "charts.purple"],
 			["killed", "close", "charts.red"],
+			["paused", "debug-pause", "charts.blue"],
 		] as const;
 
 		for (const [status, expectedIcon, expectedColor] of cases) {
@@ -175,6 +176,21 @@ describe("classifyCompletionRouting", () => {
 		expect(routing.label).toBe("Detached — manual observation required");
 		expect(routing.icon).toBe("debug-disconnect");
 		expect(routing.iconColor).toBe("charts.yellow");
+	});
+
+	test("paused lane is not-applicable (no detached/completion-routing line), even with no session_key/callback", () => {
+		// A parked-but-alive lane must NOT inherit the terminal "completion was not
+		// auto-reported" copy — that contradicts the dedicated "Paused: Parked"
+		// honesty line. kind:"not-applicable" makes the provider's routing line null.
+		const task = createMockTask({
+			status: "paused",
+			session_key: null,
+			callback_url: null,
+		});
+		const routing = classifyCompletionRouting(task);
+		expect(routing.kind).toBe("not-applicable");
+		expect(routing.label).toBe("Paused — parked");
+		expect(routing.detail).not.toContain("auto-report");
 	});
 
 	test("completed reviewer task with no routing uses calmer detached copy", () => {
@@ -350,6 +366,14 @@ describe("classifyLifecycleConflict", () => {
 		const task = createMockTask({ status: "contract_failure" });
 		const conflict = classifyLifecycleConflict(task, "alive");
 		expect(conflict.kind).toBe("live-process-conflict");
+	});
+
+	test("paused task with alive evidence returns none (non-terminal, must stay out of CONFLICT_ELIGIBLE_STATUSES — C3)", () => {
+		// A paused-but-alive lane is Needs Review, NOT a live-process conflict.
+		// Adding paused to CONFLICT_ELIGIBLE_STATUSES would mis-route it to Action.
+		const task = createMockTask({ status: "paused" });
+		const conflict = classifyLifecycleConflict(task, "alive");
+		expect(conflict.kind).toBe("none");
 	});
 
 	test("running task with alive evidence returns none (not terminal)", () => {

@@ -2,7 +2,7 @@
   "name": "command-central",
   "displayName": "Command Central",
   "description": "The VS Code agent control tower. Monitor all your AI coding agents from one sidebar.",
-  "version": "0.6.0-rc.71",
+  "version": "0.6.0-rc.72",
   "publisher": "oste",
   "icon": "resources/icons/icon.png",
   "type": "module",
@@ -871,6 +871,12 @@
         "icon": "$(close)"
       },
       {
+        "command": "commandCentral.pauseAgent",
+        "title": "Pause Agent",
+        "category": "Command Central",
+        "icon": "$(debug-pause)"
+      },
+      {
         "command": "commandCentral.removeAgentTask",
         "title": "Remove",
         "category": "Command Central",
@@ -1406,13 +1412,23 @@
           "group": "inline"
         },
         {
+          "command": "commandCentral.pauseAgent",
+          "when": "viewItem =~ /^agentTask\\.running/ && commandCentral.hasLauncher",
+          "group": "inline"
+        },
+        {
+          "command": "commandCentral.pauseAgent",
+          "when": "viewItem =~ /^agentTask\\.running/ && commandCentral.hasLauncher",
+          "group": "2_actions"
+        },
+        {
           "command": "commandCentral.killAgent",
-          "when": "(viewItem =~ /^agentTask\\.running/ && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
+          "when": "(viewItem =~ /^agentTask\\.(running|paused)/ && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
           "group": "inline"
         },
         {
           "command": "commandCentral.killAgent",
-          "when": "(viewItem =~ /^agentTask\\.running/ && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
+          "when": "(viewItem =~ /^agentTask\\.(running|paused)/ && commandCentral.hasLauncher) || viewItem == discoveredAgent.running",
           "group": "2_actions"
         },
         {
