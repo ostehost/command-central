@@ -10,7 +10,10 @@
  * blocker and NO fabricated git facts — never a falsely-clean "ready" card.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
 	buildSyncReadinessEvidenceRows,
 	buildUnreachableNodeCard,
@@ -19,7 +22,10 @@ import {
 	formatSyncReadinessSummary,
 	formatSyncReadinessTooltip,
 	type GitQueryRunner,
+	ingestNodeSyncReadinessReceipt,
 	isReachable,
+	nodeSyncReadinessReceiptPath,
+	readNodeSyncReadinessReceipt,
 	syncReadinessIconId,
 } from "../../src/services/sync-readiness-service.js";
 
@@ -110,6 +116,15 @@ describe("evaluateSyncReadiness — reachable hub", () => {
 		expect(r.blockers.map((b) => b.code)).toContain("pending-review");
 	});
 
+	test("a live in-flight lane is a blocker", () => {
+		const r = evaluateSyncReadiness({ ...CLEAN, liveLaneCount: 2 });
+		expect(r.liveLaneCount).toBe(2);
+		expect(r.ready).toBe(false);
+		const live = r.blockers.find((b) => b.code === "live-lane");
+		expect(live).toBeDefined();
+		expect(live?.message).toContain("2 live lane");
+	});
+
 	test("blockers are prioritized action-first (dirty before behind before review)", () => {
 		const r = evaluateSyncReadiness({
 			...CLEAN,
@@ -120,6 +135,22 @@ describe("evaluateSyncReadiness — reachable hub", () => {
 		expect(r.blockers.map((b) => b.code)).toEqual([
 			"dirty-tree",
 			"behind",
+			"pending-review",
+		]);
+	});
+
+	test("live-lane outranks dirty/divergent/pending-review in priority order", () => {
+		const r = evaluateSyncReadiness({
+			...CLEAN,
+			liveLaneCount: 1,
+			porcelain: " M a\n",
+			aheadBehind: "2\t3",
+			pendingReviewCount: 4,
+		});
+		expect(r.blockers.map((b) => b.code)).toEqual([
+			"live-lane",
+			"dirty-tree",
+			"diverged",
 			"pending-review",
 		]);
 	});
@@ -376,6 +407,20 @@ describe("buildSyncReadinessEvidenceRows", () => {
 		expect(byLabel["Review queue"]?.icon).toBe("warning");
 	});
 
+	test("a Live work row appears only when a lane is in flight", () => {
+		const clean = buildSyncReadinessEvidenceRows(evaluateSyncReadiness(CLEAN));
+		expect(clean.some((r) => r.label === "Live work")).toBe(false);
+
+		const live = buildSyncReadinessEvidenceRows(
+			evaluateSyncReadiness({ ...CLEAN, liveLaneCount: 2 }),
+		).find((r) => r.label === "Live work");
+		expect(live).toEqual({
+			label: "Live work",
+			description: "2 lane(s) in flight",
+			icon: "warning",
+		});
+	});
+
 	test("detached HEAD and missing upstream surface on the branch row", () => {
 		const detached = buildSyncReadinessEvidenceRows(
 			evaluateSyncReadiness({
@@ -464,5 +509,156 @@ describe("formatSyncReadinessTooltip", () => {
 		);
 		expect(tip).toContain("node-7");
 		expect(tip).not.toContain("Repo parity:");
+	});
+});
+
+describe("ingestNodeSyncReadinessReceipt — node-queried seam", () => {
+	const EXPECTED = {
+		host: "node-7",
+		project: "infra",
+		projectDir: "/srv/infra",
+	};
+
+	test("a node's published facts fold into a real 'queried' receipt", () => {
+		const r = ingestNodeSyncReadinessReceipt(
+			{
+				host: "node-7",
+				project: "infra",
+				projectDir: "/srv/infra",
+				branch: "main",
+				upstream: "origin/main",
+				head: "n0de12",
+				tree: "tr33ee",
+				porcelain: "",
+				aheadBehind: "0\t0",
+				pendingReviewCount: 0,
+			},
+			EXPECTED,
+		);
+		expect(r).not.toBeNull();
+		if (!r) return;
+		expect(r.reachability).toBe("queried");
+		expect(isReachable(r.reachability)).toBe(true);
+		expect(r.ready).toBe(true);
+		expect(r.branch).toBe("main");
+		expect(r.upstream).toBe("origin/main");
+		expect(r.head).toBe("n0de12");
+		expect(r.tree).toBe("tr33ee");
+		expect(r.dirtyCount).toBe(0);
+	});
+
+	test("a queried node still surfaces its own blockers (never auto-green)", () => {
+		const r = ingestNodeSyncReadinessReceipt(
+			{
+				host: "node-7",
+				project: "infra",
+				branch: "main",
+				upstream: "origin/main",
+				porcelain: " M a\n?? b\n",
+				aheadBehind: "0\t1",
+			},
+			EXPECTED,
+		);
+		expect(r?.reachability).toBe("queried");
+		expect(r?.ready).toBe(false);
+		expect(r?.dirtyCount).toBe(2);
+		expect(r?.blockers.map((b) => b.code)).toEqual(["dirty-tree", "ahead"]);
+	});
+
+	test("a node may self-declare node-unavailable — no fabricated facts", () => {
+		const r = ingestNodeSyncReadinessReceipt(
+			{ host: "node-7", project: "infra", reachability: "node-unavailable" },
+			EXPECTED,
+		);
+		expect(r?.reachability).toBe("node-unavailable");
+		expect(r?.ready).toBe(false);
+		expect(r?.branch).toBeNull();
+		expect(r?.blockers.map((b) => b.code)).toEqual(["node-unavailable"]);
+	});
+
+	test("a receipt attributed to a DIFFERENT host is rejected (no mis-label)", () => {
+		expect(
+			ingestNodeSyncReadinessReceipt(
+				{ host: "node-9", project: "infra", branch: "main" },
+				EXPECTED,
+			),
+		).toBeNull();
+	});
+
+	test("malformed payloads are rejected", () => {
+		expect(ingestNodeSyncReadinessReceipt(null, EXPECTED)).toBeNull();
+		expect(ingestNodeSyncReadinessReceipt("nope", EXPECTED)).toBeNull();
+		expect(ingestNodeSyncReadinessReceipt([], EXPECTED)).toBeNull();
+		// Missing host → cannot attribute → rejected.
+		expect(
+			ingestNodeSyncReadinessReceipt({ project: "infra" }, EXPECTED),
+		).toBeNull();
+	});
+});
+
+describe("readNodeSyncReadinessReceipt — file-backed seam", () => {
+	const dirs: string[] = [];
+
+	function scratchDir(): string {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cc-sync-readiness-"));
+		dirs.push(dir);
+		return dir;
+	}
+
+	afterEach(() => {
+		for (const dir of dirs.splice(0)) {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("a fresh published file reads back as a 'queried' card", () => {
+		const dir = scratchDir();
+		const file = nodeSyncReadinessReceiptPath("node-7", "infra", dir);
+		fs.writeFileSync(
+			file,
+			JSON.stringify({
+				host: "node-7",
+				project: "infra",
+				projectDir: "/srv/infra",
+				branch: "main",
+				upstream: "origin/main",
+				head: "n0de12",
+				tree: "tr33ee",
+				porcelain: "",
+				aheadBehind: "0\t0",
+			}),
+		);
+		const r = readNodeSyncReadinessReceipt(
+			{ host: "node-7", project: "infra", projectDir: "/srv/infra" },
+			{ dir },
+		);
+		expect(r?.reachability).toBe("queried");
+		expect(r?.ready).toBe(true);
+		expect(r?.branch).toBe("main");
+	});
+
+	test("a missing file yields null (caller renders not-yet-queried)", () => {
+		const dir = scratchDir();
+		expect(
+			readNodeSyncReadinessReceipt(
+				{ host: "ghost", project: "infra" },
+				{ dir },
+			),
+		).toBeNull();
+	});
+
+	test("a stale file (older than maxAge) is ignored", () => {
+		const dir = scratchDir();
+		const file = nodeSyncReadinessReceiptPath("node-7", "infra", dir);
+		fs.writeFileSync(
+			file,
+			JSON.stringify({ host: "node-7", project: "infra", branch: "main" }),
+		);
+		const stat = fs.statSync(file);
+		const r = readNodeSyncReadinessReceipt(
+			{ host: "node-7", project: "infra" },
+			{ dir, maxAgeMs: 1000, nowMs: stat.mtimeMs + 60_000 },
+		);
+		expect(r).toBeNull();
 	});
 });

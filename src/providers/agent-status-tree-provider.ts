@@ -36,6 +36,7 @@ import {
 	collectHubSyncReadiness,
 	formatSyncReadinessSummary,
 	formatSyncReadinessTooltip,
+	readNodeSyncReadinessReceipt,
 	type SyncReadinessReceipt,
 	syncReadinessIconId,
 } from "../services/sync-readiness-service.js";
@@ -3914,10 +3915,15 @@ export class AgentStatusTreeProvider
 				return "symphony:taskflows";
 			case "codexRuns":
 				return "symphony:codex-runs";
-			case "syncReadiness":
-				// One card per project dir; the dir is the stable, render-invariant
-				// identity (project name / counts can churn, the path cannot).
-				return `sync-readiness:${element.receipt.projectDir}`;
+			case "syncReadiness": {
+				// The hub card keeps the bare, render-invariant per-dir id (project
+				// name / counts churn, the path does not). Node cards add their host
+				// so a hub + one-or-more node cards for the same project never collide.
+				const r = element.receipt;
+				return r.reachability === "local-hub"
+					? `sync-readiness:${r.projectDir}`
+					: `sync-readiness:${r.projectDir}:node:${r.host}`;
+			}
 			default:
 				return undefined;
 		}
@@ -6672,40 +6678,160 @@ export class AgentStatusTreeProvider
 	}
 
 	/**
-	 * CCSYNC-04: build a read-only per-project sync-readiness receipt
-	 * (host-labeled branch/upstream/ahead-behind/HEAD/tree/dirty-count + a
-	 * prioritized blocker list). Hub-side only: a project whose known tasks ran
-	 * on a remote node we cannot reach from here yields an explicit
-	 * not-yet-queried card with NO fabricated git facts (cross-machine repo
-	 * parity needs live node access this provider does not have).
-	 *
-	 * Pure git QUERY commands only — never mutates the repo.
+	 * Whether a LOCAL (current-host) task belongs to the workspace project rooted
+	 * at `projectDir`. Path identity that tolerates symlink / worktree / canonical
+	 * divergence: exact match, realpath-canonicalized match, or the task's
+	 * recorded `canonical_project_dir` resolving to the same root. Name is NOT
+	 * used here — two unrelated local checkouts can share a basename, and the path
+	 * is authoritative for a repo we can actually see.
 	 */
-	getSyncReadiness(projectDir: string): SyncReadinessReceipt {
-		const tasks = this.getTasks().filter((t) => t.project_dir === projectDir);
+	private syncReadinessLocalTaskMatches(
+		task: AgentTask,
+		projectDir: string,
+		canonicalProjectDir: string,
+	): boolean {
+		const dir = task.project_dir?.trim();
+		if (dir) {
+			if (dir === projectDir) return true;
+			if (canonicalizeProjectDir(dir) === canonicalProjectDir) return true;
+		}
+		const canonical = task.canonical_project_dir?.trim();
+		if (canonical) {
+			if (canonical === projectDir) return true;
+			if (canonicalizeProjectDir(canonical) === canonicalProjectDir) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether a REMOTE-NODE task belongs to the workspace project rooted at
+	 * `projectDir`. The node's absolute path lives under a different home/user and
+	 * will NEVER equal the hub path, and the hub cannot realpath it — so path
+	 * comparison is useless. Identity is by project NAME instead: the launcher
+	 * records the same logical project name on every host, and the node path's
+	 * basename matches the hub checkout's basename. This is the crux of the
+	 * cross-machine fix — a node lane is associated with its hub project even
+	 * though the two paths diverge.
+	 */
+	private syncReadinessRemoteTaskMatches(
+		task: AgentTask,
+		projectDir: string,
+	): boolean {
+		const wantName = path.basename(projectDir).trim().toLowerCase();
+		if (!wantName) return false;
+		const displayName = getTaskDisplayProjectName(task).trim().toLowerCase();
+		if (displayName && displayName === wantName) return true;
+		const dir = task.project_dir?.trim();
+		if (dir && path.basename(dir).trim().toLowerCase() === wantName)
+			return true;
+		return false;
+	}
+
+	/**
+	 * CCSYNC-04 / PAR-229: build the read-only sync-readiness receipt(s) for a
+	 * workspace project — the HUB card (this machine's checkout, collected live)
+	 * plus one NODE card per distinct remote host that has lane evidence for the
+	 * same logical project. The honest cross-machine contract:
+	 *
+	 *  - The hub card always renders (the open folder IS a real local checkout),
+	 *    carrying branch/upstream/ahead-behind/HEAD/tree/dirty-count + a
+	 *    prioritized blocker list (incl. a `live-lane` blocker when an agent is
+	 *    mid-flight here). Pure git QUERY commands only — never mutates the repo.
+	 *  - Each node card is NEVER green unless the node actually published fresh
+	 *    facts through the receipt seam ({@link readNodeSyncReadinessReceipt}); a
+	 *    node we cannot reach renders an explicit `not-yet-queried` card with NO
+	 *    fabricated git facts. Lanes are associated to the project by NAME, so a
+	 *    node lane whose absolute path diverges from the hub path is still surfaced
+	 *    rather than silently dropped (the bug this method fixes).
+	 */
+	getSyncReadiness(projectDir: string): SyncReadinessReceipt[] {
+		const canonicalProjectDir = canonicalizeProjectDir(projectDir);
+		const all = this.getTasks();
+		const localTasks: AgentTask[] = [];
+		const remoteTasks: AgentTask[] = [];
+		for (const task of all) {
+			if (isRemoteNodeTaskForCurrentHost(task)) {
+				if (this.syncReadinessRemoteTaskMatches(task, projectDir)) {
+					remoteTasks.push(task);
+				}
+			} else if (
+				this.syncReadinessLocalTaskMatches(
+					task,
+					projectDir,
+					canonicalProjectDir,
+				)
+			) {
+				localTasks.push(task);
+			}
+		}
+
 		const project =
-			tasks
+			[...localTasks, ...remoteTasks]
 				.map((t) => getTaskDisplayProjectName(t))
 				.find((name) => name.length > 0) ?? path.basename(projectDir);
 
-		const remoteTask = tasks.find((t) => isRemoteNodeTaskForCurrentHost(t));
-		if (remoteTask) {
-			return buildUnreachableNodeCard({
-				project,
-				projectDir,
-				host: getTaskExecutionHostLabel(remoteTask) ?? "node",
-				reachability: "not-yet-queried",
-			});
-		}
-
-		const pendingReviewCount = tasks.filter((t) =>
+		const pendingReviewCount = localTasks.filter((t) =>
 			this.isReviewQueueReceiptMissing(t),
 		).length;
+		const liveLaneCount = localTasks.filter(
+			(t) => t.status === "running" && this.hasLivePaneOrProcessEvidence(t),
+		).length;
 
-		return collectHubSyncReadiness(projectDir, {
+		const receipts: SyncReadinessReceipt[] = [
+			collectHubSyncReadiness(projectDir, {
+				project,
+				pendingReviewCount,
+				liveLaneCount,
+			}),
+		];
+
+		for (const node of this.buildSyncReadinessNodeCards(
+			remoteTasks,
 			project,
-			pendingReviewCount,
-		});
+			projectDir,
+		)) {
+			receipts.push(node);
+		}
+		return receipts;
+	}
+
+	/**
+	 * One node card per distinct remote host with lane evidence for this project.
+	 * Each is upgraded to a real `queried` card when the node published fresh
+	 * facts via the receipt seam; otherwise it is the explicit not-yet-queried
+	 * gap (no fabricated facts).
+	 */
+	private buildSyncReadinessNodeCards(
+		remoteTasks: AgentTask[],
+		project: string,
+		projectDir: string,
+	): SyncReadinessReceipt[] {
+		const byHost = new Map<string, AgentTask>();
+		for (const task of remoteTasks) {
+			const host = getTaskExecutionHostLabel(task) ?? "node";
+			if (!byHost.has(host)) byHost.set(host, task);
+		}
+		const cards: SyncReadinessReceipt[] = [];
+		for (const [host, task] of byHost) {
+			const nodeDir = task.project_dir?.trim() || projectDir;
+			const queried = readNodeSyncReadinessReceipt({
+				host,
+				project,
+				projectDir: nodeDir,
+			});
+			cards.push(
+				queried ??
+					buildUnreachableNodeCard({
+						project,
+						projectDir: nodeDir,
+						host,
+						reachability: "not-yet-queried",
+					}),
+			);
+		}
+		return cards;
 	}
 
 	/** Cap on sync-readiness cards built per render — bounds the synchronous git
@@ -6748,15 +6874,23 @@ export class AgentStatusTreeProvider
 				.getConfiguration("commandCentral")
 				.get<boolean>("syncReadiness.enabled", false) === true;
 		if (!enabled) return [];
-		return this.getSyncReadinessProjectDirs().map((projectDir) => ({
-			type: "syncReadiness" as const,
-			receipt: this.getSyncReadiness(projectDir),
-		}));
+		return this.getSyncReadinessProjectDirs().flatMap((projectDir) =>
+			this.getSyncReadiness(projectDir).map((receipt) => ({
+				type: "syncReadiness" as const,
+				receipt,
+			})),
+		);
 	}
 
 	private createSyncReadinessItem(node: SyncReadinessNode): vscode.TreeItem {
+		// Hub card keeps the bare label; node cards qualify by host so a hub + node
+		// pair for the same project read distinctly in the tree.
+		const label =
+			node.receipt.reachability === "local-hub"
+				? `Sync Readiness — ${node.receipt.project}`
+				: `Sync Readiness — ${node.receipt.project} · ${node.receipt.host}`;
 		const item = new vscode.TreeItem(
-			`Sync Readiness — ${node.receipt.project}`,
+			label,
 			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.description = formatSyncReadinessSummary(node.receipt);

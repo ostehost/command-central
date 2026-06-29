@@ -14,6 +14,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 const realChildProcess = (globalThis as Record<string, unknown>)[
 	"__realNodeChildProcess"
@@ -75,6 +78,38 @@ function makeTask(overrides: Partial<AgentTask> = {}): AgentTask {
 		pending_review_path: null,
 		...overrides,
 	};
+}
+
+/**
+ * A lane that ran on a REMOTE node for the same logical project as the open
+ * `workspace` folder — but whose absolute path lives under a different user's
+ * home, so it can NEVER path-match the hub checkout. Identity is by project name.
+ */
+function makeRemoteNodeTask(overrides: Partial<AgentTask> = {}): AgentTask {
+	return makeTask({
+		id: "remote-node-lane",
+		status: "completed",
+		project_dir: "/Users/othername/projects/workspace",
+		project_name: "workspace",
+		exec_host: "rocinante-node",
+		exec_mode: "node",
+		...overrides,
+	});
+}
+
+/** A LOCAL lane actively in flight in the open workspace checkout. */
+function makeLiveLocalTask(overrides: Partial<AgentTask> = {}): AgentTask {
+	return makeTask({
+		id: "live-local-lane",
+		status: "running",
+		project_dir: WORKSPACE_DIR,
+		project_name: "workspace",
+		terminal_backend: "tmux",
+		session_id: "agent-live-local",
+		tmux_session: "agent-live-local",
+		session_live: true,
+		...overrides,
+	});
 }
 
 /** Canned read-only git query replies for a clean repo at its upstream. */
@@ -197,6 +232,28 @@ describe("hub/node sync-readiness card", () => {
 		);
 	}
 
+	function findAllCards(root: AgentNode[]): SyncReadinessNode[] {
+		return root.filter(
+			(node): node is SyncReadinessNode => node.type === "syncReadiness",
+		);
+	}
+
+	const scratchDirs: string[] = [];
+	function syncReadinessScratchDir(): string {
+		const dir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "cc-sync-readiness-card-"),
+		);
+		scratchDirs.push(dir);
+		process.env["CC_SYNC_READINESS_DIR"] = dir;
+		return dir;
+	}
+	afterEach(() => {
+		process.env["CC_SYNC_READINESS_DIR"] = "";
+		for (const dir of scratchDirs.splice(0)) {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	test("default off: no card, Sources provenance row still present", () => {
 		const root = provider.getChildren();
 		expect(findCard(root)).toBeUndefined();
@@ -249,5 +306,138 @@ describe("hub/node sync-readiness card", () => {
 		expect(byLabel["Repo parity"]).toBe("in sync (0 ahead · 0 behind)");
 		expect(byLabel["Working tree"]).toBe("clean");
 		expect(byLabel["Review queue"]).toBe("clear");
+	});
+
+	/** Install a registry and (optionally) a hub-host override, then reload. */
+	function loadProjectTasks(
+		tasks: AgentTask[],
+		opts: { hubHost?: string } = {},
+	): void {
+		if (opts.hubHost) __setCurrentMachineHostOverrideForTests(opts.hubHost);
+		const registry = makeRegistry(
+			Object.fromEntries(tasks.map((t) => [t.id, t])),
+		);
+		provider.readRegistry = () => registry;
+		provider.reload();
+	}
+
+	describe("remote-node identity + hub/node honesty (CCSYNC-04)", () => {
+		test("a remote-node lane whose path diverges still yields an explicit node card", () => {
+			syncReadinessEnabled = true;
+			syncReadinessScratchDir(); // empty → no published receipt to find
+			loadProjectTasks([makeRemoteNodeTask()], { hubHost: "hub-mac" });
+
+			const receipts = provider.getSyncReadiness(WORKSPACE_DIR);
+			// Both hosts represented: a live hub card AND an explicit node card.
+			expect(receipts).toHaveLength(2);
+			const hub = receipts.find((r) => r.reachability === "local-hub");
+			const node = receipts.find((r) => r.reachability !== "local-hub");
+			expect(hub?.ready).toBe(true); // hub checkout is clean (mocked git)
+			expect(hub?.branch).toBe("main");
+
+			// The node was never queried → explicit gap, NOT a fabricated green.
+			expect(node?.host).toBe("rocinante-node");
+			expect(node?.reachability).toBe("not-yet-queried");
+			expect(node?.ready).toBe(false);
+			expect(node?.branch).toBeNull();
+			expect(node?.head).toBeNull();
+			expect(node?.dirtyCount).toBeNull();
+			expect(node?.blockers.map((b) => b.code)).toEqual(["not-yet-queried"]);
+		});
+
+		test("both cards render in the tree with distinct, stable ids", () => {
+			syncReadinessEnabled = true;
+			syncReadinessScratchDir();
+			loadProjectTasks([makeRemoteNodeTask()], { hubHost: "hub-mac" });
+
+			const cards = findAllCards(provider.getChildren());
+			expect(cards).toHaveLength(2);
+			const ids = cards.map((c) => provider.getTreeItem(c).id);
+			expect(ids).toContain(`sync-readiness:${WORKSPACE_DIR}`);
+			expect(ids).toContain(
+				`sync-readiness:/Users/othername/projects/workspace:node:rocinante-node`,
+			);
+			// No duplicate ids (a duplicate id is a hard tree crash).
+			expect(new Set(ids).size).toBe(ids.length);
+
+			const nodeCard = cards.find(
+				(c) => c.receipt.reachability !== "local-hub",
+			);
+			expect(nodeCard).toBeDefined();
+			if (nodeCard) {
+				const item = provider.getTreeItem(nodeCard);
+				expect(item.label).toBe("Sync Readiness — workspace · rocinante-node");
+				expect((item.iconPath as { id: string }).id).toBe("question");
+			}
+		});
+
+		test("a published node receipt upgrades the node card to 'queried' with real facts", () => {
+			syncReadinessEnabled = true;
+			const dir = syncReadinessScratchDir();
+			fs.writeFileSync(
+				path.join(dir, "rocinante-node__workspace.json"),
+				JSON.stringify({
+					host: "rocinante-node",
+					project: "workspace",
+					projectDir: "/Users/othername/projects/workspace",
+					branch: "feature/x",
+					upstream: "origin/feature/x",
+					head: "n0de77",
+					tree: "tr88ee",
+					porcelain: "",
+					aheadBehind: "0\t0",
+				}),
+			);
+			loadProjectTasks([makeRemoteNodeTask()], { hubHost: "hub-mac" });
+
+			const node = provider
+				.getSyncReadiness(WORKSPACE_DIR)
+				.find((r) => r.reachability !== "local-hub");
+			expect(node?.reachability).toBe("queried");
+			expect(node?.ready).toBe(true);
+			expect(node?.branch).toBe("feature/x");
+			expect(node?.head).toBe("n0de77");
+		});
+
+		test("a live in-flight local lane blocks the hub card (live-terminal priority)", () => {
+			syncReadinessEnabled = true;
+			syncReadinessScratchDir();
+			loadProjectTasks([makeLiveLocalTask()], { hubHost: "hub-mac" });
+
+			const hub = provider
+				.getSyncReadiness(WORKSPACE_DIR)
+				.find((r) => r.reachability === "local-hub");
+			expect(hub?.liveLaneCount).toBe(1);
+			expect(hub?.ready).toBe(false);
+			expect(hub?.blockers[0]?.code).toBe("live-lane");
+		});
+
+		test("a local lane in a worktree (divergent path, canonical match) still associates", () => {
+			syncReadinessEnabled = true;
+			syncReadinessScratchDir();
+			// project_dir is a linked worktree path that does NOT equal the open
+			// folder; canonical_project_dir points back to it. Exact-path matching
+			// would have dropped this lane — canonical matching keeps it.
+			const worktreeLane = makeLiveLocalTask({
+				id: "worktree-lane",
+				project_dir: "/Users/ostehost/worktrees/workspace-par229",
+				canonical_project_dir: WORKSPACE_DIR,
+			});
+			loadProjectTasks([worktreeLane], { hubHost: "hub-mac" });
+
+			const hub = provider
+				.getSyncReadiness(WORKSPACE_DIR)
+				.find((r) => r.reachability === "local-hub");
+			// Associated despite the divergent project_dir → counted as live work.
+			expect(hub?.liveLaneCount).toBe(1);
+			expect(hub?.blockers[0]?.code).toBe("live-lane");
+		});
+
+		test("default off: a project with remote-node evidence still renders no card", () => {
+			syncReadinessEnabled = false;
+			syncReadinessScratchDir();
+			loadProjectTasks([makeRemoteNodeTask()], { hubHost: "hub-mac" });
+			expect(findAllCards(provider.getChildren())).toHaveLength(0);
+		});
 	});
 });
