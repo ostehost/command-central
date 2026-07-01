@@ -94,6 +94,7 @@ import {
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
 import type { ReviewTracker } from "../../src/services/review-tracker.js";
+import type { TtlCache } from "../../src/utils/ttl-cache.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 // ── Prevent readRegistry from hitting real disk ──────────────────────────────
@@ -179,11 +180,9 @@ function seedSessionCache(
 	const key = `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
 	(
 		provider as unknown as {
-			tmuxLiveness: {
-				sessionHealthCache: Map<string, { alive: boolean; checkedAt: number }>;
-			};
+			tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 		}
-	).tmuxLiveness.sessionHealthCache.set(key, { alive, checkedAt: Date.now() });
+	).tmuxLiveness.sessionHealthCache.set(key, alive);
 }
 
 /** Seed the tmux liveness checker's session-health cache for the window-level check. */
@@ -195,11 +194,9 @@ function seedWindowCache(
 	const key = `${task.tmux_socket ?? "__default__"}::${task.session_id}::${task.tmux_window_id}`;
 	(
 		provider as unknown as {
-			tmuxLiveness: {
-				sessionHealthCache: Map<string, { alive: boolean; checkedAt: number }>;
-			};
+			tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 		}
-	).tmuxLiveness.sessionHealthCache.set(key, { alive, checkedAt: Date.now() });
+	).tmuxLiveness.sessionHealthCache.set(key, alive);
 }
 
 // ── Suite ─────────────────────────────────────────────────────────────────────

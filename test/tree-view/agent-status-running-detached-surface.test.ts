@@ -73,6 +73,7 @@ import {
 } from "../../src/providers/agent-status-tree-provider.js";
 import { __setCurrentMachineHostOverrideForTests } from "../../src/providers/agent-task-classification.js";
 import type { ReviewTracker } from "../../src/services/review-tracker.js";
+import type { TtlCache } from "../../src/utils/ttl-cache.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 AgentStatusTreeProvider.prototype.readRegistry = () => makeRegistry({});
@@ -112,14 +113,9 @@ function seedSession(
 ): void {
 	(
 		provider as unknown as {
-			tmuxLiveness: {
-				sessionHealthCache: Map<string, { alive: boolean; checkedAt: number }>;
-			};
+			tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 		}
-	).tmuxLiveness.sessionHealthCache.set(sessionCacheKey(task), {
-		alive,
-		checkedAt: Date.now(),
-	});
+	).tmuxLiveness.sessionHealthCache.set(sessionCacheKey(task), alive);
 }
 
 function groupOf(

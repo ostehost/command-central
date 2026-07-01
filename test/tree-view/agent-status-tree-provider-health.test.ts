@@ -57,17 +57,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), false);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
@@ -113,17 +105,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			// cannot classify the fake session → fail-open). Not confirmed dead.
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: true,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), true);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
@@ -139,17 +123,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), false);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
@@ -176,17 +152,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			);
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), false);
 
 			try {
 				provider.readRegistry = () => createMockRegistry({ [task.id]: task });
@@ -272,17 +240,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), false);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
@@ -349,17 +309,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			// Set tmux cache to alive
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: true,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), true);
 			// Persist cache says dead — should be ignored for tmux tasks
 			(
 				provider as unknown as {
@@ -380,17 +332,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), false);
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
 
@@ -514,17 +458,12 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			// Mark all windows as alive in the cache.
 			const cacheType = provider as unknown as {
-				tmuxLiveness: {
-					sessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
-				};
+				tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 			};
 			for (const w of [window1, window2, window3]) {
 				cacheType.tmuxLiveness.sessionHealthCache.set(
 					`${tmuxSocket}::agent-command-central::${w.tmux_window_id}`,
-					{ alive: true, checkedAt: Date.now() },
+					true,
 				);
 			}
 			provider.readRegistry = () =>
@@ -560,16 +499,11 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			// Window @10 is dead; the session is still alive (other windows exist).
 			const cacheType = provider as unknown as {
-				tmuxLiveness: {
-					sessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
-				};
+				tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 			};
 			cacheType.tmuxLiveness.sessionHealthCache.set(
 				`${tmuxSocket}::agent-command-central::@10`,
-				{ alive: false, checkedAt: Date.now() },
+				false,
 			);
 			provider.readRegistry = () =>
 				createMockRegistry({ [deadWindow.id]: deadWindow });
@@ -804,17 +738,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			// Mark tmux session as dead
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), false);
 
 			// Mock git rev-list to return commit count > 0
 			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
@@ -850,17 +776,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), false);
 
 			// Mock git rev-list to return 0 commits
 			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
@@ -896,17 +814,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), false);
 
 			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
 			provider.reload();
@@ -926,17 +836,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), false);
 
 			// Mock git rev-list to throw
 			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
@@ -973,17 +875,9 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
-				alive: false,
-				checkedAt: Date.now(),
-			});
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), false);
 
 			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
 				const [cmd, args] = fnArgs as [string, string[] | undefined];

@@ -252,21 +252,16 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			const persistRunning = runningTasks.filter(
 				(task) => task.terminal_backend === "persist",
 			);
-			(
-				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+			{
+				const sessionHealthCache = (
+					provider as unknown as {
+						tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
+					}
+				).tmuxLiveness.sessionHealthCache;
+				for (const task of tmuxRunning) {
+					sessionHealthCache.set(getTmuxHealthCacheKey(task), true);
 				}
-			).tmuxLiveness.sessionHealthCache = new Map(
-				tmuxRunning.map((task) => [
-					getTmuxHealthCacheKey(task),
-					{ alive: true, checkedAt: Date.now() },
-				]),
-			);
+			}
 			{
 				const persistCache = (
 					provider as unknown as {
@@ -311,21 +306,16 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			const persistRunning = runningTasks.filter(
 				(task) => task.terminal_backend === "persist",
 			);
-			(
-				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-					};
+			{
+				const sessionHealthCache = (
+					provider as unknown as {
+						tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
+					}
+				).tmuxLiveness.sessionHealthCache;
+				for (const task of tmuxRunning) {
+					sessionHealthCache.set(getTmuxHealthCacheKey(task), true);
 				}
-			).tmuxLiveness.sessionHealthCache = new Map(
-				tmuxRunning.map((task) => [
-					getTmuxHealthCacheKey(task),
-					{ alive: true, checkedAt: Date.now() },
-				]),
-			);
+			}
 			{
 				const persistCache = (
 					provider as unknown as {
@@ -388,26 +378,17 @@ describe("AgentStatusTreeProvider — discovery", () => {
 				});
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						sessionHealthCache: Map<
-							string,
-							{ alive: boolean; checkedAt: number }
-						>;
-						paneAgentCache: Map<string, { alive: boolean; checkedAt: number }>;
-					};
+					tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.sessionHealthCache = new Map([
-				[getTmuxHealthCacheKey(running), { alive: true, checkedAt: now }],
-			]);
+			).tmuxLiveness.sessionHealthCache.set(
+				getTmuxHealthCacheKey(running),
+				true,
+			);
 			(
 				provider as unknown as {
-					tmuxLiveness: {
-						paneAgentCache: Map<string, { alive: boolean; checkedAt: number }>;
-					};
+					tmuxLiveness: { paneAgentCache: TtlCache<boolean> };
 				}
-			).tmuxLiveness.paneAgentCache = new Map([
-				[getTmuxHealthCacheKey(running), { alive: true, checkedAt: now }],
-			]);
+			).tmuxLiveness.paneAgentCache.set(getTmuxHealthCacheKey(running), true);
 			// Tri-state evidence cache (added when inspectTmuxPaneAgent was
 			// introduced) is authoritative in isRunningTaskHealthy — seed it
 			// too or the provider calls real tmux against the synthetic session
@@ -415,18 +396,13 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			(
 				provider as unknown as {
 					tmuxLiveness: {
-						paneAgentEvidenceCache: Map<
-							string,
-							{
-								evidence: "alive" | "dead" | "unknown";
-								checkedAt: number;
-							}
-						>;
+						paneAgentEvidenceCache: TtlCache<"alive" | "dead" | "unknown">;
 					};
 				}
-			).tmuxLiveness.paneAgentEvidenceCache = new Map([
-				[getTmuxHealthCacheKey(running), { evidence: "alive", checkedAt: now }],
-			]);
+			).tmuxLiveness.paneAgentEvidenceCache.set(
+				getTmuxHealthCacheKey(running),
+				"alive",
+			);
 			provider.reload();
 			(
 				provider as unknown as {

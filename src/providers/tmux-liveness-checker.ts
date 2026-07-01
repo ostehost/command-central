@@ -5,6 +5,7 @@ import {
 	inspectTmuxPaneById,
 	type TmuxPaneAgentEvidence,
 } from "../utils/tmux-pane-health.js";
+import { TtlCache } from "../utils/ttl-cache.js";
 
 const CACHE_TTL_MS = 5_000;
 
@@ -15,18 +16,11 @@ const CACHE_TTL_MS = 5_000;
  * tree rendering.
  */
 export class TmuxLivenessChecker {
-	private readonly sessionHealthCache = new Map<
-		string,
-		{ alive: boolean; checkedAt: number }
-	>();
-	private readonly paneAgentCache = new Map<
-		string,
-		{ alive: boolean; checkedAt: number }
-	>();
-	private readonly paneAgentEvidenceCache = new Map<
-		string,
-		{ evidence: TmuxPaneAgentEvidence; checkedAt: number }
-	>();
+	private readonly sessionHealthCache = new TtlCache<boolean>(CACHE_TTL_MS);
+	private readonly paneAgentCache = new TtlCache<boolean>(CACHE_TTL_MS);
+	private readonly paneAgentEvidenceCache = new TtlCache<TmuxPaneAgentEvidence>(
+		CACHE_TTL_MS,
+	);
 
 	private sessionHealthCacheKey(
 		sessionId: string,
@@ -37,11 +31,8 @@ export class TmuxLivenessChecker {
 
 	isSessionAlive(sessionId: string, socketPath?: string | null): boolean {
 		const cacheKey = this.sessionHealthCacheKey(sessionId, socketPath);
-		const cached = this.sessionHealthCache.get(cacheKey);
-		const now = Date.now();
-		if (cached && now - cached.checkedAt < CACHE_TTL_MS) {
-			return cached.alive;
-		}
+		const cached = this.sessionHealthCache.getFresh(cacheKey);
+		if (cached !== undefined) return cached;
 
 		let alive = false;
 		try {
@@ -53,7 +44,7 @@ export class TmuxLivenessChecker {
 		} catch {
 			alive = false;
 		}
-		this.sessionHealthCache.set(cacheKey, { alive, checkedAt: now });
+		this.sessionHealthCache.set(cacheKey, alive);
 		return alive;
 	}
 
@@ -67,11 +58,8 @@ export class TmuxLivenessChecker {
 		socketPath?: string | null,
 	): boolean {
 		const cacheKey = `${socketPath ?? "__default__"}::${sessionId}::${windowId}`;
-		const cached = this.sessionHealthCache.get(cacheKey);
-		const now = Date.now();
-		if (cached && now - cached.checkedAt < CACHE_TTL_MS) {
-			return cached.alive;
-		}
+		const cached = this.sessionHealthCache.getFresh(cacheKey);
+		if (cached !== undefined) return cached;
 
 		let alive = false;
 		try {
@@ -91,7 +79,7 @@ export class TmuxLivenessChecker {
 		} catch {
 			alive = false;
 		}
-		this.sessionHealthCache.set(cacheKey, { alive, checkedAt: now });
+		this.sessionHealthCache.set(cacheKey, alive);
 		return alive;
 	}
 
@@ -100,21 +88,15 @@ export class TmuxLivenessChecker {
 		const cacheKey = usePaneSpecific
 			? `${task.tmux_socket ?? "__default__"}::pane::${task.tmux_pane_id}`
 			: `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
-		const now = Date.now();
-		const cached = this.paneAgentEvidenceCache.get(cacheKey);
-		if (cached && now - cached.checkedAt < CACHE_TTL_MS) {
-			return cached.evidence;
-		}
+		const cached = this.paneAgentEvidenceCache.getFresh(cacheKey);
+		if (cached !== undefined) return cached;
 		const evidence =
 			usePaneSpecific && task.tmux_pane_id
 				? inspectTmuxPaneById(task.tmux_pane_id, task.tmux_socket)
 				: inspectTmuxPaneAgent(task.session_id, task.tmux_socket);
-		this.paneAgentEvidenceCache.set(cacheKey, { evidence, checkedAt: now });
+		this.paneAgentEvidenceCache.set(cacheKey, evidence);
 		// Also seed the legacy boolean cache so any direct readers stay in sync.
-		this.paneAgentCache.set(cacheKey, {
-			alive: evidence !== "dead",
-			checkedAt: now,
-		});
+		this.paneAgentCache.set(cacheKey, evidence !== "dead");
 		return evidence;
 	}
 
@@ -136,11 +118,7 @@ export class TmuxLivenessChecker {
 		const cacheKey = usePaneSpecific
 			? `${task.tmux_socket ?? "__default__"}::pane::${task.tmux_pane_id}`
 			: `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
-		const cached = this.paneAgentEvidenceCache.get(cacheKey);
-		if (cached && Date.now() - cached.checkedAt < CACHE_TTL_MS) {
-			return cached.evidence;
-		}
-		return undefined;
+		return this.paneAgentEvidenceCache.getFresh(cacheKey);
 	}
 
 	/** Invalidates cached liveness for one task's session/window, e.g. when a task's runtime identity is superseded. */
@@ -158,21 +136,11 @@ export class TmuxLivenessChecker {
 
 	/** Invalidates every cache entry (across all three caches) keyed by this session id, regardless of socket. */
 	invalidateAllForSessionId(sessionId: string): void {
-		for (const cacheKey of this.sessionHealthCache.keys()) {
-			if (cacheKey.endsWith(`::${sessionId}`)) {
-				this.sessionHealthCache.delete(cacheKey);
-			}
-		}
-		for (const cacheKey of this.paneAgentCache.keys()) {
-			if (cacheKey.endsWith(`::${sessionId}`)) {
-				this.paneAgentCache.delete(cacheKey);
-			}
-		}
-		for (const cacheKey of this.paneAgentEvidenceCache.keys()) {
-			if (cacheKey.endsWith(`::${sessionId}`)) {
-				this.paneAgentEvidenceCache.delete(cacheKey);
-			}
-		}
+		const matchesSession = (cacheKey: string) =>
+			cacheKey.endsWith(`::${sessionId}`);
+		this.sessionHealthCache.deleteWhere(matchesSession);
+		this.paneAgentCache.deleteWhere(matchesSession);
+		this.paneAgentEvidenceCache.deleteWhere(matchesSession);
 	}
 
 	clear(): void {

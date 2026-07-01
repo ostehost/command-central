@@ -83,6 +83,7 @@ import {
 	type TaskRegistry,
 } from "../../src/providers/agent-status-tree-provider.js";
 import type { ReviewTracker } from "../../src/services/review-tracker.js";
+import type { TtlCache } from "../../src/utils/ttl-cache.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 
 // ── Test infrastructure ───────────────────────────────────────────────────────
@@ -131,14 +132,9 @@ function seedSessionAlive(
 ): void {
 	(
 		provider as unknown as {
-			tmuxLiveness: {
-				sessionHealthCache: Map<string, { alive: boolean; checkedAt: number }>;
-			};
+			tmuxLiveness: { sessionHealthCache: TtlCache<boolean> };
 		}
-	).tmuxLiveness.sessionHealthCache.set(healthCacheKey(task), {
-		alive: true,
-		checkedAt: Date.now(),
-	});
+	).tmuxLiveness.sessionHealthCache.set(healthCacheKey(task), true);
 }
 
 /** Lightweight in-memory ReviewTracker — avoids filesystem I/O in tests. */
