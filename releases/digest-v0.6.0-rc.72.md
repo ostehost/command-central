@@ -12,13 +12,19 @@
   • **Review queue continuation gaps** — Completed runs with handoff evidence but missing review receipts now surface as review-queue gaps instead of silently looking finished.
 
 📦 **Since previous prerelease cut (rc71)**
+  • `c81b934` chore(sync): merge hub and node command-central state
   • `4dafbbe` refactor(providers): convert 4 more hand-rolled TTL caches to TtlCache
   • `da7c950` refactor(providers): use TtlCache in TmuxLivenessChecker instead of hand-rolled maps
   • `79b0d12` refactor(providers): extract TaskRegistryReader from AgentStatusTreeProvider
   • `a1a986a` refactor(providers): finish migration to agent-task-normalize.ts
   • `deabf3c` refactor(providers): extract TmuxLivenessChecker from AgentStatusTreeProvider
-  • `dddd8dc` docs(review): record final rc71 review outcome; document nested daemon-smoke shapes
-  • `a2fdea6` fix(release): accept current daemon status shape
+  • `7e25111` feat(agent-status): surface lane-projection GC receipt verdict for audit (PAR-227)
+  • `1600fa1` feat(agent-status): honest hub+node sync-readiness identity for remote lanes (PAR-229)
+  • `124f7e5` feat(agent-status): surface hub/node sync-readiness card in the tree (PAR-229)
+  • `17e5f44` chore(bundle): sync launcher resources for paused lane lifecycle
+  • `ca7cce5` feat(agent-status): first-class paused lane lifecycle + pauseAgent command
+  • `f762f61` test(focus): cover resolveAuthorizationTmuxLiveness native-room fast path
+  • … and 4 more
 
 🛡️ **Release gate evidence**
   • ✅ Node readiness: passed
