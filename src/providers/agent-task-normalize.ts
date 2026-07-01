@@ -39,6 +39,18 @@ export function isRegistryBackedLaneTask(
 	return Boolean(task.project_ref?.id?.trim());
 }
 
+function asNullableBoolean(value: unknown): boolean | null | undefined {
+	if (value === null) return null;
+	if (typeof value !== "boolean") return undefined;
+	return value;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
 function normalizeTaskProjectRef(value: unknown): AgentTaskProjectRef | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 	const raw = value as Record<string, unknown>;
@@ -96,6 +108,13 @@ export function normalizeTask(
 			: null,
 		execution_dir: asString(raw["execution_dir"]) ?? null,
 		...(explicitProjectName ? {} : { project_name_derived: true }),
+		launcher_attach_available:
+			asNullableBoolean(raw["launcher_attach_available"]) ?? null,
+		launcher_attach_reason: asString(raw["launcher_attach_reason"]) ?? null,
+		launcher_visibility_degraded:
+			asNullableBoolean(raw["launcher_visibility_degraded"]) ?? null,
+		launcher_visibility_reason:
+			asString(raw["launcher_visibility_reason"]) ?? null,
 		source_authority: asString(raw["source_authority"]) ?? null,
 		owner_kind: asString(raw["owner_kind"]) ?? null,
 		owner_actions: Array.isArray(raw["owner_actions"])
@@ -312,6 +331,13 @@ function laneRefUpdateToTaskRecord(
 			: null;
 	const worktree = asString(laneRef["worktree"]);
 	const updatedAt = asString(laneRef["updatedAt"]);
+	// Evidence-backed attach/visibility affordances (schema §attach, §visibility):
+	// the launcher's own writer-host probe of whether a terminal is attachable
+	// and a visible-bundle window was confirmed. These were previously dropped on
+	// ingest; CC now consumes them as authoritative liveness/visibility truth for
+	// the row (see isLivenessUnobservableRunningLane).
+	const attach = asRecord(envelope["attach"]);
+	const visibility = asRecord(envelope["visibility"]);
 	return {
 		id: taskId,
 		task_id: taskId,
@@ -328,6 +354,14 @@ function laneRefUpdateToTaskRecord(
 		started_at: updatedAt,
 		updated_at: updatedAt,
 		source_authority: asString(laneRef["provider"]),
+		launcher_attach_available: attach ? attach["available"] : undefined,
+		launcher_attach_reason: attach
+			? attach["reason_if_unavailable"]
+			: undefined,
+		launcher_visibility_degraded: visibility
+			? visibility["degraded"]
+			: undefined,
+		launcher_visibility_reason: visibility ? visibility["reason"] : undefined,
 		workroom_ref: asString(envelope["workroom_ref"]),
 		work_item_ref: asString(envelope["work_item_ref"]),
 		provenance: {
