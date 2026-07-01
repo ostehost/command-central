@@ -156,6 +156,7 @@ import {
 	capturePaneSnippet,
 	type TmuxPaneAgentEvidence,
 } from "../utils/tmux-pane-health.js";
+import { TtlCache } from "../utils/ttl-cache.js";
 import {
 	formatDurationPrecise,
 	formatElapsed,
@@ -592,22 +593,16 @@ export class AgentStatusTreeProvider
 	// CCSYNC-03 (PAR-228): cached live-pane attention classification, warmed by
 	// the render path (subprocess capture-pane) and read cache-only on the
 	// `getNodeStatusGroup` hot path so benign live shells are not badge-counted.
-	private _tmuxPaneAttentionCache = new Map<
-		string,
-		{ state: PaneAttentionState; checkedAt: number }
-	>();
-	private _handoffFileCache = new Map<
-		string,
-		{ state: DeclaredHandoffState; checkedAt: number }
-	>();
-	private _reviewQueueCache = new Map<
-		string,
-		{ state: AdvertisedReviewQueueState; checkedAt: number }
-	>();
-	private readonly _persistSessionHealthCache = new Map<
-		string,
-		{ alive: boolean; checkedAt: number } | boolean
-	>();
+	private readonly _tmuxPaneAttentionCache = new TtlCache<PaneAttentionState>(
+		5_000,
+	);
+	private readonly _handoffFileCache = new TtlCache<DeclaredHandoffState>(
+		5_000,
+	);
+	private readonly _reviewQueueCache = new TtlCache<AdvertisedReviewQueueState>(
+		5_000,
+	);
+	private readonly _persistSessionHealthCache = new TtlCache<boolean>(5_000);
 	/** TTL cache for stream file path resolution, keyed by task.id (TTL 5s) */
 	private _streamFilePathCache = new Map<
 		string,
@@ -1129,15 +1124,11 @@ export class AgentStatusTreeProvider
 		// origin tasks (or node tasks whose host we can't verify) stay unknown.
 		if (!isLocalFileProbeAuthoritative(task)) return "unknown";
 
-		const cacheTtlMs = 5_000;
 		const cacheKey = `${task.project_dir}::${task.handoff_file ?? ""}`;
-		const cached = this._handoffFileCache.get(cacheKey);
-		const now = Date.now();
-		if (cached && now - cached.checkedAt < cacheTtlMs) {
-			return cached.state;
-		}
+		const cached = this._handoffFileCache.getFresh(cacheKey);
+		if (cached !== undefined) return cached;
 		const state = checkDeclaredHandoff(task);
-		this._handoffFileCache.set(cacheKey, { state, checkedAt: now });
+		this._handoffFileCache.set(cacheKey, state);
 		return state;
 	}
 
@@ -1148,15 +1139,11 @@ export class AgentStatusTreeProvider
 		// origin tasks (or node tasks whose host we can't verify) stay unknown.
 		if (!isLocalFileProbeAuthoritative(task)) return "unknown";
 
-		const cacheTtlMs = 5_000;
 		const cacheKey = `${task.project_dir}::${task.pending_review_path ?? ""}`;
-		const cached = this._reviewQueueCache.get(cacheKey);
-		const now = Date.now();
-		if (cached && now - cached.checkedAt < cacheTtlMs) {
-			return cached.state;
-		}
+		const cached = this._reviewQueueCache.getFresh(cacheKey);
+		if (cached !== undefined) return cached;
 		const state = checkAdvertisedReviewQueue(task);
-		this._reviewQueueCache.set(cacheKey, { state, checkedAt: now });
+		this._reviewQueueCache.set(cacheKey, state);
 		return state;
 	}
 
@@ -1325,21 +1312,11 @@ export class AgentStatusTreeProvider
 		const socketPath = this.getPersistSocketPath(task);
 		if (!socketPath) return false;
 
-		const cacheTtlMs = 5_000;
-		const cached = this._persistSessionHealthCache.get(socketPath);
-		const now = Date.now();
-		if (typeof cached === "boolean") {
-			return cached;
-		}
-		if (cached && now - cached.checkedAt < cacheTtlMs) {
-			return cached.alive;
-		}
+		const cached = this._persistSessionHealthCache.getFresh(socketPath);
+		if (cached !== undefined) return cached;
 
 		const alive = checkPersistSessionAlive(socketPath);
-		this._persistSessionHealthCache.set(socketPath, {
-			alive,
-			checkedAt: now,
-		});
+		this._persistSessionHealthCache.set(socketPath, alive);
 		return alive;
 	}
 
@@ -1497,12 +1474,8 @@ export class AgentStatusTreeProvider
 	private getTerminalTaskPaneAttention(task: AgentTask): PaneAttentionState {
 		const targetInfo = this.getTmuxPaneAttentionTarget(task);
 		if (!targetInfo) return "unknown";
-		const cacheTtlMs = 5_000;
-		const now = Date.now();
-		const cached = this._tmuxPaneAttentionCache.get(targetInfo.cacheKey);
-		if (cached && now - cached.checkedAt < cacheTtlMs) {
-			return cached.state;
-		}
+		const cached = this._tmuxPaneAttentionCache.getFresh(targetInfo.cacheKey);
+		if (cached !== undefined) return cached;
 		// An agent process owning the pane is the strongest signal — reuse the
 		// already-warmed liveness evidence so an "alive" pane is never demoted to
 		// a benign state by a snippet that happens to look quiet.
@@ -1512,10 +1485,7 @@ export class AgentStatusTreeProvider
 			agentOwned ? "claude" : undefined,
 			snippet ?? "",
 		);
-		this._tmuxPaneAttentionCache.set(targetInfo.cacheKey, {
-			state,
-			checkedAt: now,
-		});
+		this._tmuxPaneAttentionCache.set(targetInfo.cacheKey, state);
 		return state;
 	}
 
@@ -1530,11 +1500,9 @@ export class AgentStatusTreeProvider
 	): PaneAttentionState {
 		const targetInfo = this.getTmuxPaneAttentionTarget(task);
 		if (!targetInfo) return "unknown";
-		const cached = this._tmuxPaneAttentionCache.get(targetInfo.cacheKey);
-		if (cached && Date.now() - cached.checkedAt < 5_000) {
-			return cached.state;
-		}
-		return "unknown";
+		return (
+			this._tmuxPaneAttentionCache.getFresh(targetInfo.cacheKey) ?? "unknown"
+		);
 	}
 
 	/**
