@@ -148,6 +148,7 @@ import { relativeTime } from "../utils/relative-time.js";
 import {
 	type AdvertisedReviewQueueState,
 	checkAdvertisedReviewQueue,
+	gcReconcileVerdictLabel,
 	isReconciledGcVerdict,
 	isReviewLifecycleResolved,
 	type LaneProjectionGcReceipt,
@@ -8680,6 +8681,14 @@ export class AgentStatusTreeProvider
 		if (task.status === "completed_stale") {
 			descriptionParts.push("stale");
 		}
+		// CCSYNC-02 (PAR-227): surface the lane-projection GC receipt verdict so an
+		// operator can audit WHY this row was reconciled out of the live surface
+		// (downgraded → reconcile-needed limbo; archived/removed → taken off the
+		// projection) instead of it silently vanishing from the attention badge.
+		// Stamped by reconcileLanesAgainstGcReceipt from the GC receipt.
+		if (task.gc_reconcile) {
+			descriptionParts.push(`♻ ${gcReconcileVerdictLabel(task.gc_reconcile)}`);
+		}
 		const missingHandoffRelpath =
 			task.status === "completed" &&
 			task.review_status !== "pending" &&
@@ -8896,6 +8905,13 @@ export class AgentStatusTreeProvider
 				`Status: ${getStatusDisplayLabel(task.status)}`,
 				lifecycleConflictLine,
 				detachedLivenessLine,
+				task.gc_reconcile
+					? `**$(history) Lane GC:** ${gcReconcileVerdictLabel(
+							task.gc_reconcile,
+						)}${
+							task.gc_reconcile_reason ? ` — ${task.gc_reconcile_reason}` : ""
+						} _(reconciled by lane-projection GC receipt)_`
+					: null,
 				task.status === "paused"
 					? pausedConfirmedDead
 						? "**$(debug-pause) Paused:** Process ended — relaunch as a new lane (in-place resume not possible)."

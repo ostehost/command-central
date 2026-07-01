@@ -233,4 +233,70 @@ describe("lane-projection GC receipt consumption", () => {
 		});
 		expect(groupOf(provider, task)).toBe("running");
 	});
+
+	// AC4 (PAR-227): "let Command Central surface that receipt for audit." Routing
+	// a reconciled row to limbo is not enough — the operator must be able to SEE
+	// the GC verdict + reason on the row itself, not have it silently vanish from
+	// the attention badge. The row description carries an at-a-glance badge and the
+	// tooltip carries the full verdict + reason.
+	describe("audit surface", () => {
+		function itemOf(task: AgentTask): {
+			description: string;
+			tooltip: string;
+		} {
+			const item = provider.getTreeItem({ type: "task", task });
+			return {
+				description: String(item.description ?? ""),
+				tooltip: (item.tooltip as { value: string } | undefined)?.value ?? "",
+			};
+		}
+
+		test("a downgraded row surfaces reconcile-needed + reason for audit", () => {
+			const task = makeProjectionTask({
+				id: "gc-downgraded-surface",
+				status: "completed",
+				review_status: "pending",
+				gc_reconcile: "downgraded",
+				gc_reconcile_reason: "review-pending-receipt-missing",
+			});
+			const { description, tooltip } = itemOf(task);
+			expect(description).toContain("reconcile-needed");
+			expect(tooltip).toContain("Lane GC");
+			expect(tooltip).toContain("reconcile-needed");
+			expect(tooltip).toContain("review-pending-receipt-missing");
+		});
+
+		test("an archived/removed row surfaces its GC verdict for audit", () => {
+			const archived = itemOf(
+				makeProjectionTask({
+					id: "gc-archived-surface",
+					status: "completed",
+					review_state: "reviewed",
+					gc_reconcile: "archived",
+				}),
+			);
+			expect(archived.description).toContain("archived (GC)");
+			expect(archived.tooltip).toContain("archived (GC)");
+
+			const removed = itemOf(
+				makeProjectionTask({
+					id: "gc-removed-surface",
+					status: "running",
+					gc_reconcile: "removed",
+					gc_reconcile_reason: "running-no-evidence",
+				}),
+			);
+			expect(removed.description).toContain("removed (GC)");
+			expect(removed.tooltip).toContain("running-no-evidence");
+		});
+
+		test("an unreconciled row shows no GC audit surface", () => {
+			const { description, tooltip } = itemOf(
+				makeProjectionTask({ id: "gc-none-surface", status: "running" }),
+			);
+			expect(description).not.toContain("reconcile-needed");
+			expect(description).not.toContain("(GC)");
+			expect(tooltip).not.toContain("Lane GC");
+		});
+	});
 });
