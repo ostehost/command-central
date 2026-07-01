@@ -112,12 +112,11 @@ function seedSession(
 ): void {
 	(
 		provider as unknown as {
-			_tmuxSessionHealthCache: Map<
-				string,
-				{ alive: boolean; checkedAt: number }
-			>;
+			tmuxLiveness: {
+				sessionHealthCache: Map<string, { alive: boolean; checkedAt: number }>;
+			};
 		}
-	)._tmuxSessionHealthCache.set(sessionCacheKey(task), {
+	).tmuxLiveness.sessionHealthCache.set(sessionCacheKey(task), {
 		alive,
 		checkedAt: Date.now(),
 	});

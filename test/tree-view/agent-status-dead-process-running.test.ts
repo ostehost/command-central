@@ -117,26 +117,25 @@ function makeTask(overrides: Partial<AgentTask> = {}): AgentTask {
 	};
 }
 
-/** Cache key used by both _tmuxSessionHealthCache and _tmuxPaneAgentCache. */
+/** Cache key used by both the tmux liveness checker's sessionHealthCache and paneAgentCache. */
 function healthCacheKey(
 	task: Pick<AgentTask, "session_id" | "tmux_socket">,
 ): string {
 	return `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
 }
 
-/** Seed _tmuxSessionHealthCache so the session-level alive check passes. */
+/** Seed the tmux liveness checker's session-health cache so the session-level alive check passes. */
 function seedSessionAlive(
 	provider: AgentStatusTreeProvider,
 	task: AgentTask,
 ): void {
 	(
 		provider as unknown as {
-			_tmuxSessionHealthCache: Map<
-				string,
-				{ alive: boolean; checkedAt: number }
-			>;
+			tmuxLiveness: {
+				sessionHealthCache: Map<string, { alive: boolean; checkedAt: number }>;
+			};
 		}
-	)._tmuxSessionHealthCache.set(healthCacheKey(task), {
+	).tmuxLiveness.sessionHealthCache.set(healthCacheKey(task), {
 		alive: true,
 		checkedAt: Date.now(),
 	});

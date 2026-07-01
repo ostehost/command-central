@@ -254,12 +254,14 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			);
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache = new Map(
+			).tmuxLiveness.sessionHealthCache = new Map(
 				tmuxRunning.map((task) => [
 					getTmuxHealthCacheKey(task),
 					{ alive: true, checkedAt: Date.now() },
@@ -311,12 +313,14 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			);
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache = new Map(
+			).tmuxLiveness.sessionHealthCache = new Map(
 				tmuxRunning.map((task) => [
 					getTmuxHealthCacheKey(task),
 					{ alive: true, checkedAt: Date.now() },
@@ -384,26 +388,24 @@ describe("AgentStatusTreeProvider — discovery", () => {
 				});
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
-					_tmuxPaneAgentCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+						paneAgentCache: Map<string, { alive: boolean; checkedAt: number }>;
+					};
 				}
-			)._tmuxSessionHealthCache = new Map([
+			).tmuxLiveness.sessionHealthCache = new Map([
 				[getTmuxHealthCacheKey(running), { alive: true, checkedAt: now }],
 			]);
 			(
 				provider as unknown as {
-					_tmuxPaneAgentCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						paneAgentCache: Map<string, { alive: boolean; checkedAt: number }>;
+					};
 				}
-			)._tmuxPaneAgentCache = new Map([
+			).tmuxLiveness.paneAgentCache = new Map([
 				[getTmuxHealthCacheKey(running), { alive: true, checkedAt: now }],
 			]);
 			// Tri-state evidence cache (added when inspectTmuxPaneAgent was
@@ -412,15 +414,17 @@ describe("AgentStatusTreeProvider — discovery", () => {
 			// and downgrades the running task to "stopped".
 			(
 				provider as unknown as {
-					_tmuxPaneAgentEvidenceCache: Map<
-						string,
-						{
-							evidence: "alive" | "dead" | "unknown";
-							checkedAt: number;
-						}
-					>;
+					tmuxLiveness: {
+						paneAgentEvidenceCache: Map<
+							string,
+							{
+								evidence: "alive" | "dead" | "unknown";
+								checkedAt: number;
+							}
+						>;
+					};
 				}
-			)._tmuxPaneAgentEvidenceCache = new Map([
+			).tmuxLiveness.paneAgentEvidenceCache = new Map([
 				[getTmuxHealthCacheKey(running), { evidence: "alive", checkedAt: now }],
 			]);
 			provider.reload();

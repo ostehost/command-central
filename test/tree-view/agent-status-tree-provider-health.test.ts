@@ -57,12 +57,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -111,12 +113,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			// cannot classify the fake session → fail-open). Not confirmed dead.
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: true,
 				checkedAt: Date.now(),
 			});
@@ -135,12 +139,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -170,12 +176,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			);
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -264,12 +272,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -339,12 +349,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			// Set tmux cache to alive
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: true,
 				checkedAt: Date.now(),
 			});
@@ -368,12 +380,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -500,13 +514,15 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			// Mark all windows as alive in the cache.
 			const cacheType = provider as unknown as {
-				_tmuxSessionHealthCache: Map<
-					string,
-					{ alive: boolean; checkedAt: number }
-				>;
+				tmuxLiveness: {
+					sessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				};
 			};
 			for (const w of [window1, window2, window3]) {
-				cacheType._tmuxSessionHealthCache.set(
+				cacheType.tmuxLiveness.sessionHealthCache.set(
 					`${tmuxSocket}::agent-command-central::${w.tmux_window_id}`,
 					{ alive: true, checkedAt: Date.now() },
 				);
@@ -544,12 +560,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			// Window @10 is dead; the session is still alive (other windows exist).
 			const cacheType = provider as unknown as {
-				_tmuxSessionHealthCache: Map<
-					string,
-					{ alive: boolean; checkedAt: number }
-				>;
+				tmuxLiveness: {
+					sessionHealthCache: Map<
+						string,
+						{ alive: boolean; checkedAt: number }
+					>;
+				};
 			};
-			cacheType._tmuxSessionHealthCache.set(
+			cacheType.tmuxLiveness.sessionHealthCache.set(
 				`${tmuxSocket}::agent-command-central::@10`,
 				{ alive: false, checkedAt: Date.now() },
 			);
@@ -786,12 +804,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			// Mark tmux session as dead
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -830,12 +850,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -874,12 +896,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -902,12 +926,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});
@@ -947,12 +973,14 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 			});
 			(
 				provider as unknown as {
-					_tmuxSessionHealthCache: Map<
-						string,
-						{ alive: boolean; checkedAt: number }
-					>;
+					tmuxLiveness: {
+						sessionHealthCache: Map<
+							string,
+							{ alive: boolean; checkedAt: number }
+						>;
+					};
 				}
-			)._tmuxSessionHealthCache.set(getTmuxHealthCacheKey(task), {
+			).tmuxLiveness.sessionHealthCache.set(getTmuxHealthCacheKey(task), {
 				alive: false,
 				checkedAt: Date.now(),
 			});

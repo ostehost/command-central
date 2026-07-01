@@ -159,8 +159,6 @@ import {
 import { defaultTimingRecorder } from "../utils/timing-recorder.js";
 import {
 	capturePaneSnippet,
-	inspectTmuxPaneAgent,
-	inspectTmuxPaneById,
 	type TmuxPaneAgentEvidence,
 } from "../utils/tmux-pane-health.js";
 import {
@@ -295,6 +293,7 @@ import {
 	getSymphonyRuntimeSnapshot,
 	getSymphonySnapshotEntryIssue,
 } from "./symphony-projection.js";
+import { TmuxLivenessChecker } from "./tmux-liveness-checker.js";
 
 export type { AgentEvent } from "../events/agent-events.js";
 export type {
@@ -1076,18 +1075,7 @@ export class AgentStatusTreeProvider
 	private previousStuckStates = new Map<string, boolean>();
 	private hasInitializedStuckState = false;
 	private staleTaskReasons = new Map<string, string>();
-	private readonly _tmuxSessionHealthCache = new Map<
-		string,
-		{ alive: boolean; checkedAt: number }
-	>();
-	private _tmuxPaneAgentCache = new Map<
-		string,
-		{ alive: boolean; checkedAt: number }
-	>();
-	private _tmuxPaneAgentEvidenceCache = new Map<
-		string,
-		{ evidence: TmuxPaneAgentEvidence; checkedAt: number }
-	>();
+	private readonly tmuxLiveness = new TmuxLivenessChecker();
 	// CCSYNC-03 (PAR-228): cached live-pane attention classification, warmed by
 	// the render path (subprocess capture-pane) and read cache-only on the
 	// `getNodeStatusGroup` hot path so benign live shells are not badge-counted.
@@ -1594,20 +1582,13 @@ export class AgentStatusTreeProvider
 		);
 	}
 
-	private getTmuxSessionHealthCacheKey(
-		sessionId: string,
-		socketPath?: string | null,
-	): string {
-		return `${socketPath ?? "__default__"}::${sessionId}`;
-	}
-
 	/**
 	 * Public click-time liveness check for command handlers in extension.ts.
 	 *
-	 * Delegates to the 5s-TTL `_tmuxSessionHealthCache` so callers reuse the
-	 * tree-render probe result rather than shelling out a separate `has-session`
-	 * per click. Returns `false` immediately for remote-node tasks (wrong host)
-	 * and for missing/invalid session IDs.
+	 * Delegates to the tmux liveness checker's 5s-TTL cache so callers reuse
+	 * the tree-render probe result rather than shelling out a separate
+	 * `has-session` per click. Returns `false` immediately for remote-node
+	 * tasks (wrong host) and for missing/invalid session IDs.
 	 */
 	public isTaskTmuxSessionAlive(task: AgentTask): boolean {
 		if (!task.session_id || !isValidSessionId(task.session_id)) return false;
@@ -1619,59 +1600,15 @@ export class AgentStatusTreeProvider
 		sessionId: string,
 		socketPath?: string | null,
 	): boolean {
-		const cacheTtlMs = 5_000;
-		const cacheKey = this.getTmuxSessionHealthCacheKey(sessionId, socketPath);
-		const cached = this._tmuxSessionHealthCache.get(cacheKey);
-		const now = Date.now();
-		if (cached && now - cached.checkedAt < cacheTtlMs) {
-			return cached.alive;
-		}
-
-		let alive = false;
-		try {
-			const args = socketPath
-				? ["-S", socketPath, "has-session", "-t", sessionId]
-				: ["has-session", "-t", sessionId];
-			execFileSync("tmux", args, { timeout: 500 });
-			alive = true;
-		} catch {
-			alive = false;
-		}
-		this._tmuxSessionHealthCache.set(cacheKey, { alive, checkedAt: now });
-		return alive;
+		return this.tmuxLiveness.isSessionAlive(sessionId, socketPath);
 	}
 
 	private isTmuxPaneAgentHealthy(task: AgentTask): boolean {
-		// Backward-compat: caller treats "unknown" (fail-open) as healthy and
-		// only "dead" (positively confirmed absent) as unhealthy.
-		return this.getTmuxPaneAgentEvidence(task) !== "dead";
+		return this.tmuxLiveness.isPaneAgentHealthy(task);
 	}
 
 	private getTmuxPaneAgentEvidence(task: AgentTask): TmuxPaneAgentEvidence {
-		const cacheTtlMs = 5_000;
-		const usePaneSpecific = !!task.tmux_pane_id;
-		const cacheKey = usePaneSpecific
-			? `${task.tmux_socket ?? "__default__"}::pane::${task.tmux_pane_id}`
-			: `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
-		const now = Date.now();
-		const cached = this._tmuxPaneAgentEvidenceCache.get(cacheKey);
-		if (cached && now - cached.checkedAt < cacheTtlMs) {
-			return cached.evidence;
-		}
-		const evidence =
-			usePaneSpecific && task.tmux_pane_id
-				? inspectTmuxPaneById(task.tmux_pane_id, task.tmux_socket)
-				: inspectTmuxPaneAgent(task.session_id, task.tmux_socket);
-		this._tmuxPaneAgentEvidenceCache.set(cacheKey, {
-			evidence,
-			checkedAt: now,
-		});
-		// Also seed the legacy boolean cache so any direct readers stay in sync.
-		this._tmuxPaneAgentCache.set(cacheKey, {
-			alive: evidence !== "dead",
-			checkedAt: now,
-		});
-		return evidence;
+		return this.tmuxLiveness.getPaneAgentEvidence(task);
 	}
 
 	private getDeclaredHandoffState(task: AgentTask): DeclaredHandoffState {
@@ -1855,34 +1792,7 @@ export class AgentStatusTreeProvider
 		windowId: string,
 		socketPath?: string | null,
 	): boolean {
-		const cacheTtlMs = 5_000;
-		const cacheKey = `${socketPath ?? "__default__"}::${sessionId}::${windowId}`;
-		const cached = this._tmuxSessionHealthCache.get(cacheKey);
-		const now = Date.now();
-		if (cached && now - cached.checkedAt < cacheTtlMs) {
-			return cached.alive;
-		}
-
-		let alive = false;
-		try {
-			const args = socketPath
-				? [
-						"-S",
-						socketPath,
-						"list-windows",
-						"-t",
-						sessionId,
-						"-F",
-						"#{window_id}",
-					]
-				: ["list-windows", "-t", sessionId, "-F", "#{window_id}"];
-			const output = execFileSync("tmux", args, { timeout: 500 }).toString();
-			alive = output.split("\n").some((line) => line.trim() === windowId);
-		} catch {
-			alive = false;
-		}
-		this._tmuxSessionHealthCache.set(cacheKey, { alive, checkedAt: now });
-		return alive;
+		return this.tmuxLiveness.isWindowAlive(sessionId, windowId, socketPath);
 	}
 
 	private getPersistSocketPath(task: AgentTask): string | null {
@@ -2031,16 +1941,7 @@ export class AgentStatusTreeProvider
 		) {
 			return "not-checked";
 		}
-		const cacheTtlMs = 5_000;
-		const usePaneSpecific = !!task.tmux_pane_id;
-		const cacheKey = usePaneSpecific
-			? `${task.tmux_socket ?? "__default__"}::pane::${task.tmux_pane_id}`
-			: `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
-		const cached = this._tmuxPaneAgentEvidenceCache.get(cacheKey);
-		if (cached && Date.now() - cached.checkedAt < cacheTtlMs) {
-			return cached.evidence;
-		}
-		return "not-checked";
+		return this.tmuxLiveness.peekPaneAgentEvidence(task) ?? "not-checked";
 	}
 
 	/**
@@ -2741,13 +2642,11 @@ export class AgentStatusTreeProvider
 
 		if (!task.session_id) return;
 
-		const tmuxSessionKey = `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
-		this._tmuxSessionHealthCache.delete(tmuxSessionKey);
-		if (task.tmux_window_id) {
-			this._tmuxSessionHealthCache.delete(
-				`${tmuxSessionKey}::${task.tmux_window_id}`,
-			);
-		}
+		this.tmuxLiveness.invalidateSession(
+			task.session_id,
+			task.tmux_socket,
+			task.tmux_window_id,
+		);
 	}
 
 	private reconcileDuplicateRunningSessions(tasks: AgentTask[]): AgentTask[] {
@@ -2785,21 +2684,7 @@ export class AgentStatusTreeProvider
 			}
 			const sessionId = newestTask.session_id;
 			if (sessionId) {
-				for (const cacheKey of this._tmuxSessionHealthCache.keys()) {
-					if (cacheKey.endsWith(`::${sessionId}`)) {
-						this._tmuxSessionHealthCache.delete(cacheKey);
-					}
-				}
-				for (const cacheKey of this._tmuxPaneAgentCache.keys()) {
-					if (cacheKey.endsWith(`::${sessionId}`)) {
-						this._tmuxPaneAgentCache.delete(cacheKey);
-					}
-				}
-				for (const cacheKey of this._tmuxPaneAgentEvidenceCache.keys()) {
-					if (cacheKey.endsWith(`::${sessionId}`)) {
-						this._tmuxPaneAgentEvidenceCache.delete(cacheKey);
-					}
-				}
+				this.tmuxLiveness.invalidateAllForSessionId(sessionId);
 			}
 			const persistSocketPath =
 				newestTask.persist_socket ?? this.getPersistSocketPath(newestTask);
@@ -8935,7 +8820,7 @@ export class AgentStatusTreeProvider
 			this._agentRegistry.dispose();
 			this._agentRegistry = null;
 		}
-		this._tmuxSessionHealthCache.clear();
+		this.tmuxLiveness.clear();
 		this._persistSessionHealthCache.clear();
 		this._streamFilePathCache.clear();
 		this._streamTerminalStateCache.clear();

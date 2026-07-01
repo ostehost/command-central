@@ -170,7 +170,7 @@ function groupOf(
 	return fn({ type: "task", task });
 }
 
-/** Seed _tmuxSessionHealthCache with a canned alive/dead result. */
+/** Seed the tmux liveness checker's session-health cache with a canned alive/dead result. */
 function seedSessionCache(
 	provider: AgentStatusTreeProvider,
 	task: AgentTask,
@@ -179,15 +179,14 @@ function seedSessionCache(
 	const key = `${task.tmux_socket ?? "__default__"}::${task.session_id}`;
 	(
 		provider as unknown as {
-			_tmuxSessionHealthCache: Map<
-				string,
-				{ alive: boolean; checkedAt: number }
-			>;
+			tmuxLiveness: {
+				sessionHealthCache: Map<string, { alive: boolean; checkedAt: number }>;
+			};
 		}
-	)._tmuxSessionHealthCache.set(key, { alive, checkedAt: Date.now() });
+	).tmuxLiveness.sessionHealthCache.set(key, { alive, checkedAt: Date.now() });
 }
 
-/** Seed _tmuxSessionHealthCache for the window-level check. */
+/** Seed the tmux liveness checker's session-health cache for the window-level check. */
 function seedWindowCache(
 	provider: AgentStatusTreeProvider,
 	task: AgentTask,
@@ -196,12 +195,11 @@ function seedWindowCache(
 	const key = `${task.tmux_socket ?? "__default__"}::${task.session_id}::${task.tmux_window_id}`;
 	(
 		provider as unknown as {
-			_tmuxSessionHealthCache: Map<
-				string,
-				{ alive: boolean; checkedAt: number }
-			>;
+			tmuxLiveness: {
+				sessionHealthCache: Map<string, { alive: boolean; checkedAt: number }>;
+			};
 		}
-	)._tmuxSessionHealthCache.set(key, { alive, checkedAt: Date.now() });
+	).tmuxLiveness.sessionHealthCache.set(key, { alive, checkedAt: Date.now() });
 }
 
 // ── Suite ─────────────────────────────────────────────────────────────────────
