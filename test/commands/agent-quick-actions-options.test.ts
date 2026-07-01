@@ -75,6 +75,37 @@ describe("agent quick action options", () => {
 		]);
 	});
 
+	test("paused lanes stay inspectable (regression: was an empty quick-pick)", () => {
+		const labels = getAgentQuickActions("paused", false).map(
+			(action) => action.label,
+		);
+		expect(labels).toEqual([
+			"View Conversation Transcript",
+			"View Diff",
+			"Show Output",
+		]);
+	});
+
+	test("paused lanes offer Resume (the unpause path) but never Restart or Remove", () => {
+		const labels = getAgentQuickActions("paused", {
+			hasTerminalFocusSurface: true,
+			hasResumeSession: true,
+			includeAdvancedActions: true,
+		}).map((action) => action.label);
+		// Resume reattaches to the still-alive conversation (the unpause path).
+		// Restart is excluded: an in-place respawn would kill+orphan the live
+		// process — the exit from paused is kill-to-clear, not restart. No Remove.
+		expect(labels).toEqual([
+			"Focus Terminal",
+			"View Conversation Transcript",
+			"View Diff",
+			"Show Output",
+			"Resume Claude Session…",
+		]);
+		expect(labels).not.toContain("Restart");
+		expect(labels).not.toContain("Remove");
+	});
+
 	test("resume/restart stay behind the advanced flag and after common actions", () => {
 		const labels = getAgentQuickActions("failed", {
 			hasResumeSession: true,

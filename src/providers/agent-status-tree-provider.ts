@@ -31,9 +31,14 @@ import type { OpenClawTaskService } from "../services/openclaw-task-service.js";
 import { ProjectIconManager } from "../services/project-icon-manager.js";
 import { ReviewTracker } from "../services/review-tracker.js";
 import {
+	buildSyncReadinessEvidenceRows,
 	buildUnreachableNodeCard,
 	collectHubSyncReadiness,
+	formatSyncReadinessSummary,
+	formatSyncReadinessTooltip,
+	readNodeSyncReadinessReceipt,
 	type SyncReadinessReceipt,
+	syncReadinessIconId,
 } from "../services/sync-readiness-service.js";
 import type { TaskFlowService } from "../services/taskflow-service.js";
 import type {
@@ -72,6 +77,7 @@ export type {
 	SymphonyRunGroupKind,
 	SymphonyRunGroupNode,
 	SymphonySnapshotEntryNode,
+	SyncReadinessNode,
 	TaskFlowChildNode,
 	TaskFlowGroupNode,
 	TaskFlowSingleNode,
@@ -135,10 +141,12 @@ import {
 	nullProjectRefResolver,
 	type ProjectRefResolver,
 } from "../utils/project-ref-resolver.js";
+import { canonicalizeProjectDir } from "../utils/project-scope.js";
 import { relativeTime } from "../utils/relative-time.js";
 import {
 	type AdvertisedReviewQueueState,
 	checkAdvertisedReviewQueue,
+	gcReconcileVerdictLabel,
 	isReviewLifecycleResolved,
 	type LaneProjectionGcReceipt,
 } from "../utils/review-queue-health.js";
@@ -188,6 +196,7 @@ import type {
 	SymphonyRootNode,
 	SymphonyRunGroupNode,
 	SymphonySnapshotEntryNode,
+	SyncReadinessNode,
 	TaskFlowGroupNode,
 	TaskFlowsContainerNode,
 	TaskNode,
@@ -697,6 +706,9 @@ export class AgentStatusTreeProvider
 				if (e.affectsConfiguration("commandCentral.laneRegistry.files")) {
 					this.setupFileWatch();
 					void this.reload();
+				}
+				if (e.affectsConfiguration("commandCentral.syncReadiness.enabled")) {
+					this.scheduleTreeRefresh();
 				}
 				if (
 					e.affectsConfiguration("commandCentral.agentStatus.groupByProject") ||
@@ -2992,6 +3004,15 @@ export class AgentStatusTreeProvider
 				return "symphony:taskflows";
 			case "codexRuns":
 				return "symphony:codex-runs";
+			case "syncReadiness": {
+				// The hub card keeps the bare, render-invariant per-dir id (project
+				// name / counts churn, the path does not). Node cards add their host
+				// so a hub + one-or-more node cards for the same project never collide.
+				const r = element.receipt;
+				return r.reachability === "local-hub"
+					? `sync-readiness:${r.projectDir}`
+					: `sync-readiness:${r.projectDir}:node:${r.host}`;
+			}
 			default:
 				return undefined;
 		}
@@ -3057,6 +3078,9 @@ export class AgentStatusTreeProvider
 		}
 		if (element.type === "olderRuns") {
 			return this.createOlderRunsItem(element);
+		}
+		if (element.type === "syncReadiness") {
+			return this.createSyncReadinessItem(element);
 		}
 		if (element.type === "state") {
 			return this.createStateItem(element);
@@ -3152,6 +3176,7 @@ export class AgentStatusTreeProvider
 				return [
 					...legacyDiagnosticsNodes,
 					this.createSourcesProvenanceSummaryNode(symphonyNode),
+					...this.createSyncReadinessCardNodes(),
 					{
 						type: "state",
 						label: "Waiting for agents...",
@@ -3237,6 +3262,7 @@ export class AgentStatusTreeProvider
 				...legacyDiagnosticsNodes,
 				...summaryNodes,
 				this.createSourcesProvenanceSummaryNode(symphonyNode),
+				...this.createSyncReadinessCardNodes(),
 				...(!showOpenClawInline && openclawTasks.length > 0
 					? [
 							{
@@ -3385,6 +3411,17 @@ export class AgentStatusTreeProvider
 
 		if (element.type === "discovered") {
 			return this.getDiscoveredChildren(element.agent);
+		}
+
+		if (element.type === "syncReadiness") {
+			return buildSyncReadinessEvidenceRows(element.receipt).map(
+				(row): StateNode => ({
+					type: "state",
+					label: row.label,
+					description: row.description,
+					icon: row.icon,
+				}),
+			);
 		}
 
 		return [];
@@ -3700,6 +3737,13 @@ export class AgentStatusTreeProvider
 		}
 
 		if (status === "running") return "running";
+
+		// A paused lane is intentionally parked, awaiting an operator decision
+		// (relaunch or kill) — that is Needs Review (limbo), not "broke" (action)
+		// or "gone" (history). Resolved BEFORE the lifecycle-conflict block so a
+		// paused-but-alive lane is never reclassified as a live-process conflict
+		// (paused is deliberately kept out of CONFLICT_ELIGIBLE_STATUSES).
+		if (status === "paused") return "limbo";
 
 		// Lifecycle conflict: the launcher recorded a TERMINAL status but the
 		// session is provably alive — surface in attention ("live attention
@@ -4968,7 +5012,12 @@ export class AgentStatusTreeProvider
 			additions: diff.additions,
 			deletions: diff.deletions,
 			status: diff.status ?? deriveFallbackFileChangeStatus(diff),
-			diffMode: t.status === "running" ? "workingTree" : "boundedCommit",
+			// paused is non-terminal (alive WIP, no end_commit) → working-tree diff
+			// like running, not a bounded commit range.
+			diffMode:
+				t.status === "running" || t.status === "paused"
+					? "workingTree"
+					: "boundedCommit",
 			startCommit,
 			endCommit,
 		}));
@@ -5718,40 +5767,228 @@ export class AgentStatusTreeProvider
 	}
 
 	/**
-	 * CCSYNC-04: build a read-only per-project sync-readiness receipt
-	 * (host-labeled branch/upstream/ahead-behind/HEAD/tree/dirty-count + a
-	 * prioritized blocker list). Hub-side only: a project whose known tasks ran
-	 * on a remote node we cannot reach from here yields an explicit
-	 * not-yet-queried card with NO fabricated git facts (cross-machine repo
-	 * parity needs live node access this provider does not have).
-	 *
-	 * Pure git QUERY commands only — never mutates the repo.
+	 * Whether a LOCAL (current-host) task belongs to the workspace project rooted
+	 * at `projectDir`. Path identity that tolerates symlink / worktree / canonical
+	 * divergence: exact match, realpath-canonicalized match, or the task's
+	 * recorded `canonical_project_dir` resolving to the same root. Name is NOT
+	 * used here — two unrelated local checkouts can share a basename, and the path
+	 * is authoritative for a repo we can actually see.
 	 */
-	getSyncReadiness(projectDir: string): SyncReadinessReceipt {
-		const tasks = this.getTasks().filter((t) => t.project_dir === projectDir);
+	private syncReadinessLocalTaskMatches(
+		task: AgentTask,
+		projectDir: string,
+		canonicalProjectDir: string,
+	): boolean {
+		const dir = task.project_dir?.trim();
+		if (dir) {
+			if (dir === projectDir) return true;
+			if (canonicalizeProjectDir(dir) === canonicalProjectDir) return true;
+		}
+		const canonical = task.canonical_project_dir?.trim();
+		if (canonical) {
+			if (canonical === projectDir) return true;
+			if (canonicalizeProjectDir(canonical) === canonicalProjectDir) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether a REMOTE-NODE task belongs to the workspace project rooted at
+	 * `projectDir`. The node's absolute path lives under a different home/user and
+	 * will NEVER equal the hub path, and the hub cannot realpath it — so path
+	 * comparison is useless. Identity is by project NAME instead: the launcher
+	 * records the same logical project name on every host, and the node path's
+	 * basename matches the hub checkout's basename. This is the crux of the
+	 * cross-machine fix — a node lane is associated with its hub project even
+	 * though the two paths diverge.
+	 */
+	private syncReadinessRemoteTaskMatches(
+		task: AgentTask,
+		projectDir: string,
+	): boolean {
+		const wantName = path.basename(projectDir).trim().toLowerCase();
+		if (!wantName) return false;
+		const displayName = getTaskDisplayProjectName(task).trim().toLowerCase();
+		if (displayName && displayName === wantName) return true;
+		const dir = task.project_dir?.trim();
+		if (dir && path.basename(dir).trim().toLowerCase() === wantName)
+			return true;
+		return false;
+	}
+
+	/**
+	 * CCSYNC-04 / PAR-229: build the read-only sync-readiness receipt(s) for a
+	 * workspace project — the HUB card (this machine's checkout, collected live)
+	 * plus one NODE card per distinct remote host that has lane evidence for the
+	 * same logical project. The honest cross-machine contract:
+	 *
+	 *  - The hub card always renders (the open folder IS a real local checkout),
+	 *    carrying branch/upstream/ahead-behind/HEAD/tree/dirty-count + a
+	 *    prioritized blocker list (incl. a `live-lane` blocker when an agent is
+	 *    mid-flight here). Pure git QUERY commands only — never mutates the repo.
+	 *  - Each node card is NEVER green unless the node actually published fresh
+	 *    facts through the receipt seam ({@link readNodeSyncReadinessReceipt}); a
+	 *    node we cannot reach renders an explicit `not-yet-queried` card with NO
+	 *    fabricated git facts. Lanes are associated to the project by NAME, so a
+	 *    node lane whose absolute path diverges from the hub path is still surfaced
+	 *    rather than silently dropped (the bug this method fixes).
+	 */
+	getSyncReadiness(projectDir: string): SyncReadinessReceipt[] {
+		const canonicalProjectDir = canonicalizeProjectDir(projectDir);
+		const all = this.getTasks();
+		const localTasks: AgentTask[] = [];
+		const remoteTasks: AgentTask[] = [];
+		for (const task of all) {
+			if (isRemoteNodeTaskForCurrentHost(task)) {
+				if (this.syncReadinessRemoteTaskMatches(task, projectDir)) {
+					remoteTasks.push(task);
+				}
+			} else if (
+				this.syncReadinessLocalTaskMatches(
+					task,
+					projectDir,
+					canonicalProjectDir,
+				)
+			) {
+				localTasks.push(task);
+			}
+		}
+
 		const project =
-			tasks
+			[...localTasks, ...remoteTasks]
 				.map((t) => getTaskDisplayProjectName(t))
 				.find((name) => name.length > 0) ?? path.basename(projectDir);
 
-		const remoteTask = tasks.find((t) => isRemoteNodeTaskForCurrentHost(t));
-		if (remoteTask) {
-			return buildUnreachableNodeCard({
-				project,
-				projectDir,
-				host: getTaskExecutionHostLabel(remoteTask) ?? "node",
-				reachability: "not-yet-queried",
-			});
-		}
-
-		const pendingReviewCount = tasks.filter((t) =>
+		const pendingReviewCount = localTasks.filter((t) =>
 			this.isReviewQueueReceiptMissing(t),
 		).length;
+		const liveLaneCount = localTasks.filter(
+			(t) => t.status === "running" && this.hasLivePaneOrProcessEvidence(t),
+		).length;
 
-		return collectHubSyncReadiness(projectDir, {
+		const receipts: SyncReadinessReceipt[] = [
+			collectHubSyncReadiness(projectDir, {
+				project,
+				pendingReviewCount,
+				liveLaneCount,
+			}),
+		];
+
+		for (const node of this.buildSyncReadinessNodeCards(
+			remoteTasks,
 			project,
-			pendingReviewCount,
-		});
+			projectDir,
+		)) {
+			receipts.push(node);
+		}
+		return receipts;
+	}
+
+	/**
+	 * One node card per distinct remote host with lane evidence for this project.
+	 * Each is upgraded to a real `queried` card when the node published fresh
+	 * facts via the receipt seam; otherwise it is the explicit not-yet-queried
+	 * gap (no fabricated facts).
+	 */
+	private buildSyncReadinessNodeCards(
+		remoteTasks: AgentTask[],
+		project: string,
+		projectDir: string,
+	): SyncReadinessReceipt[] {
+		const byHost = new Map<string, AgentTask>();
+		for (const task of remoteTasks) {
+			const host = getTaskExecutionHostLabel(task) ?? "node";
+			if (!byHost.has(host)) byHost.set(host, task);
+		}
+		const cards: SyncReadinessReceipt[] = [];
+		for (const [host, task] of byHost) {
+			const nodeDir = task.project_dir?.trim() || projectDir;
+			const queried = readNodeSyncReadinessReceipt({
+				host,
+				project,
+				projectDir: nodeDir,
+			});
+			cards.push(
+				queried ??
+					buildUnreachableNodeCard({
+						project,
+						projectDir: nodeDir,
+						host,
+						reachability: "not-yet-queried",
+					}),
+			);
+		}
+		return cards;
+	}
+
+	/** Cap on sync-readiness cards built per render — bounds the synchronous git
+	 * query cost of an opt-in diagnostics surface; operators have a handful of
+	 * open repos in practice. */
+	private static readonly SYNC_READINESS_CARD_LIMIT = 6;
+
+	/**
+	 * The repos to build sync-readiness cards for: the open workspace folders —
+	 * the hub's checkouts the operator is actually working in. De-duplicated,
+	 * resolved, and capped. Each is run through {@link getSyncReadiness}, which
+	 * collects the hub repo live or, when a project's lanes ran on a remote node,
+	 * emits the explicit not-yet-queried node card instead.
+	 */
+	private getSyncReadinessProjectDirs(): string[] {
+		const dirs: string[] = [];
+		const seen = new Set<string>();
+		for (const folder of vscode.workspace.workspaceFolders ?? []) {
+			const dir = path.resolve(folder.uri.fsPath);
+			if (seen.has(dir)) continue;
+			seen.add(dir);
+			dirs.push(dir);
+			if (dirs.length >= AgentStatusTreeProvider.SYNC_READINESS_CARD_LIMIT) {
+				break;
+			}
+		}
+		return dirs;
+	}
+
+	/**
+	 * CCSYNC-04 / PAR-229: build the read-only hub/node sync-readiness card(s)
+	 * pinned in the root provenance area. Opt-in behind
+	 * `commandCentral.syncReadiness.enabled` (default off) — the same diagnostics
+	 * escape-hatch posture as the legacy launcher marker, so the default tree is
+	 * untouched. Returns one card per open workspace folder.
+	 */
+	private createSyncReadinessCardNodes(): SyncReadinessNode[] {
+		const enabled =
+			vscode.workspace
+				.getConfiguration("commandCentral")
+				.get<boolean>("syncReadiness.enabled", false) === true;
+		if (!enabled) return [];
+		return this.getSyncReadinessProjectDirs().flatMap((projectDir) =>
+			this.getSyncReadiness(projectDir).map((receipt) => ({
+				type: "syncReadiness" as const,
+				receipt,
+			})),
+		);
+	}
+
+	private createSyncReadinessItem(node: SyncReadinessNode): vscode.TreeItem {
+		// Hub card keeps the bare label; node cards qualify by host so a hub + node
+		// pair for the same project read distinctly in the tree.
+		const label =
+			node.receipt.reachability === "local-hub"
+				? `Sync Readiness — ${node.receipt.project}`
+				: `Sync Readiness — ${node.receipt.project} · ${node.receipt.host}`;
+		const item = new vscode.TreeItem(
+			label,
+			vscode.TreeItemCollapsibleState.Collapsed,
+		);
+		item.description = formatSyncReadinessSummary(node.receipt);
+		item.iconPath = new vscode.ThemeIcon(syncReadinessIconId(node.receipt));
+		item.tooltip = new vscode.MarkdownString(
+			formatSyncReadinessTooltip(node.receipt),
+		);
+		item.contextValue = "syncReadinessCard";
+		return item;
 	}
 
 	private getPromptSummaryFromPreferredSection(lines: string[]): string | null {
@@ -7348,6 +7585,7 @@ export class AgentStatusTreeProvider
 			openclawTasks.some(
 				(task) => task.status === "blocked" || task.status === "lost",
 			);
+		const hasPaused = tasks.some((t) => t.status === "paused");
 
 		if (hasFailed) {
 			return new vscode.ThemeIcon("error", new vscode.ThemeColor("charts.red"));
@@ -7368,6 +7606,14 @@ export class AgentStatusTreeProvider
 			return new vscode.ThemeIcon(
 				"sync~spin",
 				new vscode.ThemeColor("charts.yellow"),
+			);
+		}
+		if (hasPaused) {
+			// Paused lanes are Needs Review (limbo) — a paused-only scope must not
+			// render the green "all clear" check.
+			return new vscode.ThemeIcon(
+				"debug-pause",
+				new vscode.ThemeColor("charts.blue"),
 			);
 		}
 		return new vscode.ThemeIcon(
@@ -7523,6 +7769,14 @@ export class AgentStatusTreeProvider
 		if (task.status === "completed_stale") {
 			descriptionParts.push("stale");
 		}
+		// CCSYNC-02 (PAR-227): surface the lane-projection GC receipt verdict so an
+		// operator can audit WHY this row was reconciled out of the live surface
+		// (downgraded → reconcile-needed limbo; archived/removed → taken off the
+		// projection) instead of it silently vanishing from the attention badge.
+		// Stamped by reconcileLanesAgainstGcReceipt from the GC receipt.
+		if (task.gc_reconcile) {
+			descriptionParts.push(`♻ ${gcReconcileVerdictLabel(task.gc_reconcile)}`);
+		}
 		const missingHandoffRelpath =
 			task.status === "completed" &&
 			task.review_status !== "pending" &&
@@ -7570,6 +7824,19 @@ export class AgentStatusTreeProvider
 			}
 		} else {
 			descriptionParts.push(relativeTime(this.getTaskActivityTimeMs(task)));
+		}
+		// Honesty (DESIGN-paused-lane-lifecycle-v2 §6): a paused lane keeps
+		// status=paused even after its process later dies (no auto-flip), so the
+		// LABEL — not the status — must reflect liveness. A confirmed-dead parked
+		// lane is "ended", never implying impossible in-place resumption. The
+		// probe is conservative (false unless POSITIVELY confirmed dead), so an
+		// unprobeable/remote paused lane honestly stays "parked".
+		const pausedConfirmedDead =
+			task.status === "paused" && this.isTaskSessionConfirmedDead(task);
+		if (task.status === "paused") {
+			descriptionParts.push(
+				pausedConfirmedDead ? "ended — relaunch as new lane" : "parked",
+			);
 		}
 		if (isReviewed) {
 			descriptionParts.push("✓");
@@ -7726,6 +7993,18 @@ export class AgentStatusTreeProvider
 				`Status: ${getStatusDisplayLabel(task.status)}`,
 				lifecycleConflictLine,
 				detachedLivenessLine,
+				task.gc_reconcile
+					? `**$(history) Lane GC:** ${gcReconcileVerdictLabel(
+							task.gc_reconcile,
+						)}${
+							task.gc_reconcile_reason ? ` — ${task.gc_reconcile_reason}` : ""
+						} _(reconciled by lane-projection GC receipt)_`
+					: null,
+				task.status === "paused"
+					? pausedConfirmedDead
+						? "**$(debug-pause) Paused:** Process ended — relaunch as a new lane (in-place resume not possible)."
+						: "**$(debug-pause) Paused:** Parked — process still alive, awaiting relaunch or kill."
+					: null,
 				codexRunNote,
 				fallback
 					? `Model: ${fallback.actualFull} (fallback from ${fallback.requestedFull})`

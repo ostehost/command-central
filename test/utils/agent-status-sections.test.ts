@@ -164,6 +164,18 @@ describe("sectionFromSignals — §2 classification (liveness first)", () => {
 		expect(sectionFromSignals(signals({ status: "running" }))).toBe("live");
 	});
 
+	test("a paused lane is Needs Review even while its process is still alive", () => {
+		// Forward-compat for the M3 render engine (DESIGN-paused-lane-lifecycle-v2
+		// §C4): paused is resolved ABOVE the livenessAlive short-circuit, so a
+		// paused-but-alive lane never leaks back into Live.
+		expect(
+			sectionFromSignals(signals({ status: "paused", livenessAlive: true })),
+		).toBe("review");
+		expect(
+			sectionFromSignals(signals({ status: "paused", livenessAlive: false })),
+		).toBe("review");
+	});
+
 	test("AT3: detached-but-alive terminal lane is Live, not Action", () => {
 		// status recorded terminal, but the session is positively alive — the
 		// detached≠failed invariant keeps it Live.

@@ -124,7 +124,7 @@ const mutateAgentTaskRegistry = async (
 };
 
 /**
- * Register the eight agent registry mutation commands. Returns one disposable
+ * Register the nine agent registry mutation commands. Returns one disposable
  * per command; the caller owns their lifecycle.
  */
 export function registerAgentRegistryCommands(
@@ -243,7 +243,8 @@ export function registerAgentRegistryCommands(
 				);
 				if (confirm !== "Kill") return;
 				try {
-					const { execFileSync } = await import("node:child_process");
+					const { execFile } = await import("node:child_process");
+					const { promisify } = await import("node:util");
 					const terminalManager = getTerminalManager();
 					if (!terminalManager) {
 						throw new Error("Terminal manager is not initialized.");
@@ -252,7 +253,12 @@ export function registerAgentRegistryCommands(
 						await terminalManager.resolveLauncherHelperScriptPath(
 							"oste-kill.sh",
 						);
-					execFileSync("bash", [scriptPath, task.session_id], {
+					// Async (not execFileSync): oste-kill.sh runs a multi-second graceful
+					// SIGTERM wait before SIGKILL, so a synchronous call could freeze the
+					// extension host until it returns. (Reachable on a paused lane: its
+					// Kill menu is enabled for kill-to-clear.) The rejection on a non-zero
+					// exit still carries stderr for the catch below.
+					await promisify(execFile)("bash", [scriptPath, task.session_id], {
 						encoding: "utf-8",
 						env: {
 							...process.env,
@@ -263,8 +269,88 @@ export function registerAgentRegistryCommands(
 					getAgentStatusProvider()?.reload();
 					vscode.window.showInformationMessage(`Agent "${task.id}" killed.`);
 				} catch (err) {
+					// oste-kill.sh exits non-zero (e.g. "Use --force to kill.") with the
+					// reason on stderr; surface it so the operator sees why.
+					const stderr =
+						err && typeof err === "object" && "stderr" in err
+							? String((err as { stderr?: unknown }).stderr ?? "").trim()
+							: "";
 					vscode.window.showErrorMessage(
-						`Failed to kill agent: ${err instanceof Error ? err.message : String(err)}`,
+						`Failed to kill agent: ${
+							stderr || (err instanceof Error ? err.message : String(err))
+						}`,
+					);
+				}
+			},
+		),
+		vscode.commands.registerCommand(
+			"commandCentral.pauseAgent",
+			async (node?: {
+				type: string;
+				task?: { id: string; session_id: string };
+			}) => {
+				const task = node?.task;
+				if (!task) {
+					vscode.window.showWarningMessage(
+						"No agent selected. Right-click an agent in the tree.",
+					);
+					return;
+				}
+				if (!isValidSessionId(task.session_id)) {
+					vscode.window.showErrorMessage("Invalid session ID.");
+					return;
+				}
+				const tasksFilePath = getAgentStatusProvider()?.filePath;
+				if (!tasksFilePath) {
+					vscode.window.showErrorMessage(
+						"Agent tasks file not configured. Set commandCentral.agentTasksFile in settings.",
+					);
+					return;
+				}
+				const confirm = await vscode.window.showWarningMessage(
+					`Pause agent "${task.id}"? Parks the lane in Needs Review (awaiting relaunch) — the process is NOT stopped.`,
+					{ modal: true },
+					"Pause",
+				);
+				if (confirm !== "Pause") return;
+				try {
+					const { execFile } = await import("node:child_process");
+					const { promisify } = await import("node:util");
+					const terminalManager = getTerminalManager();
+					if (!terminalManager) {
+						throw new Error("Terminal manager is not initialized.");
+					}
+					const scriptPath =
+						await terminalManager.resolveLauncherHelperScriptPath(
+							"oste-pause.sh",
+						);
+					// Async (not execFileSync): oste-pause.sh holds the tasks lock and
+					// runs a multi-second idle dwell, so a synchronous call could
+					// freeze the extension host until it returns. The rejection on a
+					// non-zero exit still carries stderr for the catch below.
+					await promisify(execFile)("bash", [scriptPath, task.session_id], {
+						encoding: "utf-8",
+						env: {
+							...process.env,
+							TASKS_FILE: tasksFilePath,
+						},
+						timeout: 15000,
+					});
+					getAgentStatusProvider()?.reload();
+					vscode.window.showInformationMessage(
+						`Agent "${task.id}" paused — parked in Needs Review.`,
+					);
+				} catch (err) {
+					// oste-pause.sh refuses (non-zero exit) on a busy/working lane or
+					// a non-running status; surface its stderr so the operator sees why.
+					const stderr =
+						err && typeof err === "object" && "stderr" in err
+							? String((err as { stderr?: unknown }).stderr ?? "").trim()
+							: "";
+					vscode.window.showErrorMessage(
+						`Failed to pause agent: ${
+							stderr || (err instanceof Error ? err.message : String(err))
+						}`,
 					);
 				}
 			},

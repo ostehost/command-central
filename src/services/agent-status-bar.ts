@@ -26,6 +26,7 @@ const STATUS_ICON: Record<AgentTask["status"], string> = {
 	contract_failure: "$(alert)",
 	stopped: "$(debug-stop)",
 	killed: "$(close)",
+	paused: "$(debug-pause)",
 };
 
 function truncateForTooltip(value: string, max = 48): string {
@@ -70,6 +71,10 @@ export class AgentStatusBar implements vscode.Disposable {
 				task.status === "killed" ||
 				task.status === "contract_failure",
 		);
+		// Paused lanes are Needs Review (limbo). Mirror the tree's getSummaryIcon
+		// precedence (paused below running, above the green all-clear) so a
+		// paused-only scope is NOT rendered as `$(check)` "everything done".
+		const hasPaused = tasks.some((task) => task.status === "paused");
 
 		// Determine icon and text
 		if (attentionCount > 0) {
@@ -84,6 +89,9 @@ export class AgentStatusBar implements vscode.Disposable {
 			this.statusBarItem.backgroundColor = new vscode.ThemeColor(
 				"statusBarItem.warningBackground",
 			);
+		} else if (hasPaused) {
+			this.statusBarItem.text = `$(debug-pause) ${summary}`;
+			this.statusBarItem.backgroundColor = undefined;
 		} else {
 			this.statusBarItem.text = `$(check) ${summary}`;
 			this.statusBarItem.backgroundColor = undefined;

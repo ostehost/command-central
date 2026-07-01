@@ -1,3 +1,44 @@
+---
+tracker:
+  kind: linear
+  api_key: $LINEAR_API_KEY
+  project_slug: 0e8143ea0a62
+  active_states: [Todo, In Progress]
+  terminal_states: [Closed, Cancelled, Canceled, Duplicate, Done]
+workspace:
+  root: /Users/ostemini/projects/.symphony-workspaces/command-central
+  repository_root: /Users/ostemini/projects/command-central
+  project_routes:
+    0e8143ea0a62:
+      repository_root: /Users/ostemini/projects/command-central
+agent:
+  executor: visible-claude-lane
+  max_concurrent_agents: 1
+  max_turns: 20
+worker:
+  kind: visible_claude_launcher
+  launcher:
+    command: /Users/ostemini/projects/ghostty-launcher/scripts/oste-route.sh
+    role: developer
+    agent: claude
+    interactive: true
+    live: true
+visible_claude:
+  launcher_command: /Users/ostemini/projects/ghostty-launcher/scripts/oste-route.sh
+  execution_mode: spoke
+  execution_node: Mike MacBook Pro
+  routing_role: coder
+  team: implement
+  allow_detached_visible: true
+  project_routes:
+    0e8143ea0a62:
+      project_dir: /Users/ostehost/projects/command-central
+workroom:
+  discord:
+    account_id: default
+    guild_id: "1473740309363167408"
+    channel_prefix: issue-
+---
 # Development Workflow
 
 Command Central is the **reference implementation** of the cross-project recipe

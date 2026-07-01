@@ -4,7 +4,7 @@
 - **Linear:** PAR-237 (Command Central project); work_item_ref: `linear:PAR-237`
 - **Depends on (done):** PAR-233 (CCREL-01 hub/node source), PAR-234 (CCREL-02 config repo), PAR-236
 - **Repo:** `/Users/ostemini/projects/command-central` @ branch `main`
-- **Disposition:** code + contract doc (gate extension + per-node consumption proof + digest evidence). **Live daemon/node smoke + node-side install proof require live infrastructure — see "Live-infra gap".**
+- **Disposition:** code + contract doc (gate extension + per-node consumption proof + digest evidence). **Live run complete: rc71 cut behind a green integrated gate on 2026-06-25; dual-host consumption receipts confirmed.**
 
 ## What CCREL-05 asks
 
@@ -142,24 +142,63 @@ passing; the integrated gate is the hub release operator's entrypoint.
 
 | AC | Status | Evidence |
 |---|---|---|
-| AC1 — cut only after integrated parity + daemon smoke green | **code complete; live run pending** | `prerelease-gate-integrated` recipe + `--require-daemon-smoke`/`--require-repo-parity`/`--require-node-readiness` |
-| AC2/AC3 — install proof on hub AND node | **code complete; live run pending** | `--node-label` + `--receipt-dir` + `receiptFileName` |
+| AC1 — cut only after integrated parity + daemon smoke green | **done** | `prerelease-gate-2026-06-25T13-39-24.023Z.json` green (node readiness + daemon smoke + repo parity all passed); fresh HEAD gate `prerelease-gate-2026-06-25T18-14-32.820Z.json` also green (all 9 checks passed at HEAD 9769ff71); rc71 cut behind the gate |
+| AC2/AC3 — install proof on hub AND node | **done** | `vscode-consumption-0.6.0-rc.71-hub.json` (`success: true`, hub) and `vscode-consumption-0.6.0-rc.71-node.json` (`success: true`, node) |
 | AC4 — record daemon/config-parity/launcher-sync/hub-node evidence in digest | **done** | `collectGateEvidence` + `GATE_EVIDENCE_LABELS` + "Release gate evidence" section |
 | AC5 — no push/tag/publish | **satisfied** | edits only; no git state change in this lane |
 
-## Live-infra gap (why this is `partial`)
+## Live closeout (rc71, 2026-06-25)
 
-The following cannot be produced in this edit-only environment — they need the
-hub with a live OpenClaw daemon and a paired, connected compute node:
+The live gate has run. Evidence on disk:
 
-1. **A green `just prerelease-gate-integrated` run** at the next RC HEAD
-   (the daemon-smoke + node-readiness checks call the live `openclaw` binary).
-2. **The dual-host consumption receipts** `vscode-consumption-0.6.0-rc.<N>-hub.json`
-   and `…-node.json` (require the RC VSIX installed and `code` on both hosts).
-3. **The cut itself** of the next RC (rc.71) — gated on (1).
+1. **Green integrated gate on hub** — `prerelease-gate-2026-06-25T13-39-24.023Z.json`:
+   node readiness passed (Mike MacBook Pro, OpenClaw 2026.6.10, connected); daemon
+   smoke passed (gateway running, PID 16863, port 18789, RPC ok); hub repo parity
+   passed (command-central, ghostty-launcher, config all clean at origin/main).
+2. **Gate proven green at current HEAD** — `prerelease-gate-2026-06-25T18-14-32.820Z.json`:
+   a fresh gate run at the current HEAD (9769ff71, post-rc71 integration) confirms
+   no regression — all 9 checks passed; the gate is clear so the next cut is
+   unblocked when warranted.
+3. **Dual-host consumption receipts** — `vscode-consumption-0.6.0-rc.71-hub.json`
+   (`success: true`, hub/ostemini, 2026-06-25T13:14) and
+   `vscode-consumption-0.6.0-rc.71-node.json` (`success: true`, node/ostehost,
+   2026-06-25T13:37): rc71 installs and activates on both hosts.
+4. **rc71 was cut behind a green gate** — the cut was gated on the passing
+   integrated receipt; no RC was cut speculatively. No further RC (rc72+) has been
+   cut as of this closeout — no new code change warrants one.
 
-The code, scaffolding, recipe, and digest wiring for all three are in place; only
-the live execution on hub+node remains.
+## Re-verification (PAR-237 lane — 2026-06-25, node host `ostehost`)
+
+A second delegate-mode lane (`symphony-PAR-237-7424b47d`) re-ran the verifiable
+signals at the current tree (HEAD `eac46256`, 4 docs-only commits ahead of the
+gated `9769ff7`). This snapshot is **later than** the 18:14 gate receipt: the code
+is still green, but the live node daemon has since drifted RED.
+
+| Dimension | Re-verification result |
+|---|---|
+| `just check` | ✅ exit 0 — Biome CI clean (335 files), `tsc` clean, Knip informational-only |
+| `just test` | ✅ exit 0 — 2566 pass / 1 skip / 0 fail (2567 tests, 180 files, 19.85s) |
+| Hub/node repo parity | ✅ green-by-design — all three trees clean; `command-central` 0 behind / 4 ahead (unpushed CCREL-05 docs), `config` 0/0 at origin/main, `ghostty-launcher` 0 behind / 2 ahead |
+| rc71 consumption receipts | ✅ both `success: true`; VSIX sha256 `f7e66a4b…` identical on hub (`ostemini`) and node (`ostehost`) |
+| Daemon smoke | ❌ **currently RED** — node daemon process alive (pid 60379) but gateway unreachable (`connect ECONNREFUSED 127.0.0.1:443`, `health.healthy=false`, `version=null`); `OPENCLAW_SERVICE_VERSION=2026.5.22` vs CLI `2026.6.10` drift |
+| Node readiness | ⚠️ **unprobeable** — `openclaw nodes status` is blocked while the gateway is down |
+
+**What this means — AC1 working as designed.** The historical rc71 record stands
+(rc71 was cut behind a genuinely green integrated gate at `9769ff7` / 18:14; that
+receipt is still on disk). But because the live node daemon has since gone RED,
+**no new RC (rc72+) can or should be cut right now** — and this lane cut none.
+`just prerelease-gate-integrated` would correctly hard-block on daemon smoke (and
+node readiness) before any cut, which qualifies point 2 above: the gate is *not*
+clear at this moment. That hard-block is exactly the CCREL-05 guarantee — "cut only
+after parity and daemon smoke are green."
+
+**To unblock a future cut** (deferred to the hub release operator; requires explicit
+approval — intentionally not performed here): restore the node daemon/gateway to
+health (resolve the `2026.5.22 → 2026.6.10` service-version drift so the gateway
+endpoint comes back up), push the 4 docs-only commits so `command-central` repo
+parity returns to `0/0`, then re-run `just prerelease-gate-integrated` and require it
+green before cutting rc72. No push, tag, publish, or daemon restart was performed in
+this lane.
 
 ## Constraints honored
 

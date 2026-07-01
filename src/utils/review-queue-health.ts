@@ -211,6 +211,25 @@ export function isReconciledGcVerdict(
 	return (GC_RECONCILED_VERDICTS as Set<LaneProjectionGcVerdict>).has(verdict);
 }
 
+/**
+ * Human-readable label for a reconciled GC verdict, for the Command Central
+ * audit surface (tree-row description/tooltip). CCSYNC-02: when an authoritative
+ * lane-projection GC pass reconciles a row out of the live surface, an operator
+ * must be able to SEE why it was cleared, not have it silently vanish from the
+ * attention badge. `downgraded` is stale-read-model limbo (reconcile-needed);
+ * `archived`/`removed` were taken off the live projection by the GC pass.
+ */
+export function gcReconcileVerdictLabel(verdict: ReconciledGcVerdict): string {
+	switch (verdict) {
+		case "downgraded":
+			return "reconcile-needed";
+		case "archived":
+			return "archived (GC)";
+		case "removed":
+			return "removed (GC)";
+	}
+}
+
 export function checkAdvertisedReviewQueue(
 	task: ReviewQueueTaskShape,
 ): AdvertisedReviewQueueState {

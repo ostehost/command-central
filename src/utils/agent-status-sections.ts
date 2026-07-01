@@ -204,6 +204,12 @@ export interface V2SectionSignals {
  *  - a completed missing-handoff/receipt lane → `action` (legacy `limbo`)
  */
 export function sectionFromSignals(signals: V2SectionSignals): V2LaneSection {
+	// 0. PAUSED — intentionally parked, awaiting an operator decision. Resolved
+	// ABOVE the liveness short-circuit: a paused lane's process is typically
+	// still alive, but a parked lane is Needs Review, never Live. (Mirrors the
+	// legacy engine's `paused → limbo → review` mapping in getNodeStatusGroup.)
+	if (signals.status === "paused") return "review";
+
 	// 1. LIVE — an alive process wins over any recorded terminal status.
 	if (signals.status === "running") return "live";
 	if (signals.livenessAlive) return "live";

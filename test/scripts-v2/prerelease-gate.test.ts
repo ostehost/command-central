@@ -62,6 +62,7 @@ function createGateFixture(): {
 		`
 const capture = await terminalManager.resolveLauncherHelperScriptPath("oste-capture.sh");
 const kill = await terminalManager.resolveLauncherHelperScriptPath("oste-kill.sh");
+const pause = await terminalManager.resolveLauncherHelperScriptPath("oste-pause.sh");
 `,
 		"utf8",
 	);
@@ -233,6 +234,7 @@ async resolveLauncherHelperScriptPath(scriptName: string): Promise<string> {
 	const validExtensionSource = `
 const capture = await terminalManager.resolveLauncherHelperScriptPath("oste-capture.sh");
 const kill = await terminalManager.resolveLauncherHelperScriptPath("oste-kill.sh");
+const pause = await terminalManager.resolveLauncherHelperScriptPath("oste-pause.sh");
 `;
 
 	const validHelp = `
@@ -315,6 +317,10 @@ const capture =
 const kill =
 	await terminalManager.resolveLauncherHelperScriptPath(
 		"oste-kill.sh",
+	);
+const pause =
+	await terminalManager.resolveLauncherHelperScriptPath(
+		"oste-pause.sh",
 	);
 `;
 		expect(

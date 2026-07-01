@@ -110,6 +110,31 @@ describe("extracted Agent Status helper modules", () => {
 		).toMatch(/^Completed /);
 	});
 
+	test("paused renders as Paused — never the `default`/'Failed' arm (C2)", () => {
+		const pausedIcon = getStatusThemeIcon("paused") as {
+			id: string;
+			color?: { id: string };
+		};
+		expect(pausedIcon.id).toBe("debug-pause");
+		expect(pausedIcon.color?.id).toBe("charts.blue");
+		expect(getStatusDisplayLabel("paused")).toBe("paused");
+		const elapsed = formatTaskElapsedDescription(
+			makeAgentTask({ status: "paused", completed_at: null }),
+		);
+		expect(elapsed).toMatch(/^Paused for /);
+		expect(elapsed).not.toMatch(/Failed/);
+	});
+
+	test("a tasks.json row with status:paused survives normalization, not coerced to stopped (C1)", () => {
+		const normalized = normalizeTask("task-paused", {
+			id: "task-paused",
+			session_id: "session-paused",
+			status: "paused",
+			project_dir: "/repo",
+		});
+		expect(normalized?.status).toBe("paused");
+	});
+
 	test("task normalizers parse launcher registry and projection records", () => {
 		const rawTask = {
 			id: "task-1",

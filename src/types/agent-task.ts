@@ -21,6 +21,12 @@ export function createEmptyTaskRegistry(): TaskRegistry {
 
 export type AgentTaskStatus =
 	| "running"
+	// Intentionally parked by an operator (or a cooperating agent), awaiting
+	// relaunch. NON-TERMINAL: the process may still be alive or may later die,
+	// but the lane is never auto-flipped to another status — its only exits are
+	// kill (→ killed) or an explicit same-id relaunch (→ running). Buckets to
+	// Needs Review (limbo). See research/DESIGN-paused-lane-lifecycle-v2.
+	| "paused"
 	| "stopped"
 	| "killed"
 	| "completed"
