@@ -39,6 +39,21 @@ export type AgentRole = "developer" | "planner" | "reviewer" | "test";
 export type AgentStatusSortMode = "status-recency";
 
 /**
+ * OpenClaw/Symphony-native visible-lane attention verdict, projected verbatim
+ * from the daemon's durable receipt vocabulary (`visible_lane.awaiting_input` /
+ * `visible_lane.attention`). Command Central PROJECTS this — it never authors it
+ * and it never changes lane lifecycle state (the row keeps its `status`).
+ *
+ *  - "awaiting_input" — the daemon confirmed the visible lane is BLOCKED at a
+ *    permission/input prompt a human must answer. Authoritative: CC renders
+ *    "(awaiting input)" from this alone, without reading the pane itself.
+ *  - "attention"      — the lane needs a look but is NOT a confirmed input wait
+ *    (degraded on-screen visibility, stale AX/tmux capture, etc.). Renders as
+ *    visibility-degraded / needs-attention, NEVER as an input wait by itself.
+ */
+export type VisibleLaneAttention = "awaiting_input" | "attention";
+
+/**
  * Embedded Work Registry resolution stamped on a lane record at spawn time.
  * Presence of a non-empty `id` is what marks a record as registry-backed —
  * the discriminator between active LaneRef records and stale launcher-era
@@ -121,6 +136,22 @@ export interface AgentTask {
 	/** `visibility.reason` verbatim (e.g. `ax_error_…`,
 	 *  `tmux_no_attached_clients`); null when no claim was made. */
 	launcher_visibility_reason?: string | null;
+	/**
+	 * OpenClaw/Symphony-native visible-lane attention verdict, projected from the
+	 * daemon's durable receipt (`visible_lane.awaiting_input` /
+	 * `visible_lane.attention`). When present it is the authoritative basis for
+	 * the row's attention badge: `awaiting_input` renders "(awaiting input)" even
+	 * when CC cannot read the pane locally; `attention` renders as
+	 * visibility-degraded / needs-attention and NEVER as an input wait by itself
+	 * (that is what `launcher_visibility_degraded` also feeds). A PROJECTION only —
+	 * CC never writes it and it never changes lane lifecycle `status`. Absent/null
+	 * when the daemon made no visible-lane attention claim (the pane heuristic
+	 * remains the local fallback). See {@link VisibleLaneAttention}.
+	 */
+	visible_lane_attention?: VisibleLaneAttention | null;
+	/** Verbatim native detail for the attention claim (audit + tooltip); null
+	 *  when the receipt carried no reason. */
+	visible_lane_attention_reason?: string | null;
 	/** Work System workroom binding. Persisted in the task row at spawn from
 	 *  OSTE_WORKROOM_REF and row-backed at env-less emission points (hook/reaper). */
 	workroom_ref?: string | null;

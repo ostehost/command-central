@@ -14,6 +14,7 @@ import type {
 	AgentTask,
 	AgentTaskProjectRef,
 	AgentTaskStatus,
+	VisibleLaneAttention,
 } from "./agent-status-tree-provider.js";
 import { canonicalGenerationToken } from "./agent-task-classification.js";
 
@@ -53,6 +54,18 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === "object" && !Array.isArray(value)
 		? (value as Record<string, unknown>)
 		: null;
+}
+
+/**
+ * Coerce a raw `visible_lane_attention` value to the projected
+ * {@link VisibleLaneAttention} discriminant. Fail-closed: any token other than
+ * the two the daemon's receipt vocabulary defines becomes null, so an
+ * unrecognized upstream value never invents an attention badge.
+ */
+function normalizeVisibleLaneAttention(
+	value: unknown,
+): VisibleLaneAttention | null {
+	return value === "awaiting_input" || value === "attention" ? value : null;
 }
 
 function normalizeTaskProjectRef(value: unknown): AgentTaskProjectRef | null {
@@ -119,6 +132,11 @@ export function normalizeTask(
 			asNullableBoolean(raw["launcher_visibility_degraded"]) ?? null,
 		launcher_visibility_reason:
 			asString(raw["launcher_visibility_reason"]) ?? null,
+		visible_lane_attention: normalizeVisibleLaneAttention(
+			raw["visible_lane_attention"],
+		),
+		visible_lane_attention_reason:
+			asString(raw["visible_lane_attention_reason"]) ?? null,
 		source_authority: asString(raw["source_authority"]) ?? null,
 		owner_kind: asString(raw["owner_kind"]) ?? null,
 		owner_actions: Array.isArray(raw["owner_actions"])
@@ -342,6 +360,17 @@ function laneRefUpdateToTaskRecord(
 	// the row (see isLivenessUnobservableRunningLane).
 	const attach = asRecord(envelope["attach"]);
 	const visibility = asRecord(envelope["visibility"]);
+	// Native visible-lane attention projection (§visible_lane_attention). Two
+	// shapes are tolerated: a structured `{ kind, reason }` object, or a flat
+	// `visible_lane_attention` string alongside `visible_lane_attention_reason`.
+	// Either way the value is fail-closed to the daemon's receipt vocabulary.
+	const attention = asRecord(envelope["visible_lane_attention"]);
+	const attentionKind = attention
+		? attention["kind"]
+		: envelope["visible_lane_attention"];
+	const attentionReason = attention
+		? attention["reason"]
+		: envelope["visible_lane_attention_reason"];
 	return {
 		id: taskId,
 		task_id: taskId,
@@ -366,6 +395,8 @@ function laneRefUpdateToTaskRecord(
 			? visibility["degraded"]
 			: undefined,
 		launcher_visibility_reason: visibility ? visibility["reason"] : undefined,
+		visible_lane_attention: normalizeVisibleLaneAttention(attentionKind),
+		visible_lane_attention_reason: asString(attentionReason) ?? null,
 		workroom_ref: asString(envelope["workroom_ref"]),
 		work_item_ref: asString(envelope["work_item_ref"]),
 		provenance: {

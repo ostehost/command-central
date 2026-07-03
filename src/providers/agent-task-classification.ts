@@ -19,7 +19,11 @@
 
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentTask, AgentTaskStatus } from "../types/agent-task.js";
+import type {
+	AgentTask,
+	AgentTaskStatus,
+	VisibleLaneAttention,
+} from "../types/agent-task.js";
 import type { OpenClawTask } from "../types/openclaw-task-types.js";
 
 /**
@@ -198,6 +202,38 @@ export function isLocalFileProbeAuthoritative(task: AgentTask): boolean {
 	return (
 		normalizeHostName(taskHost) === normalizeHostName(getCurrentMachineHost())
 	);
+}
+
+// ── Native visible-lane attention projection ─────────────────────────
+
+/**
+ * Project the OpenClaw/Symphony-native visible-lane attention verdict for a
+ * lane, from the daemon's durable receipt field ({@link AgentTask.visible_lane_attention}).
+ *
+ * This is a PROJECTION seam, not a source of truth: CC reads the daemon's
+ * verdict rather than inferring lane attention from a local pane read. The two
+ * verdicts render on deliberately different surfaces (the semantic contract the
+ * caller must preserve):
+ *
+ *  - "awaiting_input" → the lane is blocked at a permission/input prompt a human
+ *    must answer. Authoritative enough to render "(awaiting input)" WITHOUT a
+ *    local pane capture, even on a lane CC cannot otherwise observe.
+ *  - "attention"      → the lane needs a look but is NOT a confirmed input wait
+ *    (degraded on-screen visibility / stale AX or tmux capture). Renders as
+ *    visibility-degraded / needs-attention and MUST NEVER be routed to the
+ *    awaiting-input surface by itself.
+ *
+ * Returns null when the daemon made no visible-lane attention claim (the local
+ * pane heuristic remains the fallback), or when the field carries an
+ * unrecognized value (fail-closed — an unknown token never invents attention).
+ */
+export function classifyVisibleLaneAttention(
+	task: Pick<AgentTask, "visible_lane_attention">,
+): VisibleLaneAttention | null {
+	return task.visible_lane_attention === "awaiting_input" ||
+		task.visible_lane_attention === "attention"
+		? task.visible_lane_attention
+		: null;
 }
 
 export function getTaskDisplayProjectName(task: AgentTask): string {

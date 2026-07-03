@@ -208,6 +208,7 @@ import {
 	classifyLifecycleConflict,
 	classifyOpenClawCrossProjectContext,
 	classifyTaskSurface,
+	classifyVisibleLaneAttention,
 	getTaskDisplayProjectName,
 	getTaskExecutionHostLabel,
 	hasFirstClassTerminalFocusSurface,
@@ -343,6 +344,7 @@ export type {
 	AgentTaskProjectRef,
 	AgentTaskStatus,
 	TaskRegistry,
+	VisibleLaneAttention,
 } from "../types/agent-task.js";
 
 /**
@@ -7750,6 +7752,17 @@ export class AgentStatusTreeProvider
 		const stuckRaw = this.isAgentStuck(task);
 		const interactiveAwaiting =
 			stuckRaw && this.hasPositiveLivenessEvidence(task);
+		// PAR-323: project the OpenClaw/Symphony-native visible-lane attention
+		// verdict when the daemon has durably classified this lane (its
+		// `visible_lane.awaiting_input` / `visible_lane.attention` receipt
+		// vocabulary). CC PROJECTS this — it never authors it and it never changes
+		// lane lifecycle state (the row keeps its `status`). The two verdicts land
+		// on deliberately different surfaces: `awaiting_input` is a confirmed
+		// human-blocking prompt; `attention` is a needs-a-look / degraded-visibility
+		// flag that must NEVER be read as an input wait by itself.
+		const nativeAttention = classifyVisibleLaneAttention(task);
+		const nativeAwaitingInput = nativeAttention === "awaiting_input";
+		const nativeVisibilityAttention = nativeAttention === "attention";
 		// PAR-322: a live interactive lane that has gone quiet is USUALLY just an
 		// idle REPL, but it may instead be BLOCKED on a visible permission/input
 		// prompt a human must answer. Read the pane to tell the two apart so a
@@ -7757,9 +7770,15 @@ export class AgentStatusTreeProvider
 		// the bound workroom) instead of hiding behind a generic "(interactive)"
 		// hint. `&&`-gated on `interactiveAwaiting`, so the cache-bounded pane
 		// capture runs only for the narrow already-stuck-but-alive set.
+		//
+		// PAR-323: a native `awaiting_input` receipt is authoritative on its own —
+		// it renders the wait even when CC cannot read the pane locally (and the
+		// `||` short-circuit skips the pane capture entirely). The pane-heuristic
+		// operand is byte-identical to PAR-322 so its behavior is preserved.
 		const awaitingUserInput =
-			interactiveAwaiting &&
-			this.getTerminalTaskPaneAttention(task) === "awaiting-user-input";
+			nativeAwaitingInput ||
+			(interactiveAwaiting &&
+				this.getTerminalTaskPaneAttention(task) === "awaiting-user-input");
 		// Only surface "(possibly stuck)" when stuck heuristics fire AND we have
 		// no positive liveness evidence. Live launcher-managed interactive
 		// Claude lanes get the more honest "(interactive)" hint instead.
@@ -7964,15 +7983,26 @@ export class AgentStatusTreeProvider
 		if (claudeUuid) {
 			descriptionParts.push(`🔗 ${claudeUuid.slice(0, 8)}`);
 		}
-		const rawDescription = livenessUnobservable
-			? `${descriptionParts.join(" · ")} (detached)`
-			: isStuck
-				? `${descriptionParts.join(" · ")} (possibly stuck)`
-				: interactiveAwaiting
-					? `${descriptionParts.join(" · ")} ${
-							awaitingUserInput ? "(awaiting input)" : "(interactive)"
-						}`
-					: descriptionParts.join(" · ");
+		const joinedDescription = descriptionParts.join(" · ");
+		// Attention-hint precedence (highest first): a confirmed input wait —
+		// native (PAR-323) OR pane-heuristic (PAR-322) — is the actionable truth
+		// and outranks even a degraded-visibility "(detached)" surface (native
+		// `awaiting_input` is authoritative through it). A native `attention`
+		// verdict renders "(needs attention)" — visibility-degraded / needs-a-look,
+		// never an input wait — and yields to the already-flagged detached/stuck
+		// surfaces. An alive-but-quiet interactive REPL keeps the honest
+		// "(interactive)" hint.
+		const rawDescription = awaitingUserInput
+			? `${joinedDescription} (awaiting input)`
+			: livenessUnobservable
+				? `${joinedDescription} (detached)`
+				: isStuck
+					? `${joinedDescription} (possibly stuck)`
+					: nativeVisibilityAttention
+						? `${joinedDescription} (needs attention)`
+						: interactiveAwaiting
+							? `${joinedDescription} (interactive)`
+							: joinedDescription;
 		const description =
 			rawDescription.length > 80
 				? `${rawDescription.slice(0, 79)}…`
@@ -8009,9 +8039,25 @@ export class AgentStatusTreeProvider
 					livenessUnobservableReason ? ` (${livenessUnobservableReason})` : ""
 				}`
 			: null;
+		const nativeAttentionReasonSuffix =
+			task.visible_lane_attention_reason?.trim()
+				? ` (${task.visible_lane_attention_reason.trim()})`
+				: "";
+		// PAR-323: when the wait is native-backed, attribute it to the daemon's
+		// receipt (and carry its verbatim reason); otherwise keep the exact
+		// PAR-322 pane-heuristic copy. Both contain "Awaiting input".
 		const awaitingInputLine = awaitingUserInput
-			? "**$(comment-discussion) Awaiting input:** Claude is paused at a permission/input prompt in its pane — a human must respond before it can continue."
+			? nativeAwaitingInput
+				? `**$(comment-discussion) Awaiting input:** OpenClaw/Symphony reports this lane is blocked at a permission/input prompt — a human must respond before it can continue.${nativeAttentionReasonSuffix}`
+				: "**$(comment-discussion) Awaiting input:** Claude is paused at a permission/input prompt in its pane — a human must respond before it can continue."
 			: null;
+		// PAR-323: a native `attention` verdict is a needs-a-look / degraded-
+		// visibility flag, NOT a confirmed input wait — suppressed when a louder,
+		// pane-confirmed input wait is already shown.
+		const visibilityAttentionLine =
+			nativeVisibilityAttention && !awaitingUserInput
+				? `**$(eye-closed) Needs attention:** OpenClaw/Symphony flagged this visible lane's on-screen visibility as degraded — a look may be needed (not a confirmed input wait).${nativeAttentionReasonSuffix}`
+				: null;
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${task.id}**`,
@@ -8019,6 +8065,7 @@ export class AgentStatusTreeProvider
 				lifecycleConflictLine,
 				detachedLivenessLine,
 				awaitingInputLine,
+				visibilityAttentionLine,
 				task.gc_reconcile
 					? `**$(history) Lane GC:** ${gcReconcileVerdictLabel(
 							task.gc_reconcile,
@@ -8056,42 +8103,55 @@ export class AgentStatusTreeProvider
 						"warning",
 						new vscode.ThemeColor("charts.orange"),
 					)
-				: livenessUnobservable
-					? // Running, but CC has no evidence of live work (launcher
-						// reported attach-unavailable / visibility-degraded, or a
-						// session-less projection row with nothing to probe). Swap the
-						// animated sync~spin for a static "disconnected" icon so the row
-						// stops implying ongoing work it can't substantiate.
+				: awaitingUserInput
+					? // A confirmed permission/input wait — native (PAR-323) or
+						// pane-confirmed (PAR-322). Orange "chat awaiting reply" so the
+						// blocked lane reads loudest; hoisted above the detached surface
+						// so a native wait is never muted by degraded local visibility.
 						new vscode.ThemeIcon(
-							"debug-disconnect",
-							new vscode.ThemeColor("charts.yellow"),
+							"comment-discussion",
+							new vscode.ThemeColor("charts.orange"),
 						)
-					: task.status === "completed_stale" || isStuck
-						? new vscode.ThemeIcon(
-								"warning",
+					: livenessUnobservable
+						? // Running, but CC has no evidence of live work (launcher
+							// reported attach-unavailable / visibility-degraded, or a
+							// session-less projection row with nothing to probe). Swap the
+							// animated sync~spin for a static "disconnected" icon so the row
+							// stops implying ongoing work it can't substantiate.
+							new vscode.ThemeIcon(
+								"debug-disconnect",
 								new vscode.ThemeColor("charts.yellow"),
 							)
-						: interactiveAwaiting
-							? // Idle interactive REPL: positive pane evidence proves the
-								// lane is alive, but the stream has been silent past the
-								// stuck threshold — so it's awaiting input, not churning.
-								// Swap the animated sync~spin for a static "chat awaiting
-								// reply" icon so the row stops implying ongoing work. When
-								// the pane confirms a genuine permission/input wait
-								// (PAR-322) paint it orange so a blocked lane reads louder
-								// than a merely-idle REPL.
-								new vscode.ThemeIcon(
-									"comment-discussion",
-									new vscode.ThemeColor(
-										awaitingUserInput ? "charts.orange" : "charts.yellow",
-									),
+						: task.status === "completed_stale" || isStuck
+							? new vscode.ThemeIcon(
+									"warning",
+									new vscode.ThemeColor("charts.yellow"),
 								)
-							: isReviewed
-								? new vscode.ThemeIcon(
-										"pass",
-										new vscode.ThemeColor("charts.green"),
+							: nativeVisibilityAttention
+								? // PAR-323: native `attention` — degraded on-screen
+									// visibility / needs a look, but NOT a confirmed input wait.
+									// Orange "eye-closed" reads as attention without implying a
+									// blocking prompt (that surface is reserved for awaiting-input).
+									new vscode.ThemeIcon(
+										"eye-closed",
+										new vscode.ThemeColor("charts.orange"),
 									)
-								: getStatusThemeIcon(task.status);
+								: interactiveAwaiting
+									? // Idle interactive REPL: positive pane evidence proves the
+										// lane is alive, but the stream has been silent past the
+										// stuck threshold with no confirmed wait — a static yellow
+										// "chat awaiting reply" so the row stops implying ongoing
+										// work (a confirmed wait is handled by the branch above).
+										new vscode.ThemeIcon(
+											"comment-discussion",
+											new vscode.ThemeColor("charts.yellow"),
+										)
+									: isReviewed
+										? new vscode.ThemeIcon(
+												"pass",
+												new vscode.ThemeColor("charts.green"),
+											)
+										: getStatusThemeIcon(task.status);
 		// `.linked` contextValue suffix is added only when a Claude session
 		// UUID is recorded — mirrors the at-a-glance description indicator
 		// (presence = task-specific resume target; absence = `--continue`).
