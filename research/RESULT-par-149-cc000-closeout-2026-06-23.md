@@ -99,3 +99,48 @@ for this closeout.
 No source edits. No `just`/`bun`/build/test invocation (concurrent batch). No Linear
 mutation performed by this task — Linear state changes are recorded as follow-ups for
 the orchestrator/human. Only this `research/` receipt was written.
+
+---
+
+## Evidence-currency update — 2026-07-03 (PAR-149 re-run)
+
+Re-verified as the visible Symphony implementation lane for PAR-149
+(`symphony-PAR-149-21348d41`). The structural deliverable is unchanged and still met;
+two point-in-time statements in the body above have since been superseded by committed
+evidence. Recorded here as a dated addendum rather than by rewriting the 2026-06-23 body
+(that body was accurate on its date).
+
+1. **The "no explicit closeout/receipt doc" gap is closed.** The PAR-149 entry in
+   `WORK-LEDGER.md` (line 44) still cites "no explicit closeout/receipt doc" as one of
+   the two reasons its confidence reads `medium`. This file **is** that doc — committed
+   as part of `c715ea04` — so that specific reason is now stale.
+
+2. **CC-006 now has its consolidated closeout.** The "Status of children" note above
+   records "CC-006 / PAR-158 — … no single consolidated CC-006 report yet," and the
+   "Follow-ups" section proposed writing it. That report now exists:
+   `research/RESULT-cc-006-dogfood-closeout-2026-07-02.md` (committed `c4442ed6`,
+   2026-07-02), consolidating the PAR-189/191/193/195 dogfood evidence against CC-006's
+   four acceptance criteria. The corresponding follow-up is discharged for CC-006.
+
+3. **PAR-149 live state unchanged — the sole remaining follow-up is the tracker flip.**
+   Re-checked against the committed `research/cc-work-ledger.json` snapshot (`order[2]`):
+   PAR-149 is still `Backlog` (priority High), sourced from
+   `"Linear team PAR / project Command Central"`. The structural deliverable (dedicated
+   project + six keyed, parent-grouped CC-* children) remains met. The only open item is
+   the Backlog → Done flip in Linear — a tracker mutation owned by the human/orchestrator
+   and out of scope for this code lane. No live Linear pull or mutation was performed by
+   this update.
+
+### Updated follow-up ledger
+
+- ~~Write the consolidated CC-006 closeout~~ — **done**
+  (`RESULT-cc-006-dogfood-closeout-2026-07-02.md`).
+- Per-child closeouts for CC-002 / CC-004 / CC-005 — still optional; each tracked under
+  its own child issue, not CC-000's scope.
+- Flip **PAR-149** Backlog → Done in Linear — still open; human/orchestrator action.
+
+### Hard-stop compliance (this update)
+
+Docs-only; single file appended. No source / test / config / `tasks.json` / launcher /
+Symphony / OpenClaw state touched. No Linear mutation. No push / tag / publish / version
+bump.
