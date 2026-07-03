@@ -1,5 +1,6 @@
 {
-  "generatedAt": "2026-06-25T13:37:28.031Z",
+  "generatedAt": "2026-07-03T16:47:26.780Z",
+  "nodeLabel": "node",
   "vsixPath": "/Users/ostehost/projects/command-central/releases/command-central-0.6.0-rc.71.vsix",
   "vsixSha256": "f7e66a4b8296e6b578fef1143ed60512aea632bbbca0a6019fa77fc6209b19ef",
   "vsixIdentity": {
