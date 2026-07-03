@@ -1488,15 +1488,25 @@ export class AgentStatusTreeProvider
 		if (!targetInfo) return "unknown";
 		const cached = this._tmuxPaneAttentionCache.getFresh(targetInfo.cacheKey);
 		if (cached !== undefined) return cached;
-		// An agent process owning the pane is the strongest signal — reuse the
-		// already-warmed liveness evidence so an "alive" pane is never demoted to
-		// a benign state by a snippet that happens to look quiet.
+		// A live agent process owning the pane is normally the strongest signal, so
+		// an "alive" pane is never demoted to a BENIGN state by a snippet that
+		// happens to look quiet. But a VISIBLE permission/input wait outranks even
+		// that: a live Claude sitting at an interactive prompt (a y/N or a numbered
+		// permission selector) is blocked on a human, not doing work (PAR-322).
+		// Classify the captured snippet on its own merits first; an unambiguous
+		// `awaiting-user-input` wins even while the agent owns the pane. Only when
+		// the snippet shows no such wait do we honor the anti-demotion guard and
+		// force `active-agent` for an alive-but-quiet pane.
 		const agentOwned = this.getTerminalTaskLivenessEvidence(task) === "alive";
-		const snippet = capturePaneSnippet(targetInfo.target, task.tmux_socket);
-		const state = classifyPaneAttention(
-			agentOwned ? "claude" : undefined,
-			snippet ?? "",
-		);
+		const snippet =
+			capturePaneSnippet(targetInfo.target, task.tmux_socket) ?? "";
+		const snippetState = classifyPaneAttention(undefined, snippet);
+		const state: PaneAttentionState =
+			snippetState === "awaiting-user-input"
+				? "awaiting-user-input"
+				: agentOwned
+					? "active-agent"
+					: snippetState;
 		this._tmuxPaneAttentionCache.set(targetInfo.cacheKey, state);
 		return state;
 	}
@@ -7740,6 +7750,16 @@ export class AgentStatusTreeProvider
 		const stuckRaw = this.isAgentStuck(task);
 		const interactiveAwaiting =
 			stuckRaw && this.hasPositiveLivenessEvidence(task);
+		// PAR-322: a live interactive lane that has gone quiet is USUALLY just an
+		// idle REPL, but it may instead be BLOCKED on a visible permission/input
+		// prompt a human must answer. Read the pane to tell the two apart so a
+		// genuine wait surfaces distinctly (the surface the daemon watches to wake
+		// the bound workroom) instead of hiding behind a generic "(interactive)"
+		// hint. `&&`-gated on `interactiveAwaiting`, so the cache-bounded pane
+		// capture runs only for the narrow already-stuck-but-alive set.
+		const awaitingUserInput =
+			interactiveAwaiting &&
+			this.getTerminalTaskPaneAttention(task) === "awaiting-user-input";
 		// Only surface "(possibly stuck)" when stuck heuristics fire AND we have
 		// no positive liveness evidence. Live launcher-managed interactive
 		// Claude lanes get the more honest "(interactive)" hint instead.
@@ -7949,7 +7969,9 @@ export class AgentStatusTreeProvider
 			: isStuck
 				? `${descriptionParts.join(" · ")} (possibly stuck)`
 				: interactiveAwaiting
-					? `${descriptionParts.join(" · ")} (interactive)`
+					? `${descriptionParts.join(" · ")} ${
+							awaitingUserInput ? "(awaiting input)" : "(interactive)"
+						}`
 					: descriptionParts.join(" · ");
 		const description =
 			rawDescription.length > 80
@@ -7987,12 +8009,16 @@ export class AgentStatusTreeProvider
 					livenessUnobservableReason ? ` (${livenessUnobservableReason})` : ""
 				}`
 			: null;
+		const awaitingInputLine = awaitingUserInput
+			? "**$(comment-discussion) Awaiting input:** Claude is paused at a permission/input prompt in its pane — a human must respond before it can continue."
+			: null;
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${task.id}**`,
 				`Status: ${getStatusDisplayLabel(task.status)}`,
 				lifecycleConflictLine,
 				detachedLivenessLine,
+				awaitingInputLine,
 				task.gc_reconcile
 					? `**$(history) Lane GC:** ${gcReconcileVerdictLabel(
 							task.gc_reconcile,
@@ -8050,10 +8076,15 @@ export class AgentStatusTreeProvider
 								// lane is alive, but the stream has been silent past the
 								// stuck threshold — so it's awaiting input, not churning.
 								// Swap the animated sync~spin for a static "chat awaiting
-								// reply" icon so the row stops implying ongoing work.
+								// reply" icon so the row stops implying ongoing work. When
+								// the pane confirms a genuine permission/input wait
+								// (PAR-322) paint it orange so a blocked lane reads louder
+								// than a merely-idle REPL.
 								new vscode.ThemeIcon(
 									"comment-discussion",
-									new vscode.ThemeColor("charts.yellow"),
+									new vscode.ThemeColor(
+										awaitingUserInput ? "charts.orange" : "charts.yellow",
+									),
 								)
 							: isReviewed
 								? new vscode.ThemeIcon(
