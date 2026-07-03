@@ -4,7 +4,7 @@
 - **Linear:** PAR-297 (Command Central project); work_item_ref: `linear:PAR-297`
 - **Task:** `symphony-PAR-297-591c88aa`
 - **Host:** real node — `ostehost` (Apple M1 Max, `$HOME=/Users/ostehost`)
-- **Repo:** `/Users/ostehost/projects/command-central` @ branch `main` (local HEAD `00eb6bfc`)
+- **Repo:** `/Users/ostehost/projects/command-central` @ branch `main` (task-start HEAD `00eb6bfc` before the PAR-297 closeout commit)
 - **Depends on:** PAR-237 (CCREL-05 dual-host consumption proof), PAR-233 (CCREL-01 hub/node source alignment)
 - **Sibling follow-up (NOT in this lane):** PAR-298 (CCREL-09) — automated gate cross-validation of the two receipts
 - **Disposition:** the fabricated node receipt is **replaced with a genuine node-produced receipt**; hub/node consumption parity for rc71 is now demonstrated, not asserted.
