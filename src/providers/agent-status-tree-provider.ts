@@ -6616,9 +6616,12 @@ export class AgentStatusTreeProvider
 	 * review receipt, pending review) counts as `attention` here too, so the
 	 * "N attention" badge and the tree's Action Required buckets cannot
 	 * disagree.
+	 *
+	 * Pass an explicit task list to count a different denominator (e.g. the
+	 * dashboard's display-registry tasks) through the same engine.
 	 */
-	getUnifiedAgentCounts(): AgentCounts {
-		return this.countTasksByStatusGroup(this.getTasks());
+	getUnifiedAgentCounts(tasks: AgentTask[] = this.getTasks()): AgentCounts {
+		return this.countTasksByStatusGroup(tasks);
 	}
 
 	getDiscoveryDiagnosticsReport(): string {

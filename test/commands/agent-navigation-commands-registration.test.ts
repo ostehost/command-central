@@ -74,6 +74,7 @@ const EXPECTED_COMMAND_IDS = [
 interface ProviderMock {
 	getDisplayRegistryTasks: ReturnType<typeof mock>;
 	getTasks: ReturnType<typeof mock>;
+	getUnifiedAgentCounts: ReturnType<typeof mock>;
 	reload: ReturnType<typeof mock>;
 	getDiscoveryDiagnosticsReport: ReturnType<typeof mock>;
 	projectFilter: string | null;
@@ -86,6 +87,13 @@ function makeProvider(overrides: Partial<ProviderMock> = {}): ProviderMock {
 	return {
 		getDisplayRegistryTasks: mock(() => ({})),
 		getTasks: mock(() => []),
+		getUnifiedAgentCounts: mock(() => ({
+			working: 0,
+			attention: 0,
+			limbo: 0,
+			done: 0,
+			total: 0,
+		})),
 		reload: mock(),
 		getDiscoveryDiagnosticsReport: mock(() => "diagnostics report"),
 		projectFilter: null,
@@ -236,7 +244,8 @@ describe("registerAgentNavigationCommands", () => {
 
 		handler("commandCentral.openAgentDashboard")();
 
-		expect(agentDashboardPanel.show).toHaveBeenCalledWith({});
+		// No provider → no unified counts either; the panel falls back internally.
+		expect(agentDashboardPanel.show).toHaveBeenCalledWith({}, undefined);
 	});
 
 	test("openAgentDashboard shows the provider's display registry tasks", () => {
@@ -244,13 +253,26 @@ describe("registerAgentNavigationCommands", () => {
 		// to prove the handler re-resolves it at invocation time.
 		registerAgentNavigationCommands(deps);
 		const tasks = { "task-1": { id: "task-1", status: "running" } };
+		const unifiedCounts = {
+			working: 1,
+			attention: 0,
+			limbo: 0,
+			done: 0,
+			total: 1,
+		};
 		provider = makeProvider({
 			getDisplayRegistryTasks: mock(() => tasks),
+			getUnifiedAgentCounts: mock(() => unifiedCounts),
 		});
 
 		handler("commandCentral.openAgentDashboard")();
 
-		expect(agentDashboardPanel.show).toHaveBeenCalledWith(tasks);
+		// Counts are computed over the SAME task set the dashboard renders,
+		// through the tree's group engine — see getUnifiedAgentCounts.
+		expect(agentDashboardPanel.show).toHaveBeenCalledWith(tasks, unifiedCounts);
+		expect(provider.getUnifiedAgentCounts).toHaveBeenCalledWith(
+			Object.values(tasks),
+		);
 	});
 
 	test("defaultAgentAction is a no-op when no node is provided", async () => {

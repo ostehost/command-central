@@ -139,6 +139,25 @@ describe("AgentDashboardPanel", () => {
 			panel.dispose();
 		});
 
+		test("provider-supplied unified counts override raw-status counting", () => {
+			const panel = new AgentDashboardPanel();
+			// Raw status says done; the tree engine filed the lane under Action
+			// Required — the injected counts must drive the summary header.
+			const tasks: Record<string, AgentTask> = {
+				t1: createMockTask({ id: "t1", status: "completed" }),
+			};
+			const html = panel.getHtml(tasks, {
+				working: 0,
+				attention: 1,
+				limbo: 0,
+				done: 0,
+				total: 1,
+			});
+
+			expect(html).toContain("1 agent needs attention");
+			panel.dispose();
+		});
+
 		test("shows attention hint when failed/stopped tasks exist", () => {
 			const panel = new AgentDashboardPanel();
 			const tasks: Record<string, AgentTask> = {

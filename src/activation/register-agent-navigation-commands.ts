@@ -37,6 +37,7 @@ export interface AgentNavigationCommandDeps {
 				AgentStatusTreeProvider,
 				| "getDisplayRegistryTasks"
 				| "getTasks"
+				| "getUnifiedAgentCounts"
 				| "reload"
 				| "getDiscoveryDiagnosticsReport"
 				| "projectFilter"
@@ -87,8 +88,13 @@ export function registerAgentNavigationCommands(
 	} = deps;
 	return [
 		vscode.commands.registerCommand("commandCentral.openAgentDashboard", () => {
+			const provider = getAgentStatusProvider();
+			const dashboardTasks = provider?.getDisplayRegistryTasks() ?? {};
 			agentDashboardPanel.show(
-				getAgentStatusProvider()?.getDisplayRegistryTasks() ?? {},
+				dashboardTasks,
+				// Tree-engine counts over the same task set (see getUnifiedAgentCounts)
+				// so the dashboard's Attention figure matches the tree's buckets.
+				provider?.getUnifiedAgentCounts(Object.values(dashboardTasks)),
 			);
 		}),
 		// Default single-click action for agent tree items.

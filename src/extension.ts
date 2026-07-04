@@ -675,8 +675,15 @@ export async function activate(
 		agentDashboardPanel.setGitInfoProvider(agentStatusProvider);
 		context.subscriptions.push(agentDashboardPanel);
 		agentStatusProvider.onDidChangeTreeData(() => {
+			const dashboardTasks =
+				agentStatusProvider?.getDisplayRegistryTasks() ?? {};
 			agentDashboardPanel.update(
-				agentStatusProvider?.getDisplayRegistryTasks() ?? {},
+				dashboardTasks,
+				// Tree-engine counts over the SAME task set the dashboard renders,
+				// so its Attention figure matches the tree's Action Required buckets.
+				agentStatusProvider?.getUnifiedAgentCounts(
+					Object.values(dashboardTasks),
+				),
 			);
 		});
 

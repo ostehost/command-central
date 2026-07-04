@@ -8,7 +8,7 @@
 
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { countAgentStatuses } from "../utils/agent-counts.js";
+import { type AgentCounts, countAgentStatuses } from "../utils/agent-counts.js";
 import {
 	type AgentTask,
 	formatTaskElapsedDescription,
@@ -92,7 +92,14 @@ export class AgentDashboardPanel implements vscode.Disposable {
 		this.gitInfoProvider = provider;
 	}
 
-	show(tasks: Record<string, AgentTask>): void {
+	/**
+	 * @param unifiedCounts Tree-engine counts from
+	 * `AgentStatusTreeProvider.getUnifiedAgentCounts()`. Pass them whenever a
+	 * provider is wired so the summary header's Attention figure matches the
+	 * tree's Action Required buckets; the status-only fallback cannot see
+	 * signal-based attention (lifecycle conflicts, receipt state).
+	 */
+	show(tasks: Record<string, AgentTask>, unifiedCounts?: AgentCounts): void {
 		if (!this.panel) {
 			this.panel = vscode.window.createWebviewPanel(
 				"agentDashboard",
@@ -108,19 +115,22 @@ export class AgentDashboardPanel implements vscode.Disposable {
 				this.disposables,
 			);
 		}
-		this.panel.webview.html = this.getHtml(tasks);
+		this.panel.webview.html = this.getHtml(tasks, unifiedCounts);
 		this.panel.reveal();
 	}
 
-	update(tasks: Record<string, AgentTask>): void {
+	update(tasks: Record<string, AgentTask>, unifiedCounts?: AgentCounts): void {
 		if (this.panel) {
-			this.panel.webview.html = this.getHtml(tasks);
+			this.panel.webview.html = this.getHtml(tasks, unifiedCounts);
 		}
 	}
 
-	getHtml(tasks: Record<string, AgentTask>): string {
+	getHtml(
+		tasks: Record<string, AgentTask>,
+		unifiedCounts?: AgentCounts,
+	): string {
 		const taskList = Object.values(tasks);
-		const counts = countAgentStatuses(taskList);
+		const counts = unifiedCounts ?? countAgentStatuses(taskList);
 		const running: AgentTask[] = [];
 		const paused: AgentTask[] = [];
 		const completed: AgentTask[] = [];
