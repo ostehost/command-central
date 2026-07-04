@@ -403,6 +403,41 @@ verify-vscode-consumption *args:
     @echo ""
     @bun run scripts-v2/verify-vscode-extension-consumption.ts {{args}}
 
+# The node gateway permits file.write/file.fetch/dir.list/dir.fetch only (node
+# exec / system.run is gated off in gateway.nodes.allowCommands), so the work
+# splits in two: the HUB cuts the RC (`just cut-preview` → releases/*.vsix + the
+# .preview-status cut receipt) and file.write's the bytes to the node under
+# /Users/ostehost/**; the NODE proves them. This is the node-prove half —
+# preflight → transfer-landing check → sha-verify (against the cut receipt's
+# artifactSha256) → install → installed-VSIX proof → node consumption receipt —
+# orchestrating existing recipes only, never shelling a command onto a remote
+# node.
+# Dogfood the freshly cut VSIX on the MacBook node (file-transfer path; run ON the node).
+dogfood-node-vsix:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "🐕 Dogfood node VSIX — file-transfer path (hub cuts, node proves)"
+    # 1. preflight — must be the node; read the local (gitignored) cut receipt
+    bun run scripts-v2/node-execution-guard.ts
+    STATE="$(bun run scripts-v2/preview-status.ts show --json 2>/dev/null || true)"
+    VERSION="$(jq -r '.packageVersion // empty' <<<"$STATE" 2>/dev/null || true)"
+    EXPECTED_SHA="$(jq -r '.artifactSha256 // empty' <<<"$STATE" 2>/dev/null || true)"
+    if [ -z "$VERSION" ] || [ -z "$EXPECTED_SHA" ]; then
+        echo "❌ No cut receipt in .preview-status/ — run 'just cut-preview' on the hub first." >&2; exit 1
+    fi
+    VSIX="releases/command-central-${VERSION}.vsix"
+    # 2. transfer — the file.write'd artifact must have landed under /Users/ostehost/**
+    [ -f "$VSIX" ] || { echo "❌ $VSIX not on node — file.write it from the hub first." >&2; exit 1; }
+    # 3. sha-verify — bytes must match the hub cut receipt
+    ACTUAL_SHA="$(shasum -a 256 "$VSIX" | awk '{print $1}')"
+    [ "$ACTUAL_SHA" = "$EXPECTED_SHA" ] || { echo "❌ sha mismatch: $ACTUAL_SHA != $EXPECTED_SHA" >&2; exit 1; }
+    echo "   ✓ ${VERSION} landed & sha-verified ($EXPECTED_SHA)"
+    # 4. install locally on the node (file-transfer path only — no remote exec)
+    code --install-extension "$VSIX" --force
+    # 5-6. installed-VSIX proof + node consumption receipt (vscode-consumption-<version>-node.json)
+    just test-installed-vsix-agent-status
+    just verify-vscode-consumption -- --vsix "$VSIX" --expected-version "$VERSION" --node-label node --receipt-dir research/prerelease-gate
+
 # Run tests with coverage report
 test-coverage:
     @echo "📊 Running tests with coverage..."
