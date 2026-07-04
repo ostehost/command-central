@@ -353,4 +353,83 @@ describe("CCSYNC-03 — live-pane attention suppression (provider wiring)", () =
 			"live shell · completed at prompt",
 		);
 	});
+
+	// ── Idle-agent-REPL suppression: the clean-completion exception ──────────
+	// Real pattern (4× on 2026-07-04): lanes complete via the launcher
+	// stop-hook while the interactive Claude REPL stays open at an empty
+	// prompt for hours — a confirmed-alive process that is provably NOT doing
+	// or awaiting anything. Only a CLEAN `completed` status may suppress the
+	// alive rule; every failure-ish status keeps it.
+
+	const IDLE_REPL_SNIPPET = [
+		"✻ Cooked for 5m 32s",
+		"────────────────────",
+		"❯ ",
+		"────────────────────",
+		"  [Opus 4.8] 🎛️ Command Central | command-central | main",
+		"  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents",
+	].join("\n");
+
+	test("completed + confirmed-alive + idle REPL pane → NOT attention (benign leftover)", () => {
+		mockInspectTmuxPaneById.mockImplementation(() => "alive");
+		nextSnippet = IDLE_REPL_SNIPPET;
+		const task = makeTerminalTmuxTask({
+			status: "completed",
+			exit_code: 0,
+			session_live: true,
+		});
+		expect(groupAfterRender(task)).not.toBe("attention");
+		const description = rowDescription(provider, task);
+		expect(description).not.toContain("⚠ live · lifecycle conflict");
+		expect(description).toContain("live REPL · idle (exit to clear)");
+	});
+
+	test("PRESERVED: completed_dirty + confirmed-alive + idle REPL pane stays attention", () => {
+		// The clean-completion exception must not leak to failure-ish statuses:
+		// a dirty completion with a confirmed-alive agent is still live-conflict
+		// attention even when the REPL looks idle.
+		mockInspectTmuxPaneById.mockImplementation(() => "alive");
+		nextSnippet = IDLE_REPL_SNIPPET;
+		const task = makeTerminalTmuxTask({
+			status: "completed_dirty",
+			session_live: true,
+		});
+		expect(groupAfterRender(task)).toBe("attention");
+		expect(rowDescription(provider, task)).toContain(
+			"⚠ live · lifecycle conflict",
+		);
+	});
+
+	test("PRESERVED: completed + confirmed-alive + mid-turn REPL stays attention", () => {
+		// "esc to interrupt" = a turn is running. A completed row with a live,
+		// actively-working REPL is a genuine contradiction — never suppressed.
+		mockInspectTmuxPaneById.mockImplementation(() => "alive");
+		nextSnippet = [
+			"✳ Symbioting… (1m 30s · ↓ 3.8k tokens · esc to interrupt)",
+			"❯ ",
+			"  ⏵⏵ bypass permissions on (shift+tab to cycle)",
+		].join("\n");
+		const task = makeTerminalTmuxTask({
+			status: "completed",
+			exit_code: 0,
+			session_live: true,
+		});
+		expect(groupAfterRender(task)).toBe("attention");
+	});
+
+	test("PRESERVED: completed + confirmed-alive + awaiting-input REPL stays attention", () => {
+		mockInspectTmuxPaneById.mockImplementation(() => "alive");
+		nextSnippet = [
+			"Do you want to proceed?",
+			"❯ 1. Yes",
+			"  2. No",
+			"  ⏵⏵ bypass permissions on (shift+tab to cycle)",
+		].join("\n");
+		const task = makeTerminalTmuxTask({
+			status: "completed",
+			exit_code: 0,
+			session_live: true,
+		});
+		expect(groupAfterRender(task)).toBe("attention");
+	});
 });

@@ -255,6 +255,14 @@ export function sectionFromSignals(signals: V2SectionSignals): V2LaneSection {
  *                             bare prompt). Benign — the result is already shown.
  *  - "empty-stale-shell"    — a bare/blank shell with no meaningful output.
  *                             Benign — a just-spawned or long-idle shell.
+ *  - "idle-agent-repl"      — an interactive agent CLI's input UI sitting idle:
+ *                             empty input box + status footer, no running turn,
+ *                             no pending question. The launcher's harness
+ *                             contract tells agents to `/exit` when done, but
+ *                             lanes routinely complete (stop-hook fires, row
+ *                             goes terminal) while the REPL stays open — this
+ *                             state lets callers keep such finished-but-open
+ *                             sessions out of the attention badge. Benign.
  *  - "unknown"              — not enough evidence (fail-open). Callers must not
  *                             downgrade or suppress on this alone.
  */
@@ -263,6 +271,7 @@ export type PaneAttentionState =
 	| "awaiting-user-input"
 	| "completed-at-prompt"
 	| "empty-stale-shell"
+	| "idle-agent-repl"
 	| "unknown";
 
 /**
@@ -324,6 +333,29 @@ const COMPLETION_SUMMARY_RES: readonly RegExp[] = [
 	/[✓✗✔✘]\s/,
 ];
 
+/**
+ * Idle interactive agent REPL detection (Claude Code-style UI). ALL cues must
+ * hold — conservative on purpose, a false idle verdict would hide live work:
+ *  - the REPL status footer is rendered (stable UI chrome, e.g. the
+ *    "shift+tab to cycle" mode hint or the "? for shortcuts" help hint);
+ *  - the input box is EMPTY (a line that is exactly `❯`) — typed-but-unsent
+ *    input or a `❯ 1.` dialog selector row does not qualify;
+ *  - no turn is running (Claude Code renders an "esc to interrupt" hint for
+ *    the whole duration of a turn).
+ */
+const AGENT_REPL_FOOTER_RES: readonly RegExp[] = [
+	/shift\+tab to cycle/i,
+	/\?\s+for shortcuts/i,
+];
+const AGENT_REPL_EMPTY_INPUT_RE = /(?:^|\n)❯\s*(?:\n|$)/;
+const AGENT_REPL_TURN_RUNNING_RE = /esc to interrupt/i;
+
+function isIdleAgentReplSnippet(snippet: string): boolean {
+	if (!AGENT_REPL_FOOTER_RES.some((re) => re.test(snippet))) return false;
+	if (!AGENT_REPL_EMPTY_INPUT_RE.test(snippet)) return false;
+	return !AGENT_REPL_TURN_RUNNING_RE.test(snippet);
+}
+
 function lastNonEmptyLine(snippet: string): string {
 	const lines = snippet.split("\n");
 	for (let i = lines.length - 1; i >= 0; i--) {
@@ -358,11 +390,14 @@ export function classifyPaneAttention(
 	snippet: string,
 ): PaneAttentionState {
 	const cmd = paneCommand?.trim();
+	const text = snippet.replace(/\s+$/, "");
 	if (cmd && CLASSIFIER_AGENT_COMMANDS.includes(cmd)) {
-		return "active-agent";
+		// An agent CLI owns the pane. Distinguish a provably idle REPL (empty
+		// input box, no running turn) from live agent work; anything ambiguous
+		// stays "active-agent" (never benign).
+		return isIdleAgentReplSnippet(text) ? "idle-agent-repl" : "active-agent";
 	}
 
-	const text = snippet.replace(/\s+$/, "");
 	const hasMeaningfulText = text.trim().length > 0;
 	if (!cmd && !hasMeaningfulText) return "unknown";
 
@@ -370,6 +405,12 @@ export function classifyPaneAttention(
 	if (AWAITING_INPUT_RES.some((re) => re.test(text) || re.test(tail))) {
 		return "awaiting-user-input";
 	}
+
+	// Launcher panes usually report the wrapper shell (`bash`) as the pane
+	// command while the agent REPL runs inside it — recognize the idle REPL UI
+	// by its chrome. Checked AFTER awaiting-user-input so a pending question
+	// rendered inside the REPL always wins.
+	if (isIdleAgentReplSnippet(text)) return "idle-agent-repl";
 
 	const atPrompt = endsAtShellPrompt(text);
 	if (atPrompt && COMPLETION_SUMMARY_RES.some((re) => re.test(text))) {
@@ -391,5 +432,9 @@ export function classifyPaneAttention(
  * badge while still surfacing genuine "awaiting-user-input" prompts.
  */
 export function isBenignLivePane(state: PaneAttentionState): boolean {
-	return state === "completed-at-prompt" || state === "empty-stale-shell";
+	return (
+		state === "completed-at-prompt" ||
+		state === "empty-stale-shell" ||
+		state === "idle-agent-repl"
+	);
 }

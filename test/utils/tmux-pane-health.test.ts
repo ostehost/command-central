@@ -688,12 +688,75 @@ describe("classifyPaneAttention (pure)", () => {
 		const snippet = "Downloading package 42 of 100\nresolving deps";
 		expect(classifyPaneAttention("bash", snippet)).toBe("unknown");
 	});
+
+	// ── idle-agent-repl: finished-but-never-exited interactive REPL ──────────
+	// Real pattern (4× on 2026-07-04): the agent finishes, the launcher
+	// stop-hook completes the row, but the Claude Code REPL stays open at an
+	// empty prompt — for hours. That UI is positive proof no turn is running.
+
+	const IDLE_REPL_SNIPPET = [
+		"✻ Cooked for 5m 32s",
+		"────────────────────",
+		"❯ ",
+		"────────────────────",
+		"  [Opus 4.8] 🎛️ Command Central | command-central | main",
+		"  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents",
+	].join("\n");
+
+	test("idle Claude REPL UI under a bash wrapper pane → idle-agent-repl", () => {
+		// Launcher panes report the wrapper shell as pane_current_command while
+		// the REPL runs inside it — the chrome alone must identify the idle REPL.
+		expect(classifyPaneAttention("bash", IDLE_REPL_SNIPPET)).toBe(
+			"idle-agent-repl",
+		);
+	});
+
+	test("idle Claude REPL UI with pane_current_command=claude → idle-agent-repl", () => {
+		expect(classifyPaneAttention("claude", IDLE_REPL_SNIPPET)).toBe(
+			"idle-agent-repl",
+		);
+	});
+
+	test("REPL mid-turn (esc to interrupt) is NEVER idle", () => {
+		const running = [
+			"✳ Symbioting… (1m 30s · ↓ 3.8k tokens · esc to interrupt)",
+			"────────────────────",
+			"❯ ",
+			"────────────────────",
+			"  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents",
+		].join("\n");
+		expect(classifyPaneAttention("claude", running)).toBe("active-agent");
+		expect(classifyPaneAttention("bash", running)).toBe("unknown");
+	});
+
+	test("REPL with typed-but-unsent input is NOT idle (fail-open)", () => {
+		// `❯ exit` sitting unsubmitted is an ambiguous state, not a provably
+		// idle one — attention must be preserved.
+		const typed = IDLE_REPL_SNIPPET.replace("❯ ", "❯ exit");
+		expect(classifyPaneAttention("bash", typed)).toBe("unknown");
+	});
+
+	test("REPL permission selector still classifies awaiting-user-input", () => {
+		const dialog = [
+			"Do you want to proceed?",
+			"❯ 1. Yes",
+			"  2. No",
+			"  ⏵⏵ bypass permissions on (shift+tab to cycle)",
+		].join("\n");
+		expect(classifyPaneAttention("bash", dialog)).toBe("awaiting-user-input");
+	});
+
+	test("footer alone without an empty input box is NOT idle", () => {
+		const footerOnly = "  ⏵⏵ bypass permissions on (shift+tab to cycle)";
+		expect(classifyPaneAttention("bash", footerOnly)).toBe("unknown");
+	});
 });
 
 describe("isBenignLivePane", () => {
-	test("completed-at-prompt and empty-stale-shell are benign", () => {
+	test("completed-at-prompt, empty-stale-shell, idle-agent-repl are benign", () => {
 		expect(isBenignLivePane("completed-at-prompt")).toBe(true);
 		expect(isBenignLivePane("empty-stale-shell")).toBe(true);
+		expect(isBenignLivePane("idle-agent-repl")).toBe(true);
 	});
 
 	test("active-agent, awaiting-user-input, unknown are NOT benign", () => {

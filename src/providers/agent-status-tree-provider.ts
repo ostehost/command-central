@@ -1492,20 +1492,22 @@ export class AgentStatusTreeProvider
 		if (cached !== undefined) return cached;
 		// A live agent process owning the pane is normally the strongest signal, so
 		// an "alive" pane is never demoted to a BENIGN state by a snippet that
-		// happens to look quiet. But a VISIBLE permission/input wait outranks even
-		// that: a live Claude sitting at an interactive prompt (a y/N or a numbered
-		// permission selector) is blocked on a human, not doing work (PAR-322).
-		// Classify the captured snippet on its own merits first; an unambiguous
-		// `awaiting-user-input` wins even while the agent owns the pane. Only when
-		// the snippet shows no such wait do we honor the anti-demotion guard and
-		// force `active-agent` for an alive-but-quiet pane.
+		// happens to look quiet. Two positive-evidence states outrank even that:
+		//  - a VISIBLE permission/input wait — a live Claude sitting at an
+		//    interactive prompt is blocked on a human, not doing work (PAR-322);
+		//  - a provably IDLE agent REPL — empty input box + status footer + no
+		//    running-turn hint. That is UI proof no turn is running, unlike the
+		//    merely quiet-looking snippets the anti-demotion guard exists for.
+		// Only when the snippet shows neither do we honor the guard and force
+		// `active-agent` for an alive-but-quiet pane.
 		const agentOwned = this.getTerminalTaskLivenessEvidence(task) === "alive";
 		const snippet =
 			capturePaneSnippet(targetInfo.target, task.tmux_socket) ?? "";
 		const snippetState = classifyPaneAttention(undefined, snippet);
 		const state: PaneAttentionState =
-			snippetState === "awaiting-user-input"
-				? "awaiting-user-input"
+			snippetState === "awaiting-user-input" ||
+			snippetState === "idle-agent-repl"
+				? snippetState
 				: agentOwned
 					? "active-agent"
 					: snippetState;
@@ -1532,9 +1534,10 @@ export class AgentStatusTreeProvider
 	/**
 	 * CCSYNC-03 (PAR-228): whether a terminal-status lane's lifecycle-conflict
 	 * promotion into the badge-counted `attention` bucket should be SUPPRESSED
-	 * because its live pane is benign — a finished command sitting at its prompt
-	 * or a bare/idle shell. A genuine "awaiting-user-input" pane (or an unknown
-	 * one) is never suppressed: attention is preserved when in doubt.
+	 * because its live pane is benign — a finished command sitting at its
+	 * prompt, a bare/idle shell, or a provably idle agent REPL. A genuine
+	 * "awaiting-user-input" pane (or an unknown one) is never suppressed:
+	 * attention is preserved when in doubt.
 	 *
 	 * Cache-only — safe on the `getNodeStatusGroup` hot path.
 	 */
@@ -3837,11 +3840,20 @@ export class AgentStatusTreeProvider
 				// its prompt or a bare/idle shell — is not attention work. The shell
 				// is alive but the agent is gone and the human is not blocked, so let
 				// it fall through to its normal terminal bucket instead of the
-				// badge-counted action bucket. A confirmed agent process (liveness
-				// "alive") or a genuine awaiting-user-input pane is never suppressed —
-				// attention is preserved when in doubt.
+				// badge-counted action bucket.
+				//
+				// A confirmed agent process (liveness "alive") is never suppressed —
+				// with ONE exception: a CLEANLY completed lane (status "completed",
+				// stop-hook fired) whose pane is a provably idle agent REPL (empty
+				// input box, no running turn, no pending question). Interactive lanes
+				// routinely finish without `/exit`, leaving the REPL open for hours;
+				// that leftover is not attention work. Every failure-ish status
+				// (completed_dirty, contract_failure, failed, …) and every ambiguous
+				// pane (awaiting input, capture failed, mid-turn) keeps the alive
+				// rule — attention is preserved when in doubt.
 				const benignLivePane =
-					liveness !== "alive" && this.isBenignLiveTerminalPane(node.task);
+					(liveness !== "alive" || node.task.status === "completed") &&
+					this.isBenignLiveTerminalPane(node.task);
 				if (!benignLivePane) {
 					return "attention";
 				}
@@ -8005,30 +8017,36 @@ export class AgentStatusTreeProvider
 		// CCSYNC-03 (PAR-228): warm the live-pane attention classification while we
 		// have already paid for the liveness probe, so getNodeStatusGroup can read
 		// it cache-only. Only when a conflict actually fired (otherwise there is no
-		// "alive" pane worth capturing) and the probe did not positively confirm an
-		// agent (a confirmed agent is genuine live work, never benign).
+		// "alive" pane worth capturing) and either the probe did not positively
+		// confirm an agent, OR the lane is CLEANLY completed — the one alive case
+		// where an idle-agent-REPL pane may suppress the promotion (see
+		// getNodeStatusGroup).
+		const alivePaneMayBeBenign =
+			lifecycleLiveness !== "alive" || task.status === "completed";
 		const paneAttention =
-			lifecycleConflict.kind === "live-process-conflict" &&
-			lifecycleLiveness !== "alive"
+			lifecycleConflict.kind === "live-process-conflict" && alivePaneMayBeBenign
 				? this.getTerminalTaskPaneAttention(task)
 				: ("unknown" as PaneAttentionState);
 		const benignLivePane =
 			lifecycleConflict.kind === "live-process-conflict" &&
-			lifecycleLiveness !== "alive" &&
+			alivePaneMayBeBenign &&
 			isBenignLivePane(paneAttention);
 		if (supersededByReset) {
 			// Pre-reset stale terminal — leftover from before the release recreated
 			// terminals. Explicitly distinct from a current running/live lane.
 			descriptionParts.push("stale (pre-release)");
 		} else if (benignLivePane) {
-			// CCSYNC-03: the launcher recorded the session as live but the pane is a
-			// finished command at its prompt or a bare/idle shell — the agent is gone
-			// and nothing is blocked. Not attention; badge it as a benign leftover so
-			// the contradiction stays visible without inflating the action count.
+			// CCSYNC-03: the launcher recorded the session as live but the pane is
+			// benign — a finished command at its prompt, a bare/idle shell, or a
+			// finished-but-never-exited agent REPL. Nothing is blocked. Not
+			// attention; badge it as a benign leftover so the contradiction stays
+			// visible without inflating the action count.
 			descriptionParts.push(
 				paneAttention === "completed-at-prompt"
 					? "live shell · completed at prompt"
-					: "live shell · idle",
+					: paneAttention === "idle-agent-repl"
+						? "live REPL · idle (exit to clear)"
+						: "live shell · idle",
 			);
 		} else if (lifecycleConflict.kind === "live-process-conflict") {
 			// "live attention required" — the launcher marked this lane terminal
