@@ -16,9 +16,11 @@ mock.module("node:fs", () => ({
 	statSync: statSyncMock,
 }));
 
-const { checkAdvertisedReviewQueue, isReviewLifecycleResolved } = await import(
-	"../../src/utils/review-queue-health.js"
-);
+const {
+	checkAdvertisedReviewQueue,
+	classifyGcReceiptFreshness,
+	isReviewLifecycleResolved,
+} = await import("../../src/utils/review-queue-health.js");
 
 const tmpDirs: string[] = [];
 function makeTmp(): string {
@@ -171,5 +173,31 @@ describe("isReviewLifecycleResolved", () => {
 		);
 		expect(isReviewLifecycleResolved({ review_state: "blocked" })).toBe(false);
 		expect(isReviewLifecycleResolved({ review_state: "" })).toBe(false);
+	});
+});
+
+describe("classifyGcReceiptFreshness", () => {
+	const GEN = "2026-06-23T12:00:00Z";
+
+	test("a receipt at/after the projection generation is fresh", () => {
+		expect(classifyGcReceiptFreshness("2026-06-23T14:00:00Z", GEN)).toBe(
+			"fresh",
+		);
+		// Exactly equal counts as fresh (>=): the pass observed this generation.
+		expect(classifyGcReceiptFreshness(GEN, GEN)).toBe("fresh");
+	});
+
+	test("a receipt older than the projection generation is stale", () => {
+		expect(classifyGcReceiptFreshness("2026-06-23T10:00:00Z", GEN)).toBe(
+			"stale",
+		);
+	});
+
+	test("a missing or unparseable timestamp is unknown", () => {
+		expect(classifyGcReceiptFreshness(null, GEN)).toBe("unknown");
+		expect(classifyGcReceiptFreshness(GEN, null)).toBe("unknown");
+		expect(classifyGcReceiptFreshness(undefined, GEN)).toBe("unknown");
+		expect(classifyGcReceiptFreshness("not-a-date", GEN)).toBe("unknown");
+		expect(classifyGcReceiptFreshness("", GEN)).toBe("unknown");
 	});
 });

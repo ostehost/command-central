@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { canonicalizeProjectDir } from "../utils/project-scope.js";
 import {
+	classifyGcReceiptFreshness,
 	isReconciledGcVerdict,
 	type LaneProjectionGcReceipt,
 	lookupGcRowVerdict,
@@ -468,6 +469,15 @@ function laneIdFromTask(task: AgentTask): string | null {
  *
  * Non-projection rows and rows the receipt keeps (or does not cover) pass
  * through untouched: the receipt only ever downgrades a row, never promotes one.
+ *
+ * CCSYNC-07: the stamping is gated on receipt freshness. A receipt older than a
+ * row's own projection generation (`updated_at`) describes a since-rebuilt lane;
+ * applying its downgrade would re-stamp stale limbo onto a row the projection
+ * has already refreshed — routing genuinely live work out of the attention
+ * surface. A `stale` receipt is always ignored for that row; when freshness
+ * cannot be proven (`unknown` — a missing/unparseable timestamp), a row that
+ * still projects `running` is left authoritative (never hide a live lane) while
+ * terminal rows still reconcile as before.
  */
 export function applyGcReceiptReconciliation(
 	tasks: Record<string, AgentTask>,
@@ -486,6 +496,17 @@ export function applyGcReceiptReconciliation(
 			taskId: task.id,
 		});
 		if (!row || !isReconciledGcVerdict(row.verdict)) {
+			reconciled[key] = task;
+			continue;
+		}
+		const freshness = classifyGcReceiptFreshness(
+			receipt.generatedAt,
+			task.updated_at ?? task.started_at,
+		);
+		if (
+			freshness === "stale" ||
+			(freshness === "unknown" && task.status === "running")
+		) {
 			reconciled[key] = task;
 			continue;
 		}

@@ -212,6 +212,43 @@ export function isReconciledGcVerdict(
 }
 
 /**
+ * Freshness of a GC receipt relative to a single projection row's own
+ * generation. CCSYNC-07: a receipt is an authoritative reconciliation verdict
+ * for a row only if it was generated no earlier than that row's current
+ * projection generation (its `updated_at`, the lane's spawn/settle emission).
+ * A receipt that PREDATES the projection generation describes a since-rebuilt
+ * lane — applying its downgrade would re-stamp stale limbo onto a row the
+ * projection has already refreshed (e.g. back to `running`), routing genuinely
+ * live work out of the attention surface.
+ *
+ *  - `fresh`   — receipt generated at/after the projection generation → the
+ *                receipt observed this row's current state; safe to apply.
+ *  - `stale`   — receipt predates the projection generation → the row was
+ *                rebuilt after the pass; the verdict is obsolete, ignore it.
+ *  - `unknown` — either timestamp is absent/unparseable → freshness cannot be
+ *                proven. Callers must NOT downgrade a live (`running`) row on an
+ *                unproven receipt (never hide a live lane), but may still
+ *                reconcile terminal rows where no live work is at risk.
+ */
+export type GcReceiptFreshness = "fresh" | "stale" | "unknown";
+
+function parseTimestampMs(value: string | null | undefined): number | null {
+	if (typeof value !== "string" || value.trim().length === 0) return null;
+	const ms = Date.parse(value);
+	return Number.isNaN(ms) ? null : ms;
+}
+
+export function classifyGcReceiptFreshness(
+	receiptGeneratedAt: string | null | undefined,
+	projectionGeneratedAt: string | null | undefined,
+): GcReceiptFreshness {
+	const receiptMs = parseTimestampMs(receiptGeneratedAt);
+	const projectionMs = parseTimestampMs(projectionGeneratedAt);
+	if (receiptMs === null || projectionMs === null) return "unknown";
+	return receiptMs >= projectionMs ? "fresh" : "stale";
+}
+
+/**
  * Human-readable label for a reconciled GC verdict, for the Command Central
  * audit surface (tree-row description/tooltip). CCSYNC-02: when an authoritative
  * lane-projection GC pass reconciles a row out of the live surface, an operator

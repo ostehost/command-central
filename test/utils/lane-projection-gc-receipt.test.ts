@@ -185,11 +185,12 @@ describe("readLaneProjectionGcReceipt", () => {
 describe("applyGcReceiptReconciliation", () => {
 	function receipt(
 		rows: LaneProjectionGcReceipt["rows"],
+		generatedAt: string | null = null,
 	): LaneProjectionGcReceipt {
 		return {
 			version: 1,
 			kind: LANE_PROJECTION_GC_RECEIPT_KIND,
-			generatedAt: null,
+			generatedAt,
 			mode: "dry-run",
 			rows,
 		};
@@ -257,5 +258,111 @@ describe("applyGcReceiptReconciliation", () => {
 	test("a null receipt is a no-op", () => {
 		const tasks = { a: projectionTask({ id: "a" }) };
 		expect(applyGcReceiptReconciliation(tasks, null)).toBe(tasks);
+	});
+
+	// CCSYNC-07 (PAR-299): gate the reconcile marker on receipt freshness so a
+	// stale opt-in GC receipt cannot re-stamp a since-rebuilt lane that now
+	// projects `running`, hiding genuinely-live work behind Needs Review.
+	describe("freshness gate", () => {
+		const PROJECTION_GEN = "2026-06-23T12:00:00Z";
+		const STALE = "2026-06-23T10:00:00Z"; // receipt predates projection gen
+		const FRESH = "2026-06-23T14:00:00Z"; // receipt at/after projection gen
+
+		test("a stale receipt does not hide a live running lane", () => {
+			const tasks = {
+				a: projectionTask({
+					id: "a",
+					status: "running",
+					updated_at: PROJECTION_GEN,
+					provenance: { source_ref: "launcher:a" },
+				}),
+			};
+			const result = applyGcReceiptReconciliation(
+				tasks,
+				receipt(
+					{
+						"launcher:a": { verdict: "removed", reason: "running-no-evidence" },
+					},
+					STALE,
+				),
+			);
+			expect(result["a"]?.gc_reconcile).toBeUndefined();
+			expect(result["a"]?.status).toBe("running");
+		});
+
+		test("a receipt older than the projection generation is ignored (any status)", () => {
+			const tasks = {
+				a: projectionTask({
+					id: "a",
+					status: "completed",
+					updated_at: PROJECTION_GEN,
+					provenance: { source_ref: "launcher:a" },
+				}),
+			};
+			const result = applyGcReceiptReconciliation(
+				tasks,
+				receipt(
+					{
+						"launcher:a": { verdict: "downgraded", reason: "receipt-missing" },
+					},
+					STALE,
+				),
+			);
+			expect(result["a"]?.gc_reconcile).toBeUndefined();
+		});
+
+		test("a fresh receipt still reconciles a since-observed running row", () => {
+			const tasks = {
+				a: projectionTask({
+					id: "a",
+					status: "running",
+					updated_at: PROJECTION_GEN,
+					provenance: { source_ref: "launcher:a" },
+				}),
+			};
+			const result = applyGcReceiptReconciliation(
+				tasks,
+				receipt(
+					{
+						"launcher:a": { verdict: "removed", reason: "running-no-evidence" },
+					},
+					FRESH,
+				),
+			);
+			expect(result["a"]?.gc_reconcile).toBe("removed");
+		});
+
+		test("unprovable freshness never downgrades a running row", () => {
+			const tasks = {
+				a: projectionTask({
+					id: "a",
+					status: "running",
+					updated_at: PROJECTION_GEN,
+					provenance: { source_ref: "launcher:a" },
+				}),
+			};
+			// generatedAt null → freshness cannot be proven → refuse to hide live work.
+			const result = applyGcReceiptReconciliation(
+				tasks,
+				receipt({ "launcher:a": { verdict: "removed", reason: null } }, null),
+			);
+			expect(result["a"]?.gc_reconcile).toBeUndefined();
+		});
+
+		test("unprovable freshness still reconciles a terminal row", () => {
+			const tasks = {
+				a: projectionTask({
+					id: "a",
+					status: "completed",
+					updated_at: PROJECTION_GEN,
+					provenance: { source_ref: "launcher:a" },
+				}),
+			};
+			const result = applyGcReceiptReconciliation(
+				tasks,
+				receipt({ "launcher:a": { verdict: "archived", reason: null } }, null),
+			);
+			expect(result["a"]?.gc_reconcile).toBe("archived");
+		});
 	});
 });
