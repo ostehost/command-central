@@ -481,7 +481,12 @@ export async function runInstalledVsixAgentStatusProof(): Promise<void> {
 			| undefined) ??
 		(expectedVsixSha256 ? "temporary-proof-artifact" : "");
 	const requestedVersion = process.env["VSCODE_VERSION"];
-	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "cc-installed-proof-"));
+	// Deliberately /tmp, NOT os.tmpdir(): macOS caps AF_UNIX socket paths at
+	// 103 bytes, and VS Code binds `<user-data-dir>/1.12-main.sock`. Under
+	// the per-user `/var/folders/…/T/` tmpdir plus this proof's phase-named
+	// user-data dirs the socket path overflows and Code aborts with
+	// `listen EINVAL` before the extension host starts.
+	const tempRoot = await mkdtemp("/tmp/cc-proof-");
 	const workspaceDir = path.join(tempRoot, "workspace");
 	const extensionsDir = path.join(tempRoot, "extensions");
 	const suiteOutdir = path.join(tempRoot, "suite");
