@@ -7,6 +7,9 @@
 #                     Mike MacBook Pro. Configured via OSTE_REQUIRE_NODE.
 #   2. Hidden tmux  — e.g. visible launcher terminal silently falls back to
 #                     headless tmux. Configured via OSTE_REQUIRE_VISIBLE_TERMINAL.
+#   2b. Missing multiplexer — e.g. a coding lane runs outside tmux/zellij and
+#                     cannot be reattached. Configured via
+#                     OSTE_REQUIRE_MULTIPLEXED_TERMINAL.
 #   3. Wrong agent  — e.g. Codex/Gemini substituted for Claude. Configured
 #                     via OSTE_REQUIRE_AGENT.
 #   4. Missing automation permission — macOS TCC silently denies Ghostty
@@ -105,9 +108,10 @@ spawn_guards_load_from_policy() {
 	[[ -n "$policy_file" && -f "$policy_file" ]] || return 0
 	command -v jq >/dev/null 2>&1 || return 0
 
-	local node visible agent
+	local node visible multiplexed agent
 	node=$(jq -r --arg r "$role" '.guards[$r].require_node // empty' "$policy_file" 2>/dev/null || true)
 	visible=$(jq -r --arg r "$role" '.guards[$r].require_visible_terminal // empty' "$policy_file" 2>/dev/null || true)
+	multiplexed=$(jq -r --arg r "$role" '.guards[$r].require_multiplexed_terminal // empty' "$policy_file" 2>/dev/null || true)
 	agent=$(jq -r --arg r "$role" '.guards[$r].require_agent // empty' "$policy_file" 2>/dev/null || true)
 
 	if [[ -z "${OSTE_REQUIRE_NODE:-}" && -n "$node" && "$node" != "null" ]]; then
@@ -115,6 +119,9 @@ spawn_guards_load_from_policy() {
 	fi
 	if [[ -z "${OSTE_REQUIRE_VISIBLE_TERMINAL:-}" && "$visible" == "true" ]]; then
 		export OSTE_REQUIRE_VISIBLE_TERMINAL=1
+	fi
+	if [[ -z "${OSTE_REQUIRE_MULTIPLEXED_TERMINAL:-}" && "$multiplexed" == "true" ]]; then
+		export OSTE_REQUIRE_MULTIPLEXED_TERMINAL=1
 	fi
 	if [[ -z "${OSTE_REQUIRE_AGENT:-}" && -n "$agent" && "$agent" != "null" ]]; then
 		export OSTE_REQUIRE_AGENT="$agent"
@@ -191,6 +198,26 @@ spawn_guards_enforce_visible() {
 		spawn_guards_fail "no_gui_session" "visible terminal required but no GUI session is available.
   OSTE_REQUIRE_VISIBLE_TERMINAL=1 needs a logged-in Aqua session to open the launcher terminal."
 	fi
+}
+
+# Enforce OSTE_REQUIRE_MULTIPLEXED_TERMINAL against the chosen surface.
+# Pure tmux mode is accepted. A launcher bundle surface is also accepted because
+# project bundles are tmux/zellij-backed; --no-bundle is not reattachable enough
+# for implementation lanes.
+# Usage: spawn_guards_enforce_multiplexer <tmux_mode_flag> <no_bundle_flag>
+spawn_guards_enforce_multiplexer() {
+	local tmux_mode="${1:-}"
+	local no_bundle="${2:-}"
+	[[ "${OSTE_REQUIRE_MULTIPLEXED_TERMINAL:-}" == "1" ]] || return 0
+
+	if [[ -n "$no_bundle" ]]; then
+		spawn_guards_fail "missing_multiplexer" "multiplexed terminal required but --no-bundle was requested.
+  OSTE_REQUIRE_MULTIPLEXED_TERMINAL=1 requires tmux or a launcher bundle backed by tmux/zellij.
+  Drop --no-bundle, use --tmux, or launch through the project bundle."
+	fi
+	# Explicit --tmux is the most compatible green path. Without --tmux, the
+	# launcher bundle path must provide the tmux/zellij anchor.
+	return 0
 }
 
 spawn_guards_resolve_claude_opus_node() {
@@ -329,6 +356,7 @@ spawn_guards_enforce_all() {
 	spawn_guards_enforce_claude_opus_node "$agent" "$model" "$policy_file"
 	spawn_guards_enforce_node
 	spawn_guards_enforce_agent "$agent"
+	spawn_guards_enforce_multiplexer "$tmux_mode" "$no_bundle"
 	spawn_guards_enforce_visible "$tmux_mode" "$no_bundle"
 	spawn_guards_preflight_automation
 }

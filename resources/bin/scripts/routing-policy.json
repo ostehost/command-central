@@ -19,7 +19,7 @@
     },
     "coder": {
       "require_node": "Mike MacBook Pro,Mike’s MacBook Pro",
-      "require_visible_terminal": true,
+      "require_multiplexed_terminal": true,
       "require_agent": "claude"
     }
   }

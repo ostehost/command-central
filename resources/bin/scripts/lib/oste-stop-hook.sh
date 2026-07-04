@@ -448,6 +448,15 @@ if [[ "${OSTE_STOP_DETERMINISTIC_COMPLETE:-1}" != "0" && -f "$report_file" ]]; t
 			exit 0
 			;;
 		success | completed)
+			# A matching success report is not enough by itself: the launcher task row
+			# carries the handoff contract and is the only durable status target for
+			# oste-complete.sh. If the row is missing (for example, a test or lifecycle
+			# race temporarily clobbered tasks.json), fail closed instead of writing a
+			# completion marker that cannot update task state.
+			if ! jq -e --arg id "$task_id" '.tasks[$id]' "$_tasks_file" >/dev/null 2>&1; then
+				_log_debug "completion-report-task-missing"
+				exit 0
+			fi
 			# Dirty-tree gate is conditional on the handoff backstop:
 			#
 			#   • Handoff declared + ready → finalize through oste-complete.sh
