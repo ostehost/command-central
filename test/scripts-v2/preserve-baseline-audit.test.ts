@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	buildReceipt,
 	classifyPorcelain,
+	describeRemote,
 	detectCredentialInRemote,
 	parseBranchHeader,
 	parseIgnoredFiles,
@@ -117,11 +118,14 @@ describe("redactRemoteUrl + detectCredentialInRemote (CCSTD-01 credential-in-rem
 		const findings = detectCredentialInRemote(remotes);
 		expect(findings).toHaveLength(1);
 		expect(findings[0]?.remote).toBe("origin");
-		expect(findings[0]?.redactedUrl).toBe(
-			"https://mike:***@github.com/o/cc.git",
-		);
-		// The secret must NEVER appear in the finding.
-		expect(findings[0]?.redactedUrl).not.toContain("TEST_TOKEN_SECRET_123");
+		// Capture-less: only credential-free {scheme, host}, never a URL.
+		expect(findings[0]?.scheme).toBe("https");
+		expect(findings[0]?.host).toBe("github.com");
+		expect(findings[0]).not.toHaveProperty("redactedUrl");
+		// Neither the secret NOR any userinfo (username) may appear in the finding.
+		const serialized = JSON.stringify(findings);
+		expect(serialized).not.toContain("TEST_TOKEN_SECRET_123");
+		expect(serialized).not.toContain("mike");
 	});
 
 	test("flags a token-as-username remote (no colon) and redacts the whole token", () => {
@@ -133,8 +137,10 @@ describe("redactRemoteUrl + detectCredentialInRemote (CCSTD-01 credential-in-rem
 		];
 		const findings = detectCredentialInRemote(remotes);
 		expect(findings).toHaveLength(1);
-		expect(findings[0]?.redactedUrl).toBe("https://***@github.com/o/cc.git");
-		expect(findings[0]?.redactedUrl).not.toContain("TEST_TOKEN_SECRET_123");
+		expect(findings[0]?.scheme).toBe("https");
+		expect(findings[0]?.host).toBe("github.com");
+		expect(JSON.stringify(findings)).not.toContain("TEST_TOKEN_SECRET_123");
+		// redactRemoteUrl is display-only, but must still never emit the secret.
 		expect(
 			redactRemoteUrl("https://TEST_TOKEN_SECRET_123@github.com/o/cc.git"),
 		).not.toContain("TEST_TOKEN_SECRET_123");
@@ -213,6 +219,162 @@ describe("redactRemoteUrl + detectCredentialInRemote (CCSTD-01 credential-in-rem
 		expect(redactRemoteUrl("git@github.com:o/cc.git")).toBe(
 			"git@github.com:o/cc.git",
 		);
+	});
+});
+
+describe("describeRemote (PAR-268 capture-less {scheme, host, hasCredential})", () => {
+	test("https with user:password → scheme/host, hasCredential, no userinfo captured", () => {
+		expect(describeRemote("https://mike:TOKEN@github.com/o/cc.git")).toEqual({
+			scheme: "https",
+			host: "github.com",
+			hasCredential: true,
+		});
+	});
+
+	test("https token-as-username → hasCredential, host only", () => {
+		expect(describeRemote("https://TOKEN@github.com/o/cc.git")).toEqual({
+			scheme: "https",
+			host: "github.com",
+			hasCredential: true,
+		});
+	});
+
+	test("plain https → host, no credential", () => {
+		expect(describeRemote("https://github.com/o/cc.git")).toEqual({
+			scheme: "https",
+			host: "github.com",
+			hasCredential: false,
+		});
+	});
+
+	test("ssh:// identity (git@host) → not a credential", () => {
+		expect(describeRemote("ssh://git@github.com/o/cc.git")).toEqual({
+			scheme: "ssh",
+			host: "github.com",
+			hasCredential: false,
+		});
+	});
+
+	test("scp-like shorthand → implicit ssh scheme, host, no credential", () => {
+		expect(describeRemote("git@github.com:o/cc.git")).toEqual({
+			scheme: "ssh",
+			host: "github.com",
+			hasCredential: false,
+		});
+	});
+
+	test("git+https token → hasCredential (non-ssh transport)", () => {
+		expect(describeRemote("git+https://TOKEN@github.com/o/cc.git")).toEqual({
+			scheme: "git+https",
+			host: "github.com",
+			hasCredential: true,
+		});
+	});
+
+	test("IPv6 authority with credential → bracketed host, userinfo discarded", () => {
+		expect(describeRemote("https://mike:TOKEN@[::1]:8080/o/cc.git")).toEqual({
+			scheme: "https",
+			host: "[::1]",
+			hasCredential: true,
+		});
+	});
+
+	test("empty userinfo (https://@host) → host, no credential", () => {
+		expect(describeRemote("https://@github.com/o/cc.git")).toEqual({
+			scheme: "https",
+			host: "github.com",
+			hasCredential: false,
+		});
+	});
+
+	test("local path / unrecognized form → empty scheme+host, no credential", () => {
+		expect(describeRemote("/srv/git/repo.git")).toEqual({
+			scheme: "",
+			host: "",
+			hasCredential: false,
+		});
+	});
+});
+
+// The adversarial corpus PAR-268 must keep leak-free — mirrors the forms the
+// redaction fix in 5c582bf0 hardened against. `leaks` lists every substring
+// (token AND userinfo) that must NEVER surface in a capture-less finding/receipt.
+const ADVERSARIAL_REMOTES: { url: string; leaks: string[] }[] = [
+	{
+		url: "https://mike:TEST_TOKEN_SECRET_123@github.com/o/cc.git",
+		leaks: ["TEST_TOKEN_SECRET_123", "mike"],
+	},
+	{
+		url: "https://TEST_TOKEN_SECRET_123@github.com/o/cc.git",
+		leaks: ["TEST_TOKEN_SECRET_123"],
+	},
+	{
+		url: "https://mike:p@ss:word@github.com/o/cc.git",
+		leaks: ["p@ss", "word", "mike"],
+	},
+	{
+		url: "git+https://TEST_TOKEN_SECRET_123@github.com/o/cc.git",
+		leaks: ["TEST_TOKEN_SECRET_123"],
+	},
+	{
+		url: "git+http://TEST_TOKEN_SECRET_123@host.example/cc.git",
+		leaks: ["TEST_TOKEN_SECRET_123"],
+	},
+	{
+		url: "gitlab://TEST_TOKEN_SECRET_123@host.example/cc.git",
+		leaks: ["TEST_TOKEN_SECRET_123"],
+	},
+	{
+		url: "sshx://TEST_TOKEN_SECRET_123@host.example/cc.git",
+		leaks: ["TEST_TOKEN_SECRET_123"],
+	},
+	{
+		url: "https://mike:TEST_TOKEN_SECRET_123@[::1]:8080/o/cc.git",
+		leaks: ["TEST_TOKEN_SECRET_123", "mike"],
+	},
+	{ url: "ssh://git@github.com/o/cc.git", leaks: [] },
+	{ url: "git@github.com:o/cc.git", leaks: [] },
+	{ url: "https://github.com/o/cc.git", leaks: [] },
+];
+
+describe("PAR-268 capture-less receipt (0 leaks / 0 drift across the corpus)", () => {
+	test("describeRemote.hasCredential never drifts from redactRemoteUrl", () => {
+		for (const { url } of ADVERSARIAL_REMOTES) {
+			expect(describeRemote(url).hasCredential).toBe(
+				redactRemoteUrl(url) !== url,
+			);
+		}
+	});
+
+	test("no adversarial form leaks userinfo/token into a finding or receipt", () => {
+		for (const { url, leaks } of ADVERSARIAL_REMOTES) {
+			const findingsJson = JSON.stringify(
+				detectCredentialInRemote([{ name: "origin", url }]),
+			);
+			const receipt = buildReceipt({
+				generatedAt: "2026-07-03T00:00:00.000Z",
+				host: "h",
+				user: "u",
+				repo: "/r",
+				head: "abc",
+				branch: "main",
+				branchHeaderLine: "## main",
+				porcelainZ: "",
+				ignoredZ: "",
+				stashList: "",
+				remoteVerbose: `origin\t${url} (fetch)`,
+			});
+			const receiptJson = JSON.stringify(receipt);
+			for (const leak of leaks) {
+				expect(findingsJson).not.toContain(leak);
+				expect(receiptJson).not.toContain(leak);
+			}
+			// No URL (full or redacted) is stored — structured fields only.
+			expect(receipt.remotes[0]).not.toHaveProperty("url");
+			expect(receipt.remotes[0]).toHaveProperty("scheme");
+			expect(receipt.remotes[0]).toHaveProperty("host");
+			expect(receipt.remotes[0]).toHaveProperty("hasCredential");
+		}
 	});
 });
 
@@ -296,7 +458,7 @@ describe("buildReceipt (CCSTD-01 host-labeled receipt)", () => {
 				"origin\thttps://mike:TEST_TOKEN_SHORT@github.com/o/cc.git (fetch)\norigin\thttps://mike:TEST_TOKEN_SHORT@github.com/o/cc.git (push)",
 		});
 
-		expect(receipt.version).toBe(1);
+		expect(receipt.version).toBe(2);
 		expect(receipt.host).toBe("hub-host");
 		expect(receipt.user).toBe("ostehost");
 		expect(receipt.head).toBe("abc1234");
@@ -315,12 +477,18 @@ describe("buildReceipt (CCSTD-01 host-labeled receipt)", () => {
 		expect(receipt.credentialFindings).toHaveLength(1);
 		expect(receipt.preserveClean).toBe(false);
 
-		// Persisted remotes must be redacted — no secret leaks into the receipt.
+		// Persisted remotes are capture-less — neither the secret NOR the userinfo
+		// (username) may leak into the receipt, and no URL field is stored at all.
 		const serialized = JSON.stringify(receipt);
 		expect(serialized).not.toContain("TEST_TOKEN_SHORT");
-		expect(receipt.remotes[0]?.url).toBe(
-			"https://mike:***@github.com/o/cc.git",
-		);
+		expect(serialized).not.toContain("mike");
+		expect(receipt.remotes[0]).toEqual({
+			name: "origin",
+			scheme: "https",
+			host: "github.com",
+			hasCredential: true,
+		});
+		expect(receipt.remotes[0]).not.toHaveProperty("url");
 	});
 
 	test("preserveClean is true for a pristine repo", () => {

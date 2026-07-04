@@ -20,8 +20,11 @@
  *   - ignored-only       files present but matched by .gitignore (clean -fdx bait)
  *   - stash-count        entries in the stash that a reset would orphan
  *   - upstream divergence ahead/behind, or a configured-but-gone upstream
- *   - remotes            every remote URL (so a re-clone target is known)
- *   - credential-in-remote remote URLs with embedded userinfo / token secrets
+ *   - remotes            each remote's {scheme, host, hasCredential} — capture-less:
+ *                        the credential is DETECTED but never captured, so no full
+ *                        or redacted URL (and therefore no userinfo/token) is stored
+ *   - credential-in-remote remotes whose userinfo embeds a token/secret, flagged by
+ *                        {scheme, host} only — the URL itself never touches disk
  *
  * Pure parsing/classification is exported for unit testing; the live git I/O and
  * the CLI run only when `import.meta.main` is true.
@@ -32,7 +35,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-export const PRESERVE_BASELINE_AUDIT_SCHEMA_VERSION = 1;
+// v2 (PAR-268): remotes + credential findings are capture-less — persist
+// {scheme, host, hasCredential} instead of the (redacted) remote URL, so no
+// userinfo/token can ever reach disk. v1 stored redactRemoteUrl(remote.url).
+export const PRESERVE_BASELINE_AUDIT_SCHEMA_VERSION = 2;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -52,15 +58,35 @@ export type UpstreamDivergence = {
 	gone: boolean;
 };
 
+/** A remote as parsed from `git remote -v` — transient/in-memory; NEVER persisted. */
 export type Remote = {
 	name: string;
 	url: string;
 };
 
+/**
+ * Credential-free structured view of a remote URL, safe to persist. `scheme` and
+ * `host` carry no userinfo; `hasCredential` records whether a token/secret was
+ * DETECTED in the URL's userinfo — the credential itself is never captured.
+ */
+export type RemoteDescriptor = {
+	scheme: string;
+	host: string;
+	hasCredential: boolean;
+};
+
+/** A named remote as persisted in the receipt: {scheme, host, hasCredential}, never a URL. */
+export type RemoteIdentity = RemoteDescriptor & { name: string };
+
+/**
+ * A remote whose userinfo embeds a credential/secret. Capture-less: records only
+ * the credential-free {scheme, host}, never the URL (not even redacted), so no
+ * userinfo/token can leak into the persisted receipt.
+ */
 export type CredentialFinding = {
 	remote: string;
-	/** The URL with the secret redacted — safe to persist in the receipt. */
-	redactedUrl: string;
+	scheme: string;
+	host: string;
 	reason: string;
 };
 
@@ -82,7 +108,7 @@ export type PreserveBaselineReceipt = {
 	head: string;
 	branch: string;
 	upstream: UpstreamDivergence;
-	remotes: Remote[];
+	remotes: RemoteIdentity[];
 	stagedOnly: string[];
 	unstaged: string[];
 	untracked: string[];
@@ -220,7 +246,11 @@ export function parseRemotes(remoteVerbose: string): Remote[] {
 }
 
 /**
- * Redact embedded credentials from a remote URL so it is safe to persist:
+ * Redact embedded credentials from a remote URL for HUMAN-FACING DISPLAY ONLY
+ * (log / stderr lines) — never for the persisted receipt or --json output, which
+ * are capture-less (see {@link describeRemote}). A redacted URL still carries the
+ * host and username, so it must not touch disk; keep it to ephemeral operator
+ * output. Behaviour:
  * - `https://user:token@host/repo.git` -> `https://user:***@host/repo.git`
  *   (the WHOLE password is redacted even if it contains '@', since userinfo is
  *   split at the LAST '@' before the authority).
@@ -263,21 +293,95 @@ export function redactRemoteUrl(url: string): string {
 }
 
 /**
+ * Extract the host from a `scheme://` URL's authority ([userinfo@]host[:port]),
+ * discarding the userinfo entirely — capture-less: the credential is never even
+ * read into the result. IPv6 literals keep their brackets; the port is dropped.
+ */
+function hostFromAuthority(authority: string): string {
+	// Host is everything after the LAST '@'; the userinfo before it is discarded.
+	const at = authority.lastIndexOf("@");
+	const hostPort = at >= 0 ? authority.slice(at + 1) : authority;
+	if (hostPort.startsWith("[")) {
+		// IPv6 literal: `[::1]:8080` — the host is the bracketed part.
+		const close = hostPort.indexOf("]");
+		return close >= 0 ? hostPort.slice(0, close + 1) : hostPort;
+	}
+	const colon = hostPort.indexOf(":");
+	return colon >= 0 ? hostPort.slice(0, colon) : hostPort;
+}
+
+/**
+ * Whether a remote URL embeds a credential/secret in its userinfo. The
+ * capture-less credential-presence predicate — it decides PRESENCE without ever
+ * building a redacted string. Applies the exact same rule as
+ * {@link redactRemoteUrl} (a unit test asserts the two never disagree across the
+ * adversarial corpus): a `scheme://user:password@` is always a secret; a bare
+ * token-as-username is a secret UNLESS the scheme is an ssh transport
+ * (ssh / git / *+ssh / *+git), where `user@` is a benign SSH identity.
+ */
+function hasEmbeddedCredential(url: string): boolean {
+	const match = url.match(/^([a-z][a-z0-9+.-]*):\/\/([^/]*)@/i);
+	if (!match) return false;
+	const scheme = (match[1] ?? "").toLowerCase();
+	const userinfo = match[2] ?? "";
+	if (userinfo === "") return false;
+	if (userinfo.includes(":")) return true;
+	const sshTransport =
+		scheme === "ssh" ||
+		scheme === "git" ||
+		scheme.endsWith("+ssh") ||
+		scheme.endsWith("+git");
+	return !sshTransport;
+}
+
+/**
+ * Decompose a remote URL into credential-free structured fields — {scheme, host,
+ * hasCredential} — that are safe to persist. This is the capture-less
+ * replacement for storing a redacted URL: the userinfo/token is DETECTED
+ * (hasCredential) but never captured into the result, so a redact-after-capture
+ * leak is impossible by construction. Handles `scheme://[userinfo@]host` URLs,
+ * scp-like SSH shorthand (`git@host:path`, an implicit ssh transport), and falls
+ * back to empty scheme/host for local paths / unrecognized forms.
+ */
+export function describeRemote(url: string): RemoteDescriptor {
+	const hasCredential = hasEmbeddedCredential(url);
+
+	// scheme://authority/... — authority = [userinfo@]host[:port]
+	const schemeMatch = url.match(/^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)/i);
+	if (schemeMatch) {
+		return {
+			scheme: (schemeMatch[1] ?? "").toLowerCase(),
+			host: hostFromAuthority(schemeMatch[2] ?? ""),
+			hasCredential,
+		};
+	}
+
+	// scp-like SSH shorthand: `[user@]host:path` (no scheme, no `//`).
+	const scpMatch = url.match(/^(?:[^@/]+@)?([^:/]+):/);
+	if (scpMatch) {
+		return { scheme: "ssh", host: scpMatch[1] ?? "", hasCredential };
+	}
+
+	// Local path or unrecognized form — nothing host-like to record.
+	return { scheme: "", host: "", hasCredential };
+}
+
+/**
  * Detect remotes whose URL embeds a credential/secret in userinfo. A force-push
- * or re-clone of such a remote would leak the token; the audit flags them (with
- * the secret redacted) so it can be rotated before any destructive action.
- * Kept in lockstep with {@link redactRemoteUrl}: a remote is flagged iff
- * redaction actually removed something, so the two can never drift (a
- * `ssh://git@host` SSH identity redacts to itself and is therefore not flagged).
+ * or re-clone of such a remote would leak the token; the audit flags them so it
+ * can be rotated before any destructive action. Capture-less: each finding
+ * carries only the credential-free {scheme, host} (via {@link describeRemote}),
+ * never the URL — not even redacted — so no secret can reach the receipt.
  */
 export function detectCredentialInRemote(remotes: Remote[]): CredentialFinding[] {
 	const findings: CredentialFinding[] = [];
 	for (const remote of remotes) {
-		const redactedUrl = redactRemoteUrl(remote.url);
-		if (redactedUrl === remote.url) continue;
+		const { scheme, host, hasCredential } = describeRemote(remote.url);
+		if (!hasCredential) continue;
 		findings.push({
 			remote: remote.name,
-			redactedUrl,
+			scheme,
+			host,
 			reason: "remote URL embeds a credential/secret in userinfo",
 		});
 	}
@@ -385,10 +489,12 @@ export function buildReceipt(input: {
 		stashCount,
 	});
 
-	// Persist redacted remote URLs only — never write a live credential to disk.
-	const safeRemotes: Remote[] = remotes.map((remote) => ({
+	// Persist a capture-less structured view of each remote — {scheme, host,
+	// hasCredential}. No URL (full or redacted) touches disk, so no userinfo/
+	// token can ever leak into the receipt.
+	const safeRemotes: RemoteIdentity[] = remotes.map((remote) => ({
 		name: remote.name,
-		url: redactRemoteUrl(remote.url),
+		...describeRemote(remote.url),
 	}));
 
 	return {
@@ -502,6 +608,19 @@ async function collectReceipt(
 	const [branchHeaderLine = ""] = statusBranchRes.output.split("\n");
 	const [head = ""] = headRes.output.split("\n");
 	const [branch = ""] = branchRes.output.split("\n");
+
+	// Human-facing (stderr) only: surface any credential-bearing remote using the
+	// display-safe redactor so the operator knows which token to rotate. This is
+	// the sole retained use of redactRemoteUrl — the receipt/--json stay
+	// capture-less (the redacted string never touches disk or stdout).
+	for (const remote of parseRemotes(remoteRes.output)) {
+		const redacted = redactRemoteUrl(remote.url);
+		if (redacted !== remote.url) {
+			console.warn(
+				`⚠️  credential-in-remote: ${remote.name} → ${redacted} (rotate before any destructive action)`,
+			);
+		}
+	}
 
 	return buildReceipt({
 		generatedAt: new Date().toISOString(),
