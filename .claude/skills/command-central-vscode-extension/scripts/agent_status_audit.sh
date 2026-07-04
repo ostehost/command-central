@@ -157,6 +157,18 @@ fi
 stream_count=0
 stream_count=$(find /tmp -maxdepth 1 -name '*-stream-*.jsonl' -type f 2>/dev/null | wc -l | tr -d ' ')
 
+# Work System lanes projection (second registry feed the tree reads; see
+# commandCentral.laneRegistry.files default).
+lanes_file="$opt_home/.config/openclaw/lanes.json"
+lanes_found=false
+lanes_kind=""
+lanes_count=0
+if [[ -f "$lanes_file" ]]; then
+  lanes_found=true
+  lanes_kind=$(jq -r '.kind // ""' "$lanes_file" 2>/dev/null || echo "")
+  lanes_count=$(jq '.lanes // {} | length' "$lanes_file" 2>/dev/null || echo 0)
+fi
+
 openclaw_available=false
 openclaw_task_total=0
 openclaw_task_running=0
@@ -215,6 +227,10 @@ if $json_output; then
     --arg reviewed_file "$reviewed_file" \
     --argjson reviewed_count "${reviewed_count:-0}" \
     --argjson stream_count "${stream_count:-0}" \
+    --argjson lanes_found "$lanes_found" \
+    --arg lanes_file "$lanes_file" \
+    --arg lanes_kind "$lanes_kind" \
+    --argjson lanes_count "${lanes_count:-0}" \
     --argjson openclaw_available "$openclaw_available" \
     --argjson openclaw_task_total "${openclaw_task_total:-0}" \
     --argjson openclaw_task_running "${openclaw_task_running:-0}" \
@@ -243,6 +259,12 @@ if $json_output; then
       },
       streams: {
         count: $stream_count
+      },
+      lanes_projection: {
+        found: $lanes_found,
+        file: $lanes_file,
+        kind: $lanes_kind,
+        lanes: $lanes_count
       },
       openclaw: {
         available: $openclaw_available,
@@ -288,6 +310,14 @@ else
   echo ""
   echo "Stream Files: /tmp/*-stream-*.jsonl"
   echo "  Count: $stream_count"
+  echo ""
+  echo "Lanes Projection: $lanes_file"
+  if $lanes_found; then
+    echo "  Kind:  ${lanes_kind:-<none>}"
+    echo "  Lanes: $lanes_count"
+  else
+    echo "  (file not found)"
+  fi
   echo ""
   echo "OpenClaw:"
   if $openclaw_available; then

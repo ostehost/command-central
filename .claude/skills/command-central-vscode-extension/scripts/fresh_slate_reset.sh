@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly SCRIPT_NAME="fresh_slate_reset.sh"
-readonly VERSION="1.2.0"
+readonly VERSION="1.3.0"
 
 usage() {
   cat <<'USAGE'
@@ -20,6 +20,8 @@ Options:
   --backup-root PATH     Backup directory root (default: <home>/.config/command-central/backups)
   --tasks-file PATH      Explicit tasks.json path (overrides auto-detection)
   --pending-dir PATH     Pending-review directory (default: $CC_PENDING_REVIEW_DIR or /tmp/oste-pending-review)
+  --lanes-file PATH      Work System lanes projection (default: <home>/.config/openclaw/lanes.json)
+  --skip-lanes           Leave the lanes projection untouched
   --home PATH            Override $HOME for path resolution
   --workspace PATH       Override $PWD for workspace-local tasks.json detection
   --include-streams      Also back up stream JSONL files from /tmp
@@ -41,8 +43,15 @@ Safety:
     directory BEFORE any file is moved
   - All historical files are moved into a timestamped backup directory
   - Full pending-review store backed up (including reviewed/ and quarantined/ subdirs)
+  - Work System lanes projection (kind: work-system-lanes-projection) backed up
+    and recreated as an empty projection; a file at the lanes path with any
+    OTHER kind is never touched (warned and skipped)
   - Empty scaffolds are recreated after backup
   - Print rollback path after completion
+
+Related: scripts/oste-lanes-gc.sh (this repo) is the receipt-emitting
+reconciler for the lanes projection — use it for selective row GC; this
+script is the full fresh-slate archive.
 
 Note: Live discovery may still populate Agent Status after reset. Disable
 commandCentral.discovery.enabled through VS Code Settings or an extension
@@ -61,6 +70,8 @@ opt_pending_dir=""
 opt_home="${HOME}"
 opt_workspace="${PWD}"
 opt_backup_root=""
+opt_lanes_file=""
+skip_lanes=false
 include_streams=false
 force_running=false
 
@@ -72,6 +83,8 @@ while [[ $# -gt 0 ]]; do
     --backup-root)     opt_backup_root="${2:?--backup-root requires a path}"; shift 2 ;;
     --tasks-file)      opt_tasks_file="${2:?--tasks-file requires a path}"; shift 2 ;;
     --pending-dir)     opt_pending_dir="${2:?--pending-dir requires a path}"; shift 2 ;;
+    --lanes-file)      opt_lanes_file="${2:?--lanes-file requires a path}"; shift 2 ;;
+    --skip-lanes)      skip_lanes=true; shift ;;
     --home)            opt_home="${2:?--home requires a path}"; shift 2 ;;
     --workspace)       opt_workspace="${2:?--workspace requires a path}"; shift 2 ;;
     --include-streams) include_streams=true; shift ;;
@@ -202,6 +215,30 @@ fi
 
 pending_dir=$(resolve_pending_dir)
 reviewed_file="$opt_home/.config/command-central/reviewed-tasks.json"
+lanes_file="${opt_lanes_file:-$opt_home/.config/openclaw/lanes.json}"
+
+# --- Inventory Work System lanes projection ---
+# Only a file whose kind is the canonical projection kind is ever touched:
+# the OpenClaw config dir is shared surface, and blind-wiping an unknown
+# document there is exactly the class of hack this script exists to prevent.
+
+readonly LANES_PROJECTION_KIND="work-system-lanes-projection"
+lanes_found=false
+lanes_kind_ok=false
+lanes_count=0
+
+if $skip_lanes; then
+  :
+elif [[ -f "$lanes_file" ]]; then
+  lanes_found=true
+  lanes_kind=$(jq -r '.kind // ""' "$lanes_file" 2>/dev/null || echo "")
+  if [[ "$lanes_kind" == "$LANES_PROJECTION_KIND" ]]; then
+    lanes_kind_ok=true
+    lanes_count=$(jq '.lanes // {} | length' "$lanes_file" 2>/dev/null || echo 0)
+  else
+    echo "warning: $lanes_file kind is '${lanes_kind:-<none>}' (expected $LANES_PROJECTION_KIND) — leaving it untouched" >&2
+  fi
+fi
 backup_root="${opt_backup_root:-$opt_home/.config/command-central/backups}"
 backup_dir="$backup_root/fresh-slate-$(date +%Y%m%d-%H%M%S)"
 
@@ -286,6 +323,9 @@ collect_manifest_files() {
   if $include_streams && [[ ${#stream_files[@]} -gt 0 ]]; then
     printf '%s\n' "${stream_files[@]}"
   fi
+  if $lanes_found && $lanes_kind_ok; then
+    echo "$lanes_file"
+  fi
 }
 
 write_manifest() {
@@ -322,6 +362,16 @@ write_manifest() {
 scaffolds_tasks='{"version":2,"tasks":{}}'
 scaffolds_reviewed='{"version":1,"reviewed":[]}'
 
+# Canonical empty projection (same shape the launcher bridge writes in outbox
+# mode; Command Central itself never creates this file — this script is an
+# operator tool acting on the launcher's behalf).
+lanes_scaffold() {
+  jq -nc \
+    --arg kind "$LANES_PROJECTION_KIND" \
+    --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{version: 1, kind: $kind, lanes: {}, updated_at: $updated_at}'
+}
+
 # --- Dry-run output ---
 
 if [[ "$mode" == "dry-run" ]]; then
@@ -342,6 +392,9 @@ if [[ "$mode" == "dry-run" ]]; then
       --argjson include_streams "$include_streams" \
       --argjson running_count "$running_count" \
       --argjson force_running "$force_running" \
+      --arg lanes_file "$lanes_file" \
+      --argjson lanes_eligible "$($lanes_found && $lanes_kind_ok && echo true || echo false)" \
+      --argjson lanes_count "$lanes_count" \
       '{
         mode: $mode,
         backup_dir: $backup_dir,
@@ -357,11 +410,13 @@ if [[ "$mode" == "dry-run" ]]; then
             quarantined: $pending_quarantined,
             total: $pending_total
           },
-          streams: { count: $stream_count, included: $include_streams }
+          streams: { count: $stream_count, included: $include_streams },
+          lanes_projection: (if $lanes_eligible then { file: $lanes_file, lanes: $lanes_count } else null end)
         },
         would_recreate: {
           tasks_file: (if $tasks_found then $tasks_file else null end),
-          reviewed_file: $reviewed_file
+          reviewed_file: $reviewed_file,
+          lanes_file: (if $lanes_eligible then $lanes_file else null end)
         }
       }'
   else
@@ -393,12 +448,18 @@ if [[ "$mode" == "dry-run" ]]; then
     if $include_streams; then
       echo "  /tmp/*-stream-*.jsonl (${#stream_files[@]} files)"
     fi
+    if $lanes_found && $lanes_kind_ok; then
+      echo "  $lanes_file ($lanes_count lanes)"
+    fi
     echo ""
     echo "Files to recreate:"
     if $tasks_found; then
       echo "  $tasks_file -> $scaffolds_tasks"
     fi
     echo "  $reviewed_file -> $scaffolds_reviewed"
+    if $lanes_found && $lanes_kind_ok; then
+      echo "  $lanes_file -> empty $LANES_PROJECTION_KIND"
+    fi
     echo ""
     echo "Pass --apply to execute."
   fi
@@ -502,6 +563,16 @@ if $include_streams && [[ ${#stream_files[@]} -gt 0 ]]; then
   done
 fi
 
+# --- Move Work System lanes projection (kind-verified above) ---
+
+if $lanes_found && $lanes_kind_ok && [[ -f "$lanes_file" ]]; then
+  mv "$lanes_file" "$backup_dir/lanes.json"
+  moved_count=$((moved_count + 1))
+  lanes_dir=$(dirname "$lanes_file")
+  mkdir -p "$lanes_dir"
+  lanes_scaffold > "$lanes_file"
+fi
+
 # --- Recreate remaining scaffolds ---
 
 recreated_count=0
@@ -515,6 +586,11 @@ reviewed_dir=$(dirname "$reviewed_file")
 mkdir -p "$reviewed_dir"
 echo "$scaffolds_reviewed" > "$reviewed_file"
 recreated_count=$((recreated_count + 1))
+
+if $lanes_found && $lanes_kind_ok; then
+  # lanes.json was already recreated right after its move above
+  recreated_count=$((recreated_count + 1))
+fi
 
 # --- Post-reset verification ---
 
@@ -530,6 +606,10 @@ post_pending_count=0
 if [[ -d "$pending_dir" ]]; then
   post_pending_count=$(find "$pending_dir" -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ') || true
 fi
+post_lanes_count=0
+if [[ -f "$lanes_file" ]]; then
+  post_lanes_count=$(jq '.lanes // {} | length' "$lanes_file" 2>/dev/null || echo 0)
+fi
 
 # --- Output ---
 
@@ -542,6 +622,7 @@ if $json_output; then
     --argjson post_tasks "$post_tasks_total" \
     --argjson post_reviewed "$post_reviewed_count" \
     --argjson post_pending "$post_pending_count" \
+    --argjson post_lanes "$post_lanes_count" \
     '{
       mode: $mode,
       backup_dir: $backup_dir,
@@ -551,7 +632,8 @@ if $json_output; then
       post_reset: {
         tasks: $post_tasks,
         reviewed: $post_reviewed,
-        pending_review: $post_pending
+        pending_review: $post_pending,
+        lanes_projection: $post_lanes
       },
       rollback: "To restore, move files from \($backup_dir) back to their original locations."
     }'
@@ -568,6 +650,7 @@ else
   echo "  Tasks: $post_tasks_total"
   echo "  Reviewed: $post_reviewed_count"
   echo "  Pending review: $post_pending_count"
+  echo "  Lanes projection: $post_lanes_count"
   echo ""
   echo "Rollback: move files from $backup_dir back to their original locations."
   echo ""

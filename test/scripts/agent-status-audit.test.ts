@@ -26,6 +26,12 @@ type AuditJson = {
 		running: number;
 		by_status: Record<string, number>;
 	};
+	lanes_projection: {
+		found: boolean;
+		file: string;
+		kind: string;
+		lanes: number;
+	};
 };
 
 /**
@@ -34,11 +40,21 @@ type AuditJson = {
  * or not openclaw is installed), and isolated --home/--pending-dir keep it off
  * the operator's live state.
  */
-function withFixture(tasks: unknown, fn: (audit: AuditJson) => void): void {
+function withFixture(
+	tasks: unknown,
+	fn: (audit: AuditJson) => void,
+	options?: { lanes?: unknown },
+): void {
 	const dir = mkdtempSync(path.join(tmpdir(), "cc-audit-"));
 	try {
 		const tasksFile = path.join(dir, "tasks.json");
 		writeFileSync(tasksFile, JSON.stringify({ version: 2, tasks }));
+
+		if (options?.lanes !== undefined) {
+			const lanesFile = path.join(dir, ".config/openclaw/lanes.json");
+			mkdirSync(path.dirname(lanesFile), { recursive: true });
+			writeFileSync(lanesFile, JSON.stringify(options.lanes));
+		}
 
 		const binDir = path.join(dir, "bin");
 		mkdirSync(binDir);
@@ -118,5 +134,38 @@ describe("agent_status_audit by_status robustness", () => {
 				expect(Object.keys(audit.tasks.by_status).length).toBeGreaterThan(0);
 			},
 		);
+	});
+});
+
+describe("agent_status_audit lanes projection visibility", () => {
+	// Regression (2026-07-04): the audit reported all-zero while 454 projection
+	// lanes still fed the tree — the second registry feed was invisible to the
+	// operator tooling. The audit must surface it.
+	test("reports the Work System lanes projection when present", () => {
+		withFixture(
+			{},
+			(audit) => {
+				expect(audit.lanes_projection.found).toBe(true);
+				expect(audit.lanes_projection.kind).toBe(
+					"work-system-lanes-projection",
+				);
+				expect(audit.lanes_projection.lanes).toBe(2);
+			},
+			{
+				lanes: {
+					version: 1,
+					kind: "work-system-lanes-projection",
+					lanes: { "launcher:a": {}, "launcher:b": {} },
+					updated_at: "2026-07-04T00:00:00Z",
+				},
+			},
+		);
+	});
+
+	test("reports absence honestly when no projection exists", () => {
+		withFixture({}, (audit) => {
+			expect(audit.lanes_projection.found).toBe(false);
+			expect(audit.lanes_projection.lanes).toBe(0);
+		});
 	});
 });
