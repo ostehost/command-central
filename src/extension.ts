@@ -617,9 +617,14 @@ export async function activate(
 			taskActivityProbe: () => {
 				const tasks = agentStatusProvider?.getTasks() ?? [];
 				if (tasks.length === 0) return null;
-				const counts = countAgentStatuses(tasks, {
-					reviewedTaskIds: agentStatusProvider?.getReviewedTaskIds(),
-				});
+				// Tree-engine counts (getNodeStatusGroup), not raw-status counts —
+				// keeps this item's summary in lockstep with the sidebar's Action
+				// Required buckets and the AgentStatusBar.
+				const counts =
+					agentStatusProvider?.getUnifiedAgentCounts() ??
+					countAgentStatuses(tasks, {
+						reviewedTaskIds: agentStatusProvider?.getReviewedTaskIds(),
+					});
 				return {
 					workingCount: counts.working,
 					summary: formatCountSummary(counts, { includeAttention: true }),
@@ -633,6 +638,7 @@ export async function activate(
 			agentStatusBar?.update(
 				agentStatusProvider?.getTasks() ?? [],
 				agentStatusProvider?.getReviewedTaskIds(),
+				agentStatusProvider?.getUnifiedAgentCounts(),
 			);
 			// The health item weighs the same working counts via its
 			// taskActivityProbe — re-read them now instead of waiting for its
@@ -660,6 +666,7 @@ export async function activate(
 		agentStatusBar.update(
 			agentStatusProvider.getTasks(),
 			agentStatusProvider.getReviewedTaskIds(),
+			agentStatusProvider.getUnifiedAgentCounts(),
 		);
 		infrastructureHealthStatusBar.refreshTaskActivity();
 

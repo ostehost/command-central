@@ -102,7 +102,7 @@ import {
 	taskflowStatusToIcon,
 	taskflowStatusToLabel,
 } from "../types/taskflow-types.js";
-import { type AgentCounts, countAgentStatuses } from "../utils/agent-counts.js";
+import type { AgentCounts } from "../utils/agent-counts.js";
 import {
 	classifyPaneAttention,
 	emptyUnifiedCounts,
@@ -3230,10 +3230,8 @@ export class AgentStatusTreeProvider
 				? []
 				: this.applyAgentVisibilityCap(sortableFlatNodes);
 
-			const reviewedTaskIds = this._reviewTracker.getReviewedIds();
-			const agentCounts = countAgentStatuses(
+			const agentCounts = this.countTasksByStatusGroup(
 				this.getScopedAgentTasksForSummary(tasks, discovered),
-				{ reviewedTaskIds },
 			);
 			// V2 root denominator: one `live · review · action · history` vocabulary
 			// over the same lane set the tree renders. Always explicit (live: 0 when
@@ -3607,6 +3605,42 @@ export class AgentStatusTreeProvider
 	 * lane actually renders under. Reads only cache-warmed liveness state (via
 	 * `getNodeStatusGroup`) — no new subprocess on the hot path.
 	 */
+	/**
+	 * Four-bucket AgentCounts over a task set, classified through the SAME
+	 * per-lane engine the tree renders with (`getNodeStatusGroup`): lifecycle
+	 * conflicts, receipt state, stale projections, and the reviewed sidecar all
+	 * count identically here and in the rendered groups. The status-only
+	 * `countAgentStatuses` must never feed a surface that sits next to the tree
+	 * — it cannot see signal-based Attention, so the two drift apart.
+	 */
+	private countTasksByStatusGroup(tasks: AgentTask[]): AgentCounts {
+		const counts: AgentCounts = {
+			working: 0,
+			attention: 0,
+			limbo: 0,
+			done: 0,
+			total: 0,
+		};
+		for (const task of tasks) {
+			counts.total += 1;
+			switch (this.getNodeStatusGroup({ type: "task", task })) {
+				case "running":
+					counts.working += 1;
+					break;
+				case "attention":
+					counts.attention += 1;
+					break;
+				case "limbo":
+					counts.limbo += 1;
+					break;
+				case "done":
+					counts.done += 1;
+					break;
+			}
+		}
+		return counts;
+	}
+
 	private computeUnifiedSectionCounts(
 		nodes: SortableAgentNode[],
 	): UnifiedCounts {
@@ -6572,6 +6606,19 @@ export class AgentStatusTreeProvider
 			toSyntheticOpenClawTask(task),
 		);
 		return [...launcherTasks, ...syntheticDiscovered, ...syntheticOpenClaw];
+	}
+
+	/**
+	 * Counts over the same task set as {@link getTasks}, classified through the
+	 * tree's own group engine (`getNodeStatusGroup`) instead of raw task status.
+	 * This is what the status bar and infrastructure-health probe must consume:
+	 * a lane the tree files under Action Required (lifecycle conflict, missing
+	 * review receipt, pending review) counts as `attention` here too, so the
+	 * "N attention" badge and the tree's Action Required buckets cannot
+	 * disagree.
+	 */
+	getUnifiedAgentCounts(): AgentCounts {
+		return this.countTasksByStatusGroup(this.getTasks());
 	}
 
 	getDiscoveryDiagnosticsReport(): string {

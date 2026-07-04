@@ -271,6 +271,46 @@ describe("AgentStatusBar", () => {
 		);
 	});
 
+	test("provider-supplied unified counts override raw-status counting", async () => {
+		const { AgentStatusBar } = await loadModule();
+		const bar = new AgentStatusBar();
+
+		// Raw status says "1 done"; the tree engine filed the same lane under
+		// Action Required (lifecycle conflict / missing review receipt / pending
+		// review). The injected counts must win — this is the contract that keeps
+		// the "N attention" badge in lockstep with the tree's buckets.
+		bar.update([createTask({ id: "t1", status: "completed" })], undefined, {
+			working: 0,
+			attention: 1,
+			limbo: 0,
+			done: 0,
+			total: 1,
+		});
+
+		expect(mockStatusBarItem.text).toBe("$(warning) 1 attention");
+		// No raw failed/killed/contract_failure status → warning, not error.
+		expect((mockStatusBarItem.backgroundColor as { id: string }).id).toBe(
+			"statusBarItem.warningBackground",
+		);
+	});
+
+	test("unified counts can demote raw-status attention to done", async () => {
+		const { AgentStatusBar } = await loadModule();
+		const bar = new AgentStatusBar();
+
+		// Raw status says attention (failed); the tree engine reconciled the row
+		// out (GC receipt → Needs Review). The bar must follow the tree.
+		bar.update([createTask({ id: "t1", status: "failed" })], undefined, {
+			working: 0,
+			attention: 0,
+			limbo: 1,
+			done: 0,
+			total: 1,
+		});
+
+		expect(mockStatusBarItem.text).toBe("$(check) 1 done");
+	});
+
 	test("tooltip truncates very long project names", async () => {
 		const { AgentStatusBar } = await loadModule();
 		const bar = new AgentStatusBar();

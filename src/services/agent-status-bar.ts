@@ -12,6 +12,7 @@
 import * as vscode from "vscode";
 import type { AgentTask } from "../providers/agent-status-tree-provider.js";
 import {
+	type AgentCounts,
 	countAgentStatuses,
 	formatCountSummary,
 	getAttentionCount,
@@ -54,7 +55,19 @@ export class AgentStatusBar implements vscode.Disposable {
 		return this.visible ? this.statusBarItem.text : undefined;
 	}
 
-	update(tasks: AgentTask[], reviewedTaskIds?: ReadonlySet<string>): void {
+	/**
+	 * @param unifiedCounts Tree-engine counts from
+	 * `AgentStatusTreeProvider.getUnifiedAgentCounts()`. Always pass these when
+	 * a provider is wired — they classify signal-based Attention (lifecycle
+	 * conflicts, missing review receipts) identically to the tree's Action
+	 * Required bucket. The status-only fallback below cannot see those signals
+	 * and is only for provider-less callers/tests.
+	 */
+	update(
+		tasks: AgentTask[],
+		reviewedTaskIds?: ReadonlySet<string>,
+		unifiedCounts?: AgentCounts,
+	): void {
 		if (tasks.length === 0) {
 			this.visible = false;
 			this.statusBarItem.hide();
@@ -62,7 +75,8 @@ export class AgentStatusBar implements vscode.Disposable {
 		}
 		this.visible = true;
 
-		const counts = countAgentStatuses(tasks, { reviewedTaskIds });
+		const counts =
+			unifiedCounts ?? countAgentStatuses(tasks, { reviewedTaskIds });
 		const summary = formatCountSummary(counts, { includeAttention: true });
 		const attentionCount = getAttentionCount(counts);
 		const hasFailureAttention = tasks.some(
