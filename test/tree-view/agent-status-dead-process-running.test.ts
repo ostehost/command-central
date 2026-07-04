@@ -12,6 +12,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as os from "node:os";
+import * as path from "node:path";
 
 const realChildProcess = (globalThis as Record<string, unknown>)[
 	"__realNodeChildProcess"
@@ -377,5 +379,68 @@ describe("dead-process-running detection (slice 2)", () => {
 		const label = getSummaryLabel(provider);
 		expect(label).toContain("Live 1");
 		expect(label).not.toContain("Action 1");
+	});
+
+	// ── Tests 7/8: stream-freshness veto on confirmed-dead ────────────────────
+	// Regression (2026-07-04): a codex reviewer lane ran to completion while the
+	// pane process scan read "dead" the whole time (the codex worker was not
+	// pane-local), so the row was demoted to stopped ("Agent process ended")
+	// with its stream file updating 1s earlier. A stream that pulsed within the
+	// freshness window is positive output evidence and must veto the demotion.
+	// Distinct from tests 3/4: PRESENCE of a stream file is not liveness — only
+	// a FRESH mtime is, so a stale stream (test 8) still demotes.
+
+	test("dead pane scan + fresh stream file → stays running (codex reviewer regression)", () => {
+		const streamFile = path.join(
+			fs.mkdtempSync(path.join(os.tmpdir(), "cc-stream-veto-")),
+			"codex-stream-fresh.jsonl",
+		);
+		// A non-terminal event only — a terminal event would legitimately
+		// finalize the lane via the stream-terminal tier before the veto matters.
+		fs.writeFileSync(
+			streamFile,
+			`${JSON.stringify({ type: "turn.started" })}\n`,
+		);
+
+		const task = makeTask({
+			id: "codex-review-fresh",
+			stream_file: streamFile,
+		});
+		seedSessionAlive(provider, task);
+		mockIsTmuxPaneAgentAlive.mockImplementation(() => false);
+		mockInspectTmuxPaneAgent.mockImplementation(() => "dead");
+
+		provider.readRegistry = () => makeRegistry({ [task.id]: task });
+		provider.reload();
+
+		expect(provider.getTasks()[0]?.status).toBe("running");
+	});
+
+	test("dead pane scan + stale stream file → still demotes to stopped", () => {
+		const streamFile = path.join(
+			fs.mkdtempSync(path.join(os.tmpdir(), "cc-stream-veto-")),
+			"codex-stream-stale.jsonl",
+		);
+		fs.writeFileSync(
+			streamFile,
+			`${JSON.stringify({ type: "turn.started" })}\n`,
+		);
+		// Age the stream beyond the freshness window: a dead lane's stream stops
+		// advancing immediately, so the veto must expire and demotion resume.
+		const staleEpochSeconds = (Date.now() - 10 * 60_000) / 1000;
+		fs.utimesSync(streamFile, staleEpochSeconds, staleEpochSeconds);
+
+		const task = makeTask({
+			id: "codex-review-stale",
+			stream_file: streamFile,
+		});
+		seedSessionAlive(provider, task);
+		mockIsTmuxPaneAgentAlive.mockImplementation(() => false);
+		mockInspectTmuxPaneAgent.mockImplementation(() => "dead");
+
+		provider.readRegistry = () => makeRegistry({ [task.id]: task });
+		provider.reload();
+
+		expect(provider.getTasks()[0]?.status).toBe("stopped");
 	});
 });

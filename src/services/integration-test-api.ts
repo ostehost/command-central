@@ -40,6 +40,23 @@ export interface CommandCentralIntegrationSnapshot {
 	 * items never contradict each other (CC-001).
 	 */
 	agentStatusBarText: string | undefined;
+	/**
+	 * Tree-engine counts (`getUnifiedAgentCounts`) at snapshot time — the SAME
+	 * classification the rendered groups use. Live-host proofs assert
+	 * `agentStatusBarText` against these so the "N attention" badge can never
+	 * silently drift from the tree's Action Required buckets again
+	 * (regression: status bar "3 attention" beside 13 Action Required rows,
+	 * 2026-07-04).
+	 */
+	unifiedAgentCounts:
+		| {
+				working: number;
+				attention: number;
+				limbo: number;
+				done: number;
+				total: number;
+		  }
+		| undefined;
 	activeProjectSlots: string[];
 }
 
@@ -509,6 +526,7 @@ export function getIntegrationSnapshot(
 		hasTestCountStatusBar: deps.hasTestCountStatusBar(),
 		infrastructureHealthStatusText: deps.getInfrastructureHealthStatusText(),
 		agentStatusBarText: deps.getAgentStatusBarText(),
+		unifiedAgentCounts: deps.getAgentStatusProvider()?.getUnifiedAgentCounts(),
 		activeProjectSlots: deps.getActiveProjectSlots(),
 	};
 }

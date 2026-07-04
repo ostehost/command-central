@@ -14,6 +14,16 @@ export interface CommandCentralIntegrationSnapshot {
 	hasTestCountStatusBar: boolean;
 	infrastructureHealthStatusText: string | undefined;
 	agentStatusBarText: string | undefined;
+	/** Tree-engine counts the bar must render — see status-bar-counts-parity. */
+	unifiedAgentCounts:
+		| {
+				working: number;
+				attention: number;
+				limbo: number;
+				done: number;
+				total: number;
+		  }
+		| undefined;
 	activeProjectSlots: string[];
 }
 

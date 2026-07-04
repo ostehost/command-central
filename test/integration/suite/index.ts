@@ -3,6 +3,7 @@ import * as commandExecutes from "./command-executes.test.js";
 import * as commandsRegistered from "./commands-registered.test.js";
 import * as deactivation from "./deactivation.test.js";
 import * as infrastructureHealth from "./infrastructure-health.test.js";
+import * as statusBarCountsParity from "./status-bar-counts-parity.test.js";
 import * as treeViewRenders from "./tree-view-renders.test.js";
 
 interface ScenarioModule {
@@ -15,6 +16,7 @@ const scenarios: ScenarioModule[] = [
 	commandsRegistered,
 	treeViewRenders,
 	infrastructureHealth,
+	statusBarCountsParity,
 	commandExecutes,
 	deactivation,
 ];

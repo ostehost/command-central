@@ -2829,6 +2829,15 @@ export class AgentStatusTreeProvider
 		// (cc-current-running-surface-fix-20260613)
 		if (!isLocalFileProbeAuthoritative(task)) return false;
 
+		// Stream-freshness veto: a stream JSONL that pulsed within the freshness
+		// window is positive proof the agent is producing output RIGHT NOW.
+		// Pane process scans can miss backends whose worker is not pane-local —
+		// a codex reviewer lane ran to completion (stream updated 1s earlier)
+		// while the pane scan read "dead" and demoted it to stopped
+		// ("Agent process ended") mid-run. Death cannot be "confirmed" while
+		// the lane's own output channel is actively being written.
+		if (this.hasFreshStreamActivity(task)) return false;
+
 		if (task.terminal_backend === "persist") {
 			return !this.isPersistTaskAlive(task);
 		}
@@ -7747,6 +7756,36 @@ export class AgentStatusTreeProvider
 			candidates.unshift(explicitStreamFile);
 		}
 		return candidates;
+	}
+
+	/**
+	 * Stream writes within this window count as live agent output for the
+	 * confirmed-dead veto. Generous relative to the 5s discovery poll so a
+	 * slow-turn agent is never demoted between events, yet short enough that a
+	 * genuinely dead lane (whose stream stops advancing immediately) exits the
+	 * veto within two minutes and the normal demotion tiers resume.
+	 */
+	private static readonly STREAM_ACTIVITY_FRESH_MS = 120_000;
+
+	/**
+	 * Whether the task's stream JSONL was modified within
+	 * {@link STREAM_ACTIVITY_FRESH_MS} — host-local, positive evidence the
+	 * agent is actively emitting output. Only meaningful where local file
+	 * probes are authoritative; remote/node-origin tasks always return false
+	 * (their streams live on another machine).
+	 */
+	private hasFreshStreamActivity(task: AgentTask): boolean {
+		if (!isLocalFileProbeAuthoritative(task)) return false;
+		const streamFile = this.resolveStreamFilePath(task);
+		if (!streamFile) return false;
+		try {
+			return (
+				Date.now() - fs.statSync(streamFile).mtimeMs <
+				AgentStatusTreeProvider.STREAM_ACTIVITY_FRESH_MS
+			);
+		} catch {
+			return false;
+		}
 	}
 
 	public resolveStreamFilePath(task: AgentTask): string | null {
