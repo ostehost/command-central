@@ -137,3 +137,86 @@ The four criteria come from the CC-006 intake record
   linking this closeout as the AC4 report.
 - Optionally close the sibling per-child gaps noted in the CC-000 closeout
   (CC-002/004/005).
+
+---
+
+## Evidence-currency update — 2026-07-03 (PAR-158 re-run)
+
+Re-verified as the visible Symphony implementation lane for PAR-158
+(`symphony-PAR-158-bcc04861`), attached to the issue-scoped OpenClaw workroom
+`discord:channel:1522107172337487914`. The 2026-07-02 body above was accurate on
+its date; this dated addendum records the evidence that has landed **since** rather
+than rewriting it. The tree advanced from the PAR-189..195 snapshot to HEAD
+`b19ba454` (`main`, `ostehost`). The CC-006 verdict is unchanged — AC1/AC3/AC4 met,
+AC2 met-and-hardened — and is now backed by additional committed instances.
+
+### This run is itself a fresh AC1 instance
+
+AC1 asks for "at least one issue run from Linear/project intake through visible
+launcher execution and reviewed completion." This PAR-158 re-run is one more: the
+Symphony daemon selected PAR-158 from the PartnerAI / Command Central project,
+routed it to a visible Claude Code lane with the canonical launcher id
+`symphony-PAR-158-bcc04861`, and its closeout is workroom-routed for review — not
+ad-hoc pickup. It runs on the hub (`ostehost`), the counterpart to the node-side
+runs cited above.
+
+### Corroborating AC2 hardening that post-dates the closeout (2026-07-02 → 2026-07-03)
+
+The AC2 verdict — "met (and hardened by the run itself)" — rests on the visible-lane
+attention/health projection surface staying under real scrutiny and getting more
+accurate. Two changes landed after 2026-07-02 that harden that exact surface,
+extending the corroborating hardening cluster the body already lists under AC2:
+
+- **PAR-322 — `5b16b047` `feat(providers): detect visible Claude permission/input
+  waits`.** A live interactive lane blocked on a permission/input prompt previously
+  looked identical to an idle REPL; the pane is now read on the already-stuck path
+  and a genuine wait renders "(awaiting input)" with an actionable tooltip and a
+  louder icon, so the attention/health state is accurate instead of coarse. Full
+  suite green (2632 pass / 0 fail).
+- **PAR-323 — `b19ba454` `feat(providers): project native visible-lane attention
+  receipts`.** Adds the seam to *project* an OpenClaw/Symphony daemon-confirmed
+  `awaiting_input` / `attention` verdict — the cross-project orchestration health
+  signal central to CC-006 — while keeping Command Central a projector, not the
+  source of truth (fail-closed to null on any unrecognized token). Suite green
+  (2649 pass / 0 fail). Contract recorded in
+  `research/PAR-323-NATIVE-VISIBLE-LANE-ATTENTION-PROJECTION-2026-07-03.md`.
+
+Both keep the surface AC2 measures accurate rather than coarse; PAR-323 specifically
+wires the projection seam for the OpenClaw/Symphony health that this issue is about.
+
+### The named OpenClaw-DOWN example now has its own receipt (AC3 / AC4)
+
+CC-006's problem statement names "the OpenClaw DOWN indicator" as the archetypal
+real issue. On 2026-07-03 **CC-002 / PAR-152** ("Define OpenClaw health truth
+contract") was run as its own visible Symphony lane (`symphony-PAR-152-a6ee5f41`,
+`ostehost`) and filed `research/RESULT-cc-002-openclaw-health-truth-contract-2026-07-03.md`
+(committed `00eb6bfc`), re-verifying the auth-failed six-state OpenClaw health-truth
+model against the current tree with fresh green verification (health suite 24/0,
+test-unit 788/0, `just check` clean). That is a captured health-surface concern
+becoming a tracked issue with a durable committed receipt — AC3 — not chat memory,
+and a second short report of the kind AC4 asks for.
+
+### Updated follow-up ledger
+
+- ~~Optionally close the sibling per-child gap for **CC-002**~~ — **done** as of
+  2026-07-03: `RESULT-cc-002-openclaw-health-truth-contract-2026-07-03.md`
+  (`00eb6bfc`).
+- **CC-004 / CC-005** per-child gaps — still open/optional. CC-005 / PAR-157
+  (conductor daemon design) remains Backlog
+  (`research/DESIGN-cc-005-conductor-daemon-slice-2026-06-24.md`); as the body notes,
+  it gates the *designed* conductor, not the *demonstrated* orchestration this issue
+  exercises.
+- The parent CC-000 refresh (`5c997fe8`, 2026-07-03) already recorded this closeout
+  as discharging the "write the CC-006 closeout" follow-up; cross-linked here for
+  currency.
+- Flip **PAR-158** → Done in Linear (or mark superseded), linking this file as the
+  AC4 report — still open; a tracker mutation owned by the human/orchestrator and out
+  of scope for this code lane. (The 2026-07-02 body reads "Backlog"; the current
+  intake record shows the issue as `Todo` — either way the flip is owed to the
+  orchestrator. No live Linear pull or mutation was performed by this update.)
+
+### Hard-stop compliance (this update)
+
+Docs-only; a single existing file was appended (no new files). No source / test /
+config / `tasks.json` / launcher / Symphony / OpenClaw state touched. No Linear
+mutation. No push / tag / publish / version bump.
