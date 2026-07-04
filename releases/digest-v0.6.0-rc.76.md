@@ -1,4 +1,4 @@
-## 🚀 Command Central v0.6.0-rc.75
+## 🚀 Command Central v0.6.0-rc.76
 
 ✨ **Added**
   • **Installed VSIX proof harness** — Added a node-only proof path for the actual packaged extension, including exact VSIX SHA identity, passive/live Agent Status inspection, and read-only action probes.
@@ -11,14 +11,9 @@
 🔧 **Fixed**
   • **Review queue continuation gaps** — Completed runs with handoff evidence but missing review receipts now surface as review-queue gaps instead of silently looking finished.
 
-📦 **Since previous prerelease cut (rc74)**
+📦 **Since previous prerelease cut (rc75)**
   • `56310edd` feat(agent-status): classify idle agent REPLs as benign on clean completion
   • `fc31f6ea` fix(installed-proof): keep VS Code IPC socket under the macOS 103-byte cap
-  • `72d7cc11` feat(fresh-slate): cover the Work System lanes projection in reset + audit
-  • `6635fc01` fix(agent-status): stream-freshness veto on confirmed-dead demotion
-  • `b70d57ff` feat(prerelease-gate): cross-validate hub/node consumption receipts (PAR-298)
-  • `0ab43134` fix(agent-status): gate lane-GC reconcile on receipt freshness (PAR-299)
-  • `1aed06ce` feat(verify-consumption): report stale sibling command-central extension dirs (PAR-270)
 
 🛡️ **Release gate evidence**
   • ✅ Launcher contract / sync: passed
