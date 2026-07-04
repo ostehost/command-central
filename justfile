@@ -403,40 +403,125 @@ verify-vscode-consumption *args:
     @echo ""
     @bun run scripts-v2/verify-vscode-extension-consumption.ts {{args}}
 
-# The node gateway permits file.write/file.fetch/dir.list/dir.fetch only (node
-# exec / system.run is gated off in gateway.nodes.allowCommands), so the work
-# splits in two: the HUB cuts the RC (`just cut-preview` → releases/*.vsix + the
-# .preview-status cut receipt) and file.write's the bytes to the node under
-# /Users/ostehost/**; the NODE proves them. This is the node-prove half —
-# preflight → transfer-landing check → sha-verify (against the cut receipt's
-# artifactSha256) → install → installed-VSIX proof → node consumption receipt —
-# orchestrating existing recipes only, never shelling a command onto a remote
-# node.
-# Dogfood the freshly cut VSIX on the MacBook node (file-transfer path; run ON the node).
-dogfood-node-vsix:
+# Dogfood a hub-transferred VSIX on the MacBook node.
+#
+# The hub side must first cut/build the VSIX and transfer both the artifact and a
+# transfer receipt to the node with OpenClaw file.write. This node-side command
+# deliberately consumes explicit receipt inputs instead of node-local
+# .preview-status state, because the node may have stale cut receipts for a
+# different RC. It then proves the exact same bytes through install,
+# installed-VSIX proof, and normal-profile consumption receipts.
+#
+# Expected transfer receipt shape:
+#   {
+#     "schemaVersion": 1,
+#     "kind": "command-central.node-vsix-transfer/v1",
+#     "method": "openclaw.file_write",
+#     "destinationPath": "/Users/ostehost/projects/command-central/releases/command-central-<version>.vsix",
+#     "expectedVersion": "<version>",
+#     "sha256": "<sha256>"
+#   }
+#
+# Example:
+#   just dogfood-node-vsix --vsix releases/command-central-0.6.0-rc.72.vsix \
+#     --expected-version 0.6.0-rc.72 \
+#     --expected-sha <sha256> \
+#     --transfer-receipt research/prerelease-gate/node-vsix-transfer-0.6.0-rc.72.json
+dogfood-node-vsix *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "🐕 Dogfood node VSIX — file-transfer path (hub cuts, node proves)"
-    # 1. preflight — must be the node; read the local (gitignored) cut receipt
-    bun run scripts-v2/node-execution-guard.ts
-    STATE="$(bun run scripts-v2/preview-status.ts show --json 2>/dev/null || true)"
-    VERSION="$(jq -r '.packageVersion // empty' <<<"$STATE" 2>/dev/null || true)"
-    EXPECTED_SHA="$(jq -r '.artifactSha256 // empty' <<<"$STATE" 2>/dev/null || true)"
-    if [ -z "$VERSION" ] || [ -z "$EXPECTED_SHA" ]; then
-        echo "❌ No cut receipt in .preview-status/ — run 'just cut-preview' on the hub first." >&2; exit 1
+    set -- {{args}}
+
+    usage() {
+        cat >&2 <<'USAGE'
+    Usage: just dogfood-node-vsix --vsix <node-vsix-path> --expected-version <version> --expected-sha <sha256> --transfer-receipt <receipt-json>
+
+    Required because node-local .preview-status can be stale. The transfer receipt must
+    describe the hub OpenClaw file.write transfer that landed the VSIX on this node.
+    USAGE
+    }
+
+    VSIX="${COMMAND_CENTRAL_NODE_VSIX:-}"
+    EXPECTED_VERSION="${COMMAND_CENTRAL_EXPECTED_VERSION:-}"
+    EXPECTED_SHA="${COMMAND_CENTRAL_EXPECTED_VSIX_SHA256:-}"
+    TRANSFER_RECEIPT="${COMMAND_CENTRAL_TRANSFER_RECEIPT:-}"
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --vsix) VSIX="${2:-}"; shift 2 ;;
+            --vsix=*) VSIX="${1#*=}"; shift ;;
+            --expected-version) EXPECTED_VERSION="${2:-}"; shift 2 ;;
+            --expected-version=*) EXPECTED_VERSION="${1#*=}"; shift ;;
+            --expected-sha|--expected-sha256) EXPECTED_SHA="${2:-}"; shift 2 ;;
+            --expected-sha=*|--expected-sha256=*) EXPECTED_SHA="${1#*=}"; shift ;;
+            --transfer-receipt) TRANSFER_RECEIPT="${2:-}"; shift 2 ;;
+            --transfer-receipt=*) TRANSFER_RECEIPT="${1#*=}"; shift ;;
+            -h|--help) usage; exit 0 ;;
+            *) echo "❌ Unknown argument: $1" >&2; usage; exit 2 ;;
+        esac
+    done
+
+    if [ -z "$VSIX" ] || [ -z "$EXPECTED_VERSION" ] || [ -z "$EXPECTED_SHA" ] || [ -z "$TRANSFER_RECEIPT" ]; then
+        echo "❌ Missing required VSIX dogfood input." >&2
+        usage
+        exit 2
     fi
-    VSIX="releases/command-central-${VERSION}.vsix"
-    # 2. transfer — the file.write'd artifact must have landed under /Users/ostehost/**
-    [ -f "$VSIX" ] || { echo "❌ $VSIX not on node — file.write it from the hub first." >&2; exit 1; }
-    # 3. sha-verify — bytes must match the hub cut receipt
+
+    echo "🐕 Dogfood node VSIX — explicit file-transfer receipt path"
+    bun run scripts-v2/node-execution-guard.ts
+
+    [ -f "$VSIX" ] || { echo "❌ VSIX not found on node: $VSIX" >&2; exit 1; }
+    [ -f "$TRANSFER_RECEIPT" ] || { echo "❌ transfer receipt not found on node: $TRANSFER_RECEIPT" >&2; exit 1; }
+
     ACTUAL_SHA="$(shasum -a 256 "$VSIX" | awk '{print $1}')"
-    [ "$ACTUAL_SHA" = "$EXPECTED_SHA" ] || { echo "❌ sha mismatch: $ACTUAL_SHA != $EXPECTED_SHA" >&2; exit 1; }
-    echo "   ✓ ${VERSION} landed & sha-verified ($EXPECTED_SHA)"
-    # 4. install locally on the node (file-transfer path only — no remote exec)
+    [ "$ACTUAL_SHA" = "$EXPECTED_SHA" ] || { echo "❌ VSIX sha mismatch: $ACTUAL_SHA != $EXPECTED_SHA" >&2; exit 1; }
+
+    MANIFEST_VERSION="$(unzip -p "$VSIX" extension/package.json | jq -r '.version // empty')"
+    [ "$MANIFEST_VERSION" = "$EXPECTED_VERSION" ] || { echo "❌ VSIX version mismatch: $MANIFEST_VERSION != $EXPECTED_VERSION" >&2; exit 1; }
+
+    RECEIPT_KIND="$(jq -r '.kind // empty' "$TRANSFER_RECEIPT")"
+    RECEIPT_METHOD="$(jq -r '.method // .transfer.method // empty' "$TRANSFER_RECEIPT")"
+    RECEIPT_VERSION="$(jq -r '.expectedVersion // .version // .packageVersion // empty' "$TRANSFER_RECEIPT")"
+    RECEIPT_SHA="$(jq -r '.sha256 // .artifactSha256 // .expectedSha256 // empty' "$TRANSFER_RECEIPT")"
+    RECEIPT_DEST="$(jq -r '.destinationPath // .nodePath // .path // empty' "$TRANSFER_RECEIPT")"
+    [ "$RECEIPT_KIND" = "command-central.node-vsix-transfer/v1" ] || { echo "❌ unexpected transfer receipt kind: $RECEIPT_KIND" >&2; exit 1; }
+    case "$RECEIPT_METHOD" in
+        *file.write*|*file_write*) ;;
+        *) echo "❌ transfer receipt method is not OpenClaw file.write: $RECEIPT_METHOD" >&2; exit 1 ;;
+    esac
+    [ "$RECEIPT_VERSION" = "$EXPECTED_VERSION" ] || { echo "❌ receipt version mismatch: $RECEIPT_VERSION != $EXPECTED_VERSION" >&2; exit 1; }
+    [ "$RECEIPT_SHA" = "$EXPECTED_SHA" ] || { echo "❌ receipt sha mismatch: $RECEIPT_SHA != $EXPECTED_SHA" >&2; exit 1; }
+    if [ -n "$RECEIPT_DEST" ]; then
+        VSIX_ABS="$(cd "$(dirname "$VSIX")" && pwd -P)/$(basename "$VSIX")"
+        RECEIPT_DEST_ABS="$(cd "$(dirname "$RECEIPT_DEST")" && pwd -P)/$(basename "$RECEIPT_DEST")"
+        [ "$RECEIPT_DEST_ABS" = "$VSIX_ABS" ] || { echo "❌ receipt destination mismatch: $RECEIPT_DEST_ABS != $VSIX_ABS" >&2; exit 1; }
+    fi
+
+    echo "   ✓ ${EXPECTED_VERSION} landed via file.write receipt and sha-verified ($EXPECTED_SHA)"
     code --install-extension "$VSIX" --force
-    # 5-6. installed-VSIX proof + node consumption receipt (vscode-consumption-<version>-node.json)
-    just test-installed-vsix-agent-status
-    just verify-vscode-consumption -- --vsix "$VSIX" --expected-version "$VERSION" --node-label node --receipt-dir research/prerelease-gate
+
+    bun run test/integration/runInstalledVsixAgentStatusProof.ts \
+        --vsix "$VSIX" \
+        --expected-sha "$EXPECTED_SHA" \
+        --identity-kind published-prerelease \
+        --passive
+    bun run scripts-v2/verify-vscode-extension-consumption.ts \
+        --vsix "$VSIX" \
+        --expected-version "$EXPECTED_VERSION" \
+        --node-label node \
+        --receipt-dir research/prerelease-gate
+
+    DOGFOOD_RECEIPT="research/prerelease-gate/node-vsix-dogfood-${EXPECTED_VERSION}-node.json"
+    mkdir -p "$(dirname "$DOGFOOD_RECEIPT")"
+    jq -n \
+        --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --arg vsixPath "$VSIX" \
+        --arg version "$EXPECTED_VERSION" \
+        --arg sha256 "$EXPECTED_SHA" \
+        --arg transferReceipt "$TRANSFER_RECEIPT" \
+        '{schemaVersion:1, kind:"command-central.node-vsix-dogfood/v1", generatedAt:$generatedAt, vsixPath:$vsixPath, expectedVersion:$version, sha256:$sha256, transferReceipt:$transferReceipt, success:true}' \
+        > "$DOGFOOD_RECEIPT"
+    echo "   ✓ dogfood receipt: $DOGFOOD_RECEIPT"
 
 # Run tests with coverage report
 test-coverage:
