@@ -22,6 +22,17 @@ export interface VsixPackageIdentity {
 	version: string;
 }
 
+export interface SiblingExtension {
+	/** Directory basename, e.g. `oste.command-central-0.6.0-rc.71`. */
+	name: string;
+	/** Absolute path to the sibling extension directory. */
+	path: string;
+	/** Version parsed from the directory name. */
+	version: string;
+	/** True when this sibling is older than the verified version. */
+	stale: boolean;
+}
+
 export interface ConsumptionReceipt {
 	generatedAt: string;
 	nodeLabel?: string;
@@ -35,6 +46,14 @@ export interface ConsumptionReceipt {
 	installedVersionFromCode: string | null;
 	installedPackagePath: string;
 	installedPackageVersion: string | null;
+	/**
+	 * Other `oste.command-central-*` extension directories found alongside the
+	 * verified install. Read-only intelligence: stale copies are flagged but
+	 * never touched, so operators can spot installs that confuse visible proof.
+	 */
+	siblingExtensions: SiblingExtension[];
+	/** Non-fatal notes (e.g. stale siblings). Do not affect {@link success}. */
+	warnings: string[];
 	success: boolean;
 	errors: string[];
 }
@@ -163,6 +182,93 @@ export function buildInstalledPackagePath(
 	);
 }
 
+interface ParsedExtensionVersion {
+	major: number;
+	minor: number;
+	patch: number;
+	prerelease: string | null;
+}
+
+/**
+ * Parses a bare extension version such as `0.6.0-rc.71`. Returns null for
+ * anything that is not a `major.minor.patch[-prerelease]` string, which is how
+ * we distinguish a real sibling directory from an unrelated extension whose id
+ * merely shares our prefix (e.g. `oste.command-central-extra-1.0.0`).
+ */
+export function parseExtensionVersion(
+	version: string,
+): ParsedExtensionVersion | null {
+	const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
+	if (!match) return null;
+	const [, major, minor, patch, prerelease] = match;
+	if (!major || !minor || !patch) return null;
+	return {
+		major: Number.parseInt(major, 10),
+		minor: Number.parseInt(minor, 10),
+		patch: Number.parseInt(patch, 10),
+		prerelease: prerelease ?? null,
+	};
+}
+
+/**
+ * Ascending semver-ish comparison: negative when `a` is older than `b`. Mirrors
+ * the precedence used by dist-simple-utils (a released version outranks a
+ * prerelease of the same triple; prereleases compare numerically).
+ */
+export function compareExtensionVersions(a: string, b: string): number {
+	const versionA = parseExtensionVersion(a);
+	const versionB = parseExtensionVersion(b);
+	if (!versionA || !versionB) {
+		return a.localeCompare(b, undefined, { numeric: true });
+	}
+	if (versionA.major !== versionB.major) return versionA.major - versionB.major;
+	if (versionA.minor !== versionB.minor) return versionA.minor - versionB.minor;
+	if (versionA.patch !== versionB.patch) return versionA.patch - versionB.patch;
+	const preA = versionA.prerelease;
+	const preB = versionB.prerelease;
+	if (preA === preB) return 0;
+	if (preA === null) return 1;
+	if (preB === null) return -1;
+	return preA.localeCompare(preB, undefined, { numeric: true });
+}
+
+/**
+ * Enumerates other `<id>-<version>` directories in the extensions dir, excluding
+ * the verified version's own directory. Purely read-only — it never deletes or
+ * mutates a sibling (honors the never-blind-delete rule). Siblings older than
+ * the verified version are flagged `stale`. Returns [] when the extensions dir
+ * is unreadable rather than throwing, so a missing profile never fails the gate.
+ */
+export function findSiblingExtensions(
+	extensionsDir: string,
+	id: string,
+	verifiedVersion: string,
+): SiblingExtension[] {
+	let entries: fs.Dirent[];
+	try {
+		entries = fs.readdirSync(extensionsDir, { withFileTypes: true });
+	} catch {
+		return [];
+	}
+	const prefix = `${id}-`;
+	const siblings: SiblingExtension[] = [];
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue;
+		if (!entry.name.startsWith(prefix)) continue;
+		const version = entry.name.slice(prefix.length);
+		if (!parseExtensionVersion(version)) continue;
+		if (version === verifiedVersion) continue;
+		siblings.push({
+			name: entry.name,
+			path: path.join(extensionsDir, entry.name),
+			version,
+			stale: compareExtensionVersions(version, verifiedVersion) < 0,
+		});
+	}
+	siblings.sort((a, b) => compareExtensionVersions(a.version, b.version));
+	return siblings;
+}
+
 export function verifyConsumption(args: VerifyConsumptionArgs): ConsumptionReceipt {
 	const identity = readVsixPackageIdentity(args.vsixPath);
 	const id = extensionId(identity);
@@ -178,6 +284,19 @@ export function verifyConsumption(args: VerifyConsumptionArgs): ConsumptionRecei
 	);
 	const installedPackageVersion =
 		readInstalledPackageVersion(installedPackagePath);
+	const siblingExtensions = findSiblingExtensions(
+		args.extensionsDir,
+		id,
+		expectedVersion,
+	);
+	const warnings: string[] = [];
+	for (const sibling of siblingExtensions) {
+		if (sibling.stale) {
+			warnings.push(
+				`Stale sibling extension ${sibling.name} (${sibling.version}) is older than verified ${expectedVersion} and may confuse visible UI proof: ${sibling.path}`,
+			);
+		}
+	}
 	const errors: string[] = [];
 
 	if (identity.version !== expectedVersion) {
@@ -209,6 +328,8 @@ export function verifyConsumption(args: VerifyConsumptionArgs): ConsumptionRecei
 		installedVersionFromCode,
 		installedPackagePath,
 		installedPackageVersion,
+		siblingExtensions,
+		warnings,
 		success: errors.length === 0,
 		errors,
 	};
@@ -229,6 +350,9 @@ if (import.meta.main) {
 			);
 			fs.mkdirSync(args.receiptDir, { recursive: true });
 			fs.writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+		}
+		for (const warning of receipt.warnings) {
+			console.warn(`warning: ${warning}`);
 		}
 		console.log(JSON.stringify(receipt, null, 2));
 		if (!receipt.success) process.exit(1);
