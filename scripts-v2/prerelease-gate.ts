@@ -4,6 +4,7 @@ import { spawn } from "bun";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { receiptFileName } from "./verify-vscode-extension-consumption.ts";
 
 type CheckStatus = "passed" | "failed" | "skipped";
 
@@ -51,6 +52,10 @@ type GateConfig = {
 	requirePushTarget?: boolean;
 	pushRemote?: string;
 	configRepo?: string;
+	requireConsumptionReceipts?: boolean;
+	consumptionReceiptDir?: string;
+	consumptionVersion?: string;
+	consumptionMaxAgeMs?: number;
 };
 
 class GateError extends Error {
@@ -135,7 +140,25 @@ function parseArgs(): GateConfig {
 		configRepo:
 			getArgValue("--config-repo") ||
 			path.join(home, "projects", "config"),
+		requireConsumptionReceipts: args.includes("--require-consumption-receipts"),
+		consumptionReceiptDir: getArgValue("--consumption-receipt-dir"),
+		consumptionVersion: getArgValue("--consumption-version"),
+		consumptionMaxAgeMs: parseMaxAgeHours(
+			getArgValue("--consumption-max-age-hours"),
+		),
 	};
+}
+
+/**
+ * Converts a `--consumption-max-age-hours` value into milliseconds. Returns
+ * undefined for a missing/unparseable value so the caller can fall back to
+ * {@link DEFAULT_CONSUMPTION_MAX_AGE_MS}.
+ */
+function parseMaxAgeHours(raw: string | undefined): number | undefined {
+	if (!raw) return undefined;
+	const hours = Number.parseFloat(raw);
+	if (!Number.isFinite(hours) || hours <= 0) return undefined;
+	return hours * 3_600_000;
 }
 
 function nowIso(): string {
@@ -993,6 +1016,334 @@ async function runPushTargetCheck(config: GateConfig): Promise<CheckRecord> {
 	);
 }
 
+/**
+ * Default freshness window for a consumption receipt relative to the gate run.
+ * Hub and node both install + verify the same RC within one release window, so a
+ * receipt more than a day off the gate reference is re-used from an earlier RC
+ * (or fabricated) rather than proof for the RC under gate.
+ */
+const DEFAULT_CONSUMPTION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Structural view of a `vscode-consumption-<ver>-<label>.json` receipt — only the
+ * fields CCREL-09 cross-validates. Kept loose (all optional) so a fabricated or
+ * truncated receipt is evaluated as data, never a parse crash.
+ */
+type ConsumptionReceiptForCrossValidation = {
+	generatedAt?: string;
+	nodeLabel?: string;
+	vsixSha256?: string;
+	expectedVersion?: string;
+	extensionsDir?: string;
+	success?: boolean;
+	vsixIdentity?: { version?: string };
+};
+
+type ConsumptionCrossValidationInput = {
+	/** The RC version both receipts must attest (package.json is the source). */
+	expectedVersion: string;
+	/** Gate reference time (the gate's generatedAt / now) as an ISO string. */
+	referenceIso: string;
+	/** Max allowed |receipt.generatedAt − reference| before a receipt is stale. */
+	maxAgeMs: number;
+	/** Parsed hub receipt, or null when missing/unreadable. */
+	hub: ConsumptionReceiptForCrossValidation | null;
+	/** Parsed node receipt, or null when missing/unreadable. */
+	node: ConsumptionReceiptForCrossValidation | null;
+};
+
+type ConsumptionCrossValidationResult = {
+	ok: boolean;
+	issues: string[];
+};
+
+function receiptAttestedVersion(
+	receipt: ConsumptionReceiptForCrossValidation,
+): string | undefined {
+	return receipt.vsixIdentity?.version ?? receipt.expectedVersion;
+}
+
+/**
+ * Freshness of a single receipt against the gate reference. A receipt more than
+ * maxAgeMs OLDER than the reference is stale (re-used from an earlier RC); one
+ * more than maxAgeMs NEWER is dated after the gate (clock skew or fabrication).
+ * An unparseable generatedAt is itself an issue.
+ */
+function evaluateReceiptFreshness(
+	label: string,
+	receipt: ConsumptionReceiptForCrossValidation,
+	referenceMs: number,
+	referenceValid: boolean,
+	maxAgeMs: number,
+): string[] {
+	const generatedMs = Date.parse(receipt.generatedAt ?? "");
+	if (!Number.isFinite(generatedMs)) {
+		return [
+			`${label} consumption receipt has an unparseable generatedAt "${
+				receipt.generatedAt ?? ""
+			}"`,
+		];
+	}
+	if (!referenceValid) return [];
+	const deltaMs = referenceMs - generatedMs;
+	const maxAgeHours = (maxAgeMs / 3_600_000).toFixed(1);
+	if (deltaMs > maxAgeMs) {
+		const ageHours = (deltaMs / 3_600_000).toFixed(1);
+		return [
+			`${label} consumption receipt is stale: generated ${ageHours}h before the gate reference (max ${maxAgeHours}h)`,
+		];
+	}
+	if (deltaMs < -maxAgeMs) {
+		const aheadHours = (-deltaMs / 3_600_000).toFixed(1);
+		return [
+			`${label} consumption receipt is dated ${aheadHours}h after the gate reference (max skew ${maxAgeHours}h) — clock or fabrication suspect`,
+		];
+	}
+	return [];
+}
+
+/**
+ * Pure evaluation of the CCREL-09 hub/node consumption-receipt cross-validation.
+ * A release needs installed-VSIX proof on BOTH the hub AND a distinct compute
+ * node for the same RC; without this, a fabricated node receipt (typically a
+ * copy of the hub receipt) sails through the gate unnoticed — exactly the
+ * rc71 case in CCREL-08. Given the two parsed receipts (or null when a file is
+ * missing/unreadable) this asserts:
+ *   - both present and success=true;
+ *   - each attests {@link ConsumptionCrossValidationInput.expectedVersion};
+ *   - equal vsixSha256 (same bytes installed) + equal version + equal success;
+ *   - a non-empty nodeLabel on the node receipt;
+ *   - DISTINCT extensionsDir — the receipt has no dedicated host field, so the
+ *     extensionsDir (which encodes the host home, e.g. /Users/ostemini vs
+ *     /Users/ostehost) is the host discriminator; a copied node receipt shares
+ *     the hub's extensionsDir and is caught here;
+ *   - each receipt fresh relative to the gate reference (see
+ *     {@link evaluateReceiptFreshness}).
+ * It only inspects injected data — no filesystem, no clock — so it is fully
+ * unit-testable; the runner supplies the reference time and loaded receipts.
+ */
+function evaluateConsumptionCrossValidation(
+	input: ConsumptionCrossValidationInput,
+): ConsumptionCrossValidationResult {
+	const { hub, node, expectedVersion, referenceIso, maxAgeMs } = input;
+	const issues: string[] = [];
+	const referenceMs = Date.parse(referenceIso);
+	const referenceValid = Number.isFinite(referenceMs);
+	if (!referenceValid) {
+		issues.push(`gate reference timestamp is unparseable: "${referenceIso}"`);
+	}
+
+	if (!hub) issues.push("hub consumption receipt is missing or unreadable");
+	if (!node) issues.push("node consumption receipt is missing or unreadable");
+
+	const checkOne = (
+		label: string,
+		receipt: ConsumptionReceiptForCrossValidation | null,
+	): void => {
+		if (!receipt) return;
+		if (receipt.success !== true) {
+			issues.push(`${label} consumption receipt is not success=true`);
+		}
+		const version = receiptAttestedVersion(receipt);
+		if (version !== expectedVersion) {
+			issues.push(
+				`${label} consumption receipt version ${
+					version ?? "(missing)"
+				} does not match expected ${expectedVersion}`,
+			);
+		}
+		issues.push(
+			...evaluateReceiptFreshness(
+				label,
+				receipt,
+				referenceMs,
+				referenceValid,
+				maxAgeMs,
+			),
+		);
+	};
+	checkOne("hub", hub);
+	checkOne("node", node);
+
+	if (node && (node.nodeLabel?.trim() ?? "").length === 0) {
+		issues.push(
+			"node consumption receipt is missing a nodeLabel (cannot attest a distinct node host)",
+		);
+	}
+
+	if (hub && node) {
+		const hubSha = hub.vsixSha256?.trim() ?? "";
+		const nodeSha = node.vsixSha256?.trim() ?? "";
+		if (hubSha.length === 0 || nodeSha.length === 0) {
+			issues.push("hub/node consumption receipts are missing a vsixSha256");
+		} else if (hubSha !== nodeSha) {
+			issues.push(
+				`hub/node vsixSha256 mismatch: hub ${hubSha} vs node ${nodeSha} — different VSIX bytes were installed`,
+			);
+		}
+
+		const hubVersion = receiptAttestedVersion(hub);
+		const nodeVersion = receiptAttestedVersion(node);
+		if (hubVersion !== nodeVersion) {
+			issues.push(
+				`hub/node version mismatch: hub ${hubVersion ?? "(missing)"} vs node ${
+					nodeVersion ?? "(missing)"
+				}`,
+			);
+		}
+
+		if (hub.success !== node.success) {
+			issues.push(
+				`hub/node success mismatch: hub ${String(hub.success)} vs node ${String(
+					node.success,
+				)}`,
+			);
+		}
+
+		const hubDir = hub.extensionsDir?.trim() ?? "";
+		const nodeDir = node.extensionsDir?.trim() ?? "";
+		if (hubDir.length === 0 || nodeDir.length === 0) {
+			issues.push(
+				"hub/node consumption receipts are missing an extensionsDir (cannot prove distinct hosts)",
+			);
+		} else if (hubDir === nodeDir) {
+			issues.push(
+				`hub and node consumption receipts share the same extensionsDir ${hubDir} — the node receipt appears copied from the hub`,
+			);
+		}
+	}
+
+	return { ok: issues.length === 0, issues };
+}
+
+async function readPackageVersion(repo: string): Promise<string> {
+	const raw = await fs.readFile(path.join(repo, "package.json"), "utf8");
+	const parsed: unknown = JSON.parse(raw);
+	if (typeof parsed === "object" && parsed !== null) {
+		const version = (parsed as Record<string, unknown>)["version"];
+		if (typeof version === "string" && version.length > 0) return version;
+	}
+	throw new Error(`package.json in ${repo} is missing a string version`);
+}
+
+async function readConsumptionReceipt(filePath: string): Promise<{
+	receipt: ConsumptionReceiptForCrossValidation | null;
+	note: string;
+}> {
+	let raw: string;
+	try {
+		raw = await fs.readFile(filePath, "utf8");
+	} catch {
+		return { receipt: null, note: `not found: ${filePath}` };
+	}
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (typeof parsed !== "object" || parsed === null) {
+			return { receipt: null, note: `not a JSON object: ${filePath}` };
+		}
+		return {
+			receipt: parsed as ConsumptionReceiptForCrossValidation,
+			note: `loaded: ${filePath}`,
+		};
+	} catch (error) {
+		return {
+			receipt: null,
+			note: `parse error (${(error as Error).message}): ${filePath}`,
+		};
+	}
+}
+
+async function resolveConsumptionVersion(config: GateConfig): Promise<string> {
+	if (config.consumptionVersion) return config.consumptionVersion;
+	return readPackageVersion(config.commandCentralRepo);
+}
+
+/**
+ * CCREL-09 gate runner: loads the hub + node consumption receipts for the RC
+ * under gate from {@link GateConfig.consumptionReceiptDir} (default: the gate
+ * output dir) and hands them to {@link evaluateConsumptionCrossValidation}. This
+ * is a POST-cut check — both receipts only exist after the hub AND the compute
+ * node have each installed and verified the RC — so it is opt-in via
+ * `--require-consumption-receipts`, not part of the pre-cut integrated gate.
+ */
+async function runConsumptionCrossValidationCheck(
+	config: GateConfig,
+): Promise<CheckRecord> {
+	const startedAtMs = Date.now();
+	const receiptDir = config.consumptionReceiptDir ?? config.outputDir;
+	const maxAgeMs = config.consumptionMaxAgeMs ?? DEFAULT_CONSUMPTION_MAX_AGE_MS;
+	const commandLabel = `consumption receipt cross-validation (${receiptDir})`;
+
+	let version: string;
+	try {
+		version = await resolveConsumptionVersion(config);
+	} catch (error) {
+		const finishedAtMs = Date.now();
+		return buildRecord(
+			"consumption receipt cross-validation",
+			"failed",
+			startedAtMs,
+			finishedAtMs,
+			commandLabel,
+			config.commandCentralRepo,
+			undefined,
+			`Failed to resolve expected version: ${(error as Error).message}`,
+		);
+	}
+
+	const hubPath = path.join(receiptDir, receiptFileName(version, "hub"));
+	const nodePath = path.join(receiptDir, receiptFileName(version, "node"));
+	const [hubLoad, nodeLoad] = await Promise.all([
+		readConsumptionReceipt(hubPath),
+		readConsumptionReceipt(nodePath),
+	]);
+
+	const referenceIso = nowIso();
+	const result = evaluateConsumptionCrossValidation({
+		expectedVersion: version,
+		referenceIso,
+		maxAgeMs,
+		hub: hubLoad.receipt,
+		node: nodeLoad.receipt,
+	});
+
+	const finishedAtMs = Date.now();
+	const summary = JSON.stringify(
+		{
+			version,
+			referenceIso,
+			maxAgeMs,
+			hub: hubLoad.note,
+			node: nodeLoad.note,
+			ok: result.ok,
+			issues: result.issues,
+		},
+		null,
+		2,
+	);
+	if (result.ok) {
+		return buildRecord(
+			"consumption receipt cross-validation",
+			"passed",
+			startedAtMs,
+			finishedAtMs,
+			commandLabel,
+			config.commandCentralRepo,
+			summary,
+		);
+	}
+	return buildRecord(
+		"consumption receipt cross-validation",
+		"failed",
+		startedAtMs,
+		finishedAtMs,
+		commandLabel,
+		config.commandCentralRepo,
+		summary,
+		result.issues.join("\n"),
+	);
+}
+
 async function runGate(config: GateConfig): Promise<GateReport> {
 	const checks: CheckRecord[] = [];
 	const ccSha = await getGitSha(config.commandCentralRepo);
@@ -1082,6 +1433,19 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 			throw new GateError(
 				`release push-target identity failed:\n${
 					pushTargetCheck.error ?? pushTargetCheck.output ?? ""
+				}`,
+				[...checks],
+			);
+		}
+	}
+
+	if (config.requireConsumptionReceipts) {
+		const consumptionCheck = await runConsumptionCrossValidationCheck(config);
+		checks.push(consumptionCheck);
+		if (consumptionCheck.status === "failed") {
+			throw new GateError(
+				`consumption receipt cross-validation failed:\n${
+					consumptionCheck.error ?? consumptionCheck.output ?? ""
 				}`,
 				[...checks],
 			);
@@ -1236,6 +1600,7 @@ async function runGate(config: GateConfig): Promise<GateReport> {
 }
 
 export {
+	evaluateConsumptionCrossValidation,
 	evaluateDaemonSmoke,
 	evaluatePushTarget,
 	evaluateRepoParity,
@@ -1245,6 +1610,7 @@ export {
 	extractSteerInvocationContract,
 	normalizeGitHubRemote,
 	parseArgs,
+	runConsumptionCrossValidationCheck,
 	runDaemonSmokeCheck,
 	runGate,
 	runNodeReadinessCheck,

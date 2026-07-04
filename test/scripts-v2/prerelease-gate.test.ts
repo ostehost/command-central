@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+	evaluateConsumptionCrossValidation,
 	evaluateDaemonSmoke,
 	evaluatePushTarget,
 	evaluateRepoParity,
@@ -11,6 +12,7 @@ import {
 	extractSessionFlagsFromTerminalManager,
 	extractSteerInvocationContract,
 	normalizeGitHubRemote,
+	runConsumptionCrossValidationCheck,
 	runDaemonSmokeCheck,
 	runGate,
 	runNodeReadinessCheck,
@@ -962,6 +964,405 @@ describe("runPushTargetCheck (CCSTD-05 gate runner)", () => {
 				(check) => check.name === "release push-target identity",
 			);
 			expect(pushTarget?.status).toBe("failed");
+		} finally {
+			fs.rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+});
+
+// ── CCREL-09: hub/node consumption-receipt cross-validation ────────────────
+
+type CrossValidationReceipt = {
+	generatedAt?: string;
+	nodeLabel?: string;
+	vsixSha256?: string;
+	expectedVersion?: string;
+	extensionsDir?: string;
+	success?: boolean;
+	vsixIdentity?: { version?: string };
+};
+
+const CROSS_VERSION = "0.6.0-rc.99";
+const REFERENCE_ISO = "2026-07-04T12:10:00.000Z";
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function hubReceipt(
+	overrides: Partial<CrossValidationReceipt> = {},
+): CrossValidationReceipt {
+	return {
+		generatedAt: "2026-07-04T12:00:00.000Z",
+		vsixSha256: "a".repeat(64),
+		expectedVersion: CROSS_VERSION,
+		extensionsDir: "/Users/ostemini/.vscode/extensions",
+		success: true,
+		vsixIdentity: { version: CROSS_VERSION },
+		...overrides,
+	};
+}
+
+function nodeReceipt(
+	overrides: Partial<CrossValidationReceipt> = {},
+): CrossValidationReceipt {
+	return {
+		generatedAt: "2026-07-04T12:05:00.000Z",
+		nodeLabel: "node",
+		vsixSha256: "a".repeat(64),
+		expectedVersion: CROSS_VERSION,
+		extensionsDir: "/Users/ostehost/.vscode/extensions",
+		success: true,
+		vsixIdentity: { version: CROSS_VERSION },
+		...overrides,
+	};
+}
+
+describe("evaluateConsumptionCrossValidation (CCREL-09)", () => {
+	test("a genuine hub/node pair passes", () => {
+		expect(
+			evaluateConsumptionCrossValidation({
+				expectedVersion: CROSS_VERSION,
+				referenceIso: REFERENCE_ISO,
+				maxAgeMs: DAY_MS,
+				hub: hubReceipt(),
+				node: nodeReceipt(),
+			}),
+		).toEqual({ ok: true, issues: [] });
+	});
+
+	// The rc71 fabrication (CCREL-08): a node receipt produced by copying the
+	// hub receipt keeps the hub's extensionsDir, so it never proves a second host.
+	test("a copied node receipt (shared extensionsDir) fails", () => {
+		const copied = { ...hubReceipt(), nodeLabel: "node" };
+		const result = evaluateConsumptionCrossValidation({
+			expectedVersion: CROSS_VERSION,
+			referenceIso: REFERENCE_ISO,
+			maxAgeMs: DAY_MS,
+			hub: hubReceipt(),
+			node: copied,
+		});
+		expect(result.ok).toBe(false);
+		expect(
+			result.issues.some((i) => i.includes("share the same extensionsDir")),
+		).toBe(true);
+	});
+
+	test("a node receipt missing a nodeLabel fails", () => {
+		const result = evaluateConsumptionCrossValidation({
+			expectedVersion: CROSS_VERSION,
+			referenceIso: REFERENCE_ISO,
+			maxAgeMs: DAY_MS,
+			hub: hubReceipt(),
+			node: nodeReceipt({ nodeLabel: "  " }),
+		});
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.includes("missing a nodeLabel"))).toBe(
+			true,
+		);
+	});
+
+	test("a mismatched vsixSha256 fails", () => {
+		const result = evaluateConsumptionCrossValidation({
+			expectedVersion: CROSS_VERSION,
+			referenceIso: REFERENCE_ISO,
+			maxAgeMs: DAY_MS,
+			hub: hubReceipt(),
+			node: nodeReceipt({ vsixSha256: "b".repeat(64) }),
+		});
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.includes("vsixSha256 mismatch"))).toBe(
+			true,
+		);
+	});
+
+	test("a mismatched version fails", () => {
+		const result = evaluateConsumptionCrossValidation({
+			expectedVersion: CROSS_VERSION,
+			referenceIso: REFERENCE_ISO,
+			maxAgeMs: DAY_MS,
+			hub: hubReceipt(),
+			node: nodeReceipt({
+				vsixIdentity: { version: "0.6.0-rc.98" },
+				expectedVersion: "0.6.0-rc.98",
+			}),
+		});
+		expect(result.ok).toBe(false);
+		expect(
+			result.issues.some(
+				(i) =>
+					i.includes("does not match expected") ||
+					i.includes("version mismatch"),
+			),
+		).toBe(true);
+	});
+
+	test("a non-success node receipt fails", () => {
+		const result = evaluateConsumptionCrossValidation({
+			expectedVersion: CROSS_VERSION,
+			referenceIso: REFERENCE_ISO,
+			maxAgeMs: DAY_MS,
+			hub: hubReceipt(),
+			node: nodeReceipt({ success: false }),
+		});
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.includes("not success=true"))).toBe(
+			true,
+		);
+	});
+
+	test("a hub receipt older than the freshness window is stale", () => {
+		const result = evaluateConsumptionCrossValidation({
+			expectedVersion: CROSS_VERSION,
+			referenceIso: REFERENCE_ISO,
+			maxAgeMs: DAY_MS,
+			hub: hubReceipt({ generatedAt: "2026-06-01T00:00:00.000Z" }),
+			node: nodeReceipt(),
+		});
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.includes("stale"))).toBe(true);
+	});
+
+	test("a node receipt dated after the gate reference fails", () => {
+		const result = evaluateConsumptionCrossValidation({
+			expectedVersion: CROSS_VERSION,
+			referenceIso: REFERENCE_ISO,
+			maxAgeMs: DAY_MS,
+			hub: hubReceipt(),
+			node: nodeReceipt({ generatedAt: "2026-07-06T12:10:00.000Z" }),
+		});
+		expect(result.ok).toBe(false);
+		expect(
+			result.issues.some((i) => i.includes("after the gate reference")),
+		).toBe(true);
+	});
+
+	test("a missing hub receipt fails", () => {
+		const result = evaluateConsumptionCrossValidation({
+			expectedVersion: CROSS_VERSION,
+			referenceIso: REFERENCE_ISO,
+			maxAgeMs: DAY_MS,
+			hub: null,
+			node: nodeReceipt(),
+		});
+		expect(result.ok).toBe(false);
+		expect(
+			result.issues.some((i) =>
+				i.includes("hub consumption receipt is missing"),
+			),
+		).toBe(true);
+	});
+});
+
+function writeReceiptFile(
+	dir: string,
+	version: string,
+	label: string,
+	receipt: Record<string, unknown>,
+): void {
+	fs.mkdirSync(dir, { recursive: true });
+	const name = `vscode-consumption-${version}-${label}.json`;
+	fs.writeFileSync(
+		path.join(dir, name),
+		`${JSON.stringify(receipt, null, 2)}\n`,
+		"utf8",
+	);
+}
+
+function genuineReceipt(
+	version: string,
+	opts: { nodeLabel?: string; extensionsDir: string },
+): Record<string, unknown> {
+	return {
+		generatedAt: new Date().toISOString(),
+		...(opts.nodeLabel ? { nodeLabel: opts.nodeLabel } : {}),
+		vsixPath: path.join(opts.extensionsDir, `command-central-${version}.vsix`),
+		vsixSha256: "f".repeat(64),
+		vsixIdentity: { publisher: "oste", name: "command-central", version },
+		expectedVersion: version,
+		codeBin: "code",
+		extensionsDir: opts.extensionsDir,
+		installedExtensionId: "oste.command-central",
+		installedVersionFromCode: version,
+		installedPackagePath: path.join(
+			opts.extensionsDir,
+			`oste.command-central-${version}`,
+			"package.json",
+		),
+		installedPackageVersion: version,
+		success: true,
+		errors: [],
+	};
+}
+
+function consumptionCheckConfig(
+	dir: string,
+	version: string,
+): Parameters<typeof runConsumptionCrossValidationCheck>[0] {
+	return {
+		commandCentralRepo: dir,
+		ghosttyLauncherRepo: dir,
+		launcherBinary: "",
+		outputDir: dir,
+		skipCcValidation: true,
+		skipLauncherValidation: true,
+		requireNodeReadiness: false,
+		nodeReadinessGate: "",
+		openClawBinary: "openclaw",
+		requireConsumptionReceipts: true,
+		consumptionReceiptDir: dir,
+		consumptionVersion: version,
+	};
+}
+
+describe("runConsumptionCrossValidationCheck (CCREL-09 gate runner)", () => {
+	test("a genuine on-disk hub/node pair passes", async () => {
+		const dir = makeTempDir("cc-consumption-");
+		try {
+			writeReceiptFile(
+				dir,
+				CROSS_VERSION,
+				"hub",
+				genuineReceipt(CROSS_VERSION, {
+					extensionsDir: "/Users/ostemini/.vscode/extensions",
+				}),
+			);
+			writeReceiptFile(
+				dir,
+				CROSS_VERSION,
+				"node",
+				genuineReceipt(CROSS_VERSION, {
+					nodeLabel: "node",
+					extensionsDir: "/Users/ostehost/.vscode/extensions",
+				}),
+			);
+			const check = await runConsumptionCrossValidationCheck(
+				consumptionCheckConfig(dir, CROSS_VERSION),
+			);
+			expect(check.status).toBe("passed");
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("a copied node receipt file is a failed check", async () => {
+		const dir = makeTempDir("cc-consumption-");
+		try {
+			const hub = genuineReceipt(CROSS_VERSION, {
+				extensionsDir: "/Users/ostemini/.vscode/extensions",
+			});
+			writeReceiptFile(dir, CROSS_VERSION, "hub", hub);
+			// Fabricated node receipt: a copy of the hub receipt with only a label.
+			writeReceiptFile(dir, CROSS_VERSION, "node", {
+				...hub,
+				nodeLabel: "node",
+			});
+			const check = await runConsumptionCrossValidationCheck(
+				consumptionCheckConfig(dir, CROSS_VERSION),
+			);
+			expect(check.status).toBe("failed");
+			expect(check.error).toContain("share the same extensionsDir");
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("missing receipts are a failed check", async () => {
+		const dir = makeTempDir("cc-consumption-");
+		try {
+			const check = await runConsumptionCrossValidationCheck(
+				consumptionCheckConfig(dir, CROSS_VERSION),
+			);
+			expect(check.status).toBe("failed");
+			expect(check.error).toContain("missing or unreadable");
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("the integrated gate hard-blocks on a fabricated node receipt", async () => {
+		const fixture = createGateFixture();
+		try {
+			const hub = genuineReceipt(CROSS_VERSION, {
+				extensionsDir: "/Users/ostemini/.vscode/extensions",
+			});
+			writeReceiptFile(fixture.outputDir, CROSS_VERSION, "hub", hub);
+			writeReceiptFile(fixture.outputDir, CROSS_VERSION, "node", {
+				...hub,
+				nodeLabel: "node",
+			});
+
+			let thrown: unknown;
+			try {
+				await runGate({
+					commandCentralRepo: fixture.commandCentralRepo,
+					ghosttyLauncherRepo: fixture.ghosttyLauncherRepo,
+					launcherBinary: fixture.launcherBinary,
+					outputDir: fixture.outputDir,
+					skipCcValidation: true,
+					skipLauncherValidation: true,
+					requireNodeReadiness: false,
+					nodeReadinessGate: path.join(fixture.root, "missing-gate.mjs"),
+					openClawBinary: "openclaw",
+					requireConsumptionReceipts: true,
+					consumptionReceiptDir: fixture.outputDir,
+					consumptionVersion: CROSS_VERSION,
+				});
+			} catch (error) {
+				thrown = error;
+			}
+
+			expect(thrown).toBeTruthy();
+			const checks =
+				(thrown as { checks?: Array<{ name: string; status: string }> })
+					.checks ?? [];
+			const consumption = checks.find(
+				(check) => check.name === "consumption receipt cross-validation",
+			);
+			expect(consumption?.status).toBe("failed");
+		} finally {
+			fs.rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	test("the integrated gate passes with a genuine hub/node pair", async () => {
+		const fixture = createGateFixture();
+		try {
+			writeReceiptFile(
+				fixture.outputDir,
+				CROSS_VERSION,
+				"hub",
+				genuineReceipt(CROSS_VERSION, {
+					extensionsDir: "/Users/ostemini/.vscode/extensions",
+				}),
+			);
+			writeReceiptFile(
+				fixture.outputDir,
+				CROSS_VERSION,
+				"node",
+				genuineReceipt(CROSS_VERSION, {
+					nodeLabel: "node",
+					extensionsDir: "/Users/ostehost/.vscode/extensions",
+				}),
+			);
+
+			const report = await runGate({
+				commandCentralRepo: fixture.commandCentralRepo,
+				ghosttyLauncherRepo: fixture.ghosttyLauncherRepo,
+				launcherBinary: fixture.launcherBinary,
+				outputDir: fixture.outputDir,
+				skipCcValidation: true,
+				skipLauncherValidation: true,
+				requireNodeReadiness: false,
+				nodeReadinessGate: path.join(fixture.root, "missing-gate.mjs"),
+				openClawBinary: "openclaw",
+				requireConsumptionReceipts: true,
+				consumptionReceiptDir: fixture.outputDir,
+				consumptionVersion: CROSS_VERSION,
+			});
+
+			const consumption = report.checks.find(
+				(check) => check.name === "consumption receipt cross-validation",
+			);
+			expect(report.success).toBe(true);
+			expect(consumption?.status).toBe("passed");
 		} finally {
 			fs.rmSync(fixture.root, { recursive: true, force: true });
 		}
