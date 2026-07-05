@@ -7,6 +7,11 @@ import {
 
 const SNAPSHOT_DECL = `const realFs = (globalThis as Record<string, unknown>)["__realNodeFs"] as typeof import("node:fs");`;
 
+// The real-world decl form: identifier and snapshot token sit on separate lines
+// (see test/tree-view/_helpers/agent-status-tree-provider-test-base.ts and the
+// discovery/* suites). The gate must recognize this multi-line alias binding.
+const MULTILINE_SNAPSHOT_DECL = `const realFs = (globalThis as Record<string, unknown>)[\n\t"__realNodeFs"\n] as typeof import("node:fs");`;
+
 describe("mock-hygiene-gate scanSource", () => {
 	test("flags a partial node:fs mock with no real fall-through", () => {
 		const src = `mock.module("node:fs", () => ({ watch: () => ({ close() {} }) }));`;
@@ -14,6 +19,38 @@ describe("mock-hygiene-gate scanSource", () => {
 		expect(viols).toHaveLength(1);
 		expect(viols[0]?.module).toBe("node:fs");
 		expect(viols[0]?.rule).toBe("node-builtin-fallthrough");
+	});
+
+	test("flags a partial factory even when the snapshot is declared elsewhere (per-factory)", () => {
+		// The false negative the file-level check missed: a real-fs snapshot is
+		// bound at module scope, but THIS factory never falls through to it. A
+		// stray `__realNodeFs` mention must not excuse a bare partial mock.
+		const src = `${MULTILINE_SNAPSHOT_DECL}\nmock.module("node:fs", () => ({ watch: () => ({ close() {} }) }));`;
+		const viols = scanSource("a.test.ts", src);
+		expect(viols).toHaveLength(1);
+		expect(viols[0]?.module).toBe("node:fs");
+		expect(viols[0]?.rule).toBe("node-builtin-fallthrough");
+	});
+
+	test("a file-level require() pin does not excuse a sibling partial factory", () => {
+		const src = `const cp = require("node:child_process");\nmock.module("node:child_process", () => ({ execFile: () => {} }));`;
+		const viols = scanSource("a.test.ts", src);
+		expect(viols).toHaveLength(1);
+		expect(viols[0]?.module).toBe("node:child_process");
+	});
+
+	test("flags only the unsafe sibling when a safe and unsafe factory coexist", () => {
+		// A safe re-establish plus an unsafe partial in the same file: exactly one
+		// violation, proving isolation is per mock.module call, not per file.
+		const src = `${SNAPSHOT_DECL}\nmock.module("node:fs", () => ({ ...realFs, statSync: () => ({}) }));\nmock.module("node:fs", () => ({ readdirSync: () => [] }));`;
+		const viols = scanSource("a.test.ts", src);
+		expect(viols).toHaveLength(1);
+		expect(viols[0]?.module).toBe("node:fs");
+	});
+
+	test("accepts a multi-line snapshot decl returned directly by the factory", () => {
+		const src = `${MULTILINE_SNAPSHOT_DECL}\nmock.module("node:fs", () => realFs);`;
+		expect(scanSource("a.test.ts", src)).toHaveLength(0);
 	});
 
 	test("accepts a node:fs mock that spreads the frozen snapshot", () => {
