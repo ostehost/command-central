@@ -47,9 +47,15 @@ Use this checklist before running `just dist`.
 
 ## Release
 
-- [ ] Version committed
-- [ ] Tag created (for significant releases)
+- [ ] Version committed (Tier 1 — local)
+- [ ] Tag created (for significant releases) — 🔒 Tier 2, needs partner approval
+- [ ] Push / tag-push / Marketplace publish — 🔒 Tier 2, needs partner approval
+- [ ] `./scripts/release.sh --dry-run <version>` shows `✅ Push-target identity OK`
 - [ ] CHANGELOG reflects actual changes
+
+> Tier 1 = local build/package/install (run freely). Tier 2 = public
+> push/tag/publish (explicit partner approval). See
+> [PROCESS.md → Release Trust Boundary](./PROCESS.md#release-trust-boundary-local-tier-1-vs-public-tier-2).
 
 ---
 
