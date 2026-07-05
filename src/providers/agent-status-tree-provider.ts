@@ -7913,7 +7913,8 @@ export class AgentStatusTreeProvider
 		// operator can audit WHY this row was reconciled out of the live surface
 		// (downgraded → reconcile-needed limbo; archived/removed → taken off the
 		// projection) instead of it silently vanishing from the attention badge.
-		// Stamped by reconcileLanesAgainstGcReceipt from the GC receipt.
+		// Stamped by applyGcReceiptReconciliation (agent-task-normalize.ts), the
+		// single reconciler the live reader path and its unit tests both run.
 		if (task.gc_reconcile) {
 			descriptionParts.push(`♻ ${gcReconcileVerdictLabel(task.gc_reconcile)}`);
 		}

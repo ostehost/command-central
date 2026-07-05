@@ -18,6 +18,11 @@ const fs = (globalThis as Record<string, unknown>)[
 ] as typeof import("node:fs");
 
 import * as path from "node:path";
+import { WORK_SYSTEM_LANES_PROJECTION_KIND } from "../../src/providers/agent-task-normalize.js";
+import {
+	LANE_PROJECTION_GC_RECEIPT_KIND,
+	type LaneProjectionGcReceipt,
+} from "../../src/utils/review-queue-health.js";
 import { setupVSCodeMock } from "../helpers/vscode-mock.js";
 import {
 	AgentStatusTreeProvider,
@@ -460,6 +465,71 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 			).toHaveLength(1);
 		} finally {
 			console.warn = originalWarn;
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+			provider.dispose();
+		}
+	});
+
+	// PAR-300 (CCSYNC-08): the live projection-ingest path must run the single,
+	// unit-tested applyGcReceiptReconciliation — no private provider copy may
+	// drift back in. Earlier tests exercise the reconciler in isolation and the
+	// tree render of already-stamped rows; this drives the REAL readRegistry
+	// end-to-end (readMerged → readFile → applyGcReceiptReconciliation) over a
+	// real projection file plus an injected GC receipt, proving the shipped
+	// reader stamps `gc_reconcile` via the exported reconciler.
+	test("live readRegistry delegates lane-GC reconciliation to the exported reconciler", () => {
+		const provider = makeProvider();
+		const tmpDir = fs.mkdtempSync("/tmp/cc-agent-status-");
+		const projectionFile = path.join(tmpDir, "lanes.json");
+		fs.writeFileSync(
+			projectionFile,
+			JSON.stringify({
+				version: 1,
+				kind: WORK_SYSTEM_LANES_PROJECTION_KIND,
+				lanes: {
+					"launcher:recon-lane": {
+						kind: "lane_ref_update",
+						lane_ref: {
+							task: "recon-lane",
+							status: "completed",
+							session: "agent-recon-lane",
+							worktree: "/tmp/projects/recon",
+							updatedAt: "2026-06-23T12:00:00Z",
+						},
+						project_ref: { id: "cc" },
+					},
+				},
+			}),
+		);
+
+		// generatedAt is at/after the row's projection generation → fresh, so the
+		// reconciler stamps rather than deferring on the freshness gate.
+		const receipt: LaneProjectionGcReceipt = {
+			version: 1,
+			kind: LANE_PROJECTION_GC_RECEIPT_KIND,
+			generatedAt: "2026-06-23T14:00:00Z",
+			mode: "apply",
+			rows: {
+				"launcher:recon-lane": {
+					verdict: "downgraded",
+					reason: "receipt-missing",
+				},
+			},
+		};
+		(
+			provider as unknown as {
+				readLaneProjectionGcReceipt: () => LaneProjectionGcReceipt | null;
+			}
+		).readLaneProjectionGcReceipt = () => receipt;
+
+		try {
+			setProviderTaskFiles(provider, [projectionFile]);
+			const registry = realReadRegistry.call(provider);
+			const task = registry.tasks["recon-lane"];
+			expect(task?.lane_projection).toBe(true);
+			expect(task?.gc_reconcile).toBe("downgraded");
+			expect(task?.gc_reconcile_reason).toBe("receipt-missing");
+		} finally {
 			fs.rmSync(tmpDir, { recursive: true, force: true });
 			provider.dispose();
 		}
