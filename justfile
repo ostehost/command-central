@@ -191,7 +191,7 @@ fixture-edh fixture="test/fixtures/agent-status/alpha-beta-12.json" workspace="t
 #   - Type checking (if applicable)
 #   - Dead code detection (warnings only)
 # Note: Knip warnings are informational. Use 'just ci' for strict mode.
-check:
+check: _check-skill-lanes
     @echo "🔍 Running comprehensive validation..."
     @echo "   • Code quality (Biome CI - read-only)"
     @echo "   • Type checking"
@@ -203,6 +203,23 @@ check:
     @echo ""
     @echo "✅ Checks complete!"
     @echo "💡 Knip warnings are informational. Run 'just ci' for strict validation."
+
+# Gate: this repo's own agent-skill lanes (.claude/skills, .agents/skills,
+# .gemini/skills). Every lane entry must resolve to a SKILL.md directory —
+# docs parked in a lane read as broken skills to every scanner (the
+# CONVENTIONS.md incident, fixed 2026-07-05; see .claude/CONVENTIONS.md).
+# Reuses the workspace-wide inventory engine in --project-only mode (project
+# findings only — no machine/golden checks), so this repo's check FAILS on its
+# own lane errors instead of the error rotting in the dashboard ledger.
+# Skips visibly when the config repo or node isn't present (CI containers).
+_check-skill-lanes:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    engine="$HOME/projects/config/scripts/skills-inventory.mjs"
+    if ! command -v node >/dev/null 2>&1 || [ ! -f "$engine" ]; then
+        echo "⊘ Skipping skill-lane gate (node or config repo not available)"; exit 0
+    fi
+    node "$engine" --project . --project-only --verify
 
 # Auto-fix code quality issues (format + lint)
 # Pattern: Language-agnostic auto-fix

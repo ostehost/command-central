@@ -168,7 +168,7 @@ Before submitting changes:
 
 ## Skills
 
-Repo-specific skills live in `.claude/skills/`. See `.claude/skills/CONVENTIONS.md` for creation and distribution rules.
+Repo-specific skills live in `.claude/skills/` (skill directories only — every entry must resolve to a `SKILL.md`; docs live outside the lane). See `.claude/CONVENTIONS.md` for creation and distribution rules.
 
 | Skill | Purpose |
 |-------|---------|
