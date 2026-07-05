@@ -333,10 +333,22 @@ test-quality:
         exit 1; \
     fi
 
+    @# CCSTD-06: no partial mocks of shared Node builtins (mock.module is
+    @# process-global in Bun; partial factories leak `undefined` methods across
+    @# test files by load-order). See test/MOCK_HYGIENE.md.
+    @just mock-hygiene
+
     @echo "✅ Quality checks passed!"
     @echo "   • Zero 'as any' assertions in active tests"
     @echo "   • Zero reflection tests (private access)"
     @echo "   • Zero skipped tests"
+    @echo "   • Node-builtin mocks fall through to the real snapshot"
+
+
+# CCSTD-06 mock hygiene gate: fail on partial node:fs / node:fs/promises /
+# node:child_process mocks that don't fall through to the frozen real snapshot.
+mock-hygiene:
+    @bun run scripts-v2/mock-hygiene-gate.ts --dir test
 
 
 # Backup: Partitioned test runner (use if bun test has issues)

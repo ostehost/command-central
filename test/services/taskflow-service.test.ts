@@ -4,7 +4,20 @@ import {
 	taskflowStatusToIcon,
 	taskflowStatusToLabel,
 } from "../../src/types/taskflow-types.js";
+import { createVSCodeMock } from "../helpers/vscode-mock.js";
 import { waitFor } from "../helpers/wait-for.js";
+
+// Frozen real-module snapshots stashed by test/setup/global-test-cleanup.ts at
+// worker startup. Spreading them so unmocked fs/child_process calls fall
+// through to the real implementation keeps this file's partial mocks from
+// leaking `undefined` methods into later test files — mock.module is
+// process-global in Bun. See test/MOCK_HYGIENE.md.
+const realChildProcess = (globalThis as Record<string, unknown>)[
+	"__realNodeChildProcess"
+] as typeof import("node:child_process");
+const realFs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof import("node:fs");
 
 // Reload now flows through the async execFile path (PAR-68 / CP-29):
 // reload() returns synchronously and resolves the CLI off the event loop.
@@ -21,6 +34,7 @@ let watchCallback: ((event: string, filename: string) => void) | null = null;
 let watchClosed = false;
 
 mock.module("node:child_process", () => ({
+	...realChildProcess,
 	execFile: (
 		cmd: string,
 		args: string[],
@@ -41,6 +55,7 @@ mock.module("node:child_process", () => ({
 }));
 
 mock.module("node:fs", () => ({
+	...realFs,
 	watch: (_dir: string, cb: (event: string, filename: string) => void) => {
 		watchCallback = cb;
 		watchClosed = false;
@@ -53,17 +68,11 @@ mock.module("node:fs", () => ({
 	},
 }));
 
-mock.module("vscode", () => ({
-	ThemeIcon: class {
-		constructor(
-			public id: string,
-			public color?: { id: string },
-		) {}
-	},
-	ThemeColor: class {
-		constructor(public id: string) {}
-	},
-}));
+// Spread the canonical mock so the vscode surface can never shrink below what a
+// later-loading test relies on (the taskflow ThemeColor leak, CCSTD-06). The
+// status-icon helpers only touch ThemeIcon/ThemeColor, both of which
+// createVSCodeMock already provides.
+mock.module("vscode", () => createVSCodeMock());
 
 const { TaskFlowService } = await import(
 	"../../src/services/taskflow-service.js"

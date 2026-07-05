@@ -34,7 +34,16 @@ just test git-sort             # Test one area
 
 # Specific file
 just test ./test/utils/tasks-file-resolver.test.ts
+
+# Mock hygiene gate (also runs inside `just test-quality` / `just ci`)
+just mock-hygiene
 ```
+
+> **Mocking shared modules?** Read [MOCK_HYGIENE.md](./MOCK_HYGIENE.md) first.
+> Bun's `mock.module` is process-global; a partial mock of `node:fs`,
+> `node:child_process`, or `vscode` leaks across test files by load-order. The
+> `just mock-hygiene` gate fails CI on partial node-builtin mocks that don't
+> fall through to the frozen `globalThis.__realNode*` snapshot.
 
 ---
 

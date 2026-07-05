@@ -9,6 +9,18 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
 
+// Frozen real-module snapshots stashed by test/setup/global-test-cleanup.ts at
+// worker startup. Spreading them so unmocked fs/child_process calls fall
+// through to the real implementation keeps this file's partial mocks from
+// leaking `undefined` methods into later test files — mock.module is
+// process-global in Bun. See test/MOCK_HYGIENE.md.
+const realChildProcess = (globalThis as Record<string, unknown>)[
+	"__realNodeChildProcess"
+] as typeof import("node:child_process");
+const realFs = (globalThis as Record<string, unknown>)[
+	"__realNodeFs"
+] as typeof import("node:fs");
+
 type ExecFileCallback = (
 	err: Error | null,
 	result: { stdout: string; stderr: string },
@@ -28,6 +40,7 @@ const defaultFocusScriptPath = path.join(
 );
 
 mock.module("node:fs", () => ({
+	...realFs,
 	existsSync: mock((candidate: string) => existingPaths.has(candidate)),
 }));
 
@@ -42,6 +55,7 @@ mock.module("vscode", () => ({
 }));
 
 mock.module("node:child_process", () => ({
+	...realChildProcess,
 	execFile: mock(
 		(
 			file: string,
