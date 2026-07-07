@@ -152,6 +152,22 @@ export interface AgentTask {
 	/** Verbatim native detail for the attention claim (audit + tooltip); null
 	 *  when the receipt carried no reason. */
 	visible_lane_attention_reason?: string | null;
+	/**
+	 * Trusted, executor-projected completion marker for a lane whose PROCESS has
+	 * not exited yet (e.g. an agent that printed `READY_FOR_REVIEW` in its last
+	 * message but stayed alive at its REPL). The launcher / Symphony daemon owns
+	 * the on-host detection and writes this verbatim onto the row; CC treats it
+	 * as OPAQUE, agent-neutral text and never scrapes a pane (least of all a
+	 * remote node's `/tmp`) to synthesize it. Its ONLY consumer is the
+	 * review-ready-limbo gate: a still-`running` lane carrying a marker but no
+	 * pending-review receipt and no resolved review is surfaced under Needs
+	 * Review (limbo) as "needs review finalization" — NOT claimed as completed,
+	 * and NOT counted in the activity-bar action badge. Absent/null when the
+	 * executor made no completion claim (the row stays plain Live). Once a real
+	 * receipt lands, {@link pending_review_path} + the Tier-1b overlay win over
+	 * this. See {@link hasProjectedCompletionMarker}.
+	 */
+	completion_marker?: string | null;
 	/** Work System workroom binding. Persisted in the task row at spawn from
 	 *  OSTE_WORKROOM_REF and row-backed at env-less emission points (hook/reaper). */
 	workroom_ref?: string | null;

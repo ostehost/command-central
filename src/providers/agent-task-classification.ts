@@ -236,6 +236,35 @@ export function classifyVisibleLaneAttention(
 		: null;
 }
 
+/**
+ * Whether a trusted, executor-projected completion marker is present on the row
+ * ({@link AgentTask.completion_marker}). PURE metadata read — never a pane/`/tmp`
+ * probe: the launcher/daemon owns detection (including on remote nodes CC must
+ * not observe) and writes the marker verbatim. The value is treated as OPAQUE,
+ * agent-neutral text — CC does not parse or gate on any specific marker string,
+ * only on its non-empty presence, so a `READY_FOR_REVIEW`, a `DONE`, or a
+ * backend-specific token all qualify equally.
+ *
+ * This is the trusted seam that lets CC surface a still-`running` lane with
+ * credible completion evidence but no review receipt (the PAR-295 blind spot)
+ * WITHOUT scraping — see the review-ready-limbo gate in the tree provider.
+ */
+export function hasProjectedCompletionMarker(
+	task: Pick<AgentTask, "completion_marker">,
+): boolean {
+	return Boolean(task.completion_marker?.trim());
+}
+
+/** The trimmed projected completion marker, or null when absent/blank. Used for
+ *  the row's honest "ready text seen" copy — never for control flow beyond
+ *  {@link hasProjectedCompletionMarker}. */
+export function getProjectedCompletionMarker(
+	task: Pick<AgentTask, "completion_marker">,
+): string | null {
+	const trimmed = task.completion_marker?.trim();
+	return trimmed ? trimmed : null;
+}
+
 export function getTaskDisplayProjectName(task: AgentTask): string {
 	return (
 		firstNonEmptyTaskString(task.visible_project_name, task.project_name) ??

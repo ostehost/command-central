@@ -210,9 +210,11 @@ import {
 	classifyOpenClawCrossProjectContext,
 	classifyTaskSurface,
 	classifyVisibleLaneAttention,
+	getProjectedCompletionMarker,
 	getTaskDisplayProjectName,
 	getTaskExecutionHostLabel,
 	hasFirstClassTerminalFocusSurface,
+	hasProjectedCompletionMarker,
 	isAgentTeamLead,
 	isLocalFileProbeAuthoritative,
 	isRemoteNodeTaskForCurrentHost,
@@ -1193,6 +1195,51 @@ export class AgentStatusTreeProvider
 		// reviewed (and the launcher snapshots it under reviewed/) even though
 		// this task's tasks.json row never refreshed its review_state.
 		if (this.isPendingReviewReceiptReviewed(task)) return false;
+		return true;
+	}
+
+	/**
+	 * PAR-295 review-ready-limbo gate: a still-`running` lane that carries a
+	 * TRUSTED, executor-projected completion marker
+	 * ({@link AgentTask.completion_marker}) but whose review has NOT been
+	 * finalized — no pending-review receipt exists yet and the review lifecycle
+	 * is unresolved. This is the blind spot the ticket exposed: an agent printed
+	 * `READY_FOR_REVIEW` but stayed alive at its REPL, so no receipt was written,
+	 * Linear stayed `Todo`, and CC showed a plain interactive Live row.
+	 *
+	 * The marker is the ONLY evidence consulted — CC never scrapes a pane (least
+	 * of all a remote node's `/tmp`); a lane surfaces here solely because a
+	 * trusted projection said so ({@link hasProjectedCompletionMarker}). So a
+	 * remote lane is honored exactly when its record carries the field, and a
+	 * benign running pane with no projected marker never false-positives.
+	 *
+	 * Fires only when ALL hold, so genuine live work and already-finalized
+	 * reviews are preserved:
+	 *  - status is `running` (the display row still reads Live);
+	 *  - a non-empty completion marker is projected onto the row;
+	 *  - the review lifecycle is NOT already resolved
+	 *    ({@link isReviewLifecycleResolved}) and the lane was not manually marked
+	 *    reviewed — a settled review has nothing left to finalize;
+	 *  - the lane is not a reviewer lane (its handoff IS the review;
+	 *    no_review_expected, never owed a receipt of itself);
+	 *  - no pending-review receipt is already present — a present receipt is a
+	 *    real pending review (and would have been overlaid to a terminal status
+	 *    by Tier 1b before ever reaching here), not the unfinalized gap.
+	 *
+	 * Routes to Needs Review (limbo), NOT the action badge: the honest state is
+	 * "needs review finalization", not a completed task and not a hard blocker.
+	 * Metadata + cache-only receipt probe — safe on the `getNodeStatusGroup` hot
+	 * path.
+	 */
+	private isReviewReadyLimbo(task: AgentTask): boolean {
+		if (task.status !== "running") return false;
+		if (!hasProjectedCompletionMarker(task)) return false;
+		if (isReviewLifecycleResolved(task)) return false;
+		if (isReviewOnlyLane(task)) return false;
+		if (this.isTaskReviewed(task)) return false;
+		// A genuinely present receipt means finalization already happened → real
+		// pending review, handled by Tier 1b / the completed-status buckets.
+		if (this.getPendingReviewQueueState(task) === "present") return false;
 		return true;
 	}
 
@@ -3838,7 +3885,19 @@ export class AgentStatusTreeProvider
 			return "limbo";
 		}
 
-		if (status === "running") return "running";
+		if (status === "running") {
+			// PAR-295: a still-running lane with a trusted, executor-projected
+			// completion marker but no finalized review is "needs review
+			// finalization" work, not plain interactive Live. Route it to Needs
+			// Review (limbo) so it surfaces for an operator without inflating the
+			// activity-bar action badge or claiming the task completed. Gated
+			// entirely on projected data (never a pane/`/tmp` probe), so benign
+			// running panes and remote lanes with no marker stay in Live.
+			if (node.type === "task" && this.isReviewReadyLimbo(node.task)) {
+				return "limbo";
+			}
+			return "running";
+		}
 
 		// A paused lane is intentionally parked, awaiting an operator decision
 		// (relaunch or kill) — that is Needs Review (limbo), not "broke" (action)
@@ -8075,6 +8134,12 @@ export class AgentStatusTreeProvider
 		if (reviewQueuePending) {
 			descriptionParts.push("review receipt missing");
 		}
+		// PAR-295: honest copy for a running lane surfaced under Needs Review on a
+		// trusted completion marker — "ready text seen" without implying the task
+		// completed cleanly. Concrete, never a bare "done".
+		if (task.status === "running" && this.isReviewReadyLimbo(task)) {
+			descriptionParts.push("ready text seen · no review receipt yet");
+		}
 		if (diffSummaryInline) {
 			descriptionParts.push(diffSummaryInline);
 		}
@@ -8301,6 +8366,16 @@ export class AgentStatusTreeProvider
 			nativeVisibilityAttention && !awaitingUserInput
 				? `**$(eye-closed) Needs attention:** OpenClaw/Symphony flagged this visible lane's on-screen visibility as degraded — a look may be needed (not a confirmed input wait).${nativeAttentionReasonSuffix}`
 				: null;
+		// PAR-295: a running lane surfaced under Needs Review on a trusted
+		// completion marker. Provenance-honest — attributes the evidence to the
+		// executor's projected marker and states the finalization gap plainly,
+		// never implying a clean completion.
+		const reviewReadyLimboLine =
+			task.status === "running" && this.isReviewReadyLimbo(task)
+				? `**$(git-pull-request-draft) Needs review finalization:** the executor reported a completion marker (\`${
+						getProjectedCompletionMarker(task) ?? "ready"
+					}\`) but the process is still running and no pending-review receipt exists yet — the review was never dispatched. Ready text seen, not a confirmed clean completion.`
+				: null;
 		item.tooltip = new vscode.MarkdownString(
 			[
 				`**${task.id}**`,
@@ -8309,6 +8384,7 @@ export class AgentStatusTreeProvider
 				detachedLivenessLine,
 				awaitingInputLine,
 				visibilityAttentionLine,
+				reviewReadyLimboLine,
 				task.gc_reconcile
 					? `**$(history) Lane GC:** ${gcReconcileVerdictLabel(
 							task.gc_reconcile,

@@ -138,6 +138,7 @@ export function normalizeTask(
 		),
 		visible_lane_attention_reason:
 			asString(raw["visible_lane_attention_reason"]) ?? null,
+		completion_marker: asString(raw["completion_marker"]) ?? null,
 		source_authority: asString(raw["source_authority"]) ?? null,
 		owner_kind: asString(raw["owner_kind"]) ?? null,
 		owner_actions: Array.isArray(raw["owner_actions"])
@@ -398,6 +399,9 @@ function laneRefUpdateToTaskRecord(
 		launcher_visibility_reason: visibility ? visibility["reason"] : undefined,
 		visible_lane_attention: normalizeVisibleLaneAttention(attentionKind),
 		visible_lane_attention_reason: asString(attentionReason) ?? null,
+		completion_marker:
+			asString(laneRef["completion_marker"]) ??
+			asString(envelope["completion_marker"]),
 		workroom_ref: asString(envelope["workroom_ref"]),
 		work_item_ref: asString(envelope["work_item_ref"]),
 		provenance: {
