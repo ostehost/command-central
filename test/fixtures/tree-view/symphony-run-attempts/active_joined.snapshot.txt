@@ -5,6 +5,7 @@
     - Lifecycle owner: OpenClaw task bg-joined {agentTaskDetail}
     - Projection boundary: Source-owned row with Launcher metadata {agentTaskDetail}
     - Mode: normal {agentTaskDetail}
+    - Loop classification: workroom workroom not reported · visible lane projected · review receipt not reported · final report not reported · next decision not reported · collector not reported {agentTaskDetail}
     - Automation source: Launcher/manual {agentTaskDetail}
     - Tracker source: Not provided by lifecycle owner {agentTaskDetail}
     - Role: reviewer {agentTaskDetail}

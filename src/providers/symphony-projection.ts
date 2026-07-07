@@ -70,6 +70,12 @@ export function getSymphonyRuntimeSnapshot(
 		?.symphonyRuntimeSnapshot;
 }
 
+export function isFreshSymphonyRuntimeSnapshot(
+	snapshot: SymphonyRuntimeSnapshotView | undefined,
+): boolean {
+	return Boolean(snapshot && snapshot.status === "fresh" && !snapshot.error);
+}
+
 export function formatSymphonyRuntimeSnapshotStatus(
 	snapshot: SymphonyRuntimeSnapshotView,
 ): string {
@@ -170,12 +176,18 @@ export function formatSymphonyDashboardDescription(
 	runs: CodexRunView[],
 ): string {
 	const snapshot = getSymphonyRuntimeSnapshot(runs);
+	const liveSnapshot = isFreshSymphonyRuntimeSnapshot(snapshot);
 	const running =
-		snapshot?.counts?.running ?? getSymphonyRunningSessionRuns(runs).length;
+		liveSnapshot && snapshot?.counts?.running != null
+			? snapshot.counts.running
+			: getSymphonyRunningSessionRuns(runs).length;
 	const retryQueued =
-		snapshot?.counts?.retrying ?? getSymphonyRetryQueuedRuns(runs).length;
+		liveSnapshot && snapshot?.counts?.retrying != null
+			? snapshot.counts.retrying
+			: getSymphonyRetryQueuedRuns(runs).length;
 	const rateLimited = runs.filter((run) => run.rateLimitSummary).length;
 	const parts = [
+		snapshot && !liveSnapshot ? "last-known runtime snapshot" : null,
 		running > 0 ? `${running} running` : null,
 		retryQueued > 0 ? `${retryQueued} RetryQueued` : null,
 		snapshot?.rateLimits !== undefined

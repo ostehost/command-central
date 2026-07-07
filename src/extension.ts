@@ -1396,7 +1396,7 @@ export async function activate(
 								: "Runs claude --continue (project-scoped)";
 							deadItems.push({
 								label: "$(debug-start) Resume Claude Session",
-								description: `Starts a shell command · ${backendHint}`,
+								description: `Preflights target; selecting starts shell command · ${backendHint}`,
 								action: "resume",
 							});
 						}
@@ -1695,7 +1695,7 @@ export async function activate(
 										: `Runs claude --continue in ${terminalTarget}`;
 						items.push({
 							label: "$(debug-start) Resume Claude Session",
-							description: `Starts a shell command · ${backendDetail}`,
+							description: `Preflights target; selecting starts shell command · ${backendDetail}`,
 							action: "resume",
 						});
 					}

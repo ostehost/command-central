@@ -107,6 +107,7 @@ import {
 	classifyPaneAttention,
 	emptyUnifiedCounts,
 	formatV2Summary,
+	hasReadOnlyCompletionEvidence,
 	isBenignLivePane,
 	type PaneAttentionState,
 	sectionFromStatusGroup,
@@ -301,6 +302,7 @@ import {
 	getSymphonyRunningSessionRuns,
 	getSymphonyRuntimeSnapshot,
 	getSymphonySnapshotEntryIssue,
+	isFreshSymphonyRuntimeSnapshot,
 } from "./symphony-projection.js";
 import { TaskRegistryReader } from "./task-registry-reader.js";
 import { TmuxLivenessChecker } from "./tmux-liveness-checker.js";
@@ -1516,6 +1518,23 @@ export class AgentStatusTreeProvider
 	}
 
 	/**
+	 * Read-only completion marker for a stale `running` tmux row. This catches the
+	 * Symphony/Claude gap where the visible lane has already printed
+	 * READY_FOR_REVIEW (or is sitting at the `/exit` prompt) but the lifecycle row
+	 * was never finalized, so tmux liveness alone would keep the row in Live as
+	 * "interactive". Never writes to the terminal and only trusts local, probeable
+	 * tmux panes that are already past the stuck threshold.
+	 */
+	private hasRunningPaneCompletionEvidence(task: AgentTask): boolean {
+		if (task.status !== "running") return false;
+		if (!this.isAgentStuck(task)) return false;
+		const targetInfo = this.getTmuxPaneAttentionTarget(task);
+		if (!targetInfo) return false;
+		const snippet = capturePaneSnippet(targetInfo.target, task.tmux_socket);
+		return snippet ? hasReadOnlyCompletionEvidence(snippet) : false;
+	}
+
+	/**
 	 * Cache-only variant of {@link getTerminalTaskPaneAttention}. Returns warm
 	 * cached state when available, "unknown" otherwise (never spawns a
 	 * subprocess). Safe on the `getNodeStatusGroup` hot path; the cache is warmed
@@ -1665,6 +1684,11 @@ export class AgentStatusTreeProvider
 	 *     `status:"running"` while these fields are already set. tmux liveness
 	 *     is fail-open (unknown pane → healthy), so completion facts must win.
 	 *
+	 *   Tier 2d — Read-only pane completion evidence
+	 *     READY_FOR_REVIEW / explicit `/exit` completion prompts from a stale
+	 *     local tmux lane mean the visible worker reached the review boundary even
+	 *     when the row still says `running`.
+	 *
 	 *   Tier 3 — Liveness overlay (does NOT decide status on its own)
 	 *     Tmux pane evidence + discovered-session presence are consulted by
 	 *     `isRunningTaskHealthy()` only to decide whether to keep trusting a
@@ -1740,6 +1764,26 @@ export class AgentStatusTreeProvider
 			return this.applyRuntimeStatusOverlay(task, {
 				status: "failed",
 				reason: `Session ended with exit code ${task.exit_code}.`,
+			});
+		}
+
+		// Tier 2d — Read-only terminal completion marker. A visible Claude/Symphony
+		// lane can reach READY_FOR_REVIEW or its `/exit` prompt while the launcher
+		// row remains `running` and the tmux pane/session stays alive. That is not
+		// live work; classify it as stale/dirty completion evidence before generic
+		// liveness can preserve it as "interactive".
+		if (this.hasRunningPaneCompletionEvidence(task)) {
+			if (this.hasCommitsSinceStart(task)) {
+				return this.applyRuntimeStatusOverlay(task, {
+					status: "completed_dirty",
+					reason:
+						"Terminal shows completion/review-ready evidence and commits were produced.",
+				});
+			}
+			return this.applyRuntimeStatusOverlay(task, {
+				status: "completed_stale",
+				reason:
+					"Terminal shows completion/review-ready evidence, but the running row was not finalized.",
 			});
 		}
 
@@ -5219,7 +5263,22 @@ export class AgentStatusTreeProvider
 		const snapshotStatusValue = snapshot
 			? formatSymphonyRuntimeSnapshotStatus(snapshot)
 			: notProvided;
-		const snapshotCounts = snapshot?.counts;
+		const liveSnapshot = isFreshSymphonyRuntimeSnapshot(snapshot);
+		const processVisibility = !snapshot
+			? "Last-known projected run attempts only; no runtime collector snapshot"
+			: liveSnapshot
+				? `Live runtime snapshot from ${snapshot.source}${
+						snapshot.generatedAt ? ` · generated ${snapshot.generatedAt}` : ""
+					}`
+				: `Last-known runtime snapshot from ${snapshot.source}; ${snapshotStatusValue}; counts are not live confidence`;
+		const evidenceFreshness = !snapshot
+			? "No runtime snapshot; dashboard totals come only from projected rows with provided fields"
+			: liveSnapshot
+				? snapshot.generatedAt
+					? `Fresh snapshot generated ${snapshot.generatedAt}`
+					: "Fresh snapshot; generated_at not provided"
+				: `Stale or unavailable runtime evidence (${snapshotStatusValue}); showing source-provided last-known fields only`;
+		const snapshotCounts = liveSnapshot ? snapshot?.counts : undefined;
 		const snapshotCodexTotals = snapshot?.codexTotals;
 		const snapshotDiagnostics = snapshot?.diagnostics;
 
@@ -5238,6 +5297,28 @@ export class AgentStatusTreeProvider
 				value: snapshotStatusValue,
 				taskId,
 				icon: "broadcast",
+			},
+			{
+				type: "detail",
+				label: "Process visibility",
+				value: processVisibility,
+				taskId,
+				icon: liveSnapshot ? "pulse" : "eye-closed",
+			},
+			{
+				type: "detail",
+				label: "Evidence freshness",
+				value: evidenceFreshness,
+				taskId,
+				icon: liveSnapshot ? "verified" : "warning",
+			},
+			{
+				type: "detail",
+				label: "Loop contract",
+				value:
+					"Workroom owns item → visible Claude Code lane implements → Codex review receipt → final report → orchestration next decision",
+				taskId,
+				icon: "circuit-board",
 			},
 			...(snapshot?.generatedAt
 				? [
@@ -5301,9 +5382,11 @@ export class AgentStatusTreeProvider
 				type: "detail",
 				label: "running",
 				value:
-					snapshotCounts?.running == null
-						? `${getSymphonyRunningSessionRuns(runs).length}`
-						: `${snapshotCounts.running}`,
+					snapshot && !liveSnapshot
+						? "0"
+						: snapshotCounts?.running == null
+							? `${getSymphonyRunningSessionRuns(runs).length}`
+							: `${snapshotCounts.running}`,
 				taskId,
 				icon: "pulse",
 			},
@@ -5311,9 +5394,11 @@ export class AgentStatusTreeProvider
 				type: "detail",
 				label: "retrying",
 				value:
-					snapshotCounts?.retrying == null
-						? `${retryQueued.length}`
-						: `${snapshotCounts.retrying}`,
+					snapshot && !liveSnapshot
+						? "0"
+						: snapshotCounts?.retrying == null
+							? `${retryQueued.length}`
+							: `${snapshotCounts.retrying}`,
 				taskId,
 				icon: "history",
 			},
@@ -5503,6 +5588,51 @@ export class AgentStatusTreeProvider
 		return details;
 	}
 
+	private formatCodexRunLoopClassification(run: CodexRunView): string {
+		const evidenceLabels = (run.evidence ?? []).map((evidence) =>
+			evidence.label.toLowerCase(),
+		);
+		const hasEvidence = (needles: string[]): boolean =>
+			evidenceLabels.some((label) =>
+				needles.some((needle) => label.includes(needle)),
+			);
+		const workroom =
+			run.issueIdentifier || run.issueId || run.trackerKind
+				? "workroom-owned item"
+				: "workroom not reported";
+		const visibleLane =
+			run.sessionKey || run.threadId || run.workspacePath
+				? "visible lane projected"
+				: "visible lane not reported";
+		const reviewReceipt = run.reviewState
+			? `review ${run.reviewState}`
+			: hasEvidence(["review", "codex"])
+				? "review receipt evidence"
+				: "review receipt not reported";
+		const finalReport = run.callbackPresent
+			? "final-report callback route present"
+			: hasEvidence(["final report", "closeout", "receipt"])
+				? "final report/receipt evidence"
+				: "final report not reported";
+		const nextDecision = run.nextAction
+			? `next decision: ${run.nextAction}`
+			: "next decision not reported";
+		const collector = run.symphonyRuntimeSnapshot
+			? "runtime collector snapshot"
+			: run.turnCount != null || run.totalTokens != null || run.rateLimitSummary
+				? "run metadata collector"
+				: "collector not reported";
+
+		return [
+			`workroom ${workroom}`,
+			visibleLane,
+			reviewReceipt,
+			finalReport,
+			nextDecision,
+			collector,
+		].join(" · ");
+	}
+
 	private getCodexRunDetailChildren(run: CodexRunView): DetailNode[] {
 		const taskId = `codex-run-${run.runId}`;
 		const details: DetailNode[] = [];
@@ -5529,6 +5659,11 @@ export class AgentStatusTreeProvider
 		pushDetail("Projection boundary", formatCodexRunOwnership(run), "account");
 		pushDetail("Mode", run.orchestrationMode, "symbol-operator");
 		pushDetail("Next step", run.nextAction, "debug-step-into");
+		pushDetail(
+			"Loop classification",
+			this.formatCodexRunLoopClassification(run),
+			"circuit-board",
+		);
 		pushDetail(
 			"Automation source",
 			formatCodexRunAutomationSource(run),

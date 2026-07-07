@@ -727,6 +727,47 @@ describe("AgentStatusTreeProvider — health & lifecycle", () => {
 	});
 
 	describe("dirty-exit commit detection", () => {
+		test("stale running tmux lane with READY_FOR_REVIEW pane evidence shows completed_dirty, not interactive", () => {
+			const task = createMockTask({
+				id: "ready-for-review-stale-running",
+				status: "running",
+				terminal_backend: "tmux",
+				tmux_pane_id: "%93",
+				start_commit: "abc123",
+				started_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+				stream_file: null,
+			});
+
+			execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+				const [cmd, args] = fnArgs as [string, string[] | undefined];
+				if (cmd === "tmux" && args?.includes("capture-pane")) {
+					return "READY_FOR_REVIEW\nType /exit to close this Claude lane.\n> ";
+				}
+				if (
+					cmd === "git" &&
+					args?.includes("rev-list") &&
+					args?.includes("--count")
+				) {
+					return "1\n";
+				}
+				return realChildProcess.execFileSync(
+					cmd,
+					args,
+					fnArgs[2] as Parameters<typeof realChildProcess.execFileSync>[2],
+				);
+			});
+
+			provider.readRegistry = () => createMockRegistry({ [task.id]: task });
+			provider.reload();
+
+			const displayed = provider.getTasks()[0];
+			expect(displayed?.status).toBe("completed_dirty");
+			if (!displayed) throw new Error("expected a displayed task");
+			expect(
+				provider.getTreeItem({ type: "task", task: displayed }).description,
+			).not.toContain("interactive");
+		});
+
 		test("dead running task with commits shows as completed_dirty instead of stopped", () => {
 			const task = createMockTask({
 				id: "dirty-exit-with-commits",

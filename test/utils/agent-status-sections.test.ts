@@ -8,6 +8,7 @@ import {
 	countV2Sections,
 	emptyUnifiedCounts,
 	formatV2Summary,
+	hasReadOnlyCompletionEvidence,
 	sectionFromSignals,
 	sectionFromStatusGroup,
 	type UnifiedCounts,
@@ -156,6 +157,23 @@ describe("unifiedBadgeCount — live + action only", () => {
 		expect(
 			unifiedBadgeCount({ live: 0, review: 9, action: 0, history: 99 }),
 		).toBe(0);
+	});
+});
+
+describe("hasReadOnlyCompletionEvidence", () => {
+	test("recognizes Symphony/Claude review-ready terminal markers", () => {
+		expect(
+			hasReadOnlyCompletionEvidence(
+				"work complete\nREADY_FOR_REVIEW\nuser@host project %",
+			),
+		).toBe(true);
+	});
+
+	test("recognizes explicit /exit completion prompts without treating arbitrary output as completion", () => {
+		expect(
+			hasReadOnlyCompletionEvidence("Ready for review. Type /exit to close."),
+		).toBe(true);
+		expect(hasReadOnlyCompletionEvidence("thinking...\n> /help")).toBe(false);
 	});
 });
 

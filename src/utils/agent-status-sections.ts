@@ -321,6 +321,11 @@ const AWAITING_INPUT_RES: readonly RegExp[] = [
  * a benign "completed-at-prompt" pane, NOT attention. Conservative on purpose.
  */
 const COMPLETION_SUMMARY_RES: readonly RegExp[] = [
+	/\bREADY_FOR_REVIEW\b/i,
+	/\bready for review\b/i,
+	/\b(?:type|run|enter)\s+\/?exit\b/i,
+	/\b\/?exit\b.*\b(?:finish|quit|close|end)\b/i,
+	/\b(?:finish|quit|close|end)\b.*\b\/?exit\b/i,
 	/\b\d+\s+pass(?:ed|ing)?\b/i,
 	/\b\d+\s+fail(?:ed|ing|ures?)?\b/i,
 	/\ball tests? passed\b/i,
@@ -354,6 +359,22 @@ function isIdleAgentReplSnippet(snippet: string): boolean {
 	if (!AGENT_REPL_FOOTER_RES.some((re) => re.test(snippet))) return false;
 	if (!AGENT_REPL_EMPTY_INPUT_RE.test(snippet)) return false;
 	return !AGENT_REPL_TURN_RUNNING_RE.test(snippet);
+}
+
+/**
+ * Read-only terminal evidence that a launcher row's work already reached its
+ * handoff/review boundary even if the lifecycle row still says `running`.
+ *
+ * Unlike {@link classifyPaneAttention}, this helper intentionally ignores
+ * `pane_current_command`: a Claude process can still be alive at its `/exit`
+ * prompt after it has emitted READY_FOR_REVIEW, and a completed pane can also
+ * have fallen back to `bash`. Callers must gate this with their own staleness /
+ * local-terminal checks before using it to demote a running row.
+ */
+export function hasReadOnlyCompletionEvidence(snippet: string): boolean {
+	const text = snippet.replace(/\s+$/, "");
+	if (!text.trim()) return false;
+	return COMPLETION_SUMMARY_RES.some((re) => re.test(text));
 }
 
 function lastNonEmptyLine(snippet: string): string {

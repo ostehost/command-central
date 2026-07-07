@@ -599,6 +599,15 @@ describe("OpenClaw task nodes", () => {
 		expect(dashboardValues.get("Orchestrator Runtime State")).toBe(
 			"Not provided by lifecycle owner",
 		);
+		expect(dashboardValues.get("Process visibility")).toContain(
+			"Last-known projected run attempts only",
+		);
+		expect(dashboardValues.get("Evidence freshness")).toContain(
+			"No runtime snapshot",
+		);
+		expect(dashboardValues.get("Loop contract")).toContain(
+			"Workroom owns item",
+		);
 		expect(dashboardValues.get("running")).toBe("1");
 		expect(dashboardValues.get("retrying")).toBe("1");
 		expect(dashboardValues.get("Released")).toBe("1");
@@ -715,6 +724,12 @@ describe("OpenClaw task nodes", () => {
 				.map((node) => [node.label, node.value]),
 		);
 		expect(dashboardValues.get("Orchestrator Runtime State")).toBe("fresh");
+		expect(dashboardValues.get("Process visibility")).toContain(
+			"Live runtime snapshot from launcher",
+		);
+		expect(dashboardValues.get("Evidence freshness")).toBe(
+			"Fresh snapshot generated 2026-05-10T14:55:00Z",
+		);
 		expect(dashboardValues.get("generated_at")).toBe("2026-05-10T14:55:00Z");
 		expect(dashboardValues.get("last_cron_tick")).toBe("2026-05-10T14:50:00Z");
 		expect(dashboardValues.get("workflow_path")).toBe(
@@ -816,6 +831,7 @@ describe("OpenClaw task nodes", () => {
 				owner_kind: "launcher",
 				symphony_runtime_snapshot: {
 					generated_at: "2026-05-10T14:56:00Z",
+					counts: { running: 9, retrying: 4 },
 					error: {
 						code: "snapshot_timeout",
 						message: "Snapshot timed out",
@@ -838,6 +854,13 @@ describe("OpenClaw task nodes", () => {
 		expect(dashboardValues.get("Orchestrator Runtime State")).toBe(
 			"snapshot_timeout: Snapshot timed out",
 		);
+		expect(provider.getTreeItem(dashboard).description).not.toContain(
+			"9 running",
+		);
+		expect(dashboardValues.get("Process visibility")).toContain(
+			"counts are not live confidence",
+		);
+		expect(dashboardValues.get("running")).toBe("0");
 
 		setLauncherTasks(provider, [
 			createLauncherTask({
