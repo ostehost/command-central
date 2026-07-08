@@ -374,6 +374,7 @@ work_system_lane_ref_enrich() {
 			receipt_path: ($row.pending_review_path // null),
 			receipt_present: $receipt_present
 		 } |
+		 .completion_marker = ($row.completion_marker // null) |
 		 .handoff = {
 			file: ($row.handoff_file // null),
 			artifact_status: ($row.artifact_status // null)
