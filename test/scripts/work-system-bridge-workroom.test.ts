@@ -81,14 +81,17 @@ describe("bundled work-system-bridge.sh — env-less row-backed workroom/work-it
 			const outboxPath = join(tmp, "lanes.json");
 
 			// Minimal tasks.json row with workroom_ref and work_item_ref persisted
-			// at spawn time — the same row the Stop hook / reaper reads.
+			// at spawn time — the same row the Stop hook / reaper reads. The row is
+			// already terminal: the bridge derives status from the durable row (the
+			// third argument is advisory and loses to row truth), matching the real
+			// flow where the hook marks the row completed before emitting.
 			const tasks = {
 				version: 1,
 				tasks: {
 					[taskId]: {
 						id: taskId,
 						task_id: taskId,
-						status: "running",
+						status: "completed",
 						session_id: `agent-${taskId}`,
 						terminal_backend: "tmux",
 						source_ref: `launcher:${taskId}`,
@@ -293,14 +296,16 @@ describe("bundled work-system-bridge.sh — authenticated hook HTTP workroom rou
 				const tasksFile = join(tmp, "tasks.json");
 
 				// Minimal tasks.json row — workroom_ref and work_item_ref persisted at
-				// spawn time so the env-less Stop hook can row-back both refs.
+				// spawn time so the env-less Stop hook can row-back both refs. Row is
+				// terminal because the bridge derives status from durable row truth,
+				// not the advisory argument.
 				const tasks = {
 					version: 1,
 					tasks: {
 						[taskId]: {
 							id: taskId,
 							task_id: taskId,
-							status: "running",
+							status: "completed",
 							session_id: `agent-${taskId}`,
 							terminal_backend: "tmux",
 							source_ref: `launcher:${taskId}`,

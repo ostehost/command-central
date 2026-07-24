@@ -54,8 +54,8 @@ describe("publish.yml release gate mirrors CI", () => {
 		const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
 			scripts?: Record<string, string>;
 		};
-		expect(pkg.scripts?.test).toBeTruthy();
+		expect(pkg.scripts?.["test"]).toBeTruthy();
 		// The gate delegates to this script; if it disappears the gate breaks.
-		expect(pkg.scripts?.test).toContain("bun test");
+		expect(pkg.scripts?.["test"]).toContain("bun test");
 	});
 });
