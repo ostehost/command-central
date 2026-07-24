@@ -21,6 +21,10 @@
 [[ -n "${__OSTE_REVIEW_VERDICT_SH:-}" ]] && return 0
 __OSTE_REVIEW_VERDICT_SH=1
 
+_OSTE_REVIEW_VERDICT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/task-id.sh
+source "${_OSTE_REVIEW_VERDICT_SCRIPT_DIR}/task-id.sh" 2>/dev/null || true
+
 # Marker directory. Default /tmp — the daemon reads /tmp then /private/tmp, and
 # on macOS /tmp is a symlink to /private/tmp. Override for tests via
 # OSTE_REVIEW_VERDICT_DIR.
@@ -30,6 +34,8 @@ oste_review_verdict_dir() {
 
 oste_review_verdict_path() {
 	local task_id="$1"
+	command -v task_id_validate >/dev/null 2>&1 || return 1
+	task_id_validate "$task_id" 2>/dev/null || return 1
 	printf '%s/oste-review-verdict-%s.json' "$(oste_review_verdict_dir)" "$task_id"
 }
 
@@ -71,6 +77,8 @@ oste_review_verdict_write() {
 	local hook_event="${7:-}"
 
 	[[ -n "$task_id" ]] || return 0
+	command -v task_id_validate >/dev/null 2>&1 || return 0
+	task_id_validate "$task_id" 2>/dev/null || return 0
 	[[ "$blocker_count" =~ ^[0-9]+$ ]] || blocker_count=0
 	command -v jq >/dev/null 2>&1 || return 0
 
@@ -121,6 +129,8 @@ oste_review_gate_claim_block() {
 	local task_id="$2"
 	local max_blocks="${3:-1}"
 	[[ -n "$task_id" ]] || return 1
+	command -v task_id_validate >/dev/null 2>&1 || return 1
+	task_id_validate "$task_id" 2>/dev/null || return 1
 	[[ "$max_blocks" =~ ^[0-9]+$ ]] || max_blocks=1
 	[[ "$max_blocks" -ge 1 ]] || return 1
 

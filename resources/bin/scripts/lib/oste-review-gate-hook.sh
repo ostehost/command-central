@@ -40,6 +40,8 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/review-verdict.sh
 source "${SCRIPT_DIR}/review-verdict.sh" 2>/dev/null || true
+# shellcheck source=lib/task-id.sh
+source "${SCRIPT_DIR}/task-id.sh" 2>/dev/null || true
 
 # Any unexpected failure → exit 0 (fail-open; never wedge a lane).
 trap 'exit 0' ERR
@@ -60,6 +62,8 @@ if [[ -z "$task_id" && -n "$cwd" ]]; then
 	fi
 fi
 [[ -n "$task_id" ]] || exit 0
+command -v task_id_validate >/dev/null 2>&1 || exit 0
+task_id_validate "$task_id" 2>/dev/null || exit 0
 
 # No review context yet (review not dispatched) → fast no-op. This keeps the
 # hook a cheap no-op on ordinary mid-task turns; it only does work once the

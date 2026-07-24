@@ -64,9 +64,12 @@ hook_trace_append "permission-request-hook-entry" "$input" "$(jq -cn \
 redacted=$(permission_broker_redact "$tool_input" 2>/dev/null || echo '{}')
 class=$(permission_broker_classify "$tool_name" "$tool_input" 2>/dev/null || echo "neutral")
 hash=$(permission_broker_input_hash "$session_id" "$tool_name" "$redacted" 2>/dev/null || echo "")
+prompt_id=$(permission_broker_new_prompt_id 2>/dev/null || echo "")
 
 # ── Workroom + routing ────────────────────────────────────────────────
-workroom=$(permission_broker_resolve_workroom "$task_id" 2>/dev/null || echo "")
+owner_snapshot=$(permission_broker_resolve_owner_snapshot "$task_id" 2>/dev/null || echo '{}')
+workroom=$(printf '%s' "$owner_snapshot" | jq -r '.workroom_ref // ""' 2>/dev/null || echo "")
+task_generation=$(printf '%s' "$owner_snapshot" | jq -r '.task_generation // ""' 2>/dev/null || echo "")
 routing="ops_fallback"
 [[ -n "$workroom" ]] && routing="workroom"
 
@@ -85,9 +88,11 @@ receipt=$(jq -cn \
 	--arg ts "$ts" \
 	--argjson epoch "$epoch" \
 	--arg task_id "$task_id" \
+	--arg task_generation "$task_generation" \
 	--arg session_id "$session_id" \
 	--arg tool "$tool_name" \
 	--arg input_hash "$hash" \
+	--arg prompt_id "$prompt_id" \
 	--arg cwd "$cwd" \
 	--arg permission_mode "$permission_mode" \
 	--arg transcript_path "$transcript_path" \
@@ -98,8 +103,10 @@ receipt=$(jq -cn \
 	--argjson redacted_input "$redacted" \
 	--argjson permission_suggestions "$permission_suggestions" \
 	'{ts: $ts, epoch: $epoch, event: "permission_request",
-	  task_id: $task_id, session_id: $session_id,
-	  tool: $tool, input_hash: $input_hash, cwd: $cwd,
+	  task_id: $task_id,
+	  task_generation: (if $task_generation == "" then null else $task_generation end),
+	  session_id: $session_id,
+	  tool: $tool, input_hash: $input_hash, prompt_id: $prompt_id, cwd: $cwd,
 	  permission_mode: $permission_mode, transcript_path: $transcript_path,
 	  classification: $classification, decision: $decision,
 	  workroom_ref: $workroom_ref, routing: $routing,

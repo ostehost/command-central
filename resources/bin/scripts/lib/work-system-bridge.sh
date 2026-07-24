@@ -162,31 +162,89 @@ work_system_lane_ref_update() {
 # mistaken for the PLUGIN-API.md §6 drainable op-queue
 # (~/.config/openclaw/work-system-outbox.json), which this library never
 # writes.
+_work_system_capture_current_pid() {
+	if [[ -n "${BASHPID:-}" ]]; then
+		_WORK_SYSTEM_CALLER_PID="$BASHPID"
+	else
+		local probe
+		probe=$(mktemp "${TMPDIR:-/tmp}/oste-work-system-lock-pid.XXXXXX") || return 1
+		chmod 600 "$probe" 2>/dev/null || true
+		if ! sh -c 'printf "%s" "$PPID" >"$1"' _ "$probe"; then
+			rm -f "$probe"
+			return 1
+		fi
+		IFS= read -r _WORK_SYSTEM_CALLER_PID <"$probe" || true
+		rm -f "$probe"
+	fi
+	[[ "${_WORK_SYSTEM_CALLER_PID:-}" =~ ^[0-9]+$ ]]
+}
+
 work_system_bridge_lock_outbox() {
 	local lockdir="$1"
-	local pidfile="${lockdir}/pid"
+	local ownerfile="${lockdir}/owner.json"
 	local max_wait="${OSTE_WORK_SYSTEM_OUTBOX_LOCK_MAX_WAIT:-10}"
+	local stale_age="${OSTE_WORK_SYSTEM_OUTBOX_LOCK_STALE_AGE:-60}"
 	local waited=0
+	local pid process_start token owner_tmp
+	_work_system_capture_current_pid || return 1
+	pid="$_WORK_SYSTEM_CALLER_PID"
+	process_start=$(ps -p "$pid" -o lstart= 2>/dev/null | awk '{$1=$1; print}')
+	[[ -n "$process_start" ]] || return 1
+	token="${pid}-$(date +%s)-${RANDOM:-0}-${RANDOM:-0}"
+	owner_tmp="${lockdir}.owner.${pid}.${RANDOM:-0}"
+	if ! jq -cn --argjson pid "$pid" --arg start "$process_start" --arg token "$token" \
+		'{pid:$pid,process_start:$start,token:$token}' >"$owner_tmp" 2>/dev/null; then
+		rm -f "$owner_tmp"
+		return 1
+	fi
 	while true; do
 		if mkdir "$lockdir" 2>/dev/null; then
-			echo "${BASHPID:-$$}" >"$pidfile" 2>/dev/null || true
+			if ! mv "$owner_tmp" "$ownerfile"; then
+				rm -f "$owner_tmp"
+				rmdir "$lockdir" 2>/dev/null || true
+				return 1
+			fi
+			_WORK_SYSTEM_OUTBOX_LOCK_OWNED="$lockdir"
+			_WORK_SYSTEM_OUTBOX_LOCK_TOKEN="$token"
 			return 0
 		fi
-		# Keep bridge non-blocking: clear only obviously dead holders, otherwise
-		# skip after the short wait budget rather than slowing lane completion.
-		if [[ -f "$pidfile" ]]; then
-			local held_pid
-			held_pid=$(cat "$pidfile" 2>/dev/null || echo "")
-			if [[ -n "$held_pid" ]] && ! kill -0 "$held_pid" 2>/dev/null; then
-				rm -f "$pidfile" 2>/dev/null || true
-				rmdir "$lockdir" 2>/dev/null || true
-				continue
+		# Keep bridge non-blocking, but never steal a live matching generation.
+		local held_pid="" held_start="" held_token="" current_start="" stale="false"
+		held_pid=$(jq -r '.pid // empty' "$ownerfile" 2>/dev/null || true)
+		held_start=$(jq -r '.process_start // empty' "$ownerfile" 2>/dev/null || true)
+		held_token=$(jq -r '.token // empty' "$ownerfile" 2>/dev/null || true)
+		if [[ "$held_pid" =~ ^[0-9]+$ ]]; then
+			if ! kill -0 "$held_pid" 2>/dev/null; then
+				stale="true"
+			else
+				current_start=$(ps -p "$held_pid" -o lstart= 2>/dev/null | awk '{$1=$1; print}')
+				[[ -n "$held_start" && -n "$current_start" && "$held_start" != "$current_start" ]] && stale="true"
+			fi
+		else
+			local lock_mtime
+			lock_mtime=$(stat -f %m "$lockdir" 2>/dev/null || stat -c %Y "$lockdir" 2>/dev/null || echo 0)
+			[[ $(($(date +%s) - lock_mtime)) -ge "$stale_age" ]] && stale="true"
+		fi
+		if [[ "$stale" == "true" ]]; then
+			local reapdir="${lockdir}.reap"
+			if mkdir "$reapdir" 2>/dev/null; then
+				local verify_token
+				verify_token=$(jq -r '.token // empty' "$ownerfile" 2>/dev/null || true)
+				if [[ "$verify_token" == "$held_token" ]]; then
+					rm -rf "$lockdir"
+				fi
+				rm -rf "$reapdir"
+			else
+				local reap_mtime
+				reap_mtime=$(stat -f %m "$reapdir" 2>/dev/null || stat -c %Y "$reapdir" 2>/dev/null || echo 0)
+				[[ $(($(date +%s) - reap_mtime)) -ge 5 ]] && rm -rf "$reapdir"
 			fi
 		fi
 		sleep 0.1
 		waited=$((waited + 1))
 		if [[ $waited -ge $((max_wait * 10)) ]]; then
 			echo "Warning: work-system projection lock timeout after ${max_wait}s" >&2
+			rm -f "$owner_tmp"
 			return 1
 		fi
 	done
@@ -194,12 +252,14 @@ work_system_bridge_lock_outbox() {
 
 work_system_bridge_unlock_outbox() {
 	local lockdir="$1"
-	local pidfile="${lockdir}/pid"
-	local held_pid
-	held_pid=$(cat "$pidfile" 2>/dev/null || echo "")
-	[[ "$held_pid" == "${BASHPID:-$$}" ]] || return 0
-	rm -f "$pidfile" 2>/dev/null || true
-	rmdir "$lockdir" 2>/dev/null || true
+	local held_token
+	[[ "${_WORK_SYSTEM_OUTBOX_LOCK_OWNED:-}" == "$lockdir" ]] || return 0
+	held_token=$(jq -r '.token // empty' "${lockdir}/owner.json" 2>/dev/null || true)
+	_WORK_SYSTEM_OUTBOX_LOCK_OWNED=""
+	if [[ -n "$held_token" && "$held_token" == "${_WORK_SYSTEM_OUTBOX_LOCK_TOKEN:-}" ]]; then
+		rm -rf "$lockdir" 2>/dev/null || true
+	fi
+	_WORK_SYSTEM_OUTBOX_LOCK_TOKEN=""
 }
 
 work_system_bridge_write_outbox() {
@@ -221,15 +281,22 @@ work_system_bridge_write_outbox() {
 	if [[ "${OSTE_TEST_MODE:-}" == "1" && -n "${OSTE_WORK_SYSTEM_OUTBOX_WRITE_DELAY:-}" ]]; then
 		sleep "$OSTE_WORK_SYSTEM_OUTBOX_WRITE_DELAY"
 	fi
-	local tmp="${outbox}.tmp.${BASHPID:-$$}"
+	local tmp
+	tmp=$(mktemp "${outbox}.tmp.XXXXXX") || {
+		work_system_bridge_unlock_outbox "$lockdir"
+		return 0
+	}
 	if jq -c --arg id "$lane_id" --argjson update "$update" \
 		'def terminal(s): ["completed", "completed_dirty", "contract_failure", "failed", "killed", "stopped"] | index(s) != null;
 		 .version = 1 |
 		 .kind = "work-system-lanes-projection" |
 		 (.lanes[$id] // null) as $existing |
+		 ($update.generation.task_generation // "") as $update_generation |
+		 ($existing.generation.task_generation // "") as $existing_generation |
 		 if $existing != null
 			and terminal($existing.lane_ref.status // "")
 			and (terminal($update.lane_ref.status // "") | not)
+			and ($update_generation == "" or $update_generation == $existing_generation)
 			and (($update.lane_ref.updatedAt // "") <= ($existing.lane_ref.updatedAt // ""))
 		 then .
 		 else (.lanes[$id] = $update | .updated_at = $update.lane_ref.updatedAt)
@@ -369,6 +436,13 @@ work_system_lane_ref_enrich() {
 		 .review = {
 			state: ($row.review_state // null),
 			status: ($row.review_status // null),
+			revision: ($row.review_revision // null),
+			attempt: ($row.review_attempt // null),
+			attempt_id: ($row.review_attempt_id // null),
+			task_generation: ($row.review_task_generation // $row.task_generation // null),
+			owner_state: ($row.owner_review_state // null),
+			retry_disabled: ($row.retry_disabled // false),
+			blocker_count: ($row.review_blocker_count // null),
 			disposition: ($row.review_disposition // null),
 			disposition_reason: ($row.review_disposition_reason // null),
 			receipt_path: ($row.pending_review_path // null),
@@ -395,6 +469,7 @@ work_system_lane_ref_enrich() {
 			receipt_present: $vis_receipt_present
 		 } |
 		 .generation = {
+			task_generation: ($row.task_generation // null),
 			app_stamp: ($row.app_stamp // null),
 			release_generation: ($row.app_stamp.git_sha // null),
 			source_version: ($row.app_stamp.launcher_version // null)
@@ -426,6 +501,93 @@ work_system_emit_lane_ref() {
 # lifecycle transitions — spawn, completion, kill, and reaper all project
 # through here so the lanes read-model carries one consistent snapshot.
 # A missing row still emits task + status so consumers see the terminal state.
+_work_system_projection_lock_acquire() {
+	local tasks_file="$1" task_id="$2" safe_id root lockdir ownerfile waited=0 max_wait
+	safe_id=$(printf '%s' "$task_id" | tr -c 'A-Za-z0-9._-' '_')
+	root="${tasks_file}.projection-locks"
+	lockdir="${root}/${safe_id}.lock"
+	ownerfile="${lockdir}/owner.json"
+	max_wait="${OSTE_WORK_SYSTEM_PROJECTION_LOCK_WAIT:-10}"
+	mkdir -p "$root" 2>/dev/null || return 1
+	while true; do
+		if mkdir "$lockdir" 2>/dev/null; then
+			local pid token process_start owner_tmp
+			if ! _work_system_capture_current_pid; then
+				rmdir "$lockdir" 2>/dev/null || true
+				return 1
+			fi
+			pid="$_WORK_SYSTEM_CALLER_PID"
+			token="${pid}-$(date +%s)-${RANDOM:-0}-${RANDOM:-0}"
+			process_start=$(ps -p "$pid" -o lstart= 2>/dev/null | awk '{$1=$1; print}')
+			if [[ -z "$process_start" ]]; then
+				rmdir "$lockdir" 2>/dev/null || true
+				return 1
+			fi
+			owner_tmp="${ownerfile}.tmp.${pid}"
+			if ! jq -cn --argjson pid "$pid" --arg start "$process_start" --arg token "$token" \
+				'{pid:$pid,process_start:$start,token:$token}' >"$owner_tmp" 2>/dev/null || ! mv "$owner_tmp" "$ownerfile"; then
+				rm -f "$owner_tmp"
+				rmdir "$lockdir" 2>/dev/null || true
+				return 1
+			fi
+			_WORK_SYSTEM_PROJECTION_LOCK_OWNED="$lockdir"
+			_WORK_SYSTEM_PROJECTION_LOCK_TOKEN="$token"
+			return 0
+		fi
+		local held_pid="" held_start="" held_token="" current_start="" stale="false"
+		held_pid=$(jq -r '.pid // empty' "$ownerfile" 2>/dev/null || true)
+		held_start=$(jq -r '.process_start // empty' "$ownerfile" 2>/dev/null || true)
+		held_token=$(jq -r '.token // empty' "$ownerfile" 2>/dev/null || true)
+		if [[ "$held_pid" =~ ^[0-9]+$ ]]; then
+			if ! kill -0 "$held_pid" 2>/dev/null; then
+				stale="true"
+			else
+				current_start=$(ps -p "$held_pid" -o lstart= 2>/dev/null | awk '{$1=$1; print}')
+				[[ -n "$held_start" && -n "$current_start" && "$held_start" != "$current_start" ]] && stale="true"
+			fi
+		elif [[ -d "$lockdir" ]]; then
+			local lock_mtime now
+			lock_mtime=$(stat -f %m "$lockdir" 2>/dev/null || stat -c %Y "$lockdir" 2>/dev/null || echo 0)
+			now=$(date +%s)
+			[[ $((now - lock_mtime)) -ge "${OSTE_WORK_SYSTEM_PROJECTION_LOCK_STALE:-60}" ]] && stale="true"
+		fi
+		if [[ "$stale" == "true" ]]; then
+			local reapdir="${lockdir}.reap"
+			if mkdir "$reapdir" 2>/dev/null; then
+				# Re-read owner identity under the reap mutex. Remove only if the
+				# exact stale generation we observed is still present.
+				local verify_pid verify_start verify_token
+				verify_pid=$(jq -r '.pid // empty' "$ownerfile" 2>/dev/null || true)
+				verify_start=$(jq -r '.process_start // empty' "$ownerfile" 2>/dev/null || true)
+				verify_token=$(jq -r '.token // empty' "$ownerfile" 2>/dev/null || true)
+				if [[ "$verify_pid" == "$held_pid" && "$verify_start" == "$held_start" && "$verify_token" == "$held_token" ]]; then
+					rm -rf "$lockdir"
+				fi
+				rm -rf "$reapdir"
+			else
+				local reap_mtime reap_now
+				reap_mtime=$(stat -f %m "$reapdir" 2>/dev/null || stat -c %Y "$reapdir" 2>/dev/null || echo 0)
+				reap_now=$(date +%s)
+				[[ $((reap_now - reap_mtime)) -ge 5 ]] && rm -rf "$reapdir"
+			fi
+		fi
+		sleep 0.05
+		waited=$((waited + 1))
+		[[ "$waited" -lt $((max_wait * 20)) ]] || return 1
+	done
+}
+
+_work_system_projection_lock_release() {
+	local lockdir="${_WORK_SYSTEM_PROJECTION_LOCK_OWNED:-}" held_token=""
+	[[ -n "$lockdir" ]] || return 0
+	held_token=$(jq -r '.token // empty' "${lockdir}/owner.json" 2>/dev/null || true)
+	_WORK_SYSTEM_PROJECTION_LOCK_OWNED=""
+	if [[ -n "$held_token" && "$held_token" == "${_WORK_SYSTEM_PROJECTION_LOCK_TOKEN:-}" ]]; then
+		rm -rf "$lockdir" 2>/dev/null || true
+	fi
+	_WORK_SYSTEM_PROJECTION_LOCK_TOKEN=""
+}
+
 work_system_emit_lane_ref_for_task() {
 	local tasks_file="$1"
 	local task_id="$2"
@@ -433,10 +595,18 @@ work_system_emit_lane_ref_for_task() {
 	if [[ "$(work_system_bridge_mode)" == "off" ]]; then
 		return 0
 	fi
+	# Serialize every projection for this task outside tasks.json locking. The
+	# winner re-reads the row after acquiring the lock and derives status from
+	# durable truth, so a delayed advisory-running emitter cannot land after a
+	# terminal or newer review revision.
+	_work_system_projection_lock_acquire "$tasks_file" "$task_id" || return 0
 	local row='{}'
 	if [[ -f "$tasks_file" ]]; then
 		row=$(jq -c --arg id "$task_id" '.tasks[$id] // {}' "$tasks_file" 2>/dev/null) || row='{}'
 	fi
+	local row_status
+	row_status=$(jq -r '.status // empty' <<<"$row" 2>/dev/null || true)
+	[[ -z "$row_status" ]] || status="$row_status"
 	local session lane_kind worktree surface project_ref lane_id
 	session=$(jq -r '.session_id // ""' <<<"$row" 2>/dev/null) || session=""
 	lane_kind=$(jq -r '.lane_kind // ""' <<<"$row" 2>/dev/null) || lane_kind=""
@@ -447,8 +617,22 @@ work_system_emit_lane_ref_for_task() {
 	local update
 	update=$(work_system_lane_ref_update "$task_id" "$status" "$session" "$lane_kind" \
 		"$worktree" "$surface" "$project_ref" "$lane_id") || update=""
-	[[ -n "$update" ]] || return 0
-	update=$(work_system_lane_ref_enrich "$update" "$row") || return 0
-	[[ -n "$update" ]] || return 0
-	_work_system_bridge_transport "$update"
+	if [[ -z "$update" ]]; then
+		_work_system_projection_lock_release
+		return 0
+	fi
+	update=$(work_system_lane_ref_enrich "$update" "$row") || {
+		_work_system_projection_lock_release
+		return 0
+	}
+	if [[ -z "$update" ]]; then
+		_work_system_projection_lock_release
+		return 0
+	fi
+	local transport_rc=0
+	_work_system_bridge_transport "$update" || transport_rc=$?
+	_work_system_projection_lock_release
+	# The bridge is advisory/fail-soft. Serialization must be released on every
+	# transport outcome, and transport failure never fails the lifecycle writer.
+	[[ "$transport_rc" -eq 0 ]] || return 0
 }

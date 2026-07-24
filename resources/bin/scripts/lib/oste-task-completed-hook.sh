@@ -38,6 +38,68 @@ source "${SCRIPT_DIR}/lib/pending-review.sh"
 source "${SCRIPT_DIR}/lib/hook-trace.sh"
 # shellcheck source=lib/permission-broker.sh
 source "${SCRIPT_DIR}/lib/permission-broker.sh"
+# shellcheck source=lib/task-id.sh
+source "${SCRIPT_DIR}/lib/task-id.sh"
+# shellcheck source=lib/task-owner-identity.sh
+source "${SCRIPT_DIR}/lib/task-owner-identity.sh"
+
+task_completed_owner_lock_held=false
+release_task_completed_owner_lock() {
+	if [[ "$task_completed_owner_lock_held" == "true" ]]; then
+		task_owner_transition_lock_release >/dev/null 2>&1 || true
+		task_completed_owner_lock_held=false
+	fi
+}
+trap release_task_completed_owner_lock EXIT
+
+publish_generation_bound_completion_snapshot() {
+	local task_id_arg="$1"
+	local project_dir_arg="$2"
+	local start_sha_arg="$3"
+	local task_generation_arg="$4"
+	local snapshot_file snapshot_stage current_row current_generation current_status
+
+	snapshot_file=$(pending_review_snapshot_file "$task_id_arg")
+	snapshot_stage="${snapshot_file}.candidate.${BASHPID:-$$}.${RANDOM:-0}"
+	rm -f "$snapshot_stage"
+	# Git inspection can be slow and must not hold the global owner lease. Build a
+	# private candidate first; only the final generation CAS + rename is locked.
+	if ! pending_review_capture_completion_snapshot "$task_id_arg" "$project_dir_arg" "$start_sha_arg" \
+		"$task_generation_arg" "$snapshot_stage" 2>/dev/null; then
+		rm -f "$snapshot_stage"
+		return 1
+	fi
+
+	if [[ -n "${OSTE_TEST_TASK_COMPLETED_SNAPSHOT_PAUSE:-}" ]]; then
+		: >"${OSTE_TEST_TASK_COMPLETED_SNAPSHOT_PAUSE}.ready"
+		while [[ ! -e "${OSTE_TEST_TASK_COMPLETED_SNAPSHOT_PAUSE}.release" ]]; do sleep 0.02; done
+	fi
+
+	task_owner_transition_lock_acquire "$task_id_arg" || {
+		rm -f "$snapshot_stage"
+		return 1
+	}
+	task_completed_owner_lock_held=true
+	current_row=$(jq -ce --arg id "$task_id_arg" '.tasks[$id] // empty' "$TASKS_FILE" 2>/dev/null || true)
+	if [[ -n "$current_row" ]]; then
+		current_generation=$(printf '%s' "$current_row" | jq -r '.task_generation // ""' 2>/dev/null || echo "__missing__")
+	else
+		current_generation="__missing__"
+	fi
+	current_status=$(printf '%s' "$current_row" | jq -r '.status // ""' 2>/dev/null || true)
+	if [[ "$current_generation" != "$task_generation_arg" || "$current_status" != "running" ]]; then
+		rm -f "$snapshot_stage"
+		release_task_completed_owner_lock
+		return 2
+	fi
+	if ! mv "$snapshot_stage" "$snapshot_file"; then
+		rm -f "$snapshot_stage"
+		release_task_completed_owner_lock
+		return 1
+	fi
+	release_task_completed_owner_lock
+	return 0
+}
 
 input=$(cat)
 
@@ -70,6 +132,17 @@ if [[ -z "$oste_task_id" ]]; then
 		'{resolved_task_id: $resolved_task_id, resolution_source: $resolution_source}')"
 	exit 0
 fi
+task_id_validate "$oste_task_id" >/dev/null 2>&1 || exit 0
+effective_tasks_file="${TASKS_FILE:-${HOME}/.config/ghostty-launcher/tasks.json}"
+TASKS_FILE="$effective_tasks_file"
+[[ -f "$TASKS_FILE" ]] || exit 0
+task_owner_transition_lock_acquire "$oste_task_id" || exit 0
+task_completed_owner_lock_held=true
+task_row=$(jq -ce --arg id "$oste_task_id" '.tasks[$id] // empty' "$TASKS_FILE" 2>/dev/null) || exit 0
+row_generation=$(printf '%s' "$task_row" | jq -r '.task_generation // ""' 2>/dev/null || true)
+[[ "$row_generation" == "${OSTE_TASK_GENERATION:-}" ]] || exit 0
+[[ "$(printf '%s' "$task_row" | jq -r '.status // ""' 2>/dev/null || true)" == "running" ]] || exit 0
+release_task_completed_owner_lock
 
 hook_trace_append "task-completed-hook-resolved" "$input" "$(jq -cn \
 	--arg resolved_task_id "$oste_task_id" \
@@ -77,23 +150,24 @@ hook_trace_append "task-completed-hook-resolved" "$input" "$(jq -cn \
 	'{resolved_task_id: $resolved_task_id, resolution_source: $resolution_source}')"
 
 project_dir="$cwd"
-if [[ -z "$project_dir" || ! -d "$project_dir" ]] && [[ -n "${TASKS_FILE:-}" && -f "${TASKS_FILE:-}" ]]; then
-	project_dir=$(jq -r --arg id "$oste_task_id" '.tasks[$id].project_dir // empty' "$TASKS_FILE" 2>/dev/null || true)
+if [[ -z "$project_dir" || ! -d "$project_dir" ]]; then
+	project_dir=$(printf '%s' "$task_row" | jq -r '.project_dir // empty' 2>/dev/null || true)
 fi
 
-start_sha=""
-if [[ -n "${TASKS_FILE:-}" && -f "${TASKS_FILE:-}" ]]; then
-	start_sha=$(jq -r --arg id "$oste_task_id" '.tasks[$id].start_commit // .tasks[$id].start_sha // empty' "$TASKS_FILE" 2>/dev/null || true)
-fi
+start_sha=$(printf '%s' "$task_row" | jq -r '.start_commit // .start_sha // empty' 2>/dev/null || true)
 
 # Snapshot canonical review metadata now, before later safety-net commits or
 # housekeeping edits can move HEAD away from the task-complete state.
 if [[ -n "$project_dir" && -d "$project_dir" ]]; then
-	pending_review_capture_completion_snapshot "$oste_task_id" "$project_dir" "$start_sha" 2>/dev/null || true
+	snapshot_rc=0
+	publish_generation_bound_completion_snapshot "$oste_task_id" "$project_dir" "$start_sha" "$row_generation" || snapshot_rc=$?
+	# A replacement that won while Git metadata was computed makes this entire
+	# hook event stale, not merely its snapshot. Never continue into completion.
+	[[ "$snapshot_rc" != "2" ]] || exit 0
 fi
 
 # Don't double-fire if already completed
-if [[ -f "/tmp/oste-complete-${oste_task_id}" ]]; then
+if task_completion_marker_matches_generation "$oste_task_id" "${TASKS_FILE:-${HOME}/.config/ghostty-launcher/tasks.json}"; then
 	exit 0
 fi
 
@@ -102,10 +176,11 @@ fi
 # are still working and while the lead Claude process remains live. Finalizing
 # from this hook is unsafe even when the declared handoff file already exists:
 # the lead may still be coordinating, reconciling teammate commits, or rewriting
-# the final report. Defer all team-lead TaskCompleted events; the real terminal
-# completion comes from the lead's process-exit / SessionEnd hook once the
-# session actually ends (oste-complete.sh remains the second line of defence for
-# non-team and live-session cases).
+# the final report. Defer all team-lead TaskCompleted events; normal visible-lane
+# completion comes from the satisfied Stop-hook artifact contract, with
+# process-exit / SessionEnd reserved for sessions that actually terminate
+# (oste-complete.sh remains the second line of defence for non-team and
+# live-session cases).
 if [[ -n "${TASKS_FILE:-}" && -f "${TASKS_FILE:-}" ]]; then
 	team_requested=$(jq -r --arg id "$oste_task_id" '.tasks[$id].team_requested // false' "$TASKS_FILE" 2>/dev/null || echo "false")
 	handoff_decl=$(jq -r --arg id "$oste_task_id" '.tasks[$id].handoff_file // empty' "$TASKS_FILE" 2>/dev/null || true)

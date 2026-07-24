@@ -224,7 +224,12 @@ persist_task_visibility_receipt() {
 	fi
 
 	local tmp
-	tmp=$(mktemp)
+	tmp=$(mktemp "${TASKS_FILE}.tmp.XXXXXX") || {
+		if [[ "$_locked" == "1" ]]; then
+			unlock_tasks || true
+		fi
+		return 0
+	}
 	if jq --arg id "$task_id" \
 		--arg path "$receipt_path" \
 		--arg reason "$reason" \
@@ -340,7 +345,7 @@ update_task_visibility() {
 	[[ -f "$tasks_file" ]] || return 1
 
 	local tmp
-	tmp=$(mktemp)
+	tmp=$(mktemp "${tasks_file}.tmp.XXXXXX") || return 1
 	if jq --arg id "$task_id" \
 		--argjson vis "$visible" \
 		'if .tasks[$id] then .tasks[$id].exec_visible = $vis else . end' \

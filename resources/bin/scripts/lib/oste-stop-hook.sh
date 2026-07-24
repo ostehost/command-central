@@ -37,6 +37,18 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib/hook-trace.sh
 source "${SCRIPT_DIR}/lib/hook-trace.sh"
+# shellcheck source=lib/task-id.sh
+source "${SCRIPT_DIR}/lib/task-id.sh"
+# shellcheck source=lib/task-owner-identity.sh
+source "${SCRIPT_DIR}/lib/task-owner-identity.sh"
+
+_stop_owner_lock_held=false
+_release_stop_owner_lock() {
+	if [[ "$_stop_owner_lock_held" == "true" ]]; then
+		task_owner_transition_lock_release >/dev/null 2>&1 || true
+		_stop_owner_lock_held=false
+	fi
+}
 
 # Debug logging — append to rolling log (keep last 5 invocations)
 _debug_log="/tmp/oste-stop-hook-debug.log"
@@ -56,12 +68,57 @@ _log_debug() {
 }
 
 # Trap: any unexpected error → log and exit clean
-trap '_log_debug "trap-error"; exit 0' ERR
+trap '_release_stop_owner_lock; _log_debug "trap-error"; exit 0' ERR
 
 _debug_cwd=""
 _debug_task_id=""
 
 _tasks_file="${TASKS_FILE:-${HOME}/.config/ghostty-launcher/tasks.json}"
+TASKS_FILE="$_tasks_file"
+
+_persist_generation_bound_last_message() {
+	local task_id_arg="$1"
+	local message_arg="$2"
+	local task_json row_generation expected_generation tmp_file=""
+
+	# Spawn/replacement holds this same lease while clearing runtime artifacts
+	# and publishing the next task generation. Keep the generation check and the
+	# generationless compatibility artifact in one lease so an old hook can only
+	# write before replacement cleanup, never after it.
+	task_owner_transition_lock_acquire "$task_id_arg" || return 1
+	_stop_owner_lock_held=true
+	task_json=$(jq -ce --arg id "$task_id_arg" '.tasks[$id] // empty' "$TASKS_FILE" 2>/dev/null) || {
+		_release_stop_owner_lock
+		return 1
+	}
+	row_generation=$(printf '%s' "$task_json" | jq -r '.task_generation // ""' 2>/dev/null) || {
+		_release_stop_owner_lock
+		return 1
+	}
+	expected_generation="${OSTE_TASK_GENERATION:-}"
+	if [[ "$row_generation" != "$expected_generation" ]]; then
+		_release_stop_owner_lock
+		return 2
+	fi
+
+	if [[ -n "${OSTE_TEST_STOP_LAST_MESSAGE_PAUSE:-}" ]]; then
+		: >"${OSTE_TEST_STOP_LAST_MESSAGE_PAUSE}.ready"
+		while [[ ! -e "${OSTE_TEST_STOP_LAST_MESSAGE_PAUSE}.release" ]]; do sleep 0.02; done
+	fi
+
+	tmp_file=$(mktemp "/tmp/oste-last-message-${task_id_arg}.tmp.XXXXXX") || {
+		_release_stop_owner_lock
+		return 1
+	}
+	chmod 600 "$tmp_file" 2>/dev/null || true
+	if ! printf '%s' "$message_arg" >"$tmp_file" || ! mv "$tmp_file" "/tmp/oste-last-message-${task_id_arg}"; then
+		rm -f "$tmp_file"
+		_release_stop_owner_lock
+		return 1
+	fi
+	_release_stop_owner_lock
+	return 0
+}
 
 _iso_to_epoch() {
 	local value="${1:-}"
@@ -144,7 +201,7 @@ _artifact_contract_ready() {
 	while IFS= read -r artifact_dir; do
 		[[ -n "$artifact_dir" ]] || continue
 		handoff_path=$(_resolve_handoff_path "$handoff" "$artifact_dir") || continue
-		[[ -f "$handoff_path" ]] || continue
+		[[ -s "$handoff_path" ]] || continue
 
 		# Avoid accepting stale handoffs from a prior run. If started_at is present,
 		# the artifact must be written/updated after the task was registered.
@@ -286,7 +343,7 @@ _artifact_contract_repairable() {
 	while IFS= read -r artifact_dir; do
 		[[ -n "$artifact_dir" ]] || continue
 		handoff_path=$(_resolve_handoff_path "$handoff" "$artifact_dir") || continue
-		[[ -f "$handoff_path" ]] || continue
+		[[ -s "$handoff_path" ]] || continue
 		if [[ -n "$started_at" && "$started_at" != "null" ]]; then
 			local start_epoch artifact_epoch
 			start_epoch=$(_iso_to_epoch "$started_at") || continue
@@ -301,9 +358,10 @@ _artifact_contract_repairable() {
 
 _reconcile_late_handoff() {
 	local task_id_arg="$1"
+	local cwd_arg="${2:-}"
 	local complete_script="${OSTE_COMPLETE_SCRIPT:-${SCRIPT_DIR}/oste-complete.sh}"
 	[[ -x "$complete_script" || -f "$complete_script" ]] || return 1
-	OSTE_RECONCILE_LATE_HANDOFF=1 TASKS_FILE="$_tasks_file" \
+	OSTE_COMPLETION_CWD="$cwd_arg" OSTE_RECONCILE_LATE_HANDOFF=1 TASKS_FILE="$_tasks_file" \
 		bash "$complete_script" "$task_id_arg" 0 \
 		>"/tmp/oste-stop-reconcile-${task_id_arg}.log" 2>&1
 }
@@ -371,7 +429,10 @@ if [[ -z "$task_id" ]]; then
 		'{resolved_task_id: $resolved_task_id, task_role: $task_role, resolution_source: $resolution_source}')"
 	exit 0
 fi
-
+if ! task_id_validate "$task_id" >/dev/null 2>&1; then
+	_log_debug "skip-invalid-task-id"
+	exit 0
+fi
 resolution_source="env"
 if [[ -z "${OSTE_TASK_ID:-}" ]]; then
 	resolution_source="cwd-map"
@@ -383,9 +444,14 @@ hook_trace_append "stop-hook-resolved" "$input" "$(jq -cn \
 	'{resolved_task_id: $resolved_task_id, task_role: $task_role, resolution_source: $resolution_source}')"
 
 # Persist the last assistant turn for completion-chain enrichment.
-# Limit to 500 chars to keep hook payloads bounded.
+# Limit to 500 chars to keep hook payloads bounded. The helper repeats the
+# generation check while holding the owner-transition lease and publishes with
+# atomic rename; this is the first task-row validation for the hook.
 last_message_truncated="${last_assistant_message:0:500}"
-printf '%s' "$last_message_truncated" >"/tmp/oste-last-message-${task_id}" 2>/dev/null || true
+if ! _persist_generation_bound_last_message "$task_id" "$last_message_truncated"; then
+	_log_debug "skip-stale-task-generation"
+	exit 0
+fi
 
 # Test task filtering: rely on OSTE_TEST_MODE=1 check at line 31.
 # The previous naming-convention filter (test-*, spawn-*, etc.) caused
@@ -400,9 +466,9 @@ printf '%s' "$last_message_truncated" >"/tmp/oste-last-message-${task_id}" 2>/de
 # _artifact_contract_repairable() — so any other marker shape (failed,
 # completed_dirty, already-reconciled completed) falls through to the normal
 # skip path.
-if [[ -f "/tmp/oste-complete-${task_id}" ]]; then
+if task_completion_marker_matches_generation "$task_id" "$_tasks_file"; then
 	if _artifact_contract_repairable "$task_id" "$cwd"; then
-		if _reconcile_late_handoff "$task_id"; then
+		if _reconcile_late_handoff "$task_id" "$cwd"; then
 			_log_debug "late-handoff-reconciled"
 			exit 0
 		fi

@@ -24,6 +24,12 @@ source "${SCRIPT_DIR}/lib/terminal.sh"
 source "${SCRIPT_DIR}/lib/agent-backend.sh"
 # shellcheck source=lib/reaper.sh
 source "${SCRIPT_DIR}/lib/reaper.sh"
+# shellcheck source=lib/completion-state-lock.sh
+source "${SCRIPT_DIR}/lib/completion-state-lock.sh"
+# shellcheck source=lib/task-owner-identity.sh
+source "${SCRIPT_DIR}/lib/task-owner-identity.sh"
+# shellcheck source=lib/task-id.sh
+source "${SCRIPT_DIR}/lib/task-id.sh"
 readonly STEER_WAIT_TIMEOUT=15 # seconds to wait for agent to exit after Ctrl+C
 
 # ── Usage ────────────────────────────────────────────────────────────
@@ -77,6 +83,10 @@ die() {
 	exit 1
 }
 
+release_steer_owner_lock() {
+	task_owner_transition_lock_leave || true
+}
+
 # Wait for agent to exit (reach shell prompt)
 wait_for_prompt() {
 	local target="$1"
@@ -94,25 +104,47 @@ wait_for_prompt() {
 
 resolve_task_terminal_target() {
 	local task_id="$1"
+	local expected_owner_hash="${2:-}"
+	local task_row="" current_owner_hash=""
 	local session_id=""
 	local pane_id=""
 	local window_id=""
 	local tmux_socket=""
 	local tmux_conf=""
+	local terminal_backend=""
 
-	session_id=$(jq -r --arg id "$task_id" '.tasks[$id].session_id // empty' "$TASKS_FILE" 2>/dev/null || true)
+	task_row=$(jq -ce --arg id "$task_id" '.tasks[$id] // empty' "$TASKS_FILE" 2>/dev/null) || return 1
+	if [[ -n "$expected_owner_hash" ]]; then
+		current_owner_hash=$(task_owner_identity_hash "$task_row") || return 1
+		if [[ "$current_owner_hash" != "$expected_owner_hash" ]]; then
+			echo "Error: Task '$task_id' owner identity changed before raw input delivery" >&2
+			return 2
+		fi
+	fi
+	session_id=$(printf '%s' "$task_row" | jq -r '.session_id // empty')
 	[[ -n "$session_id" ]] || return 1
-	pane_id=$(jq -r --arg id "$task_id" '.tasks[$id].tmux_pane_id // empty' "$TASKS_FILE" 2>/dev/null || true)
-	window_id=$(jq -r --arg id "$task_id" '.tasks[$id].tmux_window_id // empty' "$TASKS_FILE" 2>/dev/null || true)
-	tmux_socket=$(_resolve_task_tmux_socket "$task_id" "$session_id" || echo "")
-	tmux_conf=$(_resolve_task_tmux_conf "$task_id" "$session_id" || echo "")
+	pane_id=$(printf '%s' "$task_row" | jq -r '.tmux_pane_id // empty')
+	window_id=$(printf '%s' "$task_row" | jq -r '.tmux_window_id // empty')
+	tmux_socket=$(printf '%s' "$task_row" | jq -r '.tmux_socket // empty')
+	tmux_conf=$(printf '%s' "$task_row" | jq -r '.tmux_conf // empty')
+	terminal_backend=$(printf '%s' "$task_row" | jq -r '.terminal_backend // empty')
+	if [[ -z "$expected_owner_hash" ]]; then
+		# Preserve the normal steer path's compatibility repair for legacy/stale
+		# socket projections. Permission decisions pass an expected hash and must
+		# use only the exact owner snapshot above.
+		tmux_socket=$(_resolve_task_tmux_socket "$task_id" "$session_id" || echo "")
+		tmux_conf=$(_resolve_task_tmux_conf "$task_id" "$session_id" || echo "")
+	elif [[ "$terminal_backend" == "tmux" ]]; then
+		[[ -n "$tmux_socket" ]] || tmux_socket=$(_default_tmux_socket_path "$session_id" || echo "")
+		[[ -n "$tmux_conf" ]] || tmux_conf=$(_default_tmux_conf_path "$session_id" || echo "")
+	fi
 
 	if [[ -n "$pane_id" ]]; then
-		echo "${pane_id}|${tmux_socket}|${tmux_conf}|${session_id}"
+		echo "${pane_id}|${tmux_socket}|${tmux_conf}|${session_id}|${terminal_backend}"
 	elif [[ -n "$window_id" ]]; then
-		echo "${window_id}|${tmux_socket}|${tmux_conf}|${session_id}"
+		echo "${window_id}|${tmux_socket}|${tmux_conf}|${session_id}|${terminal_backend}"
 	else
-		echo "${session_id}|${tmux_socket}|${tmux_conf}|${session_id}"
+		echo "${session_id}|${tmux_socket}|${tmux_conf}|${session_id}|${terminal_backend}"
 	fi
 }
 
@@ -120,9 +152,11 @@ resolve_task_terminal_target() {
 
 main() {
 	local task_id=""
+	local task_targeted=false
 	local terminal_target=""
 	local task_tmux_socket=""
 	local task_tmux_conf=""
+	local task_terminal_backend=""
 	local resolved_target=""
 
 	local session=""
@@ -136,10 +170,8 @@ main() {
 	if [[ "${1:-}" == "--by-task-id" ]]; then
 		[[ -n "${2:-}" ]] || die "Missing task ID"
 		task_id="$2"
-		resolved_target=$(resolve_task_terminal_target "$task_id") || {
-			die "Task '$task_id' not found in tasks.json"
-		}
-		IFS='|' read -r terminal_target task_tmux_socket task_tmux_conf session <<<"$resolved_target"
+		task_id_validate "$task_id" || die "Invalid task ID"
+		task_targeted=true
 		shift 2
 	fi
 
@@ -167,7 +199,9 @@ main() {
 				;;
 			-*) die "Unknown option: $1" ;;
 			*)
-				if [[ -z "$session" ]]; then
+				if [[ "$task_targeted" == true && -z "$text" ]]; then
+					text="$1"
+				elif [[ -z "$session" ]]; then
 					session="$1"
 				elif [[ -z "$text" ]]; then
 					text="$1"
@@ -179,17 +213,45 @@ main() {
 		esac
 	done
 
-	[[ -n "$session" ]] || {
+	[[ -n "$session" || -n "$task_id" ]] || {
 		usage >&2
 		die "session-name is required"
 	}
 
-	if [[ -z "$terminal_target" ]]; then
-		terminal_target="$session"
-	elif [[ -n "$task_id" ]]; then
+	# Resolve a task owner before touching its terminal, then retain the lease
+	# through raw delivery or the complete interrupt/continue transition. A
+	# permission decision may lend its already-held lease to this subprocess.
+	if [[ -z "$task_id" && -f "$TASKS_FILE" ]]; then
+		task_id=$(jq -r --arg sess "$session" \
+			'[.tasks[] | select(.session_id == $sess)][0].id // ""' \
+			"$TASKS_FILE" 2>/dev/null || true)
+	fi
+	if [[ -n "$task_id" ]]; then
+		task_owner_transition_lock_enter "$task_id" || die "Timed out acquiring task owner transition lock for '${task_id}'"
+		trap release_steer_owner_lock EXIT
+	fi
+	if [[ "$task_targeted" == true ]]; then
+		resolved_target=$(resolve_task_terminal_target "$task_id" "${OSTE_STEER_EXPECTED_OWNER_HASH:-}") || {
+			die "Task '$task_id' not found in tasks.json"
+		}
+		IFS='|' read -r terminal_target task_tmux_socket task_tmux_conf session task_terminal_backend <<<"$resolved_target"
 		export GHL_TMUX_SOCKET="$task_tmux_socket"
 		export GHL_TMUX_CONF="$task_tmux_conf"
+	elif [[ -z "$terminal_target" ]]; then
+		terminal_target="$session"
+		if [[ -n "$task_id" ]]; then
+			task_terminal_backend=$(jq -r --arg id "$task_id" '.tasks[$id].terminal_backend // empty' "$TASKS_FILE" 2>/dev/null || true)
+		fi
 	fi
+
+	# Terminal dispatch is lazy, so pin it to the surface recorded by the task
+	# before the first terminal_* call. Ambient auto-detection can otherwise send
+	# input to a different backend than the one that owns this lane.
+	case "$task_terminal_backend" in
+		tmux | persist | applescript) export TERMINAL_BACKEND="$task_terminal_backend" ;;
+		"") ;; # Legacy rows without surface metadata retain auto-detection.
+		*) die "Unsupported terminal backend '${task_terminal_backend}' for task '${task_id}'" ;;
+	esac
 
 	# Task-targeted --raw safety: refuse before the generic session-existence
 	# check so a stale or missing pane reports the intended safety error
@@ -251,13 +313,6 @@ main() {
 
 	# ── Interrupt + Continue flow ────────────────────────────────────
 
-	# Look up task metadata if we don't have task_id yet
-	if [[ -z "$task_id" && -f "$TASKS_FILE" ]]; then
-		task_id=$(jq -r --arg sess "$session" \
-			'[.tasks[] | select(.session_id == $sess)][0].id // ""' \
-			"$TASKS_FILE" 2>/dev/null || true)
-	fi
-
 	# Check if already at shell prompt (agent already exited)
 	if _terminal_at_prompt "$terminal_target"; then
 		echo "Agent already idle, sending continue..." >&2
@@ -277,9 +332,16 @@ main() {
 		echo "Agent exited, redirecting..." >&2
 	fi
 
-	# Remove stale completion marker so the new run gets a fresh one
+	# Remove stale completion marker so the new run gets a fresh one.
+	# This shares the watchdog/finalizer completion-state boundary so watchdog
+	# cannot project advisory running state while steer clears the marker.
 	if [[ -n "$task_id" ]]; then
-		rm -f "/tmp/oste-complete-${task_id}"
+		if completion_state_lock_acquire "$task_id"; then
+			rm -f "/tmp/oste-complete-${task_id}"
+			completion_state_unlock "$task_id"
+		else
+			die "Failed to acquire completion-state lock for ${task_id}"
+		fi
 	fi
 	# Step 3: Launch continue with completion wrapper
 	local continue_cmd

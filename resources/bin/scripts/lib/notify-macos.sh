@@ -3,16 +3,54 @@
 # notify-macos.sh — macOS delivery adapter for council notifications
 #
 # Sends rich macOS notifications via terminal-notifier with:
-#   - Project-specific sender identity (shows project Dock icon)
+#   - Project icon via -appIcon (shows the project's icon, keeps click-to-focus)
 #   - Subtitle for agent/role context
 #   - Click-to-focus routing to the correct Ghostty window
 #   - Project-level grouping (notifications stack, not replace)
+#
+# NOTE: we deliberately do NOT use terminal-notifier's -sender flag. Per the
+# terminal-notifier docs, -sender fakes the sender application, which (a) keeps
+# the terminal-notifier process resident forever waiting for a click callback it
+# can never receive (the OS routes the click to the faked sender), leaking one
+# process per unclicked notification, and (b) silently disables -execute and
+# -activate, which require terminal-notifier itself to remain the sender. Using
+# -appIcon gives the per-project icon while keeping terminal-notifier as the
+# sender, so -execute fires on click and the process exits immediately.
 #
 # Falls back to osascript if terminal-notifier is not installed.
 #
 
 [[ -n "${_NOTIFY_MACOS_SH_LOADED:-}" ]] && return 0
 readonly _NOTIFY_MACOS_SH_LOADED=1
+
+# _resolve_app_icon <bundle_id> — print the path to a bundle's .icns icon.
+# Fast deterministic path for launcher project apps
+# (/Applications/Projects/<name>.app), falling back to a Spotlight lookup for
+# any other bundle id. Returns non-zero (prints nothing) if no icon is found.
+_resolve_app_icon() {
+	local bundle_id="$1"
+	[[ -n "$bundle_id" ]] || return 1
+
+	# Launcher project apps: bundle id suffix maps to the app name.
+	# Base dir is overridable (OSTE_PROJECTS_APPS_DIR) for testing.
+	local suffix="${bundle_id##*.}"
+	local apps_dir="${OSTE_PROJECTS_APPS_DIR:-/Applications/Projects}"
+	local fast="${apps_dir}/${suffix}.app/Contents/Resources/icon.icns"
+	if [[ -f "$fast" ]]; then
+		printf '%s' "$fast"
+		return 0
+	fi
+
+	# General fallback via Spotlight metadata.
+	local app icon_name
+	app="$(mdfind "kMDItemCFBundleIdentifier == '${bundle_id}'" 2>/dev/null | head -1)"
+	[[ -n "$app" ]] || return 1
+	icon_name="$(defaults read "${app}/Contents/Info" CFBundleIconFile 2>/dev/null)"
+	[[ -n "$icon_name" ]] || return 1
+	icon_name="${icon_name%.icns}.icns"
+	[[ -f "${app}/Contents/Resources/${icon_name}" ]] || return 1
+	printf '%s' "${app}/Contents/Resources/${icon_name}"
+}
 
 # notify_macos <title> <message> <group> [execute_cmd] [sender_bundle_id] [subtitle]
 notify_macos() {
@@ -41,9 +79,14 @@ notify_macos() {
 			-sound default
 		)
 
-		# Show the project's Dock icon as the notification sender
+		# Show the project's icon via -appIcon (NOT -sender; see header note).
+		# -appIcon renders the project icon while keeping terminal-notifier as
+		# the sender, so -execute/-activate still work and the process exits.
 		if [[ -n "$sender" ]]; then
-			args+=(-sender "$sender")
+			local icon_path
+			if icon_path="$(_resolve_app_icon "$sender")"; then
+				args+=(-appIcon "$icon_path")
+			fi
 		fi
 
 		# Subtitle line (agent backend + role context)
@@ -57,7 +100,7 @@ notify_macos() {
 		fi
 
 		# Activate the sender app when notification is clicked
-		# (brings Ghostty bundle to front, then -execute focuses the window)
+		# (brings the project bundle to front; -execute then focuses the window)
 		if [[ -n "$sender" ]]; then
 			args+=(-activate "$sender")
 		fi

@@ -15,13 +15,13 @@
 #
 # Host contract (bash dynamic scoping carries these across the source boundary):
 #   - Globals set by the host: TASKS_FILE.
-#   - Requires _tasks_json_apply (jq-apply-to-TASKS_FILE primitive) from
-#     tasks-lock.sh, which the host sources before this lib.
 #   - _complete_autocommit_and_classify_dirt REVISES main()'s locals (assigned
 #     WITHOUT `local`): status, auto_committed, dirty_reason. Caller pre-declares.
 #   - _finalize_git_identity_and_commit_metadata REVISES main()'s locals:
 #     end_commit, actual_model. Caller pre-declares.
-#   - Both run inside the caller's held tasks lock — they must NOT re-lock.
+#   - Git work runs without the tasks lock. The host publishes the final task row
+#     and completion marker together in one short locked settle after these
+#     helpers have computed their outputs.
 
 # Guard against double-sourcing
 [[ -n "${_OSTE_AUTOCOMMIT_SH_LOADED:-}" ]] && return 0
@@ -126,11 +126,11 @@ attempt_scoped_auto_commit() {
 # REVISES SHARED COMPLETION STATE via dynamic scope (assigned WITHOUT `local`):
 # status (may become completed_dirty), auto_committed, dirty_reason. The caller
 # MUST pre-declare all three `local` before calling so the writes land in main()'s
-# scope. Reviewer lanes and clean trees are no-ops. Runs inside the caller's tasks
-# lock — must not re-lock.
-# shellcheck disable=SC2154  # status/auto_committed/dirty_reason are main()'s locals (see header)
+# scope. Reviewer lanes and clean trees are no-ops. This function deliberately
+# does not publish marker/tasks state; the caller settles the final status once.
+# shellcheck disable=SC2034,SC2154  # dynamic writes target main()'s locals (see header)
 _complete_autocommit_and_classify_dirt() {
-	local task_id="$1" exit_code="$2" project_dir="$3" now="$4" marker="$5"
+	local task_id="$1" project_dir="$3"
 	local task_role_post=""
 	task_role_post=$(jq -r --arg id "$task_id" '.tasks[$id].role // empty' "$TASKS_FILE" 2>/dev/null || true)
 	if [[ "$task_role_post" == "reviewer" ]]; then
@@ -183,19 +183,6 @@ _complete_autocommit_and_classify_dirt() {
 				fi
 				echo "$final_porcelain" >&2
 				status="completed_dirty"
-				# Update marker and tasks.json with corrected status + reason
-				cat >"$marker" <<-DMARKER
-					status=${status}
-					exit_code=${exit_code}
-					completed_at=${now}
-					task_id=${task_id}
-					has_uncommitted=true
-					dirty_reason=${dirty_reason}
-				DMARKER
-				_tasks_json_apply --arg id "$task_id" --arg status "$status" --arg reason "$dirty_reason" \
-					'.tasks[$id].status = $status |
-					 .tasks[$id].has_uncommitted = true |
-					 .tasks[$id].dirty_reason = $reason' || true
 			fi
 		fi
 	fi
@@ -205,7 +192,7 @@ _complete_autocommit_and_classify_dirt() {
 # (HEAD after any auto-commits), and record actual_model from the stream file.
 # REVISES SHARED STATE via dynamic scope (no `local`): end_commit, actual_model
 # (both read later by pending-review + callback). Caller pre-declares both local.
-# shellcheck disable=SC2154  # end_commit/actual_model are main()'s locals (see header)
+# shellcheck disable=SC2034,SC2154  # dynamic writes target main()'s locals (see header)
 _finalize_git_identity_and_commit_metadata() {
 	local task_id="$1" project_dir="$2"
 	# Restore git identity (unset agent-specific config, fall back to global)
@@ -219,18 +206,11 @@ _finalize_git_identity_and_commit_metadata() {
 	if [[ -n "$project_dir" && -d "$project_dir" ]]; then
 		end_commit=$(git -C "$project_dir" rev-parse HEAD 2>/dev/null || echo "unknown")
 	fi
-	_tasks_json_apply --arg id "$task_id" --arg end_commit "$end_commit" \
-		'.tasks[$id].end_commit = $end_commit |
-		.tasks[$id].manager_commit = $end_commit' || true
 	# Parse actual_model from the stream file and record it.
 	actual_model=""
 	local stream_file=""
 	stream_file=$(jq -r --arg id "$task_id" '.tasks[$id].stream_file // empty' "$TASKS_FILE" 2>/dev/null || true)
 	if [[ -n "$stream_file" && -f "$stream_file" ]]; then
 		actual_model=$(head -1 "$stream_file" | jq -r '.model // empty' 2>/dev/null || true)
-	fi
-	if [[ -n "$actual_model" ]]; then
-		_tasks_json_apply --arg id "$task_id" --arg actual_model "$actual_model" \
-			'.tasks[$id].actual_model = $actual_model' || true
 	fi
 }

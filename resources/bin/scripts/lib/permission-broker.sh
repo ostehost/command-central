@@ -21,6 +21,279 @@
 : "${OSTE_PERMISSION_RECENT_LIMIT:=5}"
 : "${OSTE_PERMISSION_NOTIFY_CMD:=}"
 : "${OSTE_PERMISSION_AUTO_ALLOW_SAFE:=0}"
+: "${OSTE_PERMISSION_DECISION_ACTOR:=workroom}"
+: "${OSTE_PERMISSION_DECISION_LOCK_WAIT:=10}"
+: "${OSTE_PERMISSION_DECISION_LOCK_STALE:=30}"
+
+_OSTE_PERMISSION_BROKER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/task-id.sh
+source "${_OSTE_PERMISSION_BROKER_SCRIPT_DIR}/task-id.sh"
+
+# ── Permission decision serialization + durable claims ───────────────────
+# A decision is serialized by task/input hash, then claimed per prompt
+# occurrence. The claim directory itself is the fail-closed record: if a
+# process dies after mkdir but before claim.json is complete, later callers see
+# an ambiguous claim and never steer a second key for that occurrence.
+permission_broker_prompt_id_is_valid() {
+	local prompt_id="${1:-}"
+	[[ -z "$prompt_id" || "$prompt_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]
+}
+
+permission_broker_decision_claim_dir() {
+	local task_id="$1" input_hash="$2" prompt_id="${3:-}"
+	permission_broker_prompt_id_is_valid "$prompt_id" || return 1
+	if [[ -n "$prompt_id" ]]; then
+		printf '%s/.decision-claims/%s/%s/occurrences/%s' "$OSTE_PERMISSION_PROMPT_DIR" "$task_id" "$input_hash" "$prompt_id"
+	else
+		# Legacy receipts did not carry prompt_id. Keep their historical claim
+		# location so an already-claimed pre-upgrade prompt remains fail-closed.
+		printf '%s/.decision-claims/%s/%s' "$OSTE_PERMISSION_PROMPT_DIR" "$task_id" "$input_hash"
+	fi
+}
+
+permission_broker_decision_claim_json() {
+	printf '%s/claim.json' "$(permission_broker_decision_claim_dir "$1" "$2" "${3:-}")"
+}
+
+permission_broker_decision_claim_state() {
+	local claim_file
+	permission_broker_prompt_id_is_valid "${3:-}" || return 1
+	claim_file=$(permission_broker_decision_claim_json "$1" "$2" "${3:-}")
+	[[ -f "$claim_file" ]] || return 1
+	jq -er '.state // empty' "$claim_file" 2>/dev/null
+}
+
+permission_broker_claim_state_is_resolved() {
+	case "${1:-}" in
+		sent | reconciled_sent | reconciled_retired) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+permission_broker_new_prompt_id() {
+	local value=""
+	if command -v uuidgen >/dev/null 2>&1; then
+		value=$(uuidgen 2>/dev/null | LC_ALL=C tr '[:upper:]' '[:lower:]')
+	fi
+	if [[ -z "$value" ]]; then
+		value=$(printf '%s' "$(date +%s)-${BASHPID:-$$}-${RANDOM:-0}-${RANDOM:-0}" | shasum -a 256 | awk '{print $1}')
+	fi
+	printf '%s' "$value"
+}
+
+_permission_broker_process_start() {
+	local pid="$1"
+	LC_ALL=C ps -p "$pid" -o lstart= 2>/dev/null |
+		sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
+}
+
+# macOS Bash 3.2 has no BASHPID. A directly spawned child can still report the
+# PID of the shell that invoked it through PPID; use a private file so command
+# substitution does not insert an intermediary subshell and capture the wrong
+# process generation.
+_permission_broker_capture_current_pid() {
+	local probe_dir="$1"
+	if [[ -n "${BASHPID:-}" ]]; then
+		_PERMISSION_DECISION_CALLER_PID="$BASHPID"
+	else
+		local probe
+		probe=$(mktemp "${probe_dir}/.pid-probe.XXXXXX") || return 1
+		chmod 600 "$probe" 2>/dev/null || true
+		if ! sh -c 'printf "%s" "$PPID" >"$1"' _ "$probe"; then
+			rm -f "$probe"
+			return 1
+		fi
+		IFS= read -r _PERMISSION_DECISION_CALLER_PID <"$probe" || true
+		rm -f "$probe"
+	fi
+	[[ "${_PERMISSION_DECISION_CALLER_PID:-}" =~ ^[0-9]+$ ]]
+}
+
+_permission_broker_new_lock_token() {
+	local pid="$1"
+	printf '%s' "${pid}-$(date +%s)-${RANDOM:-0}-${RANDOM:-0}"
+}
+
+_permission_broker_lock_path() {
+	local task_id="$1" input_hash="$2"
+	printf '%s/.decision-locks/%s/%s.lock' "$OSTE_PERMISSION_PROMPT_DIR" "$task_id" "$input_hash"
+}
+
+_permission_broker_lock_age() {
+	local lockdir="$1" mtime now
+	mtime=$(stat -f %m "$lockdir" 2>/dev/null || stat -c %Y "$lockdir" 2>/dev/null || echo 0)
+	now=$(date +%s 2>/dev/null || echo 0)
+	printf '%s' "$((now - mtime))"
+}
+
+_permission_broker_lock_is_stale() {
+	local lockdir="$1" pid start current age
+	[[ -d "$lockdir" ]] || return 1
+	pid=$(cat "$lockdir/pid" 2>/dev/null || true)
+	start=$(cat "$lockdir/start_identity" 2>/dev/null || true)
+	if [[ "$pid" =~ ^[0-9]+$ && -n "$start" ]]; then
+		current=$(_permission_broker_process_start "$pid")
+		[[ -z "$current" || "$current" != "$start" ]] && return 0
+		return 1
+	fi
+	age=$(_permission_broker_lock_age "$lockdir")
+	[[ "$age" -ge "$OSTE_PERMISSION_DECISION_LOCK_STALE" ]]
+}
+
+_permission_broker_lock_reap() {
+	local lockdir="$1" reapdir="${1}.reap"
+	_permission_broker_lock_is_stale "$lockdir" || return 0
+	if ! mkdir "$reapdir" 2>/dev/null; then
+		[[ "$(_permission_broker_lock_age "$reapdir")" -ge 5 ]] && rm -rf "$reapdir"
+		return 0
+	fi
+	if _permission_broker_lock_is_stale "$lockdir"; then
+		rm -rf "$lockdir"
+	fi
+	rm -rf "$reapdir"
+}
+
+permission_broker_decision_lock_acquire() {
+	local task_id="$1" input_hash="$2" lockdir parent pid start token waited=0
+	lockdir=$(_permission_broker_lock_path "$task_id" "$input_hash")
+	parent=$(dirname "$lockdir")
+	(umask 077 && mkdir -p "$parent") 2>/dev/null || return 1
+	_permission_broker_capture_current_pid "$parent" || return 1
+	pid="$_PERMISSION_DECISION_CALLER_PID"
+	while true; do
+		if (umask 077 && mkdir "$lockdir") 2>/dev/null; then
+			start=$(_permission_broker_process_start "$pid")
+			token=$(_permission_broker_new_lock_token "$pid")
+			[[ -n "$start" ]] || {
+				rm -rf "$lockdir"
+				return 1
+			}
+			if ! printf '%s\n' "$pid" >"$lockdir/pid" ||
+				! printf '%s\n' "$start" >"$lockdir/start_identity" ||
+				! printf '%s\n' "$token" >"$lockdir/token"; then
+				rm -rf "$lockdir"
+				return 1
+			fi
+			_PERMISSION_DECISION_LOCK_OWNED="$lockdir"
+			_PERMISSION_DECISION_LOCK_OWNER_PID="$pid"
+			_PERMISSION_DECISION_LOCK_TOKEN="$token"
+			return 0
+		fi
+		_permission_broker_lock_reap "$lockdir"
+		sleep 0.1
+		waited=$((waited + 1))
+		[[ "$waited" -lt $((OSTE_PERMISSION_DECISION_LOCK_WAIT * 10)) ]] || return 1
+	done
+}
+
+permission_broker_decision_lock_release() {
+	local lockdir="${_PERMISSION_DECISION_LOCK_OWNED:-}" owner_pid="${_PERMISSION_DECISION_LOCK_OWNER_PID:-}"
+	local owned_token="${_PERMISSION_DECISION_LOCK_TOKEN:-}" pid start token
+	[[ -n "$lockdir" ]] || return 0
+	pid=$(cat "$lockdir/pid" 2>/dev/null || true)
+	start=$(cat "$lockdir/start_identity" 2>/dev/null || true)
+	token=$(cat "$lockdir/token" 2>/dev/null || true)
+	_PERMISSION_DECISION_LOCK_OWNED=""
+	_PERMISSION_DECISION_LOCK_OWNER_PID=""
+	_PERMISSION_DECISION_LOCK_TOKEN=""
+	[[ -n "$owner_pid" && "$pid" == "$owner_pid" ]] || return 1
+	[[ -n "$owned_token" && "$token" == "$owned_token" ]] || return 1
+	[[ "$start" == "$(_permission_broker_process_start "$pid")" ]] || return 1
+	rm -rf "$lockdir"
+}
+
+permission_broker_decision_claim_create() {
+	local task_id="$1" input_hash="$2" prompt_id="$3" claim_json="$4" claim_dir claim_file tmp
+	permission_broker_prompt_id_is_valid "$prompt_id" || return 1
+	claim_dir=$(permission_broker_decision_claim_dir "$task_id" "$input_hash" "$prompt_id")
+	claim_file="${claim_dir}/claim.json"
+	mkdir -p "$(dirname "$claim_dir")" 2>/dev/null || return 1
+	mkdir "$claim_dir" 2>/dev/null || return 1
+	tmp=$(mktemp "${claim_dir}/claim.json.tmp.XXXXXX") || return 1
+	if printf '%s\n' "$claim_json" >"$tmp" && jq -e . "$tmp" >/dev/null 2>&1 && mv "$tmp" "$claim_file"; then
+		return 0
+	fi
+	rm -f "$tmp" 2>/dev/null || true
+	return 1
+}
+
+permission_broker_decision_claim_finalize() {
+	local task_id="$1" input_hash="$2" prompt_id="$3" claim_id="$4" state="$5" claim_file tmp now epoch
+	permission_broker_prompt_id_is_valid "$prompt_id" || return 1
+	claim_file=$(permission_broker_decision_claim_json "$task_id" "$input_hash" "$prompt_id")
+	[[ -f "$claim_file" ]] || return 1
+	now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+	epoch=$(date +%s 2>/dev/null || echo 0)
+	tmp=$(mktemp "${claim_file}.tmp.XXXXXX") || return 1
+	if jq --arg claim_id "$claim_id" --arg state "$state" --arg now "$now" --argjson epoch "$epoch" '
+		if .claim_id == $claim_id and .state == "claimed" and .generation == 1 then
+			.state = $state |
+			.generation = 2 |
+			.finished_at = $now |
+			.finished_epoch = $epoch |
+			.delivery_ambiguous = ($state == "failed") |
+			.reconciliation_required = ($state == "failed")
+		else error("permission decision claim CAS mismatch") end
+	' "$claim_file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]] && mv "$tmp" "$claim_file"; then
+		return 0
+	fi
+	rm -f "$tmp" 2>/dev/null || true
+	return 1
+}
+
+permission_broker_decision_claim_reconcile() {
+	local task_id="$1" input_hash="$2" prompt_id="$3" claim_id="$4" decision="$5" state="$6"
+	local actor="$7" reason="$8" claim_file tmp now epoch
+	claim_file=$(permission_broker_decision_claim_json "$task_id" "$input_hash" "$prompt_id")
+	[[ -f "$claim_file" ]] || return 1
+	now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+	epoch=$(date +%s 2>/dev/null || echo 0)
+	tmp=$(mktemp "${claim_file}.tmp.XXXXXX") || return 1
+	if jq --arg task_id "$task_id" --arg input_hash "$input_hash" --arg prompt_id "$prompt_id" \
+		--arg claim_id "$claim_id" --arg decision "$decision" --arg state "$state" \
+		--arg actor "$actor" --arg reason "$reason" --arg now "$now" --argjson epoch "$epoch" '
+		if .task_id == $task_id and .input_hash == $input_hash and (.prompt_id // "") == $prompt_id and
+			.claim_id == $claim_id and .decision == $decision and (.state == "claimed" or .state == "failed") and
+			((.generation | type) == "number") then
+			.reconciled_from_state = .state | .state = $state | .generation += 1 |
+			.reconciled_at = $now | .reconciled_epoch = $epoch | .reconciled_by = $actor |
+			.reconciliation_reason = $reason | .delivery_ambiguous = true | .reconciliation_required = false
+		elif .task_id == $task_id and .input_hash == $input_hash and (.prompt_id // "") == $prompt_id and
+			.claim_id == $claim_id and .decision == $decision and .state == $state then .
+		else error("permission reconciliation claim CAS mismatch") end
+	' "$claim_file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]] && mv "$tmp" "$claim_file"; then
+		return 0
+	fi
+	rm -f "$tmp" 2>/dev/null || true
+	return 1
+}
+
+permission_broker_reconciliation_projected() {
+	local task_id="$1" claim_id="$2" state="$3" receipt_file line
+	receipt_file="${OSTE_PERMISSION_PROMPT_DIR}/${task_id}.jsonl"
+	[[ -f "$receipt_file" ]] || return 1
+	while IFS= read -r line; do
+		printf '%s' "$line" | jq -e --arg claim_id "$claim_id" --arg state "$state" '
+			.event == "permission_reconciliation" and .claim_id == $claim_id and .outcome == $state
+		' >/dev/null 2>&1 && return 0
+	done <"$receipt_file"
+	return 1
+}
+
+permission_broker_record_reconciliation() {
+	local task_id="$1" claim_json="$2" state="$3" actor="$4" reason="$5" receipt_file record
+	receipt_file="${OSTE_PERMISSION_PROMPT_DIR}/${task_id}.jsonl"
+	permission_broker_reconciliation_projected "$task_id" "$(printf '%s' "$claim_json" | jq -r '.claim_id')" "$state" && return 0
+	record=$(printf '%s' "$claim_json" | jq -c --arg state "$state" --arg actor "$actor" --arg reason "$reason" \
+		--arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson epoch "$(date +%s)" '
+		{ts:$ts, epoch:$epoch, event:"permission_reconciliation", task_id:.task_id,
+		 task_generation:(.task_generation // null), input_hash:.input_hash, prompt_id:(.prompt_id // null),
+		 claim_id:.claim_id, decision:.decision, outcome:$state, actor:$actor, reason:$reason,
+		 previous_state:(.reconciled_from_state // null), delivery_ambiguous:(.delivery_ambiguous // true)}
+	') || return 1
+	mkdir -p "$OSTE_PERMISSION_PROMPT_DIR" 2>/dev/null || return 1
+	printf '%s\n' "$record" >>"$receipt_file"
+}
 
 # ── permission_broker_redact ──────────────────────────────────────────
 # Mask credential-like keys and inline secrets in a JSON string.
@@ -171,7 +444,10 @@ _classify_safe_segment() {
 	first_token=$(printf '%s' "$seg" | sed -E 's/^([A-Za-z_][A-Za-z0-9_]*=[^ ]+ +)*//' | awk '{print $1}')
 
 	case "$first_token" in
-		ls | pwd | cat | head | tail | wc | rg | grep | find | echo | date | whoami | jq)
+		# `find` is intentionally excluded. Its option grammar permits mutating
+		# actions such as -delete, so classifying it from the first token alone is
+		# not a safe basis for automatic approval.
+		ls | pwd | cat | head | tail | wc | rg | grep | echo | date | whoami | jq)
 			return 0
 			;;
 		shfmt | shellcheck | git | just)
@@ -250,6 +526,28 @@ permission_broker_input_hash() {
 		shasum -a 256 | cut -d' ' -f1
 }
 
+# ── permission_broker_occurrence_key ──────────────────────────────────
+# Stable occurrence identity for a permission_prompt Notification. Claude's
+# prompt_id is a per-user-input UUID that rotates each turn (and session_id each
+# session), so combining it with the tool-and-action-bearing message yields a key
+# that:
+#   - stays constant while the SAME still-pending prompt re-fires (so a replay is
+#     suppressed regardless of the generic dedup TTL),
+#   - differs for genuinely distinct prompts in the same turn (message differs),
+#   - retires implicitly when the turn or session advances (prompt_id/session_id
+#     change → a new key → the next prompt is delivered, never indefinitely
+#     suppressed).
+# Requires prompt_id: without it there is nothing that rotates safely, so the key
+# is empty and callers fall back to the legacy TTL-scoped dedup (no regression).
+permission_broker_occurrence_key() {
+	local session_id="${1:-}" prompt_id="${2:-}" message="${3:-}"
+	[[ -n "$prompt_id" ]] || {
+		printf ''
+		return 0
+	}
+	printf '%s' "${session_id}|${prompt_id}|${message}" | shasum -a 256 | cut -d' ' -f1
+}
+
 # ── permission_broker_resolve_workroom ────────────────────────────────
 # Returns workroom_ref for task or "" on any failure.
 permission_broker_resolve_workroom() {
@@ -262,55 +560,151 @@ permission_broker_resolve_workroom() {
 	jq -r --arg id "$task_id" '.tasks[$id].workroom_ref // ""' "$tasks_file" 2>/dev/null || echo ""
 }
 
+# Read routing and generation in one row snapshot. Spawned lanes carry
+# OSTE_TASK_GENERATION, which remains authoritative even if the task ID is
+# reused while a late hook is draining. If that immutable generation no longer
+# owns the row, quarantine routing to ops_fallback instead of combining the old
+# generation with a replacement owner's workroom. An unbound legacy hook cannot
+# distinguish its original row from a reused task ID, so it remains generation-
+# less and unroutable; the decision broker will reject it before claiming.
+permission_broker_resolve_owner_snapshot() {
+	local task_id="${1:-}"
+	local tasks_file="${TASKS_FILE:-${HOME}/.config/ghostty-launcher/tasks.json}"
+	[[ -n "$task_id" && -f "$tasks_file" ]] || {
+		jq -cn --arg generation "${OSTE_TASK_GENERATION:-}" \
+			'{task_generation: (if $generation == "" then null else $generation end), workroom_ref: null}'
+		return 0
+	}
+	jq -c --arg id "$task_id" --arg generation "${OSTE_TASK_GENERATION:-}" '
+		(.tasks[$id] // {}) as $row |
+		($row.task_generation // "") as $row_generation |
+		{
+			task_generation: (
+				if $generation != "" then $generation else null end
+			),
+			workroom_ref: (
+				if $generation != "" and $generation == $row_generation
+				then ($row.workroom_ref // null)
+				else null end
+			)
+		}
+	' "$tasks_file" 2>/dev/null || jq -cn --arg generation "${OSTE_TASK_GENERATION:-}" \
+		'{task_generation: (if $generation == "" then null else $generation end), workroom_ref: null}'
+}
+
 # ── permission_broker_write_receipt ──────────────────────────────────
 # Append receipt JSONL; de-dupe within TTL (by input_hash or event+cwd+session_id).
 permission_broker_write_receipt() {
 	local task_id="${1:-unknown}"
 	local receipt_json="${2:-}"
 	[[ -n "$receipt_json" ]] || return 0
+	task_id_validate "$task_id" 2>/dev/null || return 1
 
 	local dir="${OSTE_PERMISSION_PROMPT_DIR}"
 	mkdir -p "$dir" 2>/dev/null || true
 	local receipt_file="${dir}/${task_id}.jsonl"
 
-	local event input_hash new_epoch cwd_val sess_id
+	local event input_hash new_epoch cwd_val sess_id task_generation occurrence_key decision_lock=0
 	event=$(printf '%s' "$receipt_json" | jq -r '.event // ""' 2>/dev/null || echo "")
 	input_hash=$(printf '%s' "$receipt_json" | jq -r '.input_hash // ""' 2>/dev/null || echo "")
 	new_epoch=$(printf '%s' "$receipt_json" | jq -r '.epoch // 0' 2>/dev/null || echo "0")
 	cwd_val=$(printf '%s' "$receipt_json" | jq -r '.cwd // ""' 2>/dev/null || echo "")
 	sess_id=$(printf '%s' "$receipt_json" | jq -r '.session_id // ""' 2>/dev/null || echo "")
+	task_generation=$(printf '%s' "$receipt_json" | jq -r '.task_generation // ""' 2>/dev/null || echo "")
+	occurrence_key=$(printf '%s' "$receipt_json" | jq -r '.occurrence_key // ""' 2>/dev/null || echo "")
+	if [[ "$event" == "permission_request" && "$input_hash" =~ ^[a-f0-9]{64}$ && "$task_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+		permission_broker_decision_lock_acquire "$task_id" "$input_hash" || return 1
+		decision_lock=1
+	fi
 
 	# De-dupe: hash-based for permission_request/permission_prompt with non-empty hash
 	if [[ "$event" == "permission_request" || "$event" == "permission_prompt" ]]; then
 		if [[ -n "$input_hash" && -f "$receipt_file" ]]; then
-			if _broker_dedup_by_hash "$receipt_file" "$event" "$input_hash" "$new_epoch"; then
+			if _broker_dedup_by_hash "$task_id" "$receipt_file" "$event" "$input_hash" "$new_epoch" "$task_generation"; then
+				[[ "$decision_lock" -eq 1 ]] && permission_broker_decision_lock_release
 				return 0
 			fi
 		elif [[ -z "$input_hash" && -f "$receipt_file" ]]; then
-			# Empty hash: de-dupe by event+cwd+session_id within TTL
-			if _broker_dedup_by_cwd_session "$receipt_file" "$event" "$cwd_val" "$sess_id" "$new_epoch"; then
+			if [[ -n "$occurrence_key" ]]; then
+				# Occurrence-keyed de-dupe (permission_prompt carrying Claude's
+				# prompt_id): suppress a replay of the SAME occurrence regardless
+				# of the generic TTL, so a still-pending prompt does not re-alert
+				# just because the TTL lapsed. The key rotates with
+				# prompt_id/session, so a genuinely new prompt is never suppressed.
+				if _broker_dedup_by_occurrence "$receipt_file" "$event" "$occurrence_key"; then
+					[[ "$decision_lock" -eq 1 ]] && permission_broker_decision_lock_release
+					return 0
+				fi
+			# Empty hash, no occurrence key: de-dupe by event+cwd+session_id within TTL
+			elif _broker_dedup_by_cwd_session "$receipt_file" "$event" "$cwd_val" "$sess_id" "$new_epoch"; then
+				[[ "$decision_lock" -eq 1 ]] && permission_broker_decision_lock_release
 				return 0
 			fi
 		fi
 	fi
 
 	printf '%s\n' "$receipt_json" >>"$receipt_file" 2>/dev/null || true
+	[[ "$decision_lock" -eq 1 ]] && permission_broker_decision_lock_release
 	return 0
 }
 
 _broker_dedup_by_hash() {
-	local receipt_file="$1" event="$2" input_hash="$3" new_epoch="$4"
+	local task_id="$1" receipt_file="$2" event="$3" input_hash="$4" new_epoch="$5" task_generation="${6:-}"
 	local ttl="${OSTE_PERMISSION_DEDUP_TTL}"
 	while IFS= read -r line; do
-		local line_event line_hash line_epoch
+		local line_event line_hash line_epoch line_generation prompt_id claim_state
 		line_event=$(printf '%s' "$line" | jq -r '.event // ""' 2>/dev/null || true)
 		line_hash=$(printf '%s' "$line" | jq -r '.input_hash // ""' 2>/dev/null || true)
 		line_epoch=$(printf '%s' "$line" | jq -r '.epoch // 0' 2>/dev/null || true)
 		[[ "$line_event" == "$event" && "$line_hash" == "$input_hash" ]] || continue
+		line_generation=$(printf '%s' "$line" | jq -r '.task_generation // ""' 2>/dev/null || true)
+		[[ "$line_generation" == "$task_generation" ]] || continue
 		[[ -n "$line_hash" ]] || continue
 		local diff=$((new_epoch - line_epoch))
 		[[ "$diff" -lt 0 ]] && diff=$((-diff))
-		[[ "$diff" -le "$ttl" ]] && return 0
+		[[ "$diff" -le "$ttl" ]] || continue
+		prompt_id=$(printf '%s' "$line" | jq -r '.prompt_id // ""' 2>/dev/null || true)
+		claim_state=$(permission_broker_decision_claim_state "$task_id" "$input_hash" "$prompt_id" 2>/dev/null || true)
+		permission_broker_claim_state_is_resolved "$claim_state" && continue
+		_broker_prompt_has_sent_projection "$receipt_file" "$input_hash" "$prompt_id" && continue
+		return 0
+	done <"$receipt_file"
+	return 1
+}
+
+_broker_prompt_has_sent_projection() {
+	local receipt_file="$1" input_hash="$2" prompt_id="$3" line event line_hash line_prompt status
+	while IFS= read -r line; do
+		event=$(printf '%s' "$line" | jq -r '.event // ""' 2>/dev/null || true)
+		[[ "$event" == "permission_decision" ]] || continue
+		status=$(printf '%s' "$line" | jq -r '.apply_status // ""' 2>/dev/null || true)
+		[[ "$status" == "sent" ]] || continue
+		line_hash=$(printf '%s' "$line" | jq -r '.input_hash // ""' 2>/dev/null || true)
+		[[ "$line_hash" == "$input_hash" ]] || continue
+		line_prompt=$(printf '%s' "$line" | jq -r '.prompt_id // ""' 2>/dev/null || true)
+		if [[ -n "$prompt_id" ]]; then
+			[[ "$line_prompt" == "$prompt_id" ]] && return 0
+		else
+			[[ -z "$line_prompt" ]] && return 0
+		fi
+	done <"$receipt_file"
+	return 1
+}
+
+_broker_dedup_by_occurrence() {
+	local receipt_file="$1" event="$2" occurrence_key="$3" line
+	[[ -n "$occurrence_key" ]] || return 1
+	# Deliberately NOT time-bounded: the same still-pending prompt must not
+	# re-alert merely because a generic TTL lapsed. The occurrence_key embeds
+	# Claude's prompt_id + session_id, both of which rotate when the turn or
+	# session advances, so a genuinely new prompt earns a fresh key and is
+	# delivered — there is no indefinite-suppression bug.
+	while IFS= read -r line; do
+		local line_event line_key
+		line_event=$(printf '%s' "$line" | jq -r '.event // ""' 2>/dev/null || true)
+		[[ "$line_event" == "$event" ]] || continue
+		line_key=$(printf '%s' "$line" | jq -r '.occurrence_key // ""' 2>/dev/null || true)
+		[[ "$line_key" == "$occurrence_key" ]] && return 0
 	done <"$receipt_file"
 	return 1
 }
@@ -330,6 +724,60 @@ _broker_dedup_by_cwd_session() {
 		[[ "$diff" -le "$ttl" ]] && return 0
 	done <"$receipt_file"
 	return 1
+}
+
+# ── permission_broker_decision_key ─────────────────────────────────────
+# Map a validated workroom decision to the current Claude Code TUI prompt.
+# Keep this intentionally tiny: callers may choose only allow-once or deny.
+permission_broker_decision_key() {
+	local decision="${1:-}"
+	case "$decision" in
+		allow)
+			echo "1"
+			;;
+		deny)
+			echo "2"
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+# ── permission_broker_record_decision ──────────────────────────────────
+# Append a decision receipt for a validated prompt apply attempt.
+permission_broker_record_decision() {
+	local task_id="${1:-unknown}" prompt_json="${2:-{}}" decision="${3:-}" actor="${4:-${OSTE_PERMISSION_DECISION_ACTOR}}"
+	local reason="${5:-}" apply_status="${6:-}" applied_key="${7:-}" claim_id="${8:-}" prompt_id="${9:-}"
+	local ts epoch input_hash session_id tool cwd classification workroom_ref routing task_generation redacted_input
+	ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+	epoch=$(date +%s 2>/dev/null || echo "0")
+	input_hash=$(printf '%s' "$prompt_json" | jq -r '.input_hash // ""' 2>/dev/null || echo "")
+	session_id=$(printf '%s' "$prompt_json" | jq -r '.session_id // ""' 2>/dev/null || echo "")
+	tool=$(printf '%s' "$prompt_json" | jq -r '.tool // ""' 2>/dev/null || echo "")
+	cwd=$(printf '%s' "$prompt_json" | jq -r '.cwd // ""' 2>/dev/null || echo "")
+	classification=$(printf '%s' "$prompt_json" | jq -r '.classification // ""' 2>/dev/null || echo "")
+	workroom_ref=$(printf '%s' "$prompt_json" | jq -r '.workroom_ref // ""' 2>/dev/null || echo "")
+	routing=$(printf '%s' "$prompt_json" | jq -r '.routing // ""' 2>/dev/null || echo "")
+	task_generation=$(printf '%s' "$prompt_json" | jq -r '.task_generation // ""' 2>/dev/null || echo "")
+	redacted_input=$(printf '%s' "$prompt_json" | jq -c 'try (.redacted_input // {}) catch {}' 2>/dev/null | head -n 1 || true)
+	[[ -n "$redacted_input" ]] || redacted_input='{}'
+	mkdir -p "${OSTE_PERMISSION_PROMPT_DIR}" 2>/dev/null || true
+	jq -cn \
+		--arg ts "$ts" --argjson epoch "$epoch" --arg task_id "$task_id" --arg session_id "$session_id" \
+		--arg tool "$tool" --arg input_hash "$input_hash" --arg cwd "$cwd" --arg classification "$classification" \
+		--arg decision "$decision" --arg actor "$actor" --arg reason "$reason" --arg apply_status "$apply_status" \
+		--arg applied_key "$applied_key" --arg workroom_ref "$workroom_ref" --arg routing "$routing" \
+		--arg task_generation "$task_generation" --arg redacted_input "$redacted_input" --arg claim_id "$claim_id" --arg prompt_id "$prompt_id" \
+		'{ts: $ts, epoch: $epoch, event: "permission_decision", task_id: $task_id,
+		  task_generation: (if $task_generation == "" then null else $task_generation end),
+		  session_id: $session_id, tool: $tool, input_hash: $input_hash, cwd: $cwd,
+		  permission_mode: "", transcript_path: "", classification: $classification,
+		  decision: $decision, actor: $actor, reason: $reason, apply_status: $apply_status,
+		  applied_key: $applied_key, workroom_ref: $workroom_ref, routing: $routing,
+		  claim_id: (if $claim_id == "" then null else $claim_id end),
+		  prompt_id: (if $prompt_id == "" then null else $prompt_id end),
+		  redacted_input: ($redacted_input | fromjson? // {})}' >>"${OSTE_PERMISSION_PROMPT_DIR}/${task_id}.jsonl" 2>/dev/null || true
 }
 
 # ── permission_broker_resolve ─────────────────────────────────────────
@@ -380,18 +828,37 @@ permission_broker_pending() {
 
 	# Check for any fresh, unresolved prompt
 	while IFS= read -r line; do
-		local ev decision epoch_val input_hash
+		local ev decision epoch_val input_hash prompt_id
 		ev=$(printf '%s' "$line" | jq -r '.event // ""' 2>/dev/null || true)
 		[[ "$ev" == "permission_request" || "$ev" == "permission_prompt" ]] || continue
 		decision=$(printf '%s' "$line" | jq -r '.decision // ""' 2>/dev/null || true)
 		[[ "$decision" == "deny" || "$decision" == "allow" ]] && continue
 		epoch_val=$(printf '%s' "$line" | jq -r '.epoch // 0' 2>/dev/null || true)
 		local age=$((now - epoch_val))
-		[[ "$age" -le "$ttl" ]] || continue
 		input_hash=$(printf '%s' "$line" | jq -r '.input_hash // ""' 2>/dev/null || true)
 		if [[ -n "$input_hash" ]]; then
-			printf '%s' "$resolved_hashes" | grep -qF "$input_hash" && continue
+			# A successfully delivered canonical claim resolves the prompt even if
+			# the best-effort JSONL projection was interrupted. A durable claim is
+			# not a TTL-scoped notification: claimed/failed or malformed claims must
+			# remain pending after the original prompt receipt ages out, otherwise a
+			# crash or ambiguous terminal delivery silently clears the completion
+			# gate. Only a canonical sent/reconciled state is resolved.
+			local claim_state="" claim_file="" claim_dir=""
+			prompt_id=$(printf '%s' "$line" | jq -r '.prompt_id // ""' 2>/dev/null || true)
+			claim_file=$(permission_broker_decision_claim_json "$task_id" "$input_hash" "$prompt_id" 2>/dev/null || true)
+			[[ -n "$claim_file" ]] && claim_dir=$(dirname "$claim_file")
+			claim_state=$(permission_broker_decision_claim_state "$task_id" "$input_hash" "$prompt_id" 2>/dev/null || true)
+			permission_broker_claim_state_is_resolved "$claim_state" && continue
+			_broker_prompt_has_sent_projection "$receipt_file" "$input_hash" "$prompt_id" && continue
+			if [[ -n "$claim_file" && (-f "$claim_file" || -d "$claim_dir") ]]; then
+				return 0
+			fi
+			[[ "$age" -le "$ttl" ]] || continue
+			if [[ -z "$prompt_id" ]]; then
+				printf '%s' "$resolved_hashes" | grep -qF "$input_hash" && continue
+			fi
 		else
+			[[ "$age" -le "$ttl" ]] || continue
 			# Empty-hash notification: check cwd+session_id resolved proxy
 			local cwd_val sess_id
 			cwd_val=$(printf '%s' "$line" | jq -r '.cwd // ""' 2>/dev/null || true)

@@ -1,8 +1,19 @@
 #!/bin/bash
+# shellcheck disable=SC2016
 # lib/reaper.sh — Shared logic for reaping stale tasks
 
 REAPER_LAST_DEAD_REASON=""
 REAPER_LAST_DEAD_DETAIL=""
+
+_REAPER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=completion-state-lock.sh
+source "${_REAPER_LIB_DIR}/completion-state-lock.sh"
+# shellcheck source=completion-idempotency-lock.sh
+source "${_REAPER_LIB_DIR}/completion-idempotency-lock.sh"
+# shellcheck source=task-id.sh
+source "${_REAPER_LIB_DIR}/task-id.sh"
+# shellcheck source=task-owner-identity.sh
+source "${_REAPER_LIB_DIR}/task-owner-identity.sh"
 
 _reset_reaper_dead_reason() {
 	REAPER_LAST_DEAD_REASON=""
@@ -316,6 +327,10 @@ _receipt_finished_at() {
 	jq -r '.finished_at // empty' "$receipt_path" 2>/dev/null || true
 }
 
+_receipt_task_generation() {
+	jq -r '.task_generation // empty' "$1" 2>/dev/null || true
+}
+
 _marker_field() {
 	local marker_path="$1"
 	local key="$2"
@@ -350,6 +365,18 @@ _marker_status() {
 			echo "completed_stale"
 			;;
 	esac
+}
+
+_marker_task_generation() {
+	_marker_field "$1" "task_generation" || true
+}
+
+_artifact_matches_task_generation() {
+	local task_id="$1" artifact_generation="$2" row_generation
+	row_generation=$(_task_json_field "$task_id" '.tasks[$id].task_generation // empty')
+	# Legacy rows predate generation stamping and retain legacy artifact behavior.
+	[[ -z "$row_generation" ]] && return 0
+	[[ -n "$artifact_generation" && "$artifact_generation" == "$row_generation" ]]
 }
 
 _task_json_field() {
@@ -405,24 +432,108 @@ _task_recovery_title() {
 	esac
 }
 
-_write_recovery_marker() {
+_recovery_marker_content() {
 	local task_id="$1"
 	local status="$2"
 	local exit_code="$3"
 	local completed_at="$4"
 	local reason="$5"
 	local detail="$6"
-	local marker="/tmp/oste-complete-${task_id}"
-
-	cat >"$marker" <<-EOF
+	local task_generation="${7:-}"
+	cat <<-EOF
 		status=${status}
 		exit_code=${exit_code}
 		completed_at=${completed_at}
 		task_id=${task_id}
+		task_generation=${task_generation}
 		recovery_reason=${reason}
 		recovery_detail=${detail}
 		recovery_source=oste-reaper
 	EOF
+}
+
+_write_recovery_marker() {
+	local task_id="$1" status="$2" exit_code="$3" completed_at="$4"
+	local reason="$5" detail="$6" task_generation="${7:-}"
+	local marker="/tmp/oste-complete-${task_id}" marker_tmp marker_content
+	if [[ -e "$marker" && ! -f "$marker" ]]; then
+		echo "Warning: refusing non-file recovery marker destination ${marker}" >&2
+		return 1
+	fi
+	marker_tmp=$(mktemp "${marker}.tmp.XXXXXX") || return 1
+	marker_content=$(_recovery_marker_content "$task_id" "$status" "$exit_code" "$completed_at" "$reason" "$detail" "$task_generation") || {
+		rm -f "$marker_tmp"
+		return 1
+	}
+	printf '%s\n' "$marker_content" >"$marker_tmp"
+	if ! mv "$marker_tmp" "$marker"; then
+		rm -f "$marker_tmp"
+		return 1
+	fi
+}
+
+_reaper_publication_wal_path() {
+	printf '%s/%s.json' "${TASKS_FILE}.completion-publications" "$1"
+}
+
+# Reaper fallback finalization participates in the same REDO transaction as
+# oste-complete. Persist exact marker intent before the row leaves running; the
+# watchdog scanner can then resume a missing marker or review projection.
+_reaper_publication_wal_write_locked() {
+	local task_id="$1" task_generation="$2" target_status="$3" marker_content="$4"
+	local root="${TASKS_FILE}.completion-publications" wal tmp
+	mkdir -p "$root" || return 1
+	chmod 700 "$root" 2>/dev/null || true
+	wal=$(_reaper_publication_wal_path "$task_id")
+	tmp=$(mktemp "${wal}.tmp.XXXXXX") || return 1
+	if jq -cn --arg task_id "$task_id" --arg task_generation "$task_generation" \
+		--arg target_status "$target_status" --arg marker_content "$marker_content" \
+		--arg created_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+		'{schema:"oste-completion-publication/v1",task_id:$task_id,
+		  task_generation:$task_generation,target_status:$target_status,
+		  marker_content:$marker_content,created_at:$created_at}' >"$tmp" && mv "$tmp" "$wal"; then
+		return 0
+	fi
+	rm -f "$tmp"
+	return 1
+}
+
+# Periodic recovery for a process that died after terminal row/marker
+# publication but before its review/no-review projection settled. Matching
+# hooks intentionally skip completed generations, so watchdog/reaper owns this
+# durable retry path.
+recover_interrupted_completion_publications() {
+	local root="${TASKS_FILE}.completion-publications" complete_script wal task_id wal_task
+	local wal_generation row_generation row_status exit_code recovered=0
+	[[ -d "$root" ]] || {
+		REAPER_RECOVERED_PUBLICATIONS=0
+		return 0
+	}
+	complete_script=$(_resolve_complete_script) || {
+		REAPER_RECOVERED_PUBLICATIONS=0
+		return 1
+	}
+	for wal in "$root"/*.json; do
+		[[ -f "$wal" ]] || continue
+		task_id=$(basename "$wal" .json)
+		if ! task_id_validate "$task_id" >/dev/null 2>&1; then
+			echo "Warning: refusing invalid completion publication WAL: ${wal}" >&2
+			continue
+		fi
+		wal_task=$(jq -r '.task_id // empty' "$wal" 2>/dev/null || true)
+		wal_generation=$(jq -r '.task_generation // empty' "$wal" 2>/dev/null || true)
+		[[ "$wal_task" == "$task_id" ]] || continue
+		row_generation=$(jq -r --arg id "$task_id" '.tasks[$id].task_generation // empty' "$TASKS_FILE" 2>/dev/null || true)
+		row_status=$(jq -r --arg id "$task_id" '.tasks[$id].status // empty' "$TASKS_FILE" 2>/dev/null || true)
+		exit_code=$(jq -r --arg id "$task_id" '.tasks[$id].exit_code // -1' "$TASKS_FILE" 2>/dev/null || echo -1)
+		[[ "$row_generation" == "$wal_generation" && "$row_status" != "running" && -n "$row_status" ]] || continue
+		if OSTE_TASK_GENERATION="$row_generation" bash "$complete_script" "$task_id" "$exit_code" >/dev/null 2>&1 && [[ ! -f "$wal" ]]; then
+			recovered=$((recovered + 1))
+		else
+			echo "Warning: completion publication recovery remains pending for ${task_id}" >&2
+		fi
+	done
+	REAPER_RECOVERED_PUBLICATIONS="$recovered"
 }
 
 _resolve_complete_script() {
@@ -443,10 +554,11 @@ _resolve_complete_script() {
 _complete_from_receipt_if_possible() {
 	local task_id="$1"
 	local receipt_exit="$2"
+	local task_generation="${3:-}"
 	local complete_script=""
 	complete_script=$(_resolve_complete_script) || return 1
 
-	bash "$complete_script" "$task_id" "$receipt_exit" >/dev/null 2>&1 || return 1
+	OSTE_TASK_GENERATION="$task_generation" bash "$complete_script" "$task_id" "$receipt_exit" >/dev/null 2>&1 || return 1
 
 	local current_status=""
 	if [[ -f "${TASKS_FILE:-}" ]]; then
@@ -468,6 +580,7 @@ _reap_finalize_task() {
 	local reason="$7"
 	local detail="$8"
 	local notify="${9:-true}"
+	local expected_task_generation="${10:-}"
 
 	local project_dir=""
 	local project_name=""
@@ -479,17 +592,68 @@ _reap_finalize_task() {
 	role=$(_task_json_field "$task_id" '.tasks[$id].role // empty')
 	[[ -n "$completed_at" ]] || completed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-	lock_tasks || return 1
-	local current_status=""
+	# Owner transition before the generation lease, completion-state, and
+	# tasks.json. Permission
+	# delivery holds the same global owner lease from its claim through the raw
+	# key send, so terminal publication and runtime cleanup cannot overtake an
+	# already-claimed decision. Watchdog follows completion-state -> tasks after
+	# this outer serialization boundary.
+	task_owner_transition_lock_acquire "$task_id" || return 1
+	# Keep a per-task generation lease beyond the narrow owner/tasks/state
+	# critical section. Spawn checks this lease before same-ID reuse, so review
+	# projection, WAL cleanup, notification, and LaneRef cannot race a replacement
+	# generation after the global owner registry is released.
+	completion_idempotency_lock_acquire "$task_id" "$expected_task_generation" || {
+		task_owner_transition_lock_release || true
+		return 1
+	}
+	completion_state_lock_acquire "$task_id" || {
+		completion_idempotency_lock_release "$task_id"
+		task_owner_transition_lock_release || true
+		return 1
+	}
+	lock_tasks || {
+		completion_state_unlock "$task_id"
+		completion_idempotency_lock_release "$task_id"
+		task_owner_transition_lock_release || true
+		return 1
+	}
+	local current_status="" current_task_generation="" publication_wal="" marker_content=""
 	current_status=$(jq -r --arg id "$task_id" '.tasks[$id].status // ""' "$TASKS_FILE" 2>/dev/null || true)
-	if [[ "$current_status" != "running" ]]; then
+	current_task_generation=$(jq -r --arg id "$task_id" '.tasks[$id].task_generation // ""' "$TASKS_FILE" 2>/dev/null || true)
+	if [[ "$current_status" != "running" || "$current_task_generation" != "$expected_task_generation" ]]; then
 		unlock_tasks
+		completion_state_unlock "$task_id"
+		completion_idempotency_lock_release "$task_id"
+		task_owner_transition_lock_release || true
 		return 0
 	fi
+	if [[ "$notify" == "true" && -e "/tmp/oste-complete-${task_id}" && ! -f "/tmp/oste-complete-${task_id}" ]]; then
+		unlock_tasks
+		completion_state_unlock "$task_id"
+		completion_idempotency_lock_release "$task_id"
+		task_owner_transition_lock_release || true
+		return 1
+	fi
+	if [[ "$notify" == "true" ]]; then
+		marker_content=$(_recovery_marker_content "$task_id" "$target_status" "$exit_code" "$completed_at" "$reason" "$detail" "$expected_task_generation") || {
+			unlock_tasks
+			completion_state_unlock "$task_id"
+			completion_idempotency_lock_release "$task_id"
+			task_owner_transition_lock_release || true
+			return 1
+		}
+		if ! _reaper_publication_wal_write_locked "$task_id" "$expected_task_generation" "$target_status" "$marker_content"; then
+			unlock_tasks
+			completion_state_unlock "$task_id"
+			completion_idempotency_lock_release "$task_id"
+			task_owner_transition_lock_release || true
+			return 1
+		fi
+		publication_wal=$(_reaper_publication_wal_path "$task_id")
+	fi
 
-	local tmp
-	tmp=$(mktemp)
-	if jq --arg id "$task_id" \
+	if ! _tasks_json_apply --arg id "$task_id" \
 		--arg status "$target_status" \
 		--arg completed "$completed_at" \
 		--arg exit_code "$exit_code" \
@@ -498,28 +662,44 @@ _reap_finalize_task() {
 		'.tasks[$id].status = $status |
 		 .tasks[$id].completed_at = $completed |
 		 .tasks[$id].exit_code = ($exit_code | tonumber) |
-		 .tasks[$id].recovery_reason = (if $reason == "" then null else $reason end) |
-		 .tasks[$id].recovery_detail = (if $detail == "" then null else $detail end) |
-		 .tasks[$id].error = (if $status == "failed" then (if $reason == "" then "stale_session" else $reason end) elif $reason == "duplicate_session_replaced" then $reason else .tasks[$id].error end)' \
-		"$TASKS_FILE" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-		mv "$tmp" "$TASKS_FILE"
-	else
-		rm -f "$tmp"
+			 .tasks[$id].recovery_reason = (if $reason == "" then null else $reason end) |
+			 .tasks[$id].recovery_detail = (if $detail == "" then null else $detail end) |
+			 .tasks[$id].error = (if $status == "failed" then (if $reason == "" then "stale_session" else $reason end) elif $reason == "duplicate_session_replaced" then $reason else .tasks[$id].error end)'; then
+		# The WAL was published before this write specifically so a transient
+		# tasks.json failure remains retryable. Keep it while the row is still
+		# running; a later reaper pass can retry the same generation and intent.
 		unlock_tasks
+		completion_state_unlock "$task_id"
+		completion_idempotency_lock_release "$task_id"
+		task_owner_transition_lock_release || true
 		return 1
 	fi
-	unlock_tasks
-
-	# Project the reaper-settled terminal state into the lanes read-model.
-	# Without this, reaper-settled lanes stayed `running` in the projection
-	# forever — a dead lane has no other writer left to converge it.
-	# shellcheck source=work-system-bridge.sh
-	source "${SCRIPT_DIR}/lib/work-system-bridge.sh"
-	work_system_emit_lane_ref_for_task "$TASKS_FILE" "$task_id" "$target_status" || true
-
 	if [[ "$notify" == "true" ]]; then
-		_write_recovery_marker "$task_id" "$target_status" "$exit_code" "$completed_at" "$reason" "$detail"
+		if ! _write_recovery_marker "$task_id" "$target_status" "$exit_code" "$completed_at" "$reason" "$detail" "$expected_task_generation"; then
+			unlock_tasks
+			completion_state_unlock "$task_id"
+			completion_idempotency_lock_release "$task_id"
+			task_owner_transition_lock_release || true
+			return 1
+		fi
+	fi
+	# Runtime artifact cleanup is generation-owned. Keep it inside both locks so
+	# a reused task ID cannot publish its new receipt/PID between the terminal CAS
+	# and cleanup of this generation's files.
+	rm -f "/tmp/oste-receipt-${task_id}" 2>/dev/null || true
+	rm -f "/tmp/oste-pid-${task_id}" 2>/dev/null || true
+	unlock_tasks
+	completion_state_unlock "$task_id"
+	task_owner_transition_lock_release || true
+	if [[ -n "${OSTE_TEST_PAUSE_REAPER_POSTPUBLICATION:-}" ]]; then
+		local reaper_postpublication_pause="${OSTE_TEST_PAUSE_REAPER_POSTPUBLICATION}"
+		: >"${reaper_postpublication_pause}.ready"
+		while [[ ! -e "${reaper_postpublication_pause}.release" ]]; do sleep 0.02; done
+	fi
 
+	local review_projection_settled=true
+	if [[ "$notify" == "true" ]]; then
+		review_projection_settled=false
 		if [[ "${OSTE_TEST_MODE:-}" != "1" ]] || [[ -n "${OSTE_PENDING_REVIEW_DIR:-}" ]]; then
 			# shellcheck source=lib/pending-review.sh
 			source "${SCRIPT_DIR}/lib/pending-review.sh"
@@ -532,10 +712,31 @@ _reap_finalize_task() {
 			if [[ -f "$last_message_file" ]]; then
 				agent_summary=$(cat "$last_message_file" 2>/dev/null || true)
 			fi
-			pending_review_write "$task_id" "$target_status" "$exit_code" "$completed_at" \
-				"$project_name" "$project_dir" "$last_commit" "$agent_summary" || true
+			if pending_review_write "$task_id" "$target_status" "$exit_code" "$completed_at" \
+				"$project_name" "$project_dir" "$last_commit" "$agent_summary" \
+				"" "" "[]" "" "" "$expected_task_generation"; then
+				review_projection_settled=true
+			fi
+		else
+			review_projection_settled=true
 		fi
+		if [[ "$review_projection_settled" == "true" ]]; then
+			rm -f "$publication_wal" 2>/dev/null || true
+		fi
+	fi
+	if [[ "$review_projection_settled" != "true" ]]; then
+		completion_idempotency_lock_release "$task_id"
+		return 1
+	fi
 
+	# Project only after row + marker + generation-bound review/no-review state
+	# and WAL cleanup have all durably settled. The completion lease still blocks
+	# same-ID spawn while the row-backed emitter reads this generation.
+	# shellcheck source=work-system-bridge.sh
+	source "${SCRIPT_DIR}/lib/work-system-bridge.sh"
+	work_system_emit_lane_ref_for_task "$TASKS_FILE" "$task_id" "$target_status" || true
+
+	if [[ "$notify" == "true" ]]; then
 		if [[ "${OSTE_TEST_MODE:-}" != "1" ]]; then
 			local notify_script="${OSTE_NOTIFY_SCRIPT:-${SCRIPT_DIR}/../oste-notify.sh}"
 			if [[ -f "$notify_script" ]]; then
@@ -557,8 +758,12 @@ _reap_finalize_task() {
 		fi
 	fi
 
-	rm -f "/tmp/oste-receipt-${task_id}" 2>/dev/null || true
-	rm -f "/tmp/oste-pid-${task_id}" 2>/dev/null || true
+	completion_idempotency_lock_release "$task_id"
+	if [[ -n "${OSTE_TEST_PAUSE_REAPER_AFTER_LEASE_RELEASE:-}" ]]; then
+		local reaper_release_pause="${OSTE_TEST_PAUSE_REAPER_AFTER_LEASE_RELEASE}"
+		: >"${reaper_release_pause}.ready"
+		while [[ ! -e "${reaper_release_pause}.release" ]]; do sleep 0.02; done
+	fi
 	return 0
 }
 
@@ -588,12 +793,14 @@ is_task_process_alive() {
 	# Layer 1: Check completion marker or wrapper receipt (definitive proof
 	# that the launcher-owned agent process has exited). A live terminal window
 	# after this point is just the human-visible shell surface, not task liveness.
-	if [[ -f "/tmp/oste-complete-${task_id}" ]]; then
+	if [[ -f "/tmp/oste-complete-${task_id}" ]] &&
+		_artifact_matches_task_generation "$task_id" "$(_marker_task_generation "/tmp/oste-complete-${task_id}")"; then
 		REAPER_LAST_DEAD_REASON="completion_marker"
 		REAPER_LAST_DEAD_DETAIL="missing_tasks_update"
 		return 1
 	fi
-	if [[ -f "$receipt_path" ]]; then
+	if [[ -f "$receipt_path" ]] &&
+		_artifact_matches_task_generation "$task_id" "$(_receipt_task_generation "$receipt_path")"; then
 		REAPER_LAST_DEAD_REASON="completion_receipt"
 		REAPER_LAST_DEAD_DETAIL="wrapper_receipt"
 		return 1
@@ -777,6 +984,11 @@ reap_stale_tasks() {
 	[[ -f "$TASKS_FILE" ]] || return 0
 
 	local stale_count=0
+	if [[ "$do_update" == "true" ]]; then
+		REAPER_RECOVERED_PUBLICATIONS=0
+		recover_interrupted_completion_publications || true
+		stale_count="${REAPER_RECOVERED_PUBLICATIONS:-0}"
+	fi
 	local task_ids
 	task_ids=$(jq -r '[.tasks[] | select(.status == "running")] | .[].id' "$TASKS_FILE" 2>/dev/null) || return 0
 
@@ -807,10 +1019,15 @@ reap_stale_tasks() {
 
 	while IFS= read -r task_id; do
 		[[ -n "$task_id" ]] || continue
+		if ! task_id_validate "$task_id" >/dev/null 2>&1; then
+			echo "Warning: refusing to reap invalid task ID from tasks.json: ${task_id}" >&2
+			continue
+		fi
 
-		local session_id terminal_backend
+		local session_id terminal_backend task_generation
 		session_id=$(jq -r --arg id "$task_id" '.tasks[$id].session_id // ""' "$TASKS_FILE" 2>/dev/null)
 		terminal_backend=$(jq -r --arg id "$task_id" '.tasks[$id].terminal_backend // "tmux"' "$TASKS_FILE" 2>/dev/null)
+		task_generation=$(jq -r --arg id "$task_id" '.tasks[$id].task_generation // ""' "$TASKS_FILE" 2>/dev/null)
 
 		local duplicate_stale=false
 		if [[ -n "$duplicate_ids" ]] && echo "$duplicate_ids" | grep -Fxq "$task_id"; then
@@ -851,7 +1068,7 @@ reap_stale_tasks() {
 					recovery_detail="missing_receipt"
 				fi
 
-				if [[ -f "$marker" ]]; then
+				if [[ -f "$marker" ]] && _artifact_matches_task_generation "$task_id" "$(_marker_task_generation "$marker")"; then
 					target_status=$(_marker_status "$marker")
 					receipt_exit=$(_marker_exit_code "$marker")
 					completed_at=$(_marker_completed_at "$marker")
@@ -861,12 +1078,12 @@ reap_stale_tasks() {
 						recovery_detail="missing_tasks_update"
 					fi
 				else
-					if [[ -f "$receipt" ]]; then
+					if [[ -f "$receipt" ]] && _artifact_matches_task_generation "$task_id" "$(_receipt_task_generation "$receipt")"; then
 						# Agent finished but completion handler failed — recover
 						# through the same completion wrapper so git, pending-review,
 						# report ingestion, notifications, and task state stay aligned.
 						receipt_exit=$(_receipt_exit_code "$receipt")
-						if _complete_from_receipt_if_possible "$task_id" "$receipt_exit"; then
+						if _complete_from_receipt_if_possible "$task_id" "$receipt_exit" "$task_generation"; then
 							echo "Recovered stale task ${task_id}: delegated receipt finalization to oste-complete" >&2
 							continue
 						fi
@@ -888,7 +1105,7 @@ reap_stale_tasks() {
 				cleanup_dead_tmux_socket_path "$tmux_socket" "$tmux_conf" 2>/dev/null || true
 				_reap_finalize_task "$task_id" "$session_id" "$terminal_backend" \
 					"$target_status" "$receipt_exit" "$completed_at" \
-					"$recovery_reason" "$recovery_detail" "$should_notify" || continue
+					"$recovery_reason" "$recovery_detail" "$should_notify" "$task_generation" || continue
 				if [[ "$duplicate_stale" == true ]]; then
 					echo "Reaped duplicate running session: ${task_id} (session: ${session_id})" >&2
 				elif [[ "$recovered" == true ]]; then
@@ -925,13 +1142,30 @@ detect_orphaned_terminals() {
 
 	while IFS= read -r task_id; do
 		[[ -n "$task_id" ]] || continue
+		if ! task_id_validate "$task_id" >/dev/null 2>&1; then
+			echo "Warning: refusing orphan cleanup for invalid task ID from tasks.json: ${task_id}" >&2
+			continue
+		fi
 
+		local orphan_owner_locked=false
+		if [[ "$do_cleanup" == "true" ]]; then
+			if ! task_owner_transition_lock_acquire "$task_id"; then
+				echo "Warning: could not acquire owner transition lock for orphan cleanup: ${task_id}" >&2
+				continue
+			fi
+			orphan_owner_locked=true
+		fi
 		local session_id terminal_backend exec_visible
 		session_id=$(jq -r --arg id "$task_id" '.tasks[$id].session_id // ""' "$TASKS_FILE" 2>/dev/null)
 		terminal_backend=$(jq -r --arg id "$task_id" '.tasks[$id].terminal_backend // "tmux"' "$TASKS_FILE" 2>/dev/null)
 		exec_visible=$(jq -r --arg id "$task_id" '.tasks[$id].exec_visible // false' "$TASKS_FILE" 2>/dev/null)
 
-		[[ -n "$session_id" ]] || continue
+		if [[ -z "$session_id" ]]; then
+			if [[ "$orphan_owner_locked" == true ]]; then
+				task_owner_transition_lock_release || true
+			fi
+			continue
+		fi
 
 		local session_alive=false
 
@@ -996,6 +1230,9 @@ detect_orphaned_terminals() {
 			else
 				echo "Warning: orphaned terminal for completed task '${task_id}' (session: ${session_id}, status: ${task_status}, backend: ${terminal_backend}, visible: ${exec_visible})" >&2
 			fi
+		fi
+		if [[ "$orphan_owner_locked" == true ]]; then
+			task_owner_transition_lock_release || true
 		fi
 	done <<<"$task_ids"
 

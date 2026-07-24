@@ -15,6 +15,23 @@ if [[ -z "${PENDING_REVIEW_DIR+x}" ]]; then
 	PENDING_REVIEW_DIR="${OSTE_PENDING_REVIEW_DIR:-/tmp/oste-pending-review}"
 fi
 
+# Circuit breaker: hard cap on how many times a single pending-review entry may
+# be dispatched for review before it is forced terminal. Without this, a review
+# that never settles (transient reviewer failures re-dispatched by the watchdog)
+# loops indefinitely — an observed runaway reached 183 dispatch attempts. When
+# the cap is hit, the entry is marked retry_disabled (terminal "blocked") via the
+# existing lifecycle transition, which both the watchdog and review-agent already
+# honor, and which escalates to the owner-review path.
+MAX_REVIEW_DISPATCH_ATTEMPTS="${MAX_REVIEW_DISPATCH_ATTEMPTS:-5}"
+
+# All review-state writes are serialized and mirrored into tasks.json by the
+# lifecycle owner. Metadata helpers below use the same transition seam so a
+# late reconciliation cannot overwrite a newer reviewer result.
+if [[ -z "${__OSTE_REVIEW_LIFECYCLE_SH:-}" ]]; then
+	# shellcheck source=review-lifecycle.sh
+	source "$(dirname "${BASH_SOURCE[0]}")/review-lifecycle.sh"
+fi
+
 # Shared review-gate verdict-marker writer (PAR-290 / LANE-HOOK-02). Sourced
 # DEFENSIVELY: a missing/broken lib must never break the review pipeline, so a
 # failed source is swallowed and the emit calls below are command-guarded.
@@ -197,6 +214,8 @@ pending_review_capture_completion_snapshot() {
 	local task_id="$1"
 	local project_dir="$2"
 	local start_sha="${3:-}"
+	local task_generation="${4:-}"
+	local snapshot_file_override="${5:-}"
 
 	[[ -n "$task_id" && -n "$project_dir" && -d "$project_dir" ]] || return 1
 	git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
@@ -208,19 +227,22 @@ pending_review_capture_completion_snapshot() {
 	files_changed_json=$(pending_review_collect_live_files_json "$project_dir" "$start_sha" "$head_commit")
 
 	local snapshot_file
-	snapshot_file=$(pending_review_snapshot_file "$task_id")
+	snapshot_file="$snapshot_file_override"
+	[[ -n "$snapshot_file" ]] || snapshot_file=$(pending_review_snapshot_file "$task_id")
 	local tmp
-	tmp=$(mktemp)
+	tmp=$(mktemp "${snapshot_file}.tmp.XXXXXX")
 	if jq -n \
 		--arg task_id "$task_id" \
 		--arg project_dir "$project_dir" \
 		--arg start_sha "$start_sha" \
+		--arg task_generation "$task_generation" \
 		--arg agent_commit "$head_commit" \
 		--arg head_commit "$head_commit" \
 		--argjson files_changed "$files_changed_json" \
 		--arg captured_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
 		'{
 			task_id: $task_id,
+			task_generation: (if $task_generation == "" then null else $task_generation end),
 			project_dir: $project_dir,
 			start_sha: (if $start_sha == "" then null else $start_sha end),
 			agent_commit: (if $agent_commit == "" then null else $agent_commit end),
@@ -250,9 +272,17 @@ pending_review_refresh_from_completion_snapshot() {
 	local task_id="$1"
 	local file="${PENDING_REVIEW_DIR}/${task_id}.json"
 	local snapshot_file=""
+	local source_revision=""
+	local source_attempt_id=""
 	snapshot_file=$(pending_review_snapshot_file "$task_id")
 
 	[[ -f "$file" && -f "$snapshot_file" ]] || return 1
+	local receipt_generation snapshot_generation
+	receipt_generation=$(jq -r '.task_generation // empty' "$file" 2>/dev/null || true)
+	snapshot_generation=$(jq -r '.task_generation // empty' "$snapshot_file" 2>/dev/null || true)
+	[[ "$receipt_generation" == "$snapshot_generation" ]] || return 1
+	source_revision=$(jq -r '.review_revision // 0' "$file" 2>/dev/null || true)
+	source_attempt_id=$(jq -r 'if (.review_state // "pending") == "reviewing" then (.review_attempt_id // empty) else empty end' "$file" 2>/dev/null || true)
 
 	local project_dir=""
 	project_dir=$(jq -r '.project_dir // empty' "$snapshot_file" 2>/dev/null || true)
@@ -303,30 +333,18 @@ pending_review_refresh_from_completion_snapshot() {
 		last_commit="$snapshot_agent_commit"
 	fi
 
-	local tmp now
+	local now patch
 	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-	tmp=$(mktemp)
-	if jq \
+	patch=$(jq -cn \
 		--arg now "$now" \
 		--arg last_commit "$last_commit" \
 		--arg end_commit "$snapshot_agent_commit" \
 		--arg agent_commit "$snapshot_agent_commit" \
 		--arg manager_commit "$snapshot_agent_commit" \
 		--argjson files_changed "$files_changed_json" \
-		'.reconciled = true |
-		.reconciled_at = $now |
-		.reconciliation_reason = "task_completed_snapshot_at_review_dispatch" |
-		.last_commit = $last_commit |
-		.end_commit = $end_commit |
-		.agent_commit = $agent_commit |
-		.manager_commit = $manager_commit |
-		.files_changed = (if ($files_changed | type) == "array" and ($files_changed | length) > 0 then $files_changed else .files_changed end)' \
-		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-		mv "$tmp" "$file"
-	else
-		rm -f "$tmp"
-		return 1
-	fi
+		'({reconciled:true,reconciled_at:$now,reconciliation_reason:"task_completed_snapshot_at_review_dispatch",last_commit:$last_commit,end_commit:$end_commit,agent_commit:$agent_commit,manager_commit:$manager_commit}
+		 + if ($files_changed|type)=="array" and ($files_changed|length)>0 then {files_changed:$files_changed} else {} end)') || return 1
+	review_lifecycle_transition "$task_id" metadata "$source_revision" "$source_attempt_id" "$patch" >/dev/null
 }
 
 # Write a pending review file for a completed task
@@ -345,6 +363,7 @@ pending_review_write() {
 	local files_changed_json="${11:-[]}"
 	local agent_commit="${12:-}"
 	local manager_commit="${13:-}"
+	local expected_task_generation="${14:-}"
 
 	if [[ -z "$agent_commit" && -n "$end_commit" ]]; then
 		agent_commit="$end_commit"
@@ -355,10 +374,10 @@ pending_review_write() {
 
 	pending_review_init
 
-	local file="${PENDING_REVIEW_DIR}/${task_id}.json"
-
-	# Build JSON using jq for proper escaping
-	jq -n \
+	local receipt_json
+	# Build the complete base document in memory; publication itself is one
+	# same-directory rename plus a crash-recoverable tasks.json projection.
+	receipt_json=$(jq -cn \
 		--arg task_id "$task_id" \
 		--arg project "$project" \
 		--arg project_path "$project_path" \
@@ -372,6 +391,7 @@ pending_review_write() {
 		--argjson files_changed "$files_changed_json" \
 		--arg agent_commit "$agent_commit" \
 		--arg manager_commit "$manager_commit" \
+		--arg task_generation "$expected_task_generation" \
 		'{
 			task_id: $task_id,
 			project: $project,
@@ -383,13 +403,15 @@ pending_review_write() {
 			end_commit: $end_commit,
 			agent_commit: (if $agent_commit == "" then null else $agent_commit end),
 			manager_commit: (if $manager_commit == "" then null else $manager_commit end),
+			task_generation: (if $task_generation == "" then null else $task_generation end),
 			actual_model: (if $actual_model == "" then null else $actual_model end),
 			agent_summary: $agent_summary,
 			files_changed: (if ($files_changed | length) == 0 then null else $files_changed end),
 			review_state: "pending",
 			reviewed: false,
 			reported_to_user: false
-		}' >"$file"
+		}') || return 1
+	review_lifecycle_publish_json "$task_id" "$receipt_json" >/dev/null
 }
 
 # List all pending review files (task IDs)
@@ -434,28 +456,23 @@ pending_review_read() {
 pending_review_mark_reviewed() {
 	local task_id="$1"
 	local file="${PENDING_REVIEW_DIR}/${task_id}.json"
+	local expected_revision="${2:-}" expected_attempt_id="${3:-}"
 
 	[[ -f "$file" ]] || return 1
-
-	local now tmp
-	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-	tmp=$(mktemp)
-	if jq \
-		--arg now "$now" \
-		'.reviewed = true |
-		.review_state = "reviewed" |
-		.review_completed_at = $now |
-		.review_blocker_count = 0 |
-		.retry_disabled = false |
-		.retry_disabled_reason = null |
-		.retry_disabled_detail = null |
-		.retry_disabled_at = null' \
-		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-		mv "$tmp" "$file"
+	local current_state event
+	current_state=$(jq -r '.review_state // "pending"' "$file" 2>/dev/null || true)
+	[[ -n "$expected_revision" ]] || expected_revision=$(jq -r '.review_revision // 0' "$file" 2>/dev/null || echo 0)
+	if [[ "$current_state" == "reviewing" ]]; then
+		[[ -n "$expected_attempt_id" ]] || return 3
+		event="approve"
 	else
-		rm -f "$tmp"
-		return 1
+		# Compatibility for pre-generation callers and legacy receipts. New
+		# reviewer results always pass an attempt id and can only land from
+		# reviewing.
+		[[ -z "$expected_attempt_id" ]] || return 4
+		event="legacy_approve"
 	fi
+	review_lifecycle_transition "$task_id" "$event" "$expected_revision" "$expected_attempt_id" '{}' >/dev/null || return $?
 
 	# PAR-290 / LANE-HOOK-02: emit the authoritative review-gate verdict marker
 	# the moment the review lands approved. Command-guarded + fail-open.
@@ -475,36 +492,159 @@ pending_review_mark_reviewed() {
 
 # Mark a pending review as awaiting fixup after blockers were found
 # Usage: pending_review_mark_fixup_requested <task_id> [review_file] [blocker_count]
+pending_review_build_fixup_intent() {
+	local task_id="$1" project_path="$2" review_file="$3" blocker_count="$4" review_attempt_id="$5" attempt="${6:-1}"
+	local fixup_path created_at task_generation receipt_path
+	_review_lifecycle_validate_task_id "$task_id" || return 1
+	[[ -n "$project_path" && -n "$review_file" && -n "$review_attempt_id" ]] || return 1
+	[[ "$blocker_count" =~ ^[1-9][0-9]*$ ]] || return 1
+	[[ "$attempt" =~ ^[1-9][0-9]*$ ]] || return 1
+	receipt_path=$(review_lifecycle_receipt_path "$task_id") || return 1
+	task_generation=$(jq -r '.task_generation // empty' "$receipt_path" 2>/dev/null || true)
+	[[ -n "$task_generation" ]] || return 1
+	fixup_path="${OSTE_PENDING_FIXUP_DIR:-/tmp/oste-pending-fixup}/${task_id}.json"
+	created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+	jq -cn \
+		--arg task_id "$task_id" \
+		--arg project_path "$project_path" \
+		--arg review_file "$review_file" \
+		--arg task_generation "$task_generation" \
+		--arg review_attempt_id "$review_attempt_id" \
+		--arg fixup_path "$fixup_path" \
+		--arg created_at "$created_at" \
+		--argjson blocker_count "$blocker_count" \
+		--argjson attempt "$attempt" '
+		{
+			version:1,
+			task_id:$task_id,
+			task_generation:$task_generation,
+			review_attempt_id:$review_attempt_id,
+			fixup_path:$fixup_path,
+			created_at:$created_at,
+			payload:{
+				task_id:$task_id,
+				task_generation:$task_generation,
+				project_path:$project_path,
+				review_file:$review_file,
+				blocker_count:$blocker_count,
+				attempt:$attempt,
+				review_attempt_id:$review_attempt_id,
+				created_at:$created_at
+			}
+		}'
+}
+
+# Recreate the external fixup queue entry from the receipt-backed intent. The
+# receipt and WAL are authoritative; this projection is deliberately
+# repeatable so a crash immediately after the lifecycle CAS cannot strand an
+# awaiting_fixup task. The review lock prevents an old attempt from publishing
+# after a newer lifecycle generation has settled.
+pending_review_materialize_fixup_intent() {
+	local task_id="$1" receipt_path receipt receipt_generation row_generation intent expected_path destination dispatched_path intent_attempt intent_attempt_id tmp rc=0
+	_review_lifecycle_validate_task_id "$task_id" || return 1
+	review_lifecycle_lock_acquire "$task_id" || return 1
+	_review_lifecycle_recover_locked "$task_id" || {
+		rc=$?
+		review_lifecycle_lock_release "$task_id"
+		return "$rc"
+	}
+	receipt_path=$(review_lifecycle_receipt_path "$task_id")
+	receipt=$(jq -c . "$receipt_path" 2>/dev/null || true)
+	if [[ -z "$receipt" || "$(jq -r '.review_state // empty' <<<"$receipt")" != "awaiting_fixup" ]]; then
+		review_lifecycle_lock_release "$task_id"
+		return 1
+	fi
+	_review_lifecycle_source_dependencies
+	lock_tasks || {
+		review_lifecycle_lock_release "$task_id"
+		return 1
+	}
+	row_generation=$(jq -r --arg id "$task_id" '.tasks[$id].task_generation // empty' "$TASKS_FILE" 2>/dev/null || true)
+	receipt_generation=$(jq -r '.task_generation // empty' <<<"$receipt")
+	unlock_tasks
+	if [[ -z "$receipt_generation" || "$receipt_generation" != "$row_generation" ]]; then
+		review_lifecycle_lock_release "$task_id"
+		return 3
+	fi
+	intent=$(jq -c '.fixup_intent // empty' <<<"$receipt" 2>/dev/null || true)
+	expected_path="${OSTE_PENDING_FIXUP_DIR:-/tmp/oste-pending-fixup}/${task_id}.json"
+	if ! jq -e \
+		--arg task_id "$task_id" \
+		--arg task_generation "$receipt_generation" \
+		--arg attempt_id "$(jq -r '.review_attempt_id // empty' <<<"$receipt")" \
+		--arg expected_path "$expected_path" '
+		.version == 1 and
+		.task_id == $task_id and
+		.task_generation == $task_generation and
+		.review_attempt_id == $attempt_id and
+		.fixup_path == $expected_path and
+		(.payload | type == "object") and
+		.payload.task_id == $task_id and
+		.payload.task_generation == $task_generation and
+		.payload.review_attempt_id == $attempt_id and
+		(.payload.blocker_count | type == "number" and floor == . and . > 0) and
+		(.payload.attempt | type == "number" and floor == . and . > 0)
+	' >/dev/null 2>&1 <<<"$intent"; then
+		review_lifecycle_lock_release "$task_id"
+		return 1
+	fi
+	destination=$(jq -r '.fixup_path' <<<"$intent")
+	intent_attempt=$(jq -r '.payload.attempt' <<<"$intent")
+	intent_attempt_id=$(jq -r '.review_attempt_id' <<<"$intent")
+	dispatched_path="$(dirname "$destination")/dispatched/${task_id}-attempt-${intent_attempt}.json"
+	if [[ -f "$dispatched_path" ]] &&
+		[[ "$(jq -r '.review_attempt_id // empty' "$dispatched_path" 2>/dev/null || true)" == "$intent_attempt_id" ]]; then
+		# The orchestrator has already consumed this exact attempt. Do not turn
+		# receipt-backed repair into duplicate delivery on every watchdog tick.
+		review_lifecycle_lock_release "$task_id"
+		return 0
+	fi
+	mkdir -p "$(dirname "$destination")/dispatched" 2>/dev/null || {
+		review_lifecycle_lock_release "$task_id"
+		return 1
+	}
+	tmp=$(mktemp "${destination}.tmp.XXXXXX") || {
+		review_lifecycle_lock_release "$task_id"
+		return 1
+	}
+	if jq -c '.payload' <<<"$intent" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+		mv "$tmp" "$destination" || rc=$?
+	else
+		rm -f "$tmp"
+		rc=1
+	fi
+	review_lifecycle_lock_release "$task_id"
+	return "$rc"
+}
+
 pending_review_mark_fixup_requested() {
 	local task_id="$1"
 	local review_file="${2:-}"
 	local blocker_count="${3:-0}"
+	local expected_revision="${4:-}" expected_attempt_id="${5:-}" fixup_intent="${6:-}"
 	local file="${PENDING_REVIEW_DIR}/${task_id}.json"
 
 	[[ -f "$file" ]] || return 1
 	[[ "$blocker_count" =~ ^[0-9]+$ ]] || blocker_count="0"
 
-	local now tmp
-	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-	tmp=$(mktemp)
-	if jq \
-		--arg review_file "$review_file" \
-		--arg now "$now" \
-		--argjson blocker_count "$blocker_count" \
-		'.review_state = "awaiting_fixup" |
-		.review_handoff_file = (if $review_file == "" then .review_handoff_file else $review_file end) |
-		.review_completed_at = $now |
-		.review_blocker_count = $blocker_count |
-		.retry_disabled = true |
-		.retry_disabled_reason = "awaiting_fixup" |
-		.retry_disabled_detail = null |
-		.retry_disabled_at = $now' \
-		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-		mv "$tmp" "$file"
+	local patch event="request_fixup" current_state
+	current_state=$(jq -r '.review_state // "pending"' "$file" 2>/dev/null || true)
+	[[ -n "$expected_revision" ]] || expected_revision=$(jq -r '.review_revision // 0' "$file" 2>/dev/null || echo 0)
+	if [[ "$current_state" != "reviewing" ]]; then
+		[[ -z "$expected_attempt_id" ]] || return 4
+		event="legacy_fixup"
 	else
-		rm -f "$tmp"
-		return 1
+		[[ -n "$expected_attempt_id" ]] || return 3
+		if [[ -z "$fixup_intent" ]]; then
+			local project_path
+			project_path=$(jq -r '.project_path // empty' "$file" 2>/dev/null || true)
+			fixup_intent=$(pending_review_build_fixup_intent "$task_id" "$project_path" "$review_file" "$blocker_count" "$expected_attempt_id" 1) || return 1
+		fi
 	fi
+	patch=$(jq -cn --arg review_file "$review_file" --argjson blocker_count "$blocker_count" --argjson fixup_intent "${fixup_intent:-null}" \
+		'{review_handoff_file:(if $review_file == "" then null else $review_file end),review_blocker_count:$blocker_count,retry_disabled_detail:null}
+		+ (if $fixup_intent == null then {} else {fixup_intent:$fixup_intent} end)')
+	review_lifecycle_transition "$task_id" "$event" "$expected_revision" "$expected_attempt_id" "$patch" >/dev/null || return $?
 
 	# PAR-290 / LANE-HOOK-02: emit the authoritative review-gate verdict marker
 	# the moment the review lands with requested changes. Command-guarded +
@@ -522,14 +662,10 @@ pending_review_mark_reported() {
 
 	[[ -f "$file" ]] || return 1
 
-	local tmp
-	tmp=$(mktemp)
-	if jq '.reported_to_user = true' "$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-		mv "$tmp" "$file"
-	else
-		rm -f "$tmp"
-		return 1
-	fi
+	local revision attempt_id
+	revision=$(jq -r '.review_revision // 0' "$file" 2>/dev/null || true)
+	attempt_id=$(jq -r 'if (.review_state // "pending") == "reviewing" then (.review_attempt_id // empty) else empty end' "$file" 2>/dev/null || true)
+	review_lifecycle_transition "$task_id" metadata "$revision" "$attempt_id" '{"reported_to_user":true}' >/dev/null
 }
 
 pending_review_mark_review_started() {
@@ -542,38 +678,20 @@ pending_review_mark_review_started() {
 
 	[[ -f "$file" ]] || return 1
 
-	local now now_epoch tmp
+	local now now_epoch current revision attempt attempt_id patch
 	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 	now_epoch=$(date -u +%s)
-	tmp=$(mktemp)
-	if jq \
-		--arg review_task_id "$review_task_id" \
-		--arg handoff_file "$handoff_file" \
-		--arg review_backend "$review_backend" \
-		--arg review_mode "$review_mode" \
-		--arg now "$now" \
-		--argjson now_epoch "$now_epoch" \
-		'.review_state = "reviewing" |
-		.review_task_id = (if $review_task_id == "" then null else $review_task_id end) |
-		.review_handoff_file = (if $handoff_file == "" then null else $handoff_file end) |
-		.review_backend = (if $review_backend == "" then null else $review_backend end) |
-		.review_mode = (if $review_mode == "" then null else $review_mode end) |
-		.review_started_at = $now |
-		.review_started_at_epoch = $now_epoch |
-		.review_completed_at = null |
-		.review_blocker_count = null |
-		.review_dispatch_failed = false |
-		.review_dispatch_failed_at = null |
-		.review_dispatch_failed_reason = null |
-		.review_dispatch_failed_detail = null |
-		.review_dispatch_failed_log = null |
-		.review_dispatch_attempts = ((.review_dispatch_attempts // 0) + 1)' \
-		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-		mv "$tmp" "$file"
-	else
-		rm -f "$tmp"
-		return 1
-	fi
+	current=$(jq -c . "$file" 2>/dev/null || true)
+	revision=$(jq -r '.review_revision // 0' <<<"$current")
+	attempt=$(($(jq -r '.review_attempt // .review_dispatch_attempts // 0' <<<"$current") + 1))
+	attempt_id=$(_review_lifecycle_new_id)
+	patch=$(jq -cn \
+		--arg review_task_id "$review_task_id" --arg handoff_file "$handoff_file" \
+		--arg review_backend "$review_backend" --arg review_mode "$review_mode" \
+		--arg now "$now" --arg attempt_id "$attempt_id" \
+		--argjson now_epoch "$now_epoch" --argjson attempt "$attempt" \
+		'{review_task_id:(if $review_task_id == "" then null else $review_task_id end),review_handoff_file:(if $handoff_file == "" then null else $handoff_file end),review_backend:(if $review_backend == "" then null else $review_backend end),review_mode:(if $review_mode == "" then null else $review_mode end),review_started_at:$now,review_started_at_epoch:$now_epoch,review_attempt:$attempt,review_attempt_id:$attempt_id,review_dispatch_attempts:$attempt,review_completed_at:null,review_blocker_count:null,review_dispatch_failed:false,review_dispatch_failed_at:null,review_dispatch_failed_reason:null,review_dispatch_failed_detail:null,review_dispatch_failed_log:null}')
+	review_lifecycle_transition "$task_id" claim "$revision" "" "$patch" >/dev/null
 }
 
 pending_review_revert_review_started() {
@@ -581,58 +699,44 @@ pending_review_revert_review_started() {
 	local reason="${2:-}"
 	local detail="${3:-}"
 	local log_path="${4:-}"
+	local expected_revision="${5:-}" expected_attempt_id="${6:-}"
 	local file="${PENDING_REVIEW_DIR}/${task_id}.json"
 
 	[[ -f "$file" ]] || return 1
-
-	local now tmp
-	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-	tmp=$(mktemp)
-	if jq \
-		--arg reason "$reason" \
-		--arg detail "$detail" \
-		--arg log_path "$log_path" \
-		--arg now "$now" \
-		'.review_state = "pending" |
-		.review_dispatch_failed = true |
-		.review_dispatch_failed_at = $now |
-		.review_dispatch_failed_reason = (if $reason == "" then null else $reason end) |
-		.review_dispatch_failed_detail = (if $detail == "" then null else $detail end) |
-		.review_dispatch_failed_log = (if $log_path == "" then null else $log_path end)' \
-		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-		mv "$tmp" "$file"
-	else
-		rm -f "$tmp"
-		return 1
+	local current_state
+	current_state=$(jq -r '.review_state // "pending"' "$file" 2>/dev/null || true)
+	[[ -n "$expected_revision" ]] || expected_revision=$(jq -r '.review_revision // 0' "$file" 2>/dev/null || echo 0)
+	if [[ "$current_state" == "reviewing" && -z "$expected_attempt_id" ]]; then
+		return 3
 	fi
+
+	local now patch
+	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+	patch=$(jq -cn --arg reason "$reason" --arg detail "$detail" --arg log_path "$log_path" --arg now "$now" \
+		'{review_dispatch_failed:true,review_dispatch_failed_at:$now,review_dispatch_failed_reason:(if $reason == "" then null else $reason end),review_dispatch_failed_detail:(if $detail == "" then null else $detail end),review_dispatch_failed_log:(if $log_path == "" then null else $log_path end)}')
+	review_lifecycle_transition "$task_id" spawn_failed "$expected_revision" "$expected_attempt_id" "$patch" >/dev/null
 }
 
 pending_review_mark_retry_disabled() {
 	local task_id="$1"
 	local reason="${2:-}"
 	local detail="${3:-}"
+	local expected_revision="${4:-}" expected_attempt_id="${5:-}"
 	local file="${PENDING_REVIEW_DIR}/${task_id}.json"
 
 	[[ -f "$file" ]] || return 1
-
-	local now tmp
-	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-	tmp=$(mktemp)
-	if jq \
-		--arg reason "$reason" \
-		--arg detail "$detail" \
-		--arg now "$now" \
-		'.review_state = "blocked" |
-		.retry_disabled = true |
-		.retry_disabled_reason = (if $reason == "" then null else $reason end) |
-		.retry_disabled_detail = (if $detail == "" then null else $detail end) |
-		.retry_disabled_at = $now' \
-		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-		mv "$tmp" "$file"
-	else
-		rm -f "$tmp"
-		return 1
+	local current_state
+	current_state=$(jq -r '.review_state // "pending"' "$file" 2>/dev/null || true)
+	[[ -n "$expected_revision" ]] || expected_revision=$(jq -r '.review_revision // 0' "$file" 2>/dev/null || echo 0)
+	if [[ "$current_state" == "reviewing" && -z "$expected_attempt_id" ]]; then
+		return 3
 	fi
+
+	local now patch
+	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+	patch=$(jq -cn --arg reason "$reason" --arg detail "$detail" --arg now "$now" \
+		'{retry_disabled:true,retry_disabled_reason:(if $reason == "" then null else $reason end),retry_disabled_detail:(if $detail == "" then null else $detail end),retry_disabled_at:$now}')
+	review_lifecycle_transition "$task_id" invalidate "$expected_revision" "$expected_attempt_id" "$patch" >/dev/null || return $?
 
 	# PAR-290 / LANE-HOOK-02: emit the authoritative review-gate verdict marker
 	# when review retry is disabled (terminal blocked). Command-guarded +
@@ -687,10 +791,11 @@ pending_review_mark_reconciled() {
 		refresh_files_json="null"
 	fi
 
-	local now tmp
+	local now desired revision attempt_id
 	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-	tmp=$(mktemp)
-	if jq \
+	revision=$(jq -r '.review_revision // 0' "$file" 2>/dev/null || true)
+	attempt_id=$(jq -r 'if (.review_state // "pending") == "reviewing" then (.review_attempt_id // empty) else empty end' "$file" 2>/dev/null || true)
+	desired=$(jq -c \
 		--arg now "$now" \
 		--arg last_commit "$refresh_last_commit" \
 		--arg end_commit "$refresh_end_commit" \
@@ -721,12 +826,8 @@ pending_review_mark_reconciled() {
 		(.callback_url = (if $callback_url == "" then (.callback_url // null) else $callback_url end)) |
 		(.exec_mode = (if $exec_mode == "" then (.exec_mode // null) else $exec_mode end)) |
 		(.exec_node = (if $exec_node == "" then (.exec_node // null) else $exec_node end))' \
-		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-		mv "$tmp" "$file"
-	else
-		rm -f "$tmp"
-		return 1
-	fi
+		"$file" 2>/dev/null) || return 1
+	review_lifecycle_transition "$task_id" metadata "$revision" "$attempt_id" "$desired" >/dev/null
 }
 
 pending_review_reconcile_completion() {
@@ -763,10 +864,11 @@ pending_review_reconcile_completion() {
 		refresh_files_json="null"
 	fi
 
-	local now tmp
+	local now desired revision attempt_id
 	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-	tmp=$(mktemp)
-	if jq \
+	revision=$(jq -r '.review_revision // 0' "$file" 2>/dev/null || true)
+	attempt_id=$(jq -r 'if (.review_state // "pending") == "reviewing" then (.review_attempt_id // empty) else empty end' "$file" 2>/dev/null || true)
+	desired=$(jq -c \
 		--arg now "$now" \
 		--arg target_status "$target_status" \
 		--arg exit_code "$exit_code" \
@@ -800,12 +902,8 @@ pending_review_reconcile_completion() {
 		(.callback_url = (if $callback_url == "" then (.callback_url // null) else $callback_url end)) |
 		(.exec_mode = (if $exec_mode == "" then (.exec_mode // null) else $exec_mode end)) |
 		(.exec_node = (if $exec_node == "" then (.exec_node // null) else $exec_node end))' \
-		"$file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-		mv "$tmp" "$file"
-	else
-		rm -f "$tmp"
-		return 1
-	fi
+		"$file" 2>/dev/null) || return 1
+	review_lifecycle_transition "$task_id" metadata "$revision" "$attempt_id" "$desired" >/dev/null
 }
 
 pending_review_review_in_progress_recent() {
@@ -827,14 +925,16 @@ pending_review_review_in_progress_recent() {
 	[[ $((now - started_epoch)) -lt $cooldown_seconds ]]
 }
 
-# Quarantine stale pending-review entries to quarantined/ subdirectory.
-# Moves non-terminal entries older than max_age (by completed_at or mtime)
-# out of the active queue, annotating them with quarantine metadata.
-# Terminal states (reviewed, blocked) are left for normal cleanup.
-# Prints the count of quarantined files to stdout.
+# Quarantine stale pending-review entries through the lifecycle state machine.
+# The root receipt remains as terminal blocked truth; quarantined/ is an audit
+# snapshot only. owner_waiting has a separate, explicit SLA which defaults off.
+# Legacy owner_waiting receipts are repaired from the task row when a concrete
+# route exists, otherwise blocked as unroutable without bypassing authorization.
 # Usage: pending_review_quarantine [max_age_seconds]
 pending_review_quarantine() {
 	local max_age="${1:-21600}" # default 6 hours
+	local owner_wait_sla="${OSTE_OWNER_WAIT_SLA_SECONDS:-0}"
+	[[ "$owner_wait_sla" =~ ^[0-9]+$ ]] || owner_wait_sla=0
 
 	pending_review_init
 	mkdir -p "${PENDING_REVIEW_DIR}/quarantined"
@@ -847,11 +947,13 @@ pending_review_quarantine() {
 
 		local task_id review_state
 		task_id=$(basename "$f" .json)
+		# The watchdog performs its own logged rejection. Keep the compatibility
+		# reconciler path-safe and quiet when an invalid filename reaches the
+		# directory; lifecycle path helpers intentionally reject such IDs.
+		_review_lifecycle_validate_task_id "$task_id" >/dev/null 2>&1 || continue
 		review_state=$(jq -r '.review_state // "pending"' "$f" 2>/dev/null || echo "pending")
 
-		case "$review_state" in
-			reviewed | blocked | reviewing) continue ;;
-		esac
+		case "$review_state" in reviewed | blocked | reviewing | awaiting_fixup) continue ;; esac
 
 		local completed_at_str file_age_seconds
 		completed_at_str=$(jq -r '.completed_at // empty' "$f" 2>/dev/null || true)
@@ -859,7 +961,7 @@ pending_review_quarantine() {
 			local completed_epoch
 			# Strip trailing Z and parse as UTC (-u) so BSD date doesn't treat
 			# the ISO-8601 timestamp as local time.
-			completed_epoch=$(date -j -u -f "%Y-%m-%dT%H:%M:%S" "${completed_at_str%Z}" +%s 2>/dev/null || echo "0")
+			completed_epoch=$(date -j -u -f "%Y-%m-%dT%H:%M:%S" "${completed_at_str%Z}" +%s 2>/dev/null || date -u -d "$completed_at_str" +%s 2>/dev/null || echo "0")
 			if [[ "$completed_epoch" -gt 0 ]]; then
 				file_age_seconds=$((now - completed_epoch))
 			else
@@ -873,26 +975,145 @@ pending_review_quarantine() {
 			file_age_seconds=$((now - mtime))
 		fi
 
-		if [[ $file_age_seconds -ge $max_age ]]; then
-			local quarantine_dest="${PENDING_REVIEW_DIR}/quarantined/${task_id}.json"
-			local tmp
-			tmp=$(mktemp)
-			if jq \
-				--arg quarantined_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-				--arg quarantine_reason "stale_age" \
-				--argjson age_seconds "$file_age_seconds" \
-				'. + {
-					quarantined: true,
-					quarantined_at: $quarantined_at,
-					quarantine_reason: $quarantine_reason,
-					quarantine_age_seconds: $age_seconds
-				}' "$f" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-				mv "$tmp" "$quarantine_dest"
-				rm -f "$f"
-			else
-				rm -f "$tmp"
-				mv "$f" "$quarantine_dest"
+		local revision transition_event="" reason="" detail="" patch result
+		revision=$(jq -r '.review_revision // 0' "$f" 2>/dev/null || echo 0)
+		if [[ "$review_state" == "owner_waiting" ]]; then
+			# A generated task row may adopt only the narrowly validated routed
+			# owner-wait migration. If that binding fails, quarantine the unbound
+			# legacy receipt instead of mutating a potentially reused task ID.
+			local receipt_generation row_generation publish_rc=0
+			receipt_generation=$(jq -r '.task_generation // empty' "$f" 2>/dev/null || true)
+			row_generation=$(jq -r --arg id "$task_id" '.tasks[$id].task_generation // empty' "$(_review_lifecycle_tasks_file)" 2>/dev/null || true)
+			if [[ -z "$receipt_generation" && -n "$row_generation" ]]; then
+				review_lifecycle_publish_json "$task_id" "$(jq -c . "$f")" >/dev/null 2>&1 || publish_rc=$?
+				if [[ "$publish_rc" -ne 0 ]]; then
+					if review_lifecycle_lock_acquire "$task_id"; then
+						local unbound_snapshot
+						unbound_snapshot=$(jq -c --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+							.quarantined=true | .quarantined_at=$now |
+							.quarantine_reason="legacy_unbound_task_generation" |
+							.retry_disabled=true |
+							.retry_disabled_reason="legacy_unbound_task_generation" |
+							.retry_disabled_detail="receipt could not be safely bound to current task generation"
+						' "$f" 2>/dev/null || true)
+						if [[ -n "$unbound_snapshot" ]] &&
+							_review_lifecycle_quarantine_artifact_locked "$task_id" "$f" receipt "legacy-unbound-task-generation" >/dev/null; then
+							# The unique renamed artifact is durability truth. This
+							# canonical annotated snapshot is only for operator UX.
+							_review_lifecycle_atomic_json_write "${PENDING_REVIEW_DIR}/quarantined/${task_id}.json" "$unbound_snapshot" || true
+							quarantined_count=$((quarantined_count + 1))
+						fi
+						review_lifecycle_lock_release "$task_id"
+						_review_lifecycle_emit_after_settle "$task_id"
+					fi
+					continue
+				fi
+				revision=$(jq -r '.review_revision // 0' "$f" 2>/dev/null || echo 0)
 			fi
+			# The task row is the owner-routing authority. Validate every field even
+			# when the receipt already has a session key: a stale but nonempty route
+			# must not wait forever or be silently rebound to another owner.
+			local session_key workroom_ref work_item_ref row_json row_session row_workroom row_work_item route_conflict=false route_missing=false
+			session_key=$(jq -r '.session_key // empty' "$f" 2>/dev/null || true)
+			workroom_ref=$(jq -r '.workroom_ref // empty' "$f" 2>/dev/null || true)
+			work_item_ref=$(jq -r '.work_item_ref // empty' "$f" 2>/dev/null || true)
+			row_json=$(jq -c --arg id "$task_id" '.tasks[$id] // null' "$(_review_lifecycle_tasks_file)" 2>/dev/null || true)
+			row_session=$(jq -r '.session_key // empty' <<<"$row_json" 2>/dev/null || true)
+			row_workroom=$(jq -r '.workroom_ref // empty' <<<"$row_json" 2>/dev/null || true)
+			row_work_item=$(jq -r '.work_item_ref // empty' <<<"$row_json" 2>/dev/null || true)
+			receipt_generation=$(jq -r '.task_generation // empty' "$f" 2>/dev/null || true)
+			if [[ -z "$row_json" || "$row_json" == "null" || (-n "$receipt_generation" && "$receipt_generation" != "$row_generation") ]]; then
+				if review_lifecycle_lock_acquire "$task_id"; then
+					if _review_lifecycle_quarantine_artifact_locked "$task_id" "$f" receipt "stale-or-missing-task-generation" >/dev/null; then
+						quarantined_count=$((quarantined_count + 1))
+					fi
+					review_lifecycle_lock_release "$task_id"
+				fi
+				continue
+			fi
+			if [[ -z "$row_json" || "$row_json" == "null" || -z "$row_session" || (-z "$row_workroom" && -z "$row_work_item") ]]; then
+				route_missing=true
+			fi
+			if [[ -n "$session_key" && "$session_key" != "$row_session" ]] ||
+				[[ -n "$workroom_ref" && "$workroom_ref" != "$row_workroom" ]] ||
+				[[ -n "$work_item_ref" && "$work_item_ref" != "$row_work_item" ]]; then
+				route_conflict=true
+			fi
+			if [[ "$route_missing" == "false" && "$route_conflict" == "false" ]] &&
+				{ [[ "$session_key" != "$row_session" ]] || [[ "$workroom_ref" != "$row_workroom" ]] || [[ "$work_item_ref" != "$row_work_item" ]]; }; then
+				patch=$(jq -cn \
+					--arg generation "$row_generation" \
+					--arg sk "$row_session" \
+					--arg wr "$row_workroom" \
+					--arg wi "$row_work_item" \
+					--arg request_id "$(_review_lifecycle_new_id)" '
+					{
+						session_key:$sk,
+						workroom_ref:(if $wr=="" then null else $wr end),
+						work_item_ref:(if $wi=="" then null else $wi end),
+						owner_review_gate:true,
+						owner_review_state:"waiting",
+						owner_review_authorized:false,
+						owner_review_authorized_at:null,
+						owner_review_request_id:$request_id,
+						owner_review_reason:"legacy owner route repaired; authorization still required",
+						owner_route_snapshot:{task_generation:$generation,session_key:$sk,workroom_ref:$wr,work_item_ref:$wi}
+					}')
+				if review_lifecycle_transition "$task_id" legacy_route_repair "$revision" "" "$patch" >/dev/null 2>&1; then
+					continue
+				fi
+				route_conflict=true
+			fi
+			if [[ "$route_missing" == "true" || "$route_conflict" == "true" ]]; then
+				transition_event="legacy_unroutable"
+				reason="legacy_owner_route_mismatch"
+				if [[ "$route_missing" == "true" ]]; then
+					detail="authoritative task row has no concrete owner route"
+				else
+					detail="owner_waiting receipt route disagrees with authoritative task row"
+				fi
+				patch=$(jq -cn \
+					--arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+					--arg reason "$reason" \
+					--arg detail "$detail" \
+					--arg generation "$row_generation" \
+					--arg sk "$row_session" \
+					--arg wr "$row_workroom" \
+					--arg wi "$row_work_item" \
+					--argjson age "$file_age_seconds" '
+					{
+						quarantined:true,
+						quarantined_at:$now,
+						quarantine_reason:$reason,
+						quarantine_age_seconds:$age,
+						retry_disabled:true,
+						retry_disabled_reason:$reason,
+						retry_disabled_detail:$detail,
+						owner_route_snapshot:{task_generation:$generation,session_key:$sk,workroom_ref:$wr,work_item_ref:$wi}
+					}')
+				if result=$(review_lifecycle_transition "$task_id" "$transition_event" "$revision" "" "$patch" 2>/dev/null); then
+					_review_lifecycle_atomic_json_write "${PENDING_REVIEW_DIR}/quarantined/${task_id}.json" "$result" || true
+					quarantined_count=$((quarantined_count + 1))
+				fi
+				continue
+			elif [[ "$owner_wait_sla" -gt 0 && "$file_age_seconds" -ge "$owner_wait_sla" ]]; then
+				transition_event="owner_sla_expired"
+				reason="owner_wait_sla_expired"
+				detail="owner authorization exceeded configured ${owner_wait_sla}s SLA"
+			else
+				continue
+			fi
+		elif [[ "$file_age_seconds" -ge "$max_age" ]]; then
+			transition_event="quarantine"
+			reason="stale_review_quarantine"
+			detail="pending review exceeded ${max_age}s queue age"
+		else
+			continue
+		fi
+		patch=$(jq -cn --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg reason "$reason" --arg detail "$detail" --argjson age "$file_age_seconds" \
+			'{quarantined:true,quarantined_at:$now,quarantine_reason:$reason,quarantine_age_seconds:$age,retry_disabled:true,retry_disabled_reason:$reason,retry_disabled_detail:$detail}')
+		if result=$(review_lifecycle_transition "$task_id" "$transition_event" "$revision" "" "$patch" 2>/dev/null); then
+			_review_lifecycle_atomic_json_write "${PENDING_REVIEW_DIR}/quarantined/${task_id}.json" "$result" || true
 			quarantined_count=$((quarantined_count + 1))
 		fi
 	done
@@ -912,11 +1133,35 @@ pending_review_cleanup() {
 
 	for f in "${PENDING_REVIEW_DIR}"/*.json; do
 		[[ -f "$f" ]] || continue
-		local file_mtime file_age
+		local file_mtime file_age task_id review_state
 		file_mtime=$(stat -f %m "$f" 2>/dev/null || echo "$now")
 		file_age=$((now - file_mtime))
 		if [[ $file_age -ge $max_age ]]; then
-			rm -f "$f"
+			task_id=$(basename "$f" .json)
+			review_state=$(jq -r '.review_state // "pending"' "$f" 2>/dev/null || echo pending)
+			case "$review_state" in
+				reviewed) ;;
+				blocked)
+					[[ "$(jq -r '.retry_disabled // false' "$f" 2>/dev/null || echo false)" == "true" ]] || continue
+					;;
+				*) continue ;;
+			esac
+			# Serialize deletion with every lifecycle writer and recover any WAL
+			# first. Re-check terminal state under the lock, then emit a fresh
+			# receipt_present=false projection after release.
+			if review_lifecycle_lock_acquire "$task_id"; then
+				if _review_lifecycle_recover_locked "$task_id"; then
+					review_state=$(jq -r '.review_state // "pending"' "$f" 2>/dev/null || echo pending)
+					case "$review_state" in
+						reviewed) rm -f "$f" ;;
+						blocked)
+							[[ "$(jq -r '.retry_disabled // false' "$f" 2>/dev/null || echo false)" == "true" ]] && rm -f "$f"
+							;;
+					esac
+				fi
+				review_lifecycle_lock_release "$task_id"
+				_review_lifecycle_emit_after_settle "$task_id"
+			fi
 		fi
 	done
 
