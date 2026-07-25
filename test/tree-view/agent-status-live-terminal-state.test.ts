@@ -715,7 +715,9 @@ describe("canonicalGenerationToken — launcher generation field compatibility",
 		rc_version: "0.6.0",
 		template_generation: "deadbeef0000",
 	};
-	const TOKEN = "v0.6.0-rc.65-3-gabc1234|abc1234|0.6.0|deadbeef0000";
+	// git_sha is present in the stamp but absent from the token: it is
+	// provenance, not identity. See APP_STAMP_IDENTITY_FIELDS.
+	const TOKEN = "v0.6.0-rc.65-3-gabc1234|0.6.0|deadbeef0000";
 
 	test("plain string token (release_generation / source_version) passes through trimmed", () => {
 		expect(canonicalGenerationToken("rc.65")).toBe("rc.65");
@@ -748,7 +750,6 @@ describe("canonicalGenerationToken — launcher generation field compatibility",
 	test("incomplete app_stamp (any identity field missing or blank) → null (launcher 'unknown' gate)", () => {
 		for (const key of [
 			"launcher_version",
-			"git_sha",
 			"rc_version",
 			"template_generation",
 		] as const) {
@@ -758,6 +759,31 @@ describe("canonicalGenerationToken — launcher generation field compatibility",
 			delete missing[key];
 			expect(canonicalGenerationToken(missing)).toBeNull();
 		}
+	});
+
+	// git_sha is provenance, not identity — it moves on every launcher-repo
+	// commit, including ones that change nothing a lane is built from. Comparing
+	// it made every lane read superseded after any commit. This must stay in
+	// agreement with the launcher's audit-bundles verdict comparison.
+	test("git_sha is not an identity field — it neither nulls the token nor supersedes", () => {
+		const withoutSha: Record<string, string> = { ...APP_STAMP };
+		delete withoutSha["git_sha"];
+		expect(canonicalGenerationToken(withoutSha)).toBe(TOKEN);
+		expect(canonicalGenerationToken({ ...APP_STAMP, git_sha: "  " })).toBe(
+			TOKEN,
+		);
+
+		const laneToken = canonicalGenerationToken(APP_STAMP);
+		const shaOnlyDrift = canonicalGenerationToken({
+			...APP_STAMP,
+			git_sha: "0ther5ha",
+		});
+		expect(
+			isSupersededByReleaseReset(
+				{ release_generation: laneToken },
+				shaOnlyDrift,
+			),
+		).toBe(false);
 	});
 
 	test("a complete app_stamp and a drifted baseline supersede via the shared token", () => {

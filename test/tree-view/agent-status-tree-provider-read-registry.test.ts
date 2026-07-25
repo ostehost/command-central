@@ -318,9 +318,10 @@ describe("AgentStatusTreeProvider.readRegistry (real impl)", () => {
 			expect(task?.team_template).toBe("full");
 			expect(task?.team_requested).toBe(true);
 			expect(task?.session_live).toBe(true);
-			expect(task?.release_generation).toBe(
-				"v0.6.0-rc.66|fed745da|0.6.0|abc123",
-			);
+			// git_sha (fed745da) is read from the stamp but is not part of the
+			// canonical token — it is provenance, not identity. See
+			// APP_STAMP_IDENTITY_FIELDS.
+			expect(task?.release_generation).toBe("v0.6.0-rc.66|0.6.0|abc123");
 		} finally {
 			fs.rmSync(tmpDir, { recursive: true, force: true });
 			provider.dispose();

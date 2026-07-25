@@ -435,10 +435,16 @@ describe("release generation and team metadata helpers", () => {
 
 	test("canonicalGenerationToken accepts strings and app_stamp objects", () => {
 		expect(canonicalGenerationToken(" rc.66 ")).toBe("rc.66");
+		// git_sha is provenance, not identity: it moves on every launcher-repo
+		// commit, including ones that change nothing a lane is built from, so it
+		// is absent from the token and a blank one is not disqualifying.
 		expect(canonicalGenerationToken(stamp)).toBe(
-			"v0.6.0-rc.66|abc1234|0.6.0|deadbeef0000",
+			"v0.6.0-rc.66|0.6.0|deadbeef0000",
 		);
-		expect(canonicalGenerationToken({ ...stamp, git_sha: " " })).toBeNull();
+		expect(canonicalGenerationToken({ ...stamp, git_sha: " " })).toBe(
+			"v0.6.0-rc.66|0.6.0|deadbeef0000",
+		);
+		expect(canonicalGenerationToken({ ...stamp, rc_version: " " })).toBeNull();
 	});
 
 	test("isSupersededByReleaseReset compares canonical generation tokens", () => {

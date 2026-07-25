@@ -572,9 +572,23 @@ export function isAgentTeamLead(
 	return task.team_requested === true || Boolean(task.team_template?.trim());
 }
 
+// git_sha is deliberately absent. It is the launcher repo's HEAD, so it moves on
+// every commit to that repo — including commits that cannot change anything a
+// lane or a bundle is built from (a test, a doc, a sibling script). Including it
+// made every lane read as superseded after any launcher commit at all: measured
+// 2026-07-25, 17 of 18 project bundles reported stale while launcher_version,
+// rc_version and template_generation were byte-identical, because two commits
+// had landed that never touched the launcher itself.
+//
+// template_generation already hashes the launcher file, so a real change to what
+// a lane was built from still moves the token. git_sha stays in the stamp as
+// provenance ("which commit built this"), just not as an identity field.
+//
+// This list MUST agree with the verdict comparison in the launcher's
+// oste-terminal-generation.sh `audit-bundles`. If the two drift, the launcher
+// reports a bundle current while Command Central badges its lanes stale.
 const APP_STAMP_IDENTITY_FIELDS = [
 	"launcher_version",
-	"git_sha",
 	"rc_version",
 	"template_generation",
 ] as const;
