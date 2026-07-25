@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note:** Test counts in historical entries reflect the test suite size at that point in time. Current suite size as of 2026-04-02: 1160+ tests across 83 files.
 
+## [0.6.0-rc.80] - 2026-07-25
+
+### Changed
+- **Terminal background watermark is now 600px** — doubled from 300px. The project emoji is drawn at 75% of a square canvas of this size, so this is the only value governing how large the watermark renders. Ships via the bundled launcher; a bundle picks it up on its next rebuild.
+- **Cutting a preview now refreshes installed launcher bundles** — the cut runs a bundle sync so a released launcher change reaches `/Applications/Projects/*.app` instead of sitting in the VSIX unconsumed. Bundles whose Ghostty client is running are skipped and reported rather than torn down mid-session.
+
+### Fixed
+- **App-stamp identity no longer keys on git sha** — the sha moves for commits that cannot change bundle content, which badged current bundles stale and suppressed their liveness probe.
+
 ## [0.6.0-rc.79] - 2026-07-25
 
 Content of this cut is the bundled launcher resync (`resources/bin/`). No

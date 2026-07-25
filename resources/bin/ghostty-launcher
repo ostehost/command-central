@@ -385,7 +385,8 @@ sanitize_for_bundle() {
 generate_emoji_background() {
 	local emoji="$1"
 	local output_path="$2"
-	local max_width="${3:-300}"
+	# Keep this fallback in step with bg_max_width at the only call site.
+	local max_width="${3:-600}"
 	local temp_dir
 	temp_dir=$(mktemp -d)
 
@@ -1174,7 +1175,10 @@ CONF
 	bg_opacity="${bg_opacity:-0.07}"
 	bg_position="${bg_position:-top-right}"
 	bg_fit="${bg_fit:-none}"
-	bg_max_width="300"
+	# Watermark render size in px (square). Doubled 300 -> 600: the glyph is drawn
+	# at 75% of this box, so this is the only knob that controls how large the
+	# emoji watermark appears in the terminal.
+	bg_max_width="600"
 
 	if [[ "$bg_enabled" != "false" ]] && [[ -n "$icon" ]] && [[ -n "$(is_emoji "$icon")" ]]; then
 		local bg_dest="${config_dir}/background.png"
