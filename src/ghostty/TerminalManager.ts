@@ -10,7 +10,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { LoggerService } from "../services/logger-service.js";
-import { ProjectIconManager } from "../services/project-icon-manager.js";
 
 /** Custom error types for better error handling */
 class LauncherNotFoundError extends Error {
@@ -111,23 +110,22 @@ export interface TerminalInfo {
 	multiplexer: LauncherMultiplexer;
 }
 
-export interface ProjectIconEnsurer {
-	ensureProjectIconPersisted(projectDir: string): Promise<string>;
-}
-
+/**
+ * TerminalManager no longer takes a project-icon collaborator.
+ *
+ * It used to resolve-and-persist an icon before creating a bundle, so the
+ * launcher would find one in `.vscode/settings.json`. That write is gone: it
+ * stamped hash-derived emoji into repositories this extension does not own,
+ * overwriting icons curated in Linear. The launcher now reads the work registry
+ * directly, so bundle creation needs nothing from this class.
+ */
 export class TerminalManager {
 	private readonly logger: LoggerService;
-	private readonly projectIconEnsurer: ProjectIconEnsurer;
 	private readonly globalState: vscode.Memento | undefined;
 	private launcherValidationCache = new Map<string, boolean>();
 
-	constructor(
-		logger: LoggerService,
-		projectIconEnsurer: ProjectIconEnsurer = new ProjectIconManager(),
-		globalState?: vscode.Memento,
-	) {
+	constructor(logger: LoggerService, globalState?: vscode.Memento) {
 		this.logger = logger;
-		this.projectIconEnsurer = projectIconEnsurer;
 		this.globalState = globalState;
 	}
 
@@ -200,8 +198,11 @@ export class TerminalManager {
 			`Creating project terminal for: ${workspaceRoot}`,
 			"TerminalManager",
 		);
-		await this.projectIconEnsurer.ensureProjectIconPersisted(workspaceRoot);
-
+		// No icon materialization step here on purpose. This used to persist a
+		// resolved icon into the project's settings so the launcher would have
+		// one to render; the launcher now reads the work registry directly, and
+		// the persisting version was writing hash-derived icons into repositories
+		// it did not own. Bundle creation needs nothing from us.
 		const launcher = await this.resolvedLauncherPath();
 
 		const { stdout, stderr } = await this.execLauncher(launcher, [

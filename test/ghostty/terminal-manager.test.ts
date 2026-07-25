@@ -190,7 +190,6 @@ describe("TerminalManager.getLauncherPath", () => {
 		});
 		const mgr = new TerminalManager(
 			createMockLogger() as never,
-			undefined,
 			globalState as never,
 		);
 		expect(mgr.getLauncherPath()).toBe(
@@ -560,7 +559,6 @@ describe("TerminalManager.createProjectTerminal", () => {
 
 			const mgr = new TerminalManager(
 				createMockLogger() as never,
-				undefined,
 				globalState as never,
 			);
 			await mgr.createProjectTerminal(workspaceRoot);
@@ -574,95 +572,6 @@ describe("TerminalManager.createProjectTerminal", () => {
 		} finally {
 			process.env["PATH"] = originalPath;
 		}
-	});
-});
-
-describe("TerminalManager icon persistence before create-bundle", () => {
-	beforeEach(() => {
-		mock.restore();
-		mock.module("vscode", () => ({
-			workspace: { getConfiguration: mockGetConfiguration },
-			window: { createTerminal: mockCreateTerminal },
-		}));
-		mock.module("node:child_process", () => ({
-			...realChildProcess,
-			execFile: execFileMock,
-		}));
-		mock.module("node:fs", () => ({
-			...realFs,
-			promises: realFs.promises,
-			existsSync: fsExistsSyncMock,
-			accessSync: fsAccessSyncMock,
-		}));
-		mockConfigGet.mockImplementation(() => undefined);
-		fsExistsSyncMock.mockImplementation(() => false);
-	});
-
-	test("ensures icon before direct createProjectTerminal bundle creation", async () => {
-		const events: string[] = [];
-		const iconEnsurer = {
-			ensureProjectIconPersisted: mock(async () => {
-				events.push("ensure-icon");
-				return "🧪";
-			}),
-		};
-
-		execFileMock.mockImplementation(
-			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
-				if (a.includes("--version")) {
-					cb(null, { stdout: "launcher version 1.0.0", stderr: "" });
-				} else if (a.includes("--create-bundle")) {
-					events.push("create-bundle");
-					cb(null, { stdout: "Bundle created", stderr: "" });
-				} else {
-					cb(null, { stdout: "", stderr: "" });
-				}
-			},
-		);
-
-		const mgr = new TerminalManager(createMockLogger() as never, iconEnsurer);
-		await mgr.createProjectTerminal("/Users/test/my-project");
-
-		expect(events).toEqual(["ensure-icon", "create-bundle"]);
-		expect(iconEnsurer.ensureProjectIconPersisted).toHaveBeenCalledTimes(1);
-	});
-
-	test("ensures icon before runInProjectTerminal path creates a bundle", async () => {
-		const events: string[] = [];
-		const iconEnsurer = {
-			ensureProjectIconPersisted: mock(async () => {
-				events.push("ensure-icon");
-				return "📦";
-			}),
-		};
-
-		execFileMock.mockImplementation(
-			(_f: string, a: string[], _o: object, cb: ExecFileCallback) => {
-				if (a.includes("--version")) {
-					cb(null, { stdout: "launcher version 1.0.0", stderr: "" });
-				} else if (a.includes("--parse-name")) {
-					cb(null, { stdout: "my-project\n", stderr: "" });
-				} else if (a.includes("--parse-icon")) {
-					cb(null, { stdout: "📦\n", stderr: "" });
-				} else if (a.includes("--session-id")) {
-					cb(null, { stdout: "\n", stderr: "" });
-				} else if (a.includes("--create-bundle")) {
-					events.push("create-bundle");
-					cb(null, { stdout: "Bundle created", stderr: "" });
-				} else if (a.length === 1 && a[0] === "/Users/test/my-project") {
-					events.push("open-bundle");
-					cb(null, { stdout: "Bundle opened", stderr: "" });
-				} else {
-					cb(null, { stdout: "", stderr: "" });
-				}
-			},
-		);
-
-		const mgr = new TerminalManager(createMockLogger() as never, iconEnsurer);
-		await mgr.runInProjectTerminal("/Users/test/my-project");
-
-		expect(events).toEqual(["ensure-icon", "create-bundle", "open-bundle"]);
-		expect(iconEnsurer.ensureProjectIconPersisted).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -1643,18 +1552,13 @@ describe("TerminalManager Workspace Trust gate (CCSTD-03)", () => {
 
 	test("createProjectTerminal refuses and spawns nothing when workspace is untrusted", async () => {
 		applyMocks(false);
-		const iconEnsurer = {
-			ensureProjectIconPersisted: mock(async () => "🧪"),
-		};
-		const mgr = new TerminalManager(createMockLogger() as never, iconEnsurer);
+		const mgr = new TerminalManager(createMockLogger() as never);
 
 		await expect(
 			mgr.createProjectTerminal("/Users/test/evil-project"),
 		).rejects.toThrow(WorkspaceTrustRequiredError);
 
 		expect(execFileMock).not.toHaveBeenCalled();
-		// The gate fires before any bundle side effects (icon persistence).
-		expect(iconEnsurer.ensureProjectIconPersisted).not.toHaveBeenCalled();
 	});
 
 	test("runInBundleTerminal refuses and spawns nothing when workspace is untrusted", async () => {
@@ -1670,7 +1574,6 @@ describe("TerminalManager Workspace Trust gate (CCSTD-03)", () => {
 
 	test("createProjectTerminal proceeds and spawns the launcher when workspace is trusted", async () => {
 		applyMocks(true);
-		const iconEnsurer = { ensureProjectIconPersisted: mock(async () => "📦") };
 		const calls: Array<{ file: string; args: string[] }> = [];
 		execFileMock.mockImplementation(
 			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
@@ -1683,7 +1586,7 @@ describe("TerminalManager Workspace Trust gate (CCSTD-03)", () => {
 			},
 		);
 
-		const mgr = new TerminalManager(createMockLogger() as never, iconEnsurer);
+		const mgr = new TerminalManager(createMockLogger() as never);
 		await mgr.createProjectTerminal("/Users/test/trusted-project");
 
 		// Positive control: the same call DOES spawn the launcher when trusted,
@@ -1693,7 +1596,6 @@ describe("TerminalManager Workspace Trust gate (CCSTD-03)", () => {
 
 	test("createProjectTerminal proceeds when isTrusted is undefined (trust-unaware host)", async () => {
 		applyMocks(undefined);
-		const iconEnsurer = { ensureProjectIconPersisted: mock(async () => "📦") };
 		const calls: Array<{ file: string; args: string[] }> = [];
 		execFileMock.mockImplementation(
 			(f: string, a: string[], _o: object, cb: ExecFileCallback) => {
@@ -1706,7 +1608,7 @@ describe("TerminalManager Workspace Trust gate (CCSTD-03)", () => {
 			},
 		);
 
-		const mgr = new TerminalManager(createMockLogger() as never, iconEnsurer);
+		const mgr = new TerminalManager(createMockLogger() as never);
 		await expect(
 			mgr.createProjectTerminal("/Users/test/legacy-host-project"),
 		).resolves.toBeUndefined();

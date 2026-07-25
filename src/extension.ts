@@ -2032,11 +2032,7 @@ export async function activate(
 		// ============================================================================
 		// Ghostty Integration — TerminalManager + BinaryManager
 		// ============================================================================
-		terminalManager = new TerminalManager(
-			mainLogger,
-			new ProjectIconManager(),
-			context.globalState,
-		);
+		terminalManager = new TerminalManager(mainLogger, context.globalState);
 		binaryManager = new BinaryManager(mainLogger);
 
 		// Set hasLauncher context for menu visibility

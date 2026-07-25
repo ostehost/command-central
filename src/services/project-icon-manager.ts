@@ -72,29 +72,50 @@ const PROJECT_ICON_POOL = [
 export class ProjectIconManager {
 	private iconCache = new Map<string, string>();
 	private writeQueue = new Map<string, Promise<void>>();
+	// Registry icons, keyed by resolved path. Reparsed only when the file's
+	// mtime or location changes — see readRegistryIcon.
+	private registryIcons: Map<string, string> | null = null;
+	private registryPath: string | null = null;
+	private registryMtime = 0;
 
-	async ensureProjectIconPersisted(projectDir: string): Promise<string> {
-		if (!projectDir) return DEFAULT_ICON;
-
-		const configured = this.readConfiguredIcon(projectDir);
-		if (configured) {
-			this.iconCache.set(projectDir, configured);
-			return configured;
-		}
-
-		const icon =
-			this.iconCache.get(projectDir) ??
-			this.generateDeterministicIcon(projectDir);
-		this.iconCache.set(projectDir, icon);
-		await this.queueWrite(projectDir, icon);
-		return icon;
+	/**
+	 * Resolve a project's icon. NEVER writes.
+	 *
+	 * This used to be `ensureProjectIconPersisted` and it persisted whatever it
+	 * resolved — including a hash-derived icon picked from PROJECT_ICON_POOL when
+	 * the project had none configured. That made a read stamp an arbitrary emoji
+	 * into ANOTHER repository's tracked `.vscode/settings.json` (creating
+	 * `.vscode/` if absent), which is how most of the workspace ended up with
+	 * icons that disagree with Linear. Only `setCustomIcon` — an explicit user
+	 * action — is allowed to write.
+	 */
+	async resolveProjectIcon(projectDir: string): Promise<string> {
+		return this.getIconForProject(projectDir);
 	}
 
+	/**
+	 * Precedence: work registry (populated from Linear, the authoring surface)
+	 * -> `.vscode/settings.json` local override -> deterministic fallback.
+	 *
+	 * The registry wins because it is the only store that is reconciled across
+	 * every consumer (this extension, the ghostty-launcher bundle build, and the
+	 * partner dashboard). The settings key stays as the local escape hatch for a
+	 * project that is not in the registry, or that wants to differ from it.
+	 *
+	 * The deterministic fallback is display-only. It is a stable per-directory
+	 * choice so the tree does not flicker, but it is never persisted.
+	 */
 	getIconForProject(projectDir: string): string {
 		if (!projectDir) return DEFAULT_ICON;
 
 		const cached = this.iconCache.get(projectDir);
 		if (cached) return cached;
+
+		const registryIcon = this.readRegistryIcon(projectDir);
+		if (registryIcon) {
+			this.iconCache.set(projectDir, registryIcon);
+			return registryIcon;
+		}
 
 		const configured = this.readConfiguredIcon(projectDir);
 		if (configured) {
@@ -104,7 +125,6 @@ export class ProjectIconManager {
 
 		const generated = this.generateDeterministicIcon(projectDir);
 		this.iconCache.set(projectDir, generated);
-		void this.queueWrite(projectDir, generated);
 		return generated;
 	}
 
@@ -118,6 +138,100 @@ export class ProjectIconManager {
 
 	private getSettingsPath(projectDir: string): string {
 		return path.join(projectDir, ".vscode", "settings.json");
+	}
+
+	/**
+	 * Candidate locations for the work registry, in precedence order.
+	 *
+	 * Never hardcode an absolute `/Users/<name>` path here. The config repo is
+	 * deployed as the user's config home (cloned to ~/.config), so the XDG
+	 * location is the canonical username-independent answer; the ~/projects
+	 * checkout is the fallback for workspaces that keep it there. A hardcoded
+	 * home broke every spawn on the second Mac once already.
+	 */
+	private registryCandidates(): string[] {
+		const candidates: string[] = [];
+		const explicit = process.env["PROJECTS_WORK_REGISTRY"];
+		if (explicit) candidates.push(explicit);
+
+		const rel = path.join("openclaw", "conductor", "work-registry.json");
+		const openclawHome = process.env["OPENCLAW_CONFIG_HOME"];
+		if (openclawHome) candidates.push(path.join(openclawHome, rel));
+
+		const xdg = process.env["XDG_CONFIG_HOME"];
+		const home = process.env["HOME"] ?? "";
+		candidates.push(path.join(xdg || path.join(home, ".config"), rel));
+		candidates.push(path.join(home, "projects", "config", rel));
+		return candidates;
+	}
+
+	/**
+	 * Look up this directory's icon in the work registry.
+	 *
+	 * Matching is on the registry row's own `paths` values (hub/node) only —
+	 * deliberately not on directory basename. Basename matching would misfile the
+	 * dated worktree directories that share a parent repo's name. A miss returns
+	 * null and the caller falls through to the settings key.
+	 *
+	 * Parsed at most once per registry mtime: this is called for every row on
+	 * every tree render.
+	 */
+	private readRegistryIcon(projectDir: string): string | null {
+		const registryPath = this.registryCandidates().find((candidate) =>
+			fs.existsSync(candidate),
+		);
+		if (!registryPath) return null;
+
+		try {
+			const mtime = fs.statSync(registryPath).mtimeMs;
+			if (
+				!this.registryIcons ||
+				this.registryPath !== registryPath ||
+				this.registryMtime !== mtime
+			) {
+				this.registryIcons = this.parseRegistryIcons(registryPath);
+				this.registryPath = registryPath;
+				this.registryMtime = mtime;
+			}
+		} catch {
+			return null;
+		}
+
+		const resolved = this.realPathOrSelf(projectDir);
+		return this.registryIcons?.get(resolved) ?? null;
+	}
+
+	private parseRegistryIcons(registryPath: string): Map<string, string> {
+		const byPath = new Map<string, string>();
+		try {
+			const parsed = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as {
+				projects?: Array<{
+					icon?: unknown;
+					paths?: Record<string, unknown>;
+				}>;
+			};
+			for (const project of parsed.projects ?? []) {
+				const icon =
+					typeof project.icon === "string" ? project.icon.trim() : "";
+				if (!icon) continue;
+				for (const value of Object.values(project.paths ?? {})) {
+					if (typeof value !== "string" || !value) continue;
+					byPath.set(this.realPathOrSelf(value), icon);
+				}
+			}
+		} catch {
+			// Unreadable or malformed registry: fall through to the settings key.
+		}
+		return byPath;
+	}
+
+	private realPathOrSelf(target: string): string {
+		try {
+			return fs.realpathSync(target);
+		} catch {
+			// The registry lists paths for every host, so most will not exist here.
+			return path.resolve(target);
+		}
 	}
 
 	private readConfiguredIcon(projectDir: string): string | null {
