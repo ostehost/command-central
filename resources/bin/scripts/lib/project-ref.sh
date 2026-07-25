@@ -19,11 +19,35 @@
 #   OSTE_PROJECT_CONDUCTOR  optional --conductor override
 #   OSTE_LANE_KIND          explicit lane kind override (validated)
 
-readonly OSTE_PROJECT_RESOLVER_DEFAULT="/Users/ostehost/projects/config/openclaw/scripts/oc-project.mjs"
 readonly OSTE_VALID_LANE_KINDS="implementation review research release-proof"
 
+# Resolver discovery. This used to be a single hardcoded absolute path under one
+# specific user's home, which fails closed on any machine with a different
+# username — and this fleet spans exactly that: work-registry rows carry both a
+# `paths.hub` and a `paths.node` under DIFFERENT usernames. Never reintroduce a
+# literal /Users/<name> default here.
+#
+# The config repo is deployed as the user's config home (it is cloned to
+# ~/.config), so the XDG location is the canonical, username-independent answer;
+# the ~/projects checkout is a fallback for workspaces that keep it there. The
+# last candidate is returned even when absent so the caller's "not found" error
+# reports a concrete, meaningful path.
 project_ref_resolver() {
-	printf '%s' "${OSTE_PROJECT_RESOLVER:-$OSTE_PROJECT_RESOLVER_DEFAULT}"
+	if [[ -n "${OSTE_PROJECT_RESOLVER:-}" ]]; then
+		printf '%s' "$OSTE_PROJECT_RESOLVER"
+		return 0
+	fi
+	local candidates=() c
+	[[ -n "${OPENCLAW_CONFIG_HOME:-}" ]] && candidates+=("${OPENCLAW_CONFIG_HOME}/openclaw/scripts/oc-project.mjs")
+	candidates+=("${XDG_CONFIG_HOME:-$HOME/.config}/openclaw/scripts/oc-project.mjs")
+	candidates+=("${HOME}/projects/config/openclaw/scripts/oc-project.mjs")
+	for c in "${candidates[@]}"; do
+		if [[ -f "$c" ]]; then
+			printf '%s' "$c"
+			return 0
+		fi
+	done
+	printf '%s' "${candidates[0]}"
 }
 
 # Resolution is on by default. Two explicit opt-outs exist:

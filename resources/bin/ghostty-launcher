@@ -793,10 +793,17 @@ create_bundle() {
 
 	# ── Multiplexer selection ─────────────────────────────────────
 	# Precedence: --multiplexer CLI flag > .vscode/settings.json
-	#           > GHL_DEFAULT_MULTIPLEXER env > "zellij" baseline.
+	#           > GHL_DEFAULT_MULTIPLEXER env > "tmux" baseline.
+	#
+	# The baseline is tmux because agent orchestration only supports
+	# tmux/persist: oste-spawn.sh force-recreates a zellij bundle before every
+	# visible lane spawn. A zellij baseline meant every new bundle was born in
+	# a mode the primary consumer rejects, paying a full rebuild the first time
+	# an agent touched it. Zellij stays fully selectable via all three opt-ins
+	# above for manual bundle launches.
 	local multiplexer
 	multiplexer=$(parse_multiplexer "$project_dir")
-	multiplexer="${MULTIPLEXER_OVERRIDE:-${multiplexer:-${GHL_DEFAULT_MULTIPLEXER:-zellij}}}"
+	multiplexer="${MULTIPLEXER_OVERRIDE:-${multiplexer:-${GHL_DEFAULT_MULTIPLEXER:-tmux}}}"
 	case "$multiplexer" in
 		tmux | zellij) ;;
 		*)
@@ -904,9 +911,24 @@ LAUNCH
 		mkdir -p "${config_dir}/zellij/themes"
 
 		# IMPORTANT: zellij does NOT expand environment variables in layout files.
-		# Resolve $SHELL at bundle-create time and bake the literal path into the
-		# layout, otherwise zellij would try to execvp("${SHELL:-/bin/zsh}").
-		local user_shell="${SHELL:-/bin/zsh}"
+		# Resolve the shell at bundle-create time and bake the literal path into
+		# the layout, otherwise zellij would try to execvp("${SHELL:-/bin/zsh}").
+		#
+		# Prefer the account's login shell over $SHELL. $SHELL describes whoever
+		# invoked the launcher, which for an agent- or CI-driven rebuild is
+		# /bin/zsh no matter what the user actually runs — baking that in
+		# silently switched a rebuilt bundle's panes from fish to zsh. The
+		# directory-services lookup is the account's own answer; $SHELL stays as
+		# the fallback for non-macOS or restricted environments.
+		# `|| user_shell=""` is required, not defensive: this script runs under
+		# `set -euo pipefail`, where a failing command substitution in an
+		# assignment aborts outright — and dscl exits non-zero for an
+		# unreadable account and is absent entirely off macOS.
+		local user_shell=""
+		user_shell=$(dscl . -read "/Users/${USER:-$(id -un)}" UserShell 2>/dev/null | awk '{print $2}') || user_shell=""
+		if [[ -z "$user_shell" || ! -x "$user_shell" ]]; then
+			user_shell="${SHELL:-/bin/zsh}"
+		fi
 		if [[ ! -x "$user_shell" ]]; then
 			user_shell="/bin/zsh"
 		fi
@@ -989,6 +1011,22 @@ ZELLIJ_FALLBACK
 # sparse and tools like \`claude\` resolve to "command not found" even
 # though they work fine in the user's daily terminal.
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
+
+# Restore the user's real config home for every shell zellij spawns. Ghostty
+# reads the bundle's embedded config via Info.plist LSEnvironment
+# XDG_CONFIG_HOME; left in place, that value points fish (and every other
+# XDG-aware tool) at a config dir inside the .app that has no conf.d and no
+# universal variables — fish then silently creates an empty one there.
+# Zellij freezes env at session-create time, so this single export covers
+# every pane the layout spawns. Mirrors launch-tmux.sh.
+#
+# Placement is load-bearing: this MUST precede the PATH probe below. The probe
+# runs the user's interactive shell, which only reports the real PATH when it
+# can load the real config; under the bundle's XDG root it returns the sparse
+# bootstrap PATH above, which then gets concatenated in front of the fallback
+# list and inverts the user's own ordering.
+USER_CONFIG_HOME="\${OPENCLAW_CONFIG_HOME:-\$HOME/.config}"
+export XDG_CONFIG_HOME="\$USER_CONFIG_HOME"
 
 # Query for the user's interactive PATH. Preference order:
 #   1. fish (if installed) — many users run fish as their daily shell
@@ -1162,7 +1200,8 @@ BG_CONF
 	# Remove CFBundleIconName — prevents Asset Catalog from overriding our .icns
 	/usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$plist" 2>/dev/null || true
 	# Add env vars via LSEnvironment. Ghostty uses XDG_CONFIG_HOME to read the
-	# bundled config; launch-tmux.sh restores shell children to ~/.config.
+	# bundled config; launch-tmux.sh and launch-zellij.sh both restore shell
+	# children to ~/.config.
 	/usr/libexec/PlistBuddy -c "Add :LSEnvironment dict" "$plist" 2>/dev/null || true
 	/usr/libexec/PlistBuddy -c "Add :LSEnvironment:GHOSTTY_PROJECT_ID string ${safe_name}" "$plist" 2>/dev/null ||
 		/usr/libexec/PlistBuddy -c "Set :LSEnvironment:GHOSTTY_PROJECT_ID ${safe_name}" "$plist"
@@ -1497,7 +1536,8 @@ main() {
 			send_safe=$(sanitize_for_bundle "$send_name")
 			send_session="agent-${send_safe}"
 			send_mux=$(parse_multiplexer "$send_dir")
-			send_mux="${MULTIPLEXER_OVERRIDE:-${send_mux:-${GHL_DEFAULT_MULTIPLEXER:-zellij}}}"
+			# Same precedence and same tmux baseline as create_bundle above.
+			send_mux="${MULTIPLEXER_OVERRIDE:-${send_mux:-${GHL_DEFAULT_MULTIPLEXER:-tmux}}}"
 			case "$send_mux" in
 				tmux | zellij) ;;
 				*)
@@ -1524,6 +1564,30 @@ main() {
 					exit 3
 				fi
 			fi
+			# Dispatch on the bundle that actually exists, not on the precedence
+			# chain. The chain answers "what should we create?"; GHL_MULTIPLEXER
+			# answers "what is installed?" — and the two diverge whenever a
+			# project setting or GHL_DEFAULT_MULTIPLEXER changed after the
+			# bundle was built. Dispatching on the chain aimed the zellij branch
+			# (kill server, kill Ghostty client, delete-session) at tmux
+			# bundles: it killed the user's terminal and then exited 4.
+			# oste-spawn.sh already treats this key as authoritative via
+			# bundle_backend_for_path(); --send now agrees. Any other value
+			# (persist, unset, unreadable) leaves the chain's choice alone.
+			# `|| send_bundle_mux=""` is required, not defensive: under set -e a
+			# failing command substitution in an assignment aborts the script,
+			# and PlistBuddy exits non-zero whenever the plist or the key is
+			# absent — which is the normal case for a freshly stubbed bundle.
+			send_bundle_mux=$(/usr/libexec/PlistBuddy -c "Print :LSEnvironment:GHL_MULTIPLEXER" \
+				"${send_bundle}/Contents/Info.plist" 2>/dev/null | tr -d '[:space:]') || send_bundle_mux=""
+			case "$send_bundle_mux" in
+				tmux | zellij)
+					if [[ "$send_bundle_mux" != "$send_mux" ]]; then
+						echo "Note: ${send_safe}.app is a ${send_bundle_mux} bundle; dispatching as ${send_bundle_mux} (settings resolved to ${send_mux}). Rebuild the bundle to change it." >&2
+					fi
+					send_mux="$send_bundle_mux"
+					;;
+			esac
 			if [[ "$send_mux" == "zellij" ]]; then
 				send_socket_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ghostty-launcher/zellij/${send_safe}"
 				mkdir -p "$send_socket_dir"
@@ -1629,8 +1693,11 @@ main() {
 			echo ""
 			echo "Options:"
 			echo "  --multiplexer X        Force multiplexer (tmux|zellij). Overrides per-project setting."
-			echo "                         Default: zellij. Set GHL_DEFAULT_MULTIPLEXER to change globally."
+			echo "                         Default: tmux. Set GHL_DEFAULT_MULTIPLEXER to change globally."
 			echo "                         Or set commandCentral.terminal.multiplexer in .vscode/settings.json."
+			echo "                         zellij is supported for manual bundle launches. Agent"
+			echo "                         orchestration is tmux/persist only: oste-spawn.sh force-"
+			echo "                         rebuilds a zellij bundle as tmux before a visible lane."
 			echo "  --parse-icon DIR       Print emoji icon (settings → name → files → default)"
 			echo "  --parse-name DIR       Print project name from settings"
 			echo "  --parse-multiplexer DIR  Print multiplexer setting from .vscode/settings.json"
