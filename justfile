@@ -71,6 +71,7 @@ default:
     @echo "Resource Sync (required before release):"
     @echo "  just sync-launcher   Sync launcher script from dev repo"
     @echo "  just sync-terminal   Sync terminal app from dev repo"
+    @echo "  just sync-bundles    Refresh installed /Applications/Projects bundles"
     @echo "  just sync-all        Sync all external resources"
     @echo ""
     @echo "Distribution Options:"
@@ -656,6 +657,29 @@ sync-terminal:
     @echo ""
     @echo "💡 Terminal app synced (not committed to git)."
 
+# Distinct from `sync-launcher` despite the similar name, and the distinction
+# matters: `sync-launcher` copies the launcher script into resources/bin so it
+# ships inside the VSIX. This refreshes the .app bundles already installed on
+# this machine, which bake their launch scripts and Ghostty config at CREATE
+# time and therefore do not pick up launcher changes until rebuilt.
+#
+# Delegates to ghostty-launcher's own staleness gate rather than reimplementing
+# it. Read-only by default; `--apply` rebuilds what is stale. Bundles whose
+# project directory does not resolve are skipped and never deleted, and running
+# bundles are skipped rather than closed out from under the operator.
+
+# Refresh installed project launcher bundles (--apply to rebuild stale ones)
+sync-bundles *args="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    LAUNCHER_REPO="${LAUNCHER_SOURCE:-$HOME/projects/ghostty-launcher}"
+    if [[ ! -x "${LAUNCHER_REPO}/scripts/oste-sync-launcher.sh" ]]; then
+        echo "⚠️  Launcher repo not found at ${LAUNCHER_REPO} — skipping bundle sync."
+        echo "   Set LAUNCHER_SOURCE to override."
+        exit 0
+    fi
+    cd "$LAUNCHER_REPO" && exec ./scripts/oste-sync-launcher.sh {{args}}
+
 # Sync all external resources (REQUIRED before release)
 sync-all: sync-launcher sync-terminal
     @echo ""
@@ -798,6 +822,25 @@ cut-preview *args="--prerelease":
     printf '╰──────────────────────────────────────────────────╯\n'
     just _preview-preflight
     just sync-launcher
+    # Refresh the installed bundles from the same launcher this RC ships. A
+    # bundle bakes its launch scripts and Ghostty config at create time, so
+    # without this the machine cutting the release keeps running the previous
+    # generation's terminals against a new VSIX.
+    #
+    # Deliberately non-fatal: a stale or running bundle is a local-environment
+    # condition, not a defect in the artifact being built, and must not abort a
+    # release. It is reported loudly instead of silently swallowed — a running
+    # bundle exits non-zero by design, and that is the common case here since
+    # the operator usually has terminals open.
+    printf '\n🔄 Refreshing installed launcher bundles...\n'
+    if just sync-bundles --apply; then
+        printf '✅ Installed bundles are current with this launcher.\n'
+    else
+        printf '\n'
+        printf '⚠️  Bundle refresh did not fully converge (see above).\n'
+        printf '   The VSIX is unaffected. To finish: quit the listed apps, then\n'
+        printf '   run `just sync-bundles --apply` again.\n'
+    fi
     just _preview-rehearsal
     just prerelease {{args}}
     printf '\n'
