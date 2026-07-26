@@ -195,16 +195,67 @@ _icon_from_files() {
 	fi
 }
 
+# Locate work-registry.json without assuming a username.
+#
+# The config repo is deployed as the user's config home (cloned to ~/.config),
+# so the XDG location is the canonical answer; the ~/projects checkout is the
+# fallback. Never hardcode /Users/<name> here — that broke every spawn on the
+# second Mac once already (see scripts/lib/project-ref.sh).
+_work_registry_path() {
+	local c
+	for c in \
+		"${PROJECTS_WORK_REGISTRY:-}" \
+		"${OPENCLAW_CONFIG_HOME:-}/openclaw/conductor/work-registry.json" \
+		"${XDG_CONFIG_HOME:-$HOME/.config}/openclaw/conductor/work-registry.json" \
+		"${HOME}/projects/config/openclaw/conductor/work-registry.json"; do
+		[[ -n "$c" && -f "$c" ]] && {
+			printf '%s' "$c"
+			return 0
+		}
+	done
+	return 1
+}
+
+# Look up this directory's icon in the work registry.
+#
+# Matches on the row's own `paths` values (hub/node), never on directory
+# basename: the dated worktree directories share their parent repo's name and
+# would collide. A miss prints nothing and the caller falls through.
+_icon_from_registry() {
+	local dir="$1" registry
+	registry=$(_work_registry_path) || return 1
+	# Resolve symlinks so ~/.config/... and ~/projects/config/... compare equal.
+	local resolved
+	resolved=$(cd "$dir" 2>/dev/null && pwd -P) || resolved="$dir"
+	jq -r --arg d "$resolved" '
+		.projects[]?
+		| select(.icon != null and .icon != "")
+		| select([.paths[]?] | index($d))
+		| .icon' "$registry" 2>/dev/null | head -1
+}
+
 # Resolve project icon via deterministic fallback chain:
-#   1. Explicit .vscode/settings.json icon
+#   0. Work registry `icon` (authored in Linear, synced by the partner dashboard)
+#   1. Explicit .vscode/settings.json icon (local override / unregistered projects)
 #   2. Project directory name heuristics
 #   3. Top-level file / folder heuristics
 #   4. Default fallback (📁)
+#
+# The registry outranks settings.json because it is the only store reconciled
+# across every consumer. settings.json stays as the escape hatch for a project
+# the registry does not list, or one that deliberately differs from Linear.
 parse_icon() {
 	local dir="$1"
 	local icon=""
 
-	# 1. Explicit settings.json icon (highest priority)
+	# 0. Work registry (Linear is the authoring surface)
+	icon=$(_icon_from_registry "$dir" || true)
+	if [[ -n "$icon" ]]; then
+		echo "$icon"
+		return
+	fi
+
+	# 1. Explicit settings.json icon
 	local settings="$dir/.vscode/settings.json"
 	if [[ -f "$settings" ]]; then
 		icon=$(jq -r '."commandCentral.project.icon" // empty' "$settings" 2>/dev/null || true)
