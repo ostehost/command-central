@@ -77,7 +77,7 @@ Do not push, tag, publish, or use `--no-verify` without explicit approval.
 ## Commands Reference
 
 This project follows the cross-project five-recipe standard documented in
-`~/projects/config/STANDARDS.md`. Always prefer `just <recipe>` over invoking
+`~/projects/config/WORKFLOW.md`. Always prefer `just <recipe>` over invoking
 bun/biome/tsc directly — the recipes are the stable interface.
 
 ```bash

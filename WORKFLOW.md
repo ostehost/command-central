@@ -43,7 +43,7 @@ workroom:
 
 Command Central is the **reference implementation** of the cross-project recipe
 standard. The contract — what each `just` recipe must do regardless of language
-or tooling — lives in `~/projects/config/STANDARDS.md`. This file documents
+or tooling — lives in `~/projects/config/WORKFLOW.md`. This file documents
 **how command-central implements** that contract, plus project-specific recipes
 (dist, prerelease, sync, etc.).
 
@@ -173,7 +173,7 @@ incremental control). If you want to reproduce CI locally, run `just ci`.
 ## Cross-Project Pattern
 
 If you adopt this same five-recipe contract in another project, the developer
-muscle memory carries over. See `~/projects/config/STANDARDS.md` for:
+muscle memory carries over. See `~/projects/config/WORKFLOW.md` for:
 
 - The full recipe contract (what each name must mean)
 - Per-language implementation templates (bash, TypeScript, Rust, Python)
