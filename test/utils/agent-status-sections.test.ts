@@ -303,6 +303,42 @@ describe("isIdleAgentReplSnippet", () => {
 		expect(classifyPaneAttention("bash", summarised)).toBe("idle-agent-repl");
 	});
 
+	test("an ASCII Markdown bullet with a duration is not a spinner", () => {
+		// `*` is an ordinary list bullet, so a timing summary must not read as
+		// live chrome and suppress stuck/attention reporting.
+		const timings = [
+			"⏺ Timing summary",
+			"* Build… (1m 2s)",
+			"* Tests… (0m 44s)",
+			"❯ ",
+			FOOTER,
+		].join("\n");
+		expect(isAgentReplTurnRunning(timings)).toBe(false);
+		expect(isIdleAgentReplSnippet(timings)).toBe(true);
+	});
+
+	test("the middle-dot spinner frame still reads as a live turn", () => {
+		// `·` is a real frame of Claude's animation sequence, not punctuation.
+		// Dropping it would report a working lane as idle whenever a capture
+		// landed on that frame with the interrupt hint scrolled away.
+		const midDotFrame = ["· Philosophising… (3m 7s)", "❯ ", FOOTER].join("\n");
+		expect(isAgentReplTurnRunning(midDotFrame)).toBe(true);
+		expect(isIdleAgentReplSnippet(midDotFrame)).toBe(false);
+		expect(classifyPaneAttention("bash", midDotFrame)).toBe("active-agent");
+	});
+
+	test("a cue quoted inside a completed result line is prose, not chrome", () => {
+		// Finished output describing a turn must never impersonate a running one
+		// — it would veto the very completion boundary on the same line.
+		const quoted = [
+			'⏺ READY_FOR_REVIEW — fixed handling of "esc to interrupt"',
+			"❯ ",
+			FOOTER,
+		].join("\n");
+		expect(isAgentReplTurnRunning(quoted)).toBe(false);
+		expect(hasReadOnlyCompletionEvidence(quoted)).toBe(true);
+	});
+
 	test("REPL chrome alone never claims a turn is in flight", () => {
 		// Ambiguous panes (typed-but-unsent input, footer with no input box) must
 		// keep failing open rather than asserting work.

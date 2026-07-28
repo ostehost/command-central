@@ -963,10 +963,60 @@ describe("getCurrentReleaseGeneration — launcher release-generation state file
 			status: "contract_failure",
 			session_live: true,
 			release_generation: "v0.5.0-rc.40|oldsha0|0.5.0|cafe00000000",
+			// Genuinely predates the baseline stamp — a real pre-reset leftover.
+			started_at: "2026-06-01T00:00:00Z",
 		});
 		const desc = rowDescription(provider, stale);
 		expect(desc).toContain("stale (pre-release)");
 		expect(desc).not.toContain("⚠ live · lifecycle conflict");
+	});
+
+	test("a lane started AFTER the baseline was stamped is never pre-release stale", () => {
+		// Direction guard. The token check is a bare inequality, so it cannot tell
+		// "lane older than baseline" from "baseline older than lane". The second
+		// case was real: the launcher never re-stamped the baseline, leaving it two
+		// template generations behind every installed bundle, and CC marked EVERY
+		// current lane superseded — "stale (pre-release)" on live work. A lane that
+		// started after the stamp cannot predate it.
+		const file = writeBaseline(
+			JSON.stringify({ ...APP_STAMP, stamped_at: "2026-06-16T00:00:00Z" }),
+		);
+		pointAtBaseline(file);
+		const newerLane = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: "v0.7.0-rc.90|newsha0|0.7.0|beef00000000",
+			started_at: new Date().toISOString(),
+		});
+		const desc = rowDescription(provider, newerLane);
+		expect(desc).not.toContain("stale (pre-release)");
+		expect(desc).toContain("⚠ live · lifecycle conflict");
+	});
+
+	test("a baseline with no usable stamped_at falls back to the token comparison", () => {
+		// No timestamp means no direction is knowable, so the pre-existing
+		// inequality must still stand on its own rather than failing open.
+		const file = writeBaseline(JSON.stringify(APP_STAMP));
+		pointAtBaseline(file);
+		const stale = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: "v0.5.0-rc.40|oldsha0|0.5.0|cafe00000000",
+		});
+		expect(rowDescription(provider, stale)).toContain("stale (pre-release)");
+	});
+
+	test("an unparseable stamped_at falls back to the token comparison", () => {
+		const file = writeBaseline(
+			JSON.stringify({ ...APP_STAMP, stamped_at: "not-a-date" }),
+		);
+		pointAtBaseline(file);
+		const stale = makeTerminalTmuxTask({
+			status: "contract_failure",
+			session_live: true,
+			release_generation: "v0.5.0-rc.40|oldsha0|0.5.0|cafe00000000",
+		});
+		expect(rowDescription(provider, stale)).toContain("stale (pre-release)");
 	});
 
 	test("missing baseline file → no current generation → guard inert (live badge preserved)", () => {

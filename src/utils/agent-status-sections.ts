@@ -406,7 +406,13 @@ const AGENT_REPL_TURN_RUNNING_RES: readonly RegExp[] = [
 	// on a line that OPENS with a spinner glyph. Claude marks finished results
 	// with `⏺`, so prose like `⏺ Handled Manifesting… (16m 32s)` in an agent's
 	// closing summary is not a running turn and must not beat an empty prompt.
-	/^[^\S\n]*[✻✽✳✢✶✷✸✹∗*·]\s.*…\s*\((?:\d+h\s*)?(?:\d+m\s*)?\d+s\b/m,
+	// The class is the live animation sequence (`·` `✢` `✳` `✶` `✻` `✽`) —
+	// `·` included, since dropping a real frame is how a working lane gets
+	// reported idle. Only ASCII `*` is excluded: it is an ordinary Markdown
+	// bullet, so `* Build… (1m 2s)` in a timing summary must not read as chrome.
+	// The glyph must OPEN the line, so `·` as Claude's own mid-line separator
+	// (`(22m 41s · ↓ 100.6k tokens)`) is unaffected.
+	/^[^\S\n]*[·✻✽✳✢✶✷✸✹∗]\s.*…\s*\((?:\d+h\s*)?(?:\d+m\s*)?\d+s\b/m,
 ];
 
 /**
@@ -453,7 +459,7 @@ export function isAgentReplTurnRunning(snippet: string): boolean {
 		.split("\n")
 		.slice(-AGENT_REPL_STATUS_TAIL_LINES)
 		.join("\n");
-	const cueAt = lastMatchLine(tail, AGENT_REPL_TURN_RUNNING_RES);
+	const cueAt = lastTurnCueLine(tail);
 	if (cueAt < 0) return false;
 	// Position alone is not currency. A SHORT turn leaves its spinner inside the
 	// window, directly above the answer it produced — so a completed result
@@ -463,7 +469,6 @@ export function isAgentReplTurnRunning(snippet: string): boolean {
 	return cueAt > lastMatchLine(tail, [AGENT_REPL_RESULT_LINE_RE]);
 }
 
-/** Index of the LAST match of any pattern in `res`, or -1 when none match. */
 /**
  * Index of the LAST LINE matching any pattern in `res`, or -1 when none match.
  *
@@ -473,6 +478,23 @@ export function isAgentReplTurnRunning(snippet: string): boolean {
  * line containing it. Comparing lines makes a same-line quote a tie, which the
  * callers resolve in favour of the completed output.
  */
+/**
+ * Index of the last line carrying a LIVE turn cue.
+ *
+ * Completed-result lines are skipped outright: an agent that writes
+ * `⏺ READY_FOR_REVIEW — fixed handling of "esc to interrupt"` is describing a
+ * turn, not running one, and finished output must never impersonate chrome.
+ */
+function lastTurnCueLine(text: string): number {
+	const lines = text.split("\n");
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const line = lines[i] ?? "";
+		if (AGENT_REPL_RESULT_LINE_RE.test(line)) continue;
+		if (AGENT_REPL_TURN_RUNNING_RES.some((re) => re.test(line))) return i;
+	}
+	return -1;
+}
+
 function lastMatchLine(text: string, res: readonly RegExp[]): number {
 	const lines = text.split("\n");
 	for (let i = lines.length - 1; i >= 0; i--) {
@@ -493,7 +515,7 @@ function lastMatchLine(text: string, res: readonly RegExp[]): number {
  * however few lines separate the two.
  */
 export function isTurnCueNewerThanCompletion(snippet: string): boolean {
-	const turnAt = lastMatchLine(snippet, AGENT_REPL_TURN_RUNNING_RES);
+	const turnAt = lastTurnCueLine(snippet);
 	if (turnAt < 0) return false;
 	return turnAt > lastMatchLine(snippet, LANE_COMPLETION_BOUNDARY_RES);
 }

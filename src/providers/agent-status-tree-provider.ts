@@ -678,6 +678,8 @@ export class AgentStatusTreeProvider
 	private _currentGenerationCache: {
 		path: string | null;
 		token: string | null;
+		/** `stamped_at` from the baseline, in epoch ms; null when absent/unparseable. */
+		stampedAtMs: number | null;
 		checkedAt: number;
 	} | null = null;
 	private codexRunObserverService: CodexRunObserverService;
@@ -1460,6 +1462,12 @@ export class AgentStatusTreeProvider
 	 * can never assert work on its own; the result is TTL-cached per pane.
 	 */
 	private hasPaneTurnInFlight(task: AgentTask): boolean {
+		// Pane-specific evidence ONLY. Without a recorded pane id the attention
+		// target degrades to the session, and this repo supports several lanes
+		// sharing one session under distinct `tmux_window_id`s — so a quiet lane
+		// could borrow a sibling window's spinner and be removed from every
+		// stuck surface. Asserting work demands proof about THIS pane.
+		if (!task.tmux_pane_id) return false;
 		const targetInfo = this.getTmuxPaneAttentionTarget(task);
 		if (!targetInfo) return false;
 		const cached = this._tmuxPaneTurnCache.getFresh(targetInfo.cacheKey);
@@ -1732,15 +1740,75 @@ export class AgentStatusTreeProvider
 			return cached.token;
 		}
 		let token: string | null = null;
+		let stampedAtMs: number | null = null;
 		try {
 			const raw = fs.readFileSync(filePath, "utf-8");
-			token = canonicalGenerationToken(JSON.parse(raw));
+			const parsed: unknown = JSON.parse(raw);
+			token = canonicalGenerationToken(parsed);
+			const stampedAt = asString(
+				(parsed as Record<string, unknown> | null)?.["stamped_at"],
+			);
+			const parsedMs = stampedAt ? new Date(stampedAt).getTime() : Number.NaN;
+			stampedAtMs = Number.isFinite(parsedMs) ? parsedMs : null;
 		} catch {
 			// Missing file or malformed JSON → no current generation known.
 			token = null;
+			stampedAtMs = null;
 		}
-		this._currentGenerationCache = { path: filePath, token, checkedAt: now };
+		this._currentGenerationCache = {
+			path: filePath,
+			token,
+			stampedAtMs,
+			checkedAt: now,
+		};
 		return token;
+	}
+
+	/**
+	 * When the active baseline was stamped, in epoch ms — null when unknown.
+	 * Reads through the same memoized load as {@link getCurrentReleaseGeneration}.
+	 * The in-memory test override has no timestamp, so it yields null and leaves
+	 * the bare token comparison in charge.
+	 */
+	private getReleaseGenerationStampedAtMs(): number | null {
+		if (this._currentReleaseGenerationOverride !== null) return null;
+		this.readCurrentReleaseGenerationFromState();
+		const cached = this._currentGenerationCache;
+		return cached?.path === this.getReleaseGenerationFilePath()
+			? cached.stampedAtMs
+			: null;
+	}
+
+	/**
+	 * Whether this lane is a pre-reset leftover of a superseded Ghostty-app /
+	 * release generation.
+	 *
+	 * {@link isSupersededByReleaseReset} is a bare token INEQUALITY, which is
+	 * direction-blind: it cannot tell "the lane is older than the baseline" from
+	 * "the baseline is older than the lane". That second case was real — the
+	 * launcher's release path never re-stamped the baseline, so it sat two
+	 * template generations behind every installed bundle and CC marked EVERY
+	 * current lane superseded: "stale (pre-release)" on live work, with its
+	 * recorded `session_live` suppressed as belonging to an old app.
+	 *
+	 * ghostty-launcher now stamps on a converged `sync-launcher --apply`, which
+	 * removes the cause. This is the defense-in-depth for when it drifts again:
+	 * a lane that started AFTER the baseline was stamped cannot predate it, so
+	 * `stamped_at` supplies the direction the token comparison lacks. Without a
+	 * usable `stamped_at` (or lane `started_at`) the token comparison stands
+	 * alone, exactly as before.
+	 */
+	private isTaskSupersededByReleaseReset(
+		task: Pick<AgentTask, "release_generation" | "started_at">,
+	): boolean {
+		if (!isSupersededByReleaseReset(task, this.getCurrentReleaseGeneration())) {
+			return false;
+		}
+		const stampedAtMs = this.getReleaseGenerationStampedAtMs();
+		if (stampedAtMs === null) return true;
+		const startedMs = new Date(task.started_at).getTime();
+		if (!Number.isFinite(startedMs)) return true;
+		return startedMs < stampedAtMs;
 	}
 
 	/**
@@ -1752,7 +1820,7 @@ export class AgentStatusTreeProvider
 	 * render site) — this only governs the cheap recorded-belief fallback.
 	 */
 	private effectiveLauncherSessionLive(task: AgentTask): boolean | null {
-		if (isSupersededByReleaseReset(task, this.getCurrentReleaseGeneration())) {
+		if (this.isTaskSupersededByReleaseReset(task)) {
 			return null;
 		}
 		return task.session_live ?? null;
@@ -4036,7 +4104,7 @@ export class AgentStatusTreeProvider
 		// "stale (pre-release)" on the row instead.
 		if (
 			node.type === "task" &&
-			!isSupersededByReleaseReset(node.task, this.getCurrentReleaseGeneration())
+			!this.isTaskSupersededByReleaseReset(node.task)
 		) {
 			const liveness = this.getCachedTerminalTaskLivenessEvidence(node.task);
 			if (
@@ -5185,10 +5253,7 @@ export class AgentStatusTreeProvider
 
 		// ── 8. Lifecycle conflict — launcher vs live process ─────────────
 		const isTerminalStatus = t.status !== "running";
-		const supersededByReset = isSupersededByReleaseReset(
-			t,
-			this.getCurrentReleaseGeneration(),
-		);
+		const supersededByReset = this.isTaskSupersededByReleaseReset(t);
 		if (isTerminalStatus && !supersededByReset) {
 			const liveness = this.getTerminalTaskLivenessEvidence(t);
 			const conflict = classifyLifecycleConflict(
@@ -8343,10 +8408,7 @@ export class AgentStatusTreeProvider
 		// is suppressed in favour of an explicit "stale (pre-release)" badge below.
 		// No-op until a current generation is known (getCurrentReleaseGeneration
 		// null today).
-		const supersededByReset = isSupersededByReleaseReset(
-			task,
-			this.getCurrentReleaseGeneration(),
-		);
+		const supersededByReset = this.isTaskSupersededByReleaseReset(task);
 		const lifecycleLiveness =
 			isDoneStatus && !supersededByReset
 				? this.getTerminalTaskLivenessEvidence(task)
