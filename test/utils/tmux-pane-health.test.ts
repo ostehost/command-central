@@ -726,7 +726,12 @@ describe("classifyPaneAttention (pure)", () => {
 			"  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents",
 		].join("\n");
 		expect(classifyPaneAttention("claude", running)).toBe("active-agent");
-		expect(classifyPaneAttention("bash", running)).toBe("unknown");
+		// A launcher pane reports the WRAPPER shell as pane_current_command while
+		// the REPL runs inside it, so the turn cue in the snippet is the only
+		// evidence available. It now promotes to active-agent instead of the old
+		// fail-open "unknown" — both are non-benign, so attention is unchanged,
+		// but the stuck/interactive surfaces can finally tell working from waiting.
+		expect(classifyPaneAttention("bash", running)).toBe("active-agent");
 	});
 
 	test("REPL with typed-but-unsent input is NOT idle (fail-open)", () => {

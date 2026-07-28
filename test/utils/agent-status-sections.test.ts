@@ -5,10 +5,13 @@ import type {
 } from "../../src/providers/agent-status-tree-provider.js";
 import {
 	AGENT_STATUS_GROUP_TO_SECTION,
+	classifyPaneAttention,
 	countV2Sections,
 	emptyUnifiedCounts,
 	formatV2Summary,
 	hasReadOnlyCompletionEvidence,
+	isAgentReplTurnRunning,
+	isIdleAgentReplSnippet,
 	sectionFromSignals,
 	sectionFromStatusGroup,
 	type UnifiedCounts,
@@ -174,6 +177,138 @@ describe("hasReadOnlyCompletionEvidence", () => {
 			hasReadOnlyCompletionEvidence("Ready for review. Type /exit to close."),
 		).toBe(true);
 		expect(hasReadOnlyCompletionEvidence("thinking...\n> /help")).toBe(false);
+	});
+
+	// A live agent narrates test runs, exit codes and checkmarks constantly.
+	// Those matched the attention-side COMPLETION_SUMMARY_RES and demoted
+	// working lanes to "Stale — no completion signal"; only harness-emitted
+	// boundary markers may demote a running row.
+	test("does NOT treat a working agent's own transcript prose as a completion boundary", () => {
+		const liveTranscript = [
+			"⏺ Both suites pass through the symlinked checkout — 11/11 and 20/20.",
+			'  onboard_status="error"   # any other non-zero = execution failure',
+			"  [[ $rc -eq 1 ]] && exit 0",
+			"  ✓ 4 passed, 0 failed · build complete · done in 2.1s",
+			"✳ Manifesting… (16m 32s · ↓ 73.9k tokens)",
+			"❯ ",
+			"  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 1 agent",
+		].join("\n");
+		expect(hasReadOnlyCompletionEvidence(liveTranscript)).toBe(false);
+	});
+
+	test("a bare `exit 0` / checkmark / pass count is never completion evidence on its own", () => {
+		for (const snippet of [
+			"exit 0",
+			"exited 1",
+			"20 passed",
+			"3 failures",
+			"tests: 12",
+			"✓ done",
+			"build succeeded",
+			"compiled successfully",
+			"done in 3.4s",
+		]) {
+			expect(hasReadOnlyCompletionEvidence(snippet)).toBe(false);
+		}
+	});
+
+	test("still fires on the harness-emitted boundary markers", () => {
+		expect(hasReadOnlyCompletionEvidence("READY_FOR_REVIEW")).toBe(true);
+		expect(hasReadOnlyCompletionEvidence("run /exit to finish")).toBe(true);
+		expect(hasReadOnlyCompletionEvidence("/exit when you want to quit")).toBe(
+			true,
+		);
+	});
+});
+
+describe("isIdleAgentReplSnippet", () => {
+	const FOOTER = "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 1 agent";
+
+	test("an empty input box under the REPL footer with no running turn is idle", () => {
+		expect(isIdleAgentReplSnippet(`⏺ All done.\n❯ \n${FOOTER}`)).toBe(true);
+	});
+
+	test("a running turn is not idle", () => {
+		expect(
+			isIdleAgentReplSnippet(
+				`✳ Manifesting… (16m 32s)\n  (esc to interrupt)\n❯ \n${FOOTER}`,
+			),
+		).toBe(false);
+	});
+
+	test("a plain shell pane is not an idle REPL", () => {
+		expect(isIdleAgentReplSnippet("ostehost@MacBookPro config$ ")).toBe(false);
+	});
+
+	// Observed on a lane 22 minutes into an extended-thinking turn: the
+	// interrupt hint had scrolled out of the bounded capture window, so all
+	// three idle cues held and a hard-working agent read as idle.
+	test("the working spinner keeps a long turn out of the idle verdict without the interrupt hint", () => {
+		const midTurn = [
+			"✻ Philosophising… (22m 41s · ↓ 100.6k tokens · thinking with xhigh effort)",
+			"────────────────────────────────────────────",
+			"❯ ",
+			"────────────────────────────────────────────",
+			FOOTER,
+		].join("\n");
+		expect(midTurn).not.toContain("esc to interrupt");
+		expect(isAgentReplTurnRunning(midTurn)).toBe(true);
+		expect(isIdleAgentReplSnippet(midTurn)).toBe(false);
+		expect(classifyPaneAttention("bash", midTurn)).toBe("active-agent");
+	});
+
+	test("an idle REPL is still idle — the spinner cue needs an elapsed timer", () => {
+		// Guards against the turn cue over-matching on ordinary ellipsis prose.
+		const idle = [
+			"⏺ Wrote the handoff… everything is committed.",
+			"❯ ",
+			FOOTER,
+		].join("\n");
+		expect(isAgentReplTurnRunning(idle)).toBe(false);
+		expect(isIdleAgentReplSnippet(idle)).toBe(true);
+		expect(classifyPaneAttention("bash", idle)).toBe("idle-agent-repl");
+	});
+
+	test("a completed idle REPL keeps its BENIGN verdict despite a spinner remnant", () => {
+		// The turn cue is anchored to the live status area. Scanning the whole
+		// 40-line capture let a finished turn's leftover spinner beat the empty
+		// input box, so a cleanly completed lane classified as `active-agent`
+		// (non-benign) and surfaced a false attention / lifecycle conflict.
+		// A SHORT turn leaves its spinner inside the tail window, directly above
+		// the answer it produced — so position alone cannot settle this; the
+		// completed result line after the cue has to end the turn.
+		const completed = [
+			"✻ Philosophising… (1m 2s · ↓ 4.1k tokens)",
+			"⏺ All done — handoff written.",
+			"❯ ",
+			FOOTER,
+		].join("\n");
+		expect(isAgentReplTurnRunning(completed)).toBe(false);
+		expect(isIdleAgentReplSnippet(completed)).toBe(true);
+		expect(classifyPaneAttention("bash", completed)).toBe("idle-agent-repl");
+	});
+
+	test("an elapsed time in a finished result line is not a running spinner", () => {
+		// The timer cue is structural: it must open a spinner-glyph line. Claude
+		// marks completed results with `⏺`, so a closing summary that happens to
+		// quote a duration must not beat the empty prompt and re-classify a
+		// clean completed lane as active.
+		const summarised = [
+			"⏺ Handled Manifesting… (16m 32s) and wrote the handoff.",
+			"❯ ",
+			FOOTER,
+		].join("\n");
+		expect(isAgentReplTurnRunning(summarised)).toBe(false);
+		expect(isIdleAgentReplSnippet(summarised)).toBe(true);
+		expect(classifyPaneAttention("bash", summarised)).toBe("idle-agent-repl");
+	});
+
+	test("REPL chrome alone never claims a turn is in flight", () => {
+		// Ambiguous panes (typed-but-unsent input, footer with no input box) must
+		// keep failing open rather than asserting work.
+		const typed = ["❯ /exit", FOOTER].join("\n");
+		expect(isAgentReplTurnRunning(typed)).toBe(false);
+		expect(classifyPaneAttention("bash", typed)).toBe("unknown");
 	});
 });
 

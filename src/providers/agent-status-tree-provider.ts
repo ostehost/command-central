@@ -108,7 +108,9 @@ import {
 	emptyUnifiedCounts,
 	formatV2Summary,
 	hasReadOnlyCompletionEvidence,
+	isAgentReplTurnRunning,
 	isBenignLivePane,
+	isTurnCueNewerThanCompletion,
 	type PaneAttentionState,
 	sectionFromStatusGroup,
 	type UnifiedCounts,
@@ -611,6 +613,7 @@ export class AgentStatusTreeProvider
 	private readonly _tmuxPaneAttentionCache = new TtlCache<PaneAttentionState>(
 		5_000,
 	);
+	private readonly _tmuxPaneTurnCache = new TtlCache<boolean>(5_000);
 	private readonly _handoffFileCache = new TtlCache<DeclaredHandoffState>(
 		5_000,
 	);
@@ -1437,6 +1440,46 @@ export class AgentStatusTreeProvider
 	}
 
 	/**
+	 * True when the lane's pane shows a turn IN FLIGHT — direct, positive
+	 * evidence of work that outranks stream silence.
+	 *
+	 * {@link isAgentStuck} is driven by the stream JSONL alone, so a lane whose
+	 * backend writes no stream file looks "stuck" the moment it passes the
+	 * threshold no matter how hard it is working. That produced the inverse of
+	 * the stale-lane bug: a lane 22 minutes into an extended-thinking turn was
+	 * badged "(interactive)" — i.e. waiting on the human — while it was
+	 * burning CPU with no terminal window for the human to type into.
+	 *
+	 * Deliberately NOT `getTerminalTaskPaneAttention(task) === "active-agent"`:
+	 * that verdict force-promotes any pane with a live agent process, so it
+	 * restates {@link hasPositiveLivenessEvidence} and can never distinguish
+	 * working from waiting. Only the REPL's own turn cue can.
+	 *
+	 * Callers gate on {@link isAgentStuck} AND {@link hasPositiveLivenessEvidence}
+	 * so the capture only runs for the already-quiet set and a retained spinner
+	 * can never assert work on its own; the result is TTL-cached per pane.
+	 */
+	private hasPaneTurnInFlight(task: AgentTask): boolean {
+		const targetInfo = this.getTmuxPaneAttentionTarget(task);
+		if (!targetInfo) return false;
+		const cached = this._tmuxPaneTurnCache.getFresh(targetInfo.cacheKey);
+		if (cached !== undefined) return cached;
+		const snippet = capturePaneSnippet(targetInfo.target, task.tmux_socket);
+		// A VISIBLE permission/input prompt outranks any turn cue, exactly as
+		// `classifyPaneAttention` orders them. Reading the turn cue directly
+		// bypassed that precedence: a blocked lane with a spinner still on
+		// screen above its "Do you want to proceed?" was reported as working and
+		// lost the awaiting-input icon and tooltip — the inverse of the bug this
+		// predicate exists to fix, and on the signal that matters most.
+		const inFlight =
+			snippet !== null &&
+			classifyPaneAttention(undefined, snippet) !== "awaiting-user-input" &&
+			isAgentReplTurnRunning(snippet);
+		this._tmuxPaneTurnCache.set(targetInfo.cacheKey, inFlight);
+		return inFlight;
+	}
+
+	/**
 	 * True when there is positive evidence that the launcher-managed lane is
 	 * still alive — distinct from "we couldn't tell". Used to suppress
 	 * stuck-warning UI for tasks that are interactive/awaiting-input rather
@@ -1578,7 +1621,20 @@ export class AgentStatusTreeProvider
 		const targetInfo = this.getTmuxPaneAttentionTarget(task);
 		if (!targetInfo) return false;
 		const snippet = capturePaneSnippet(targetInfo.target, task.tmux_socket);
-		return snippet ? hasReadOnlyCompletionEvidence(snippet) : false;
+		if (!snippet) return false;
+		// Mid-turn veto, decided by RECENCY: the marker only loses to a turn cue
+		// that came after it. A pane still rendering a running turn is emitting
+		// transcript prose, never a completion boundary — but a finished turn
+		// that left its spinner just above its own READY_FOR_REVIEW is complete.
+		//
+		// Deliberately not "alive but not a provably idle REPL": idle-REPL proof
+		// keys on Claude's status footer, so every non-Claude lane (and any
+		// truncated capture) reads as not-idle, which would discard even a
+		// literal READY_FOR_REVIEW for as long as the process stayed alive.
+		// Ambiguity falls through to the marker check, matching the rule
+		// `classifyPaneAttention` applies to `active-agent`.
+		if (isTurnCueNewerThanCompletion(snippet)) return false;
+		return hasReadOnlyCompletionEvidence(snippet);
 	}
 
 	/**
@@ -2455,9 +2511,28 @@ export class AgentStatusTreeProvider
 		return [...tasks, ...syntheticDiscovered];
 	}
 
+	/**
+	 * {@link isAgentStuck} minus the lanes we can positively SEE working.
+	 *
+	 * `isAgentStuck` is stream-silence only, so a backend that writes no stream
+	 * JSONL trips it while mid-turn. Every stuck SURFACE must subtract the same
+	 * lanes or they contradict each other: the row read "Working — turn in
+	 * progress" while the summary tooltip still said "1 possibly stuck" and
+	 * crossing the threshold could still bounce the dock.
+	 *
+	 * Only the in-flight case is subtracted here. Interactive-but-quiet lanes
+	 * keep counting exactly as before — that split predates this predicate and
+	 * is the row badge's business, not the aggregate's.
+	 */
+	private isEffectivelyStuck(task: AgentTask): boolean {
+		if (!this.isAgentStuck(task)) return false;
+		if (!this.hasPositiveLivenessEvidence(task)) return true;
+		return !this.hasPaneTurnInFlight(task);
+	}
+
 	private getStuckRunningCount(tasks: AgentTask[]): number {
 		return tasks.filter(
-			(task) => task.status === "running" && this.isAgentStuck(task),
+			(task) => task.status === "running" && this.isEffectivelyStuck(task),
 		).length;
 	}
 
@@ -2872,7 +2947,9 @@ export class AgentStatusTreeProvider
 		const nextStates = new Map<string, boolean>();
 		for (const task of this.getDisplayLauncherTasks()) {
 			if (task.status !== "running") continue;
-			const isStuck = this.isAgentStuck(task);
+			// Effective, not raw: a lane we can see mid-turn must not bounce the
+			// dock for being "stuck" while its own row reports it as working.
+			const isStuck = this.isEffectivelyStuck(task);
 			nextStates.set(task.id, isStuck);
 
 			const wasStuck = this.previousStuckStates.get(task.id) ?? false;
@@ -2932,6 +3009,26 @@ export class AgentStatusTreeProvider
 		// the lane's own output channel is actively being written.
 		if (this.hasFreshStreamActivity(task)) return false;
 
+		// Spawn grace. The launcher writes the `running` row (and CC's watcher
+		// fires at 150ms debounce) BEFORE the wrapper script execs the agent CLI
+		// — measured 1-2s apart. A pane probe inside that window walks a
+		// bash-only process tree and reports "dead", which flipped brand-new
+		// lanes straight to "Agent process ended". Absence of the agent while it
+		// is still being spawned is not proof of death.
+		//
+		// `running` only: this models the running-row pre-exec handshake and
+		// nothing else. Paused lanes reach here too (see the `parked`/`ended`
+		// split at the render site), and a paused-only registry keeps no
+		// auto-refresh timer, so an unconditional grace could pin a recently
+		// started paused lane at "parked" until some unrelated refresh.
+		const ageMs = task.status === "running" ? this.getTaskAgeMs(task) : null;
+		if (
+			ageMs !== null &&
+			ageMs < AgentStatusTreeProvider.SESSION_DEATH_SPAWN_GRACE_MS
+		) {
+			return false;
+		}
+
 		if (task.terminal_backend === "persist") {
 			return !this.isPersistTaskAlive(task);
 		}
@@ -2980,9 +3077,21 @@ export class AgentStatusTreeProvider
 		}
 	}
 
-	/** Start or stop auto-refresh timer based on whether any tasks are running */
+	/**
+	 * Start or stop the auto-refresh timer based on whether any tasks are
+	 * running.
+	 *
+	 * Reads RAW registry status, never `getDisplayLauncherTasks()`. The display
+	 * status is the output of the runtime overlay this very timer re-evaluates,
+	 * so gating on it let one bad verdict switch off its own correction: the
+	 * only running lane got overlaid to stopped/stale, `hasRunning` went false,
+	 * the timer was cleared, and the wrong state froze until the registry file
+	 * changed or the operator hit refresh. While the registry says a lane is
+	 * running we keep re-probing, so a transient misread self-heals on the next
+	 * tick.
+	 */
 	private updateAutoRefreshTimer(): void {
-		const hasRunning = this.getDisplayLauncherTasks().some(
+		const hasRunning = Object.values(this.registry.tasks).some(
 			(task) => task.status === "running",
 		);
 
@@ -4875,17 +4984,35 @@ export class AgentStatusTreeProvider
 		if (this.isAgentStuck(t)) {
 			const thresholdMinutes = this.getStuckThresholdMinutes();
 			if (this.hasPositiveLivenessEvidence(t)) {
-				// Live launcher-managed lane: stream silence is most likely the
-				// user composing input in an interactive REPL. Surface honestly
-				// rather than warning them that their own session is stuck.
-				details.push({
-					type: "detail",
-					label: `Interactive — no stream activity for ${thresholdMinutes} minutes`,
-					value: "",
-					taskId: t.id,
-					icon: "comment-discussion",
-					iconColor: "charts.blue",
-				});
+				// Live launcher-managed lane. Stream silence here means the
+				// stream JSONL is missing or merely stale — never that the agent
+				// stopped — so split on what the pane shows. Gated on positive
+				// liveness in the SAME order as the row description's
+				// `stuckButAlive`, so the badge and this detail cannot disagree.
+				if (this.hasPaneTurnInFlight(t)) {
+					// A turn is actually in flight: report work, not a wait.
+					details.push({
+						type: "detail",
+						label: "Working — turn in progress",
+						value:
+							"No recent stream activity; liveness read from the terminal.",
+						taskId: t.id,
+						icon: "sync~spin",
+						iconColor: "charts.blue",
+					});
+				} else {
+					// Most likely the user composing input in an interactive
+					// REPL. Surface honestly rather than warning them that their
+					// own session is stuck.
+					details.push({
+						type: "detail",
+						label: `Interactive — no stream activity for ${thresholdMinutes} minutes`,
+						value: "",
+						taskId: t.id,
+						icon: "comment-discussion",
+						iconColor: "charts.blue",
+					});
+				}
 			} else {
 				details.push({
 					type: "detail",
@@ -6867,8 +6994,11 @@ export class AgentStatusTreeProvider
 			const activityMs = this.getTaskActivityTimeMs(task);
 			return activityMs <= 0 || now.getTime() - activityMs > 24 * 60 * 60_000;
 		}).length;
+		// Effective, matching the root summary and dock transition. Raw
+		// `isAgentStuck` here reported "Needs Attention" for the very lane whose
+		// row and badge report it as working.
 		const stuckCount = runningTasks.filter((task) =>
-			this.isAgentStuck(task),
+			this.isEffectivelyStuck(task),
 		).length;
 		const healthStatus = !this._agentRegistry
 			? "⚪ Discovery Disabled"
@@ -7213,7 +7343,7 @@ export class AgentStatusTreeProvider
 				(task) =>
 					task.terminal_backend === "tmux" &&
 					Boolean(task.session_id) &&
-					!this.isAgentStuck(task),
+					!this.isEffectivelyStuck(task),
 			)
 		) {
 			lines.push("  ✅ All running agents have healthy tmux sessions");
@@ -7974,6 +8104,15 @@ export class AgentStatusTreeProvider
 	private static readonly STREAM_ACTIVITY_FRESH_MS = 120_000;
 
 	/**
+	 * How long after `started_at` a missing agent process is attributed to the
+	 * spawn handshake rather than to death. Covers the launcher wrapper's
+	 * pre-exec work (worktree/prompt setup) with generous headroom over the
+	 * measured 1-2s; short enough that a lane which really failed to start is
+	 * still reported within one auto-refresh tick.
+	 */
+	private static readonly SESSION_DEATH_SPAWN_GRACE_MS = 30_000;
+
+	/**
 	 * Whether the task's stream JSONL was modified within
 	 * {@link STREAM_ACTIVITY_FRESH_MS} — host-local, positive evidence the
 	 * agent is actively emitting output. Only meaningful where local file
@@ -8045,8 +8184,12 @@ export class AgentStatusTreeProvider
 		const labelParts = [projectIcon, roleIcon, task.id].filter(Boolean);
 		const label = labelParts.join(" ");
 		const stuckRaw = this.isAgentStuck(task);
-		const interactiveAwaiting =
-			stuckRaw && this.hasPositiveLivenessEvidence(task);
+		const stuckButAlive = stuckRaw && this.hasPositiveLivenessEvidence(task);
+		// A pane mid-turn is working, not waiting. Splitting it out of
+		// `interactiveAwaiting` keeps the "(interactive)" hint (and its static
+		// "awaiting reply" icon) for lanes that really are parked at a prompt.
+		const paneTurnInFlight = stuckButAlive && this.hasPaneTurnInFlight(task);
+		const interactiveAwaiting = stuckButAlive && !paneTurnInFlight;
 		// PAR-323: project the OpenClaw/Symphony-native visible-lane attention
 		// verdict when the daemon has durably classified this lane (its
 		// `visible_lane.awaiting_input` / `visible_lane.attention` receipt
@@ -8077,7 +8220,10 @@ export class AgentStatusTreeProvider
 		// Only surface "(possibly stuck)" when stuck heuristics fire AND we have
 		// no positive liveness evidence. Live launcher-managed interactive
 		// Claude lanes get the more honest "(interactive)" hint instead.
-		const isStuck = stuckRaw && !interactiveAwaiting;
+		// "(possibly stuck)" is for stream silence with NO corroborating liveness.
+		// Gated on `stuckButAlive` (not `interactiveAwaiting`) so peeling the
+		// mid-turn case out above cannot leak a working lane into the stuck badge.
+		const isStuck = stuckRaw && !stuckButAlive;
 		// A `running` lane whose live work CC cannot prove (launcher projected
 		// attach-unavailable / visibility-degraded, or a session-less projection
 		// row with no probe channel) must not imply ongoing work with the

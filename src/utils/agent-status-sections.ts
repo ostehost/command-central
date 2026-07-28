@@ -319,6 +319,13 @@ const AWAITING_INPUT_RES: readonly RegExp[] = [
 /**
  * Signals that a finished command/test run left its result above the prompt:
  * a benign "completed-at-prompt" pane, NOT attention. Conservative on purpose.
+ *
+ * SCOPE: {@link classifyPaneAttention} only, where the question is "does this
+ * SHELL pane need a human?" and a false positive merely suppresses an
+ * attention badge. These patterns are deliberately loose (`3 passed`, `exit 0`,
+ * a `✓` glyph) and MUST NOT be used to decide that a lane finished — an agent
+ * REPL's own transcript prose matches them constantly. See
+ * {@link LANE_COMPLETION_BOUNDARY_RES}.
  */
 const COMPLETION_SUMMARY_RES: readonly RegExp[] = [
 	/\bREADY_FOR_REVIEW\b/i,
@@ -339,26 +346,162 @@ const COMPLETION_SUMMARY_RES: readonly RegExp[] = [
 ];
 
 /**
+ * Unambiguous "this lane reached its handoff/review boundary" markers.
+ *
+ * Distinct from {@link COMPLETION_SUMMARY_RES} because the stakes are inverted:
+ * a match here DEMOTES a `running` row out of the live surface, so anything an
+ * agent could plausibly type mid-turn must be excluded. A live Claude lane
+ * narrating `11/11 passed`, `exit 0`, `build complete` or printing a `✓` is
+ * working, not finished — those patterns stay out of this list.
+ *
+ * What survives: the launcher's literal READY_FOR_REVIEW marker token, and the
+ * explicit `/exit` completion prompt the wrapper prints when the agent is done.
+ * Both are emitted by the harness, not composed by the model.
+ */
+// NB: `\b` does not match before the leading `/` of `/exit` (both sides
+// non-word at string start), so these anchor on the slash itself.
+const LANE_COMPLETION_BOUNDARY_RES: readonly RegExp[] = [
+	/\bREADY_FOR_REVIEW\b/i,
+	/\b(?:type|run|enter)\s+\/exit\b/i,
+	/\/exit\b.*\b(?:finish|quit|close|end)\b/i,
+	/\b(?:finish|quit|close|end)\b.*\/exit\b/i,
+];
+
+/**
  * Idle interactive agent REPL detection (Claude Code-style UI). ALL cues must
  * hold — conservative on purpose, a false idle verdict would hide live work:
  *  - the REPL status footer is rendered (stable UI chrome, e.g. the
  *    "shift+tab to cycle" mode hint or the "? for shortcuts" help hint);
  *  - the input box is EMPTY (a line that is exactly `❯`) — typed-but-unsent
  *    input or a `❯ 1.` dialog selector row does not qualify;
- *  - no turn is running (Claude Code renders an "esc to interrupt" hint for
- *    the whole duration of a turn).
+ *  - no turn is running — see {@link AGENT_REPL_TURN_RUNNING_RES}.
  */
 const AGENT_REPL_FOOTER_RES: readonly RegExp[] = [
 	/shift\+tab to cycle/i,
 	/\?\s+for shortcuts/i,
 ];
 const AGENT_REPL_EMPTY_INPUT_RE = /(?:^|\n)❯\s*(?:\n|$)/;
-const AGENT_REPL_TURN_RUNNING_RE = /esc to interrupt/i;
 
-function isIdleAgentReplSnippet(snippet: string): boolean {
-	if (!AGENT_REPL_FOOTER_RES.some((re) => re.test(snippet))) return false;
+/**
+ * Cues that a turn is IN FLIGHT, so the REPL is not idle no matter how empty
+ * its input box looks.
+ *
+ * The interrupt hint alone is not enough. During a long turn the transcript
+ * scrolls, and a bounded `capture-pane` window can retain the working-spinner
+ * status line while the interrupt hint has already scrolled past — observed on
+ * a lane that had been thinking for 22 minutes:
+ *
+ *     ✳ Philosophising… (22m 41s · almost done thinking with xhigh effort)
+ *     ────────────────────────────────────────────────────────
+ *     ❯
+ *       ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 1 agent
+ *
+ * All three idle cues held, so a hard-working agent classified as
+ * `idle-agent-repl`. The spinner's `…` + parenthesised elapsed timer is
+ * rendered for the whole turn and is the more durable signal.
+ */
+const AGENT_REPL_TURN_RUNNING_RES: readonly RegExp[] = [
+	/esc to interrupt/i,
+	// Structural, not "a duration appears somewhere": the elapsed timer must sit
+	// on a line that OPENS with a spinner glyph. Claude marks finished results
+	// with `⏺`, so prose like `⏺ Handled Manifesting… (16m 32s)` in an agent's
+	// closing summary is not a running turn and must not beat an empty prompt.
+	/^[^\S\n]*[✻✽✳✢✶✷✸✹∗*·]\s.*…\s*\((?:\d+h\s*)?(?:\d+m\s*)?\d+s\b/m,
+];
+
+/**
+ * Whether the pane is rendering an agent REPL at all, idle or not — keyed on
+ * the stable status-footer chrome. Launcher panes report the wrapper shell as
+ * `pane_current_command`, so this is how a REPL is recognized when the process
+ * name cannot say so.
+ */
+export function isAgentReplSnippet(snippet: string): boolean {
+	return AGENT_REPL_FOOTER_RES.some((re) => re.test(snippet));
+}
+
+/**
+ * How many trailing lines count as the REPL's LIVE status area. Claude renders
+ * the spinner directly above the input box and footer, so the current frame
+ * comfortably fits; anything higher up is scrollback.
+ */
+const AGENT_REPL_STATUS_TAIL_LINES = 8;
+
+/**
+ * A COMPLETED result line. Claude opens each finished result with `⏺`, so one
+ * appearing after a spinner cue proves that turn already produced its answer.
+ */
+const AGENT_REPL_RESULT_LINE_RE = /^[^\S\n]*⏺\s/m;
+
+/**
+ * Positive evidence that a turn is in flight RIGHT NOW, anchored to the live
+ * status area at the bottom of the pane.
+ *
+ * Anchored, with no unanchored variant on purpose. `capturePaneSnippet` returns
+ * the trailing 40 lines, so a whole-snippet match also fires on a remnant of an
+ * ALREADY-FINISHED turn — or on an agent quoting a spinner line in its own
+ * transcript. Scanning that far cost the benign idle verdict: a cleanly
+ * completed lane whose REPL sits at an empty prompt would fail
+ * {@link isIdleAgentReplSnippet} on a leftover `… (22m 41s)` and get reported
+ * as an attention-worthy lifecycle conflict instead.
+ *
+ * The long-turn case that motivated the spinner cue is unaffected — the spinner
+ * is rendered directly above the input box, well inside the window.
+ */
+export function isAgentReplTurnRunning(snippet: string): boolean {
+	const tail = snippet
+		.replace(/\s+$/, "")
+		.split("\n")
+		.slice(-AGENT_REPL_STATUS_TAIL_LINES)
+		.join("\n");
+	const cueAt = lastMatchLine(tail, AGENT_REPL_TURN_RUNNING_RES);
+	if (cueAt < 0) return false;
+	// Position alone is not currency. A SHORT turn leaves its spinner inside the
+	// window, directly above the answer it produced — so a completed result
+	// printed after the cue ends the turn however few lines separate them.
+	// Without this, an idle REPL was reported as working (and its stuck/dock
+	// signals suppressed) until enough lines scrolled the remnant away.
+	return cueAt > lastMatchLine(tail, [AGENT_REPL_RESULT_LINE_RE]);
+}
+
+/** Index of the LAST match of any pattern in `res`, or -1 when none match. */
+/**
+ * Index of the LAST LINE matching any pattern in `res`, or -1 when none match.
+ *
+ * Deliberately line-granular rather than character-granular. A completed result
+ * line can QUOTE a cue — `⏺ READY_FOR_REVIEW — fixed handling of "esc to
+ * interrupt"` — and a character offset would rank that quote after the very
+ * line containing it. Comparing lines makes a same-line quote a tie, which the
+ * callers resolve in favour of the completed output.
+ */
+function lastMatchLine(text: string, res: readonly RegExp[]): number {
+	const lines = text.split("\n");
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const line = lines[i] ?? "";
+		if (res.some((re) => re.test(line))) return i;
+	}
+	return -1;
+}
+
+/**
+ * Whether the most recent turn cue in the pane is NEWER than the most recent
+ * lane-completion boundary marker.
+ *
+ * The precise question for a completion veto, and strictly better than a
+ * tail window there: the veto only ever matters when a boundary marker is
+ * present, so what decides it is which signal came LAST. A finished turn that
+ * left its spinner immediately above its own `READY_FOR_REVIEW` is complete,
+ * however few lines separate the two.
+ */
+export function isTurnCueNewerThanCompletion(snippet: string): boolean {
+	const turnAt = lastMatchLine(snippet, AGENT_REPL_TURN_RUNNING_RES);
+	if (turnAt < 0) return false;
+	return turnAt > lastMatchLine(snippet, LANE_COMPLETION_BOUNDARY_RES);
+}
+
+export function isIdleAgentReplSnippet(snippet: string): boolean {
+	if (!isAgentReplSnippet(snippet)) return false;
 	if (!AGENT_REPL_EMPTY_INPUT_RE.test(snippet)) return false;
-	return !AGENT_REPL_TURN_RUNNING_RE.test(snippet);
+	return !isAgentReplTurnRunning(snippet);
 }
 
 /**
@@ -370,11 +513,17 @@ function isIdleAgentReplSnippet(snippet: string): boolean {
  * prompt after it has emitted READY_FOR_REVIEW, and a completed pane can also
  * have fallen back to `bash`. Callers must gate this with their own staleness /
  * local-terminal checks before using it to demote a running row.
+ *
+ * Matches only {@link LANE_COMPLETION_BOUNDARY_RES} — harness-emitted boundary
+ * markers. It deliberately does NOT reuse the looser attention-side
+ * {@link COMPLETION_SUMMARY_RES}: those matched a live lane's own transcript
+ * (`exit 0`, `20/20 passed`, `✓`) and demoted working agents to
+ * "Stale — no completion signal".
  */
 export function hasReadOnlyCompletionEvidence(snippet: string): boolean {
 	const text = snippet.replace(/\s+$/, "");
 	if (!text.trim()) return false;
-	return COMPLETION_SUMMARY_RES.some((re) => re.test(text));
+	return LANE_COMPLETION_BOUNDARY_RES.some((re) => re.test(text));
 }
 
 function lastNonEmptyLine(snippet: string): string {
@@ -428,10 +577,17 @@ export function classifyPaneAttention(
 	}
 
 	// Launcher panes usually report the wrapper shell (`bash`) as the pane
-	// command while the agent REPL runs inside it — recognize the idle REPL UI
-	// by its chrome. Checked AFTER awaiting-user-input so a pending question
+	// command while the agent REPL runs inside it — recognize the REPL UI by
+	// its chrome. Checked AFTER awaiting-user-input so a pending question
 	// rendered inside the REPL always wins.
-	if (isIdleAgentReplSnippet(text)) return "idle-agent-repl";
+	if (isAgentReplSnippet(text)) {
+		if (isIdleAgentReplSnippet(text)) return "idle-agent-repl";
+		// Only a POSITIVE turn cue promotes to active-agent. REPL chrome alone is
+		// ambiguous (typed-but-unsent input, a footer with no input box), and
+		// ambiguity must fall through to the fail-open path below rather than
+		// claim work is in flight.
+		if (isAgentReplTurnRunning(text)) return "active-agent";
+	}
 
 	const atPrompt = endsAtShellPrompt(text);
 	if (atPrompt && COMPLETION_SUMMARY_RES.some((re) => re.test(text))) {
