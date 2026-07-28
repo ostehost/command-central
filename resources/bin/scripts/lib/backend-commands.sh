@@ -24,6 +24,22 @@
 # Runtime PATH initialization is injected by oste-spawn.sh so it can be
 # sourced from a temp file instead of inlined into terminal_send payloads.
 
+# Single source of truth for the default Claude model.
+#
+# Emits a TIER ALIAS ("opus"), not a dated model ID. The Claude Code CLI
+# resolves an alias to the latest model in that tier (`claude --help`:
+# "Provide an alias for the latest model"), so a new Opus release ships
+# without a code edit here. The resolved version is not lost: oste-autocommit
+# records `actual_model` from the agent stream file, and that flows into the
+# pending-review record and completion callback — the same request-a-tier,
+# record-the-resolution split the codex and gemini branches already use by
+# delegating to their own CLI config.
+#
+# OSTE_CLAUDE_MODEL overrides (pin a dated ID here when a lane must not move).
+backend_default_claude_model() {
+	printf "%s" "${OSTE_CLAUDE_MODEL:-opus}"
+}
+
 backend_shell_quote_arg() {
 	local value="$1"
 	local quoted="'"
@@ -220,17 +236,20 @@ build_agent_command() {
 
 	# Guard: strip incompatible models per backend.
 	# Codex only accepts OpenAI models; Claude models cause instant 400 errors.
+	# The bare tier aliases (opus/sonnet/haiku/fable) are Anthropic models too —
+	# they carry no "claude-" prefix, so they must be matched explicitly or an
+	# explicit `--model opus` would pass straight through to a non-Claude CLI.
 	local effective_model="$model"
 	if [[ "$backend" == "codex" || "$backend" == "acp-codex" ]]; then
 		case "$effective_model" in
-			claude-* | anthropic/*)
+			claude-* | anthropic/* | opus* | sonnet* | haiku* | fable*)
 				echo "build_agent_command: WARNING: skipping incompatible model '${effective_model}' for ${backend} backend" >&2
 				effective_model=""
 				;;
 		esac
 	elif [[ "$backend" == "gemini" || "$backend" == "acp-gemini" ]]; then
 		case "$effective_model" in
-			claude-* | anthropic/* | gpt-* | o1-* | o3-* | openai/*)
+			claude-* | anthropic/* | opus* | sonnet* | haiku* | fable* | gpt-* | o1-* | o3-* | openai/*)
 				echo "build_agent_command: WARNING: skipping incompatible model '${effective_model}' for ${backend} backend" >&2
 				effective_model=""
 				;;
