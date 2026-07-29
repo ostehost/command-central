@@ -12,6 +12,7 @@ import {
 	hasReadOnlyCompletionEvidence,
 	isAgentReplTurnRunning,
 	isIdleAgentReplSnippet,
+	isTurnCueNewerThanCompletion,
 	sectionFromSignals,
 	sectionFromStatusGroup,
 	type UnifiedCounts,
@@ -337,6 +338,100 @@ describe("isIdleAgentReplSnippet", () => {
 		].join("\n");
 		expect(isAgentReplTurnRunning(quoted)).toBe(false);
 		expect(hasReadOnlyCompletionEvidence(quoted)).toBe(true);
+	});
+
+	test("a cue on a WRAPPED result's continuation line is still prose", () => {
+		// A narrow pane wraps a completed result across lines. Skipping only the
+		// opening `⏺` line left the continuation readable as live chrome, so it
+		// vetoed the very completion marker it belongs to.
+		const wrapped = [
+			"⏺ READY_FOR_REVIEW — fixed handling of",
+			'  "esc to interrupt"',
+			"❯ ",
+			FOOTER,
+		].join("\n");
+		expect(isAgentReplTurnRunning(wrapped)).toBe(false);
+		expect(isIdleAgentReplSnippet(wrapped)).toBe(true);
+		expect(hasReadOnlyCompletionEvidence(wrapped)).toBe(true);
+	});
+
+	test("a wrapped result longer than the status tail keeps its block identity", () => {
+		// Block attribution runs over the FULL capture. Truncating to the tail
+		// first sliced the `⏺` opener off any result long enough to fill the
+		// window, orphaning its continuations so they read as live chrome.
+		const longResult = [
+			"⏺ READY_FOR_REVIEW — closed out the lane:",
+			...Array.from({ length: 8 }, (_, i) => `  step ${i + 1} verified`),
+			'  restored handling of "esc to interrupt"',
+			"❯ ",
+			FOOTER,
+		].join("\n");
+		expect(isAgentReplTurnRunning(longResult)).toBe(false);
+		expect(isIdleAgentReplSnippet(longResult)).toBe(true);
+		expect(hasReadOnlyCompletionEvidence(longResult)).toBe(true);
+	});
+
+	test("an INDENTED result opener still owns its continuation lines", () => {
+		// The result-line contract allows leading whitespace, so `  ⏺ …` is an
+		// opener. Walking past it as though it were a sibling left the block
+		// readable as chrome.
+		const indentedOpener = [
+			"  ⏺ READY_FOR_REVIEW — closed the lane after",
+			'    restoring handling of "esc to interrupt"',
+			"❯ ",
+			FOOTER,
+		].join("\n");
+		expect(isAgentReplTurnRunning(indentedOpener)).toBe(false);
+		expect(isIdleAgentReplSnippet(indentedOpener)).toBe(true);
+		expect(hasReadOnlyCompletionEvidence(indentedOpener)).toBe(true);
+	});
+
+	test("an indented spinner after an indented result is still a live turn", () => {
+		// Ownership by indentation alone let the earlier result swallow the
+		// spinner AND its hint, reporting an active turn as idle — and, with a
+		// READY_FOR_REVIEW in that result, demoting a working lane.
+		const resumed = [
+			"  ⏺ READY_FOR_REVIEW — first pass done",
+			"  ✻ Working… (4m 2s)",
+			"  (esc to interrupt)",
+			"❯ ",
+			FOOTER,
+		].join("\n");
+		expect(isAgentReplTurnRunning(resumed)).toBe(true);
+		expect(isIdleAgentReplSnippet(resumed)).toBe(false);
+		expect(isTurnCueNewerThanCompletion(resumed)).toBe(true);
+	});
+
+	test("a standalone interrupt hint survives a preceding result with no spinner", () => {
+		// Chrome exemption must not depend on spinner recognition. A resumed turn
+		// can render the hint alone under the previous result; attributing it to
+		// that result reported an active lane idle and let the stale
+		// READY_FOR_REVIEW demote it.
+		const resumedNoSpinner = [
+			"⏺ READY_FOR_REVIEW — first pass done",
+			"  (esc to interrupt)",
+			"❯ ",
+			FOOTER,
+		].join("\n");
+		expect(isAgentReplTurnRunning(resumedNoSpinner)).toBe(true);
+		expect(isIdleAgentReplSnippet(resumedNoSpinner)).toBe(false);
+		expect(isTurnCueNewerThanCompletion(resumedNoSpinner)).toBe(true);
+	});
+
+	test("an indented status hint under the spinner still counts as live chrome", () => {
+		// Control for the block rule: `  (esc to interrupt)` is indented too, but
+		// it hangs off the SPINNER line, not off a result — attributing it to a
+		// result further up would resurrect the false-idle bug.
+		const midTurn = [
+			"⏺ Ran the suite — 20/20 passed.",
+			"  all green",
+			"✻ Philosophising… (4m 2s)",
+			"  (esc to interrupt)",
+			"❯ ",
+			FOOTER,
+		].join("\n");
+		expect(isAgentReplTurnRunning(midTurn)).toBe(true);
+		expect(isIdleAgentReplSnippet(midTurn)).toBe(false);
 	});
 
 	test("REPL chrome alone never claims a turn is in flight", () => {

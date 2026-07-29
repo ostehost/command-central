@@ -400,8 +400,12 @@ const AGENT_REPL_EMPTY_INPUT_RE = /(?:^|\n)❯\s*(?:\n|$)/;
  * `idle-agent-repl`. The spinner's `…` + parenthesised elapsed timer is
  * rendered for the whole turn and is the more durable signal.
  */
-const AGENT_REPL_TURN_RUNNING_RES: readonly RegExp[] = [
-	/esc to interrupt/i,
+/**
+ * The live spinner STATUS LINE — structural, and therefore usable as a block
+ * boundary (unlike the bare `esc to interrupt` substring, which can appear
+ * inside completed prose).
+ */
+const AGENT_REPL_SPINNER_LINE_RE =
 	// Structural, not "a duration appears somewhere": the elapsed timer must sit
 	// on a line that OPENS with a spinner glyph. Claude marks finished results
 	// with `⏺`, so prose like `⏺ Handled Manifesting… (16m 32s)` in an agent's
@@ -412,7 +416,29 @@ const AGENT_REPL_TURN_RUNNING_RES: readonly RegExp[] = [
 	// bullet, so `* Build… (1m 2s)` in a timing summary must not read as chrome.
 	// The glyph must OPEN the line, so `·` as Claude's own mid-line separator
 	// (`(22m 41s · ↓ 100.6k tokens)`) is unaffected.
-	/^[^\S\n]*[·✻✽✳✢✶✷✸✹∗]\s.*…\s*\((?:\d+h\s*)?(?:\d+m\s*)?\d+s\b/m,
+	/^[^\S\n]*[·✻✽✳✢✶✷✸✹∗]\s.*…\s*\((?:\d+h\s*)?(?:\d+m\s*)?\d+s\b/m;
+
+/**
+ * The interrupt hint rendered as its OWN status line — the whole line is the
+ * hint, bar indentation and parentheses.
+ *
+ * Distinct from the loose `esc to interrupt` substring below: a result line
+ * that merely mentions the hint (`… restored handling of "esc to interrupt"`)
+ * carries other content and is prose, while a line that is nothing but the hint
+ * is chrome. Only the latter may bound a result block.
+ */
+const AGENT_REPL_INTERRUPT_LINE_RE =
+	/^[^\S\n]*\(?\s*(?:press\s+)?esc to interrupt\s*\)?[^\S\n]*$/i;
+
+/** Structural status lines: never result content, always a block boundary. */
+const AGENT_REPL_CHROME_LINE_RES: readonly RegExp[] = [
+	AGENT_REPL_SPINNER_LINE_RE,
+	AGENT_REPL_INTERRUPT_LINE_RE,
+];
+
+const AGENT_REPL_TURN_RUNNING_RES: readonly RegExp[] = [
+	/esc to interrupt/i,
+	AGENT_REPL_SPINNER_LINE_RE,
 ];
 
 /**
@@ -454,19 +480,21 @@ const AGENT_REPL_RESULT_LINE_RE = /^[^\S\n]*⏺\s/m;
  * is rendered directly above the input box, well inside the window.
  */
 export function isAgentReplTurnRunning(snippet: string): boolean {
-	const tail = snippet
-		.replace(/\s+$/, "")
-		.split("\n")
-		.slice(-AGENT_REPL_STATUS_TAIL_LINES)
-		.join("\n");
-	const cueAt = lastTurnCueLine(tail);
+	const text = snippet.replace(/\s+$/, "");
+	// Attribute result blocks across the FULL capture, then require the cue to
+	// sit in the live status tail. Slicing first cut the `⏺` opener off any
+	// result long enough to fill the window, orphaning its continuation lines
+	// so they read as chrome — the very confusion the block rule exists to end.
+	const lineCount = text.split("\n").length;
+	const tailStart = Math.max(0, lineCount - AGENT_REPL_STATUS_TAIL_LINES);
+	const cueAt = lastTurnCueLine(text, tailStart);
 	if (cueAt < 0) return false;
 	// Position alone is not currency. A SHORT turn leaves its spinner inside the
 	// window, directly above the answer it produced — so a completed result
 	// printed after the cue ends the turn however few lines separate them.
 	// Without this, an idle REPL was reported as working (and its stuck/dock
 	// signals suppressed) until enough lines scrolled the remnant away.
-	return cueAt > lastMatchLine(tail, [AGENT_REPL_RESULT_LINE_RE]);
+	return cueAt > lastMatchLine(text, [AGENT_REPL_RESULT_LINE_RE]);
 }
 
 /**
@@ -485,14 +513,59 @@ export function isAgentReplTurnRunning(snippet: string): boolean {
  * `⏺ READY_FOR_REVIEW — fixed handling of "esc to interrupt"` is describing a
  * turn, not running one, and finished output must never impersonate chrome.
  */
-function lastTurnCueLine(text: string): number {
+function lastTurnCueLine(text: string, minIndex = 0): number {
 	const lines = text.split("\n");
-	for (let i = lines.length - 1; i >= 0; i--) {
-		const line = lines[i] ?? "";
-		if (AGENT_REPL_RESULT_LINE_RE.test(line)) continue;
-		if (AGENT_REPL_TURN_RUNNING_RES.some((re) => re.test(line))) return i;
+	for (let i = lines.length - 1; i >= minIndex; i--) {
+		if (isResultBlockLine(lines, i)) continue;
+		if (AGENT_REPL_TURN_RUNNING_RES.some((re) => re.test(lines[i] ?? ""))) {
+			return i;
+		}
 	}
 	return -1;
+}
+
+/**
+ * Whether line `i` belongs to a completed `⏺` result — its opening line OR any
+ * of the indented continuation lines the result wraps onto.
+ *
+ * Skipping only the opening line was not enough. A narrow pane wraps a result
+ * across several lines, so
+ *
+ *     ⏺ READY_FOR_REVIEW — fixed handling of
+ *       "esc to interrupt"
+ *
+ * left the continuation readable as live chrome: it vetoed the very completion
+ * marker it belongs to, and made an idle REPL look active. A continuation is
+ * indented, so it is attributed to the nearest preceding line that ISN'T —
+ * which also keeps a genuinely indented status hint (Claude renders
+ * `  (esc to interrupt)` under the spinner) attached to the spinner line rather
+ * than to some result further up.
+ */
+function isResultBlockLine(lines: readonly string[], i: number): boolean {
+	const line = lines[i] ?? "";
+	if (AGENT_REPL_RESULT_LINE_RE.test(line)) return true;
+	// A structural status line (spinner, or a standalone interrupt hint) is
+	// chrome in its own right, whatever its indent — it can never be a result's
+	// continuation.
+	if (AGENT_REPL_CHROME_LINE_RES.some((re) => re.test(line))) return false;
+	if (!/^\s+\S/.test(line)) return false;
+	for (let j = i - 1; j >= 0; j--) {
+		const prev = lines[j] ?? "";
+		// Test for the opener FIRST: the result-line contract permits leading
+		// whitespace, so an indented `  ⏺ …` is an opener, not a sibling. The
+		// indent skip below would otherwise walk straight past it and leave the
+		// whole block readable as chrome.
+		if (AGENT_REPL_RESULT_LINE_RE.test(prev)) return true;
+		// Chrome BOUNDS the block. Ownership by indentation alone would let an
+		// earlier result swallow a later `  ✻ Working… (4m)` or a standalone
+		// `  (esc to interrupt)`, reporting an active turn as idle — the exact
+		// inversion this block rule exists to prevent.
+		if (AGENT_REPL_CHROME_LINE_RES.some((re) => re.test(prev))) return false;
+		// Blank lines do not close a block; further indented lines are siblings.
+		if (!prev.trim() || /^\s+\S/.test(prev)) continue;
+		return false;
+	}
+	return false;
 }
 
 function lastMatchLine(text: string, res: readonly RegExp[]): number {
