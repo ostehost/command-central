@@ -774,8 +774,9 @@ prerelease *args="--prerelease":
 
 # Inspect a built VSIX for dev-artifact leaks and size regressions
 # (defaults to newest in releases/; also runs inside `just dist` builds)
-vsix-gate *args="":
-    @bun run scripts-v2/vsix-content-gate.ts {{args}}
+[positional-arguments]
+vsix-gate *args:
+    @bun run scripts-v2/vsix-content-gate.ts "$@"
 
 # CCSTD-01: re-runnable, NON-MUTATING preserve-before-destroy baseline audit.
 # Read-only git plumbing only — never stages/commits/stashes/resets. Enumerates
@@ -865,8 +866,9 @@ cut-preview *args="--prerelease":
 # A running record whose pid is gone is reclassified as `unknown` — that's
 # the OpenClaw/node-invoke-timeout case where the cut may have finished
 # without the invoker noticing.
-preview-status *args="":
-    @bun run scripts-v2/preview-status.ts {{args}}
+[positional-arguments]
+preview-status *args:
+    @bun run scripts-v2/preview-status.ts "$@"
 
 # Preflight: refuse dirty trees (both repos), warn off-hub.
 _preview-preflight:
