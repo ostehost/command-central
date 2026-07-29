@@ -114,15 +114,18 @@ update:
     @bun update -i
 
 # Show package information (Bun 1.3+)
+[positional-arguments]
 info *package:
-    @if [ -z "{{package}}" ]; then \
-        echo "Usage: just info <package-name>"; \
-        echo "Example: just info @biomejs/biome"; \
-        exit 1; \
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "$#" -eq 0 ]; then
+        echo "Usage: just info <package-name>"
+        echo "Example: just info @biomejs/biome"
+        exit 1
     fi
-    @echo "📦 Package information: {{package}}"
-    @echo ""
-    @bun info {{package}}
+    echo "📦 Package information: $*"
+    echo ""
+    bun info "$@"
 
 # Create/update Ghostty dock launcher for this project
 # Transparently creates a dock-launchable terminal that opens in this project
@@ -287,19 +290,22 @@ ci:
 #   just test              # Run all tests + quality checks
 #   just test list         # Show test organization
 #   just test <filter>     # Run filtered tests (skip quality checks)
-test *args="":
-    @if [ "{{args}}" = "list" ]; then \
-        just test-list; \
-    elif [ -z "{{args}}" ]; then \
-        echo "🧪 Running test suite..."; \
-        echo ""; \
-        bun run test || exit 1; \
-        echo ""; \
-        just test-quality; \
-    else \
-        echo "🧪 Running filtered tests: {{args}}"; \
-        echo ""; \
-        bun test {{args}}; \
+[positional-arguments]
+test *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "$#" -eq 1 ] && [ "$1" = "list" ]; then
+        just test-list
+    elif [ "$#" -eq 0 ]; then
+        echo "🧪 Running test suite..."
+        echo ""
+        bun run test
+        echo ""
+        just test-quality
+    else
+        echo "🧪 Running filtered tests: $*"
+        echo ""
+        bun test "$@"
     fi
 
 # Check test quality (no type assertions, no skipped tests)
