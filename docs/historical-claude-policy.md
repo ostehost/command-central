@@ -1,0 +1,223 @@
+# Historical Claude policy body (migrated)
+
+This file preserves the former root `CLAUDE.md` content that lived at HEAD
+before the fleet instruction-triad migration. It is **not** an always-on agent
+loader. Canonical always-on policy is root `AGENTS.md`; root `CLAUDE.md` is only
+the thin `@AGENTS.md` adapter.
+
+Operators may fold durable product depth from this file into README/docs over
+time; do not re-expand root `CLAUDE.md`.
+
+---
+
+# CLAUDE.md — Command Central
+
+> This file helps AI coding assistants understand and contribute to this project.
+> It follows the [CLAUDE.md convention](https://docs.anthropic.com/en/docs/claude-code/memory#claudemd) for providing project context to AI tools.
+
+## Overview
+
+**Command Central** is a VS Code extension built with **Bun** as the exclusive toolchain. This approach delivers significantly faster builds, tests, and packaging compared to traditional webpack/npm setups.
+
+```yaml
+---
+globs: "*.ts, *.tsx, *.js, *.jsx, package.json, tsconfig.json, bunfig.toml, .vscode/*.json"
+alwaysApply: true
+---
+```
+
+## Quick Start
+
+```bash
+# Prerequisites
+code --version    # ≥1.100.0 (ESM support)
+bun --version     # ≥1.3.0
+
+# Install dependencies
+bun install
+
+# Core workflow
+bun dev           # Development with hot reload
+bun test          # Typecheck + all tests
+bun dist          # Smart version-aware distribution
+```
+
+## Project Structure
+
+```
+src/
+  commands/       # VS Code command implementations
+  providers/      # Webview and tree providers
+  services/       # Core services (ProcessManager, Logger, etc.)
+  utils/          # Shared utilities
+  types/          # TypeScript type definitions
+  webview/        # Webview UI code
+  test/           # Unit tests
+scripts/          # Build, dev, and distribution scripts
+resources/        # Static assets
+dist/             # Build output (gitignored)
+releases/         # VSIX packages
+.vscode/          # Editor configuration
+```
+
+## Five Commandments
+
+These are **non-negotiable** for this project:
+
+1. **ALWAYS use `--extensionDevelopmentPath`** — never symlink or copy into `~/.vscode/extensions/`
+2. **ALWAYS use Bun exclusively** — no npm, yarn, or webpack
+3. **ALWAYS package as VSIX** — `bunx @vscode/vsce package`
+4. **NEVER bundle the `vscode` module** — it must stay in `external: ['vscode']`
+5. **NEVER skip type checking** — `tsc --noEmit` runs before every build
+6. **NEVER use `--no-verify`** on git commit or push — hooks are quality gates, not suggestions. If hooks fail, fix the issue.
+
+## Cross-Repo Release Dependency: Ghostty Launcher
+
+Command Central preview/release work directly depends on `~/projects/ghostty-launcher` for lane orchestration and the bundled launcher resources under `resources/bin/`.
+
+If `just cut-preview`, `just prerelease-gate`, `just sync-launcher`, or a release-prep lane is blocked by a Ghostty Launcher defect or dirty launcher dependency work, do **not** stop at “launcher dirty.” Treat it as owned release-path work:
+
+1. Inspect `~/projects/ghostty-launcher` directly.
+2. Make the smallest safe launcher fix needed to unblock Command Central.
+3. Run launcher validation (`just check`, plus targeted tests when relevant).
+4. Write a launcher handoff under `~/projects/ghostty-launcher/research/`.
+5. Commit the focused launcher fix if gates are acceptable.
+6. Return here, rerun the Command Central preview gate/cut, and commit the resulting release metadata/artifacts.
+
+Do not push, tag, publish, or use `--no-verify` without explicit approval.
+
+## Commands Reference
+
+This project follows the cross-project five-recipe standard documented in
+`~/projects/config/WORKFLOW.md`. Always prefer `just <recipe>` over invoking
+bun/biome/tsc directly — the recipes are the stable interface.
+
+```bash
+# The Five Standard Recipes (use these for every project)
+just check       # Read-only validation (biome ci + tsc + knip)
+just fix         # Auto-fix lint + format
+just test        # Run full test suite (~5s)
+just ready       # fix + check + test  (one-shot before push)  [alias: just r]
+just ci          # Strict gate (warnings = errors); what CI runs
+
+# Aliases
+just t           # → just test
+just f           # → just fix
+just r           # → just ready
+
+# Project-specific
+just dev                             # Dev server with hot reload
+just dist                            # Build VSIX (auto-bump patch)
+just dist --minor / --major / --current / --dry-run / --prerelease
+just prerelease                      # Cross-repo gate + build prerelease
+just sync-all                        # Sync launcher + terminal binaries
+
+# Test sub-commands (when full `just test` is too slow)
+just test-unit                       # Fast unit subset (~0.5s, 459 tests)
+just test-integration                # Integration + isolated discovery-e2e
+just test-watch                      # TDD watch mode
+
+# Installing the built extension locally
+code --install-extension releases/command-central-X.X.X.vsix
+```
+
+See `WORKFLOW.md` for the full workflow guide and the migration history
+(2026-04-16: `verify`/`pre-commit`/`check-strict` retired).
+
+## Architecture & Conventions
+
+### Build System
+- **Entry point:** `src/extension.ts` (ESM with top-level await)
+- **Build tool:** `Bun.build()` via `scripts/build.ts`
+- **Output:** `dist/` directory, ESM format, targeting Node
+- **External:** `vscode` is always external — never bundled
+
+### Code Style
+- **Biome** for linting and formatting (configured in `biome.json`)
+- **Strict TypeScript** — `strict: true` in tsconfig
+- **ESM only** — use `import`, never `require()`
+- **`.js` extensions** in import paths (ESM requirement)
+
+### Testing
+- **Bun's built-in test runner** (`bun:test`)
+- Mock the `vscode` module in unit tests via `mock.module("vscode", ...)`
+- Integration tests use `--extensionDevelopmentPath` with VS Code test runner
+
+### Key Patterns
+- **Lazy loading:** Commands use dynamic `import()` for fast activation
+- **Webview CSP:** Always use nonces for Content Security Policy
+- **AbortController:** For timeout handling and cancellation
+- **Exponential backoff:** For retry logic on transient failures
+
+### Distribution
+The `bun dist` command implements smart version management:
+1. Checks `package.json` version (source of truth)
+2. Detects existing releases to avoid duplicate builds
+3. Manages release archive (keeps last 3 by default)
+4. Wraps `npm version` for standards-compliant bumping
+
+## Contributing with AI Tools
+
+This project is designed to work well with AI coding assistants. Here's how:
+
+1. **Read this file first** — it gives you the full project context
+2. **Run `bun test` before and after changes** — it catches type errors and test failures
+3. **Run `bun run check` for style** — Biome enforces consistent formatting
+4. **Follow the Five Commandments** — they exist because the alternatives break things
+5. **Check `package.json`** for the full list of available scripts
+
+### Pre-Flight Checklist
+
+Before submitting changes:
+
+- [ ] `bun run typecheck` passes
+- [ ] `bun test` passes
+- [ ] `bun run check` passes (no lint/format issues)
+- [ ] Build succeeds: `bun run build`
+- [ ] All imports use `.js` extension
+- [ ] `external: ['vscode']` preserved in build config
+- [ ] VSIX within the enforced budget: ≤ 600KB compressed / ≤ 2MB uncompressed / ≤ 120 files (`scripts-v2/vsix-content-gate.ts` fails the build otherwise; current dieted candidate measures ~258KB / 51 files)
+
+## Skills
+
+Repo-specific skills live in `.claude/skills/` (skill directories only — every entry must resolve to a `SKILL.md`; docs live outside the lane). See `.claude/CONVENTIONS.md` for creation and distribution rules.
+
+| Skill | Purpose |
+|-------|---------|
+| `cut-preview` | Cut preview VSIX releases |
+| `command-central-vscode-extension` | Agent Status tree, data sources, testing, operational scripts |
+
+**Update workflow:** edit the canonical copy in `.claude/skills/<name>/`, commit, then propagate to OpenClaw:
+```bash
+openclaw skills install .claude/skills/<name> --as <name> --force
+```
+
+## Troubleshooting
+
+| Problem | Check |
+|---------|-------|
+| Extension won't load | Is VS Code launched with `--extensionDevelopmentPath`? |
+| Type errors | Does `@types/vscode` match `engines.vscode`? |
+| Build failures | Is `external: ['vscode']` set? |
+| Test failures | Do mocks match the VS Code API surface? |
+| Import errors | Are `.js` extensions on all import paths? |
+
+## CI
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v1
+      - run: bun install
+      - run: bun run typecheck
+      - run: bun test
+      - run: bun run build
+      - run: bun run package
+```
