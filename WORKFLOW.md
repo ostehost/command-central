@@ -166,8 +166,10 @@ just prerelease   # Cross-repo gate (runs `just ci` here + check in launcher)
 ```
 
 ### CI (what GitHub Actions does)
-GitHub Actions does not invoke `just ci` (it calls bun + biome directly for
-incremental control). If you want to reproduce CI locally, run `just ci`.
+`.github/workflows/ci.yml` runs `bun install --frozen-lockfile`, `bun run
+build`, then `just ci`, and finally packages the VSIX. A second job runs
+`just test-electron` under xvfb. So `just ci` locally reproduces the main gate,
+and anything you add to `just ci` becomes a push/PR blocker.
 
 ## Cross-project contract
 

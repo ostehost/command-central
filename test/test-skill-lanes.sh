@@ -5,6 +5,20 @@ CHECK="$(cd "$(dirname "$0")/.." && pwd)/scripts-v2/check-skill-lanes.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/command-central-skill-lanes.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
+# A checkout with no lane at all must fail, or the gate is vacuous.
+if bash "$CHECK" "$tmp" >"$tmp/empty.out" 2>&1; then
+    echo "no-lane mutation passed unexpectedly" >&2
+    exit 1
+fi
+grep -F 'no agent skill lanes found' "$tmp/empty.out" >/dev/null
+
+# A missing root is an operator error, not a silent pass.
+if bash "$CHECK" "$tmp/definitely-absent" >"$tmp/absent.out" 2>&1; then
+    echo "missing-root mutation passed unexpectedly" >&2
+    exit 1
+fi
+grep -F 'no such directory' "$tmp/absent.out" >/dev/null
+
 mkdir -p "$tmp/.claude/skills/valid"
 printf '%s\n' '---' 'name: valid' 'description: Valid fixture.' '---' >"$tmp/.claude/skills/valid/SKILL.md"
 bash "$CHECK" "$tmp" >/dev/null
