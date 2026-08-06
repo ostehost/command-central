@@ -1,16 +1,8 @@
 # Command Central — VS Code Extension
 #
-# Reference implementation of the cross-project standard.
-# See ~/projects/config/STANDARDS.md for the contract.
-#
-# The five canonical recipes (must exist in every project):
-#   check  → read-only validation (lint + format-check + typecheck)
-#   fix    → auto-fix lint + format issues (modifies files)
-#   test   → run all tests
-#   ready  → fix + check + test (one-shot dev flow before push)
-#   ci     → strict, no leniency (warnings = errors); what CI runs
-#
-# Aliases: t (test), f (fix), r (ready)
+# The workspace contract is the local eight in ~/projects/config/WORKFLOW.md:
+# install, format, lint, test, check, ci, clean, and info. Legacy helpers such
+# as fix and ready remain available but do not replace those entry points.
 
 alias t := test
 alias f := fix
@@ -22,19 +14,21 @@ default:
     @echo "│         Command Central - Core Workflow         │"
     @echo "╰──────────────────────────────────────────────────╯"
     @echo ""
-    @echo "Standard Recipes (cross-project — see ~/projects/config/STANDARDS.md):"
-    @echo "  just check       Read-only validation (lint + tsc + knip)"
-    @echo "  just fix         Auto-fix formatting and linting issues"
+    @echo "Standard Recipes (workspace local eight):"
+    @echo "  just install     Install dependencies from bun.lock"
+    @echo "  just format      Format governed source (--check is read-only)"
+    @echo "  just lint        Biome lint + TypeScript"
     @echo "  just test        Run all tests"
-    @echo "  just ready       fix + check + test  (one-shot before push)"
-    @echo "  just ci          Strict validation + tests (warnings = errors)"
+    @echo "  just check       Fast read-only static validation (no tests)"
+    @echo "  just ci          Strict validation + tests"
+    @echo "  just clean       Remove declared generated artifacts"
+    @echo "  just info        Print project metadata"
     @echo "  Aliases:         t (test), f (fix), r (ready)"
     @echo ""
     @echo "Project Workflow:"
-    @echo "  just install     Install dependencies from bun.lock"
-    @echo "  just add         Add new package (e.g., just add zod)"
-    @echo "  just update      Update dependencies interactively (Bun 1.3+)"
-    @echo "  just info        Show package information (e.g., just info zod)"
+    @echo "  just add          Add new package (e.g., just add zod)"
+    @echo "  just update       Update dependencies interactively (Bun 1.3+)"
+    @echo "  just package-info Show package information (e.g., just package-info zod)"
     @echo "  just dev         Start development with hot reload"
     @echo "  just dist        Build distribution (smart version-aware builds)"
     @echo "  just prerelease  Run prerelease gate + build prerelease artifact"
@@ -42,7 +36,7 @@ default:
     @echo "  just preview-status  Show the latest cut-preview lifecycle record"
     @echo ""
     @echo "Testing (Enterprise-Grade):"
-    @echo "  just test                Run all tests (~5s)"
+    @echo "  just test                Run all tests"
     @echo "  just test-quality        Check for test anti-patterns (CI gate)"
     @echo "  just test-validate       Prevent orphaned tests"
     @echo "  just test-unit           Fast unit tests only"
@@ -86,11 +80,10 @@ workflow:
     @echo "📖 Opening WORKFLOW.md..."
     @code WORKFLOW.md 2>/dev/null || open WORKFLOW.md 2>/dev/null || cat WORKFLOW.md
 
-# Install dependencies from bun.lock (first time setup)
-# Also creates Ghostty dock launcher for instant terminal access
-install: ghostty
+# Install dependencies reproducibly from bun.lock. Host launcher setup is separate.
+install:
     @echo "📦 Installing dependencies..."
-    @bun install
+    @bun install --frozen-lockfile
     @echo "✅ Dependencies installed from bun.lock"
 
 # Add a new dependency
@@ -113,14 +106,21 @@ update:
     @echo ""
     @bun update -i
 
-# Show package information (Bun 1.3+)
+# Print argument-free project metadata (workspace local-eight contract).
+info:
+    @echo "name=command-central"
+    @echo "runtime=bun"
+    @bun -e 'console.log("version=" + require("./package.json").version)'
+    @echo "branch=$(git branch --show-current 2>/dev/null || true)"
+
+# Show package information (Bun 1.3+).
 [positional-arguments]
-info *package:
+package-info *package:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "$#" -eq 0 ]; then
-        echo "Usage: just info <package-name>"
-        echo "Example: just info @biomejs/biome"
+        echo "Usage: just package-info <package-name>"
+        echo "Example: just package-info @biomejs/biome"
         exit 1
     fi
     echo "📦 Package information: $*"
@@ -184,46 +184,48 @@ fixture-edh fixture="test/fixtures/agent-status/alpha-beta-12.json" workspace="t
     @open -na "Visual Studio Code" --args --user-data-dir "{{user_data_dir}}" --extensionDevelopmentPath "$(pwd)" --disable-extensions --new-window "$(pwd)/{{workspace}}"
 
 # ──────────────────────────────────────────────────────────
-# CROSS-PROJECT WORKFLOW COMMANDS
-# Pattern: check → fix → test → ready
-# Works identically across TypeScript, Python, Rust, etc.
+# WORKSPACE LOCAL-EIGHT ENTRYPOINTS
+# See ~/projects/config/WORKFLOW.md for the contract each name must satisfy.
 # ──────────────────────────────────────────────────────────
 
-# Run comprehensive validation (development-friendly)
-# Pattern: Language-agnostic validation
-#   - Code quality (format + lint)
-#   - Type checking (if applicable)
-#   - Dead code detection (warnings only)
-# Note: Knip warnings are informational. Use 'just ci' for strict mode.
+# Format governed TypeScript. Exact --check is read-only; no other flags accepted.
+[positional-arguments]
+format *FLAGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "$#:${1:-}" in
+        0:) exec bunx --no-install @biomejs/biome format --write ./src ./test ./scripts-v2 ;;
+        1:--check) exec bunx --no-install @biomejs/biome format ./src ./test ./scripts-v2 ;;
+        *) echo "Usage: just format [--check]" >&2; exit 2 ;;
+    esac
+
+# Read-only lint and type validation.
+lint:
+    @bunx --no-install @biomejs/biome lint ./src ./test ./scripts-v2
+    @bunx --no-install tsc --noEmit
+
+# Fast repository-input static aggregate; excludes tests.
 check: _check-skill-lanes
     @echo "🔍 Running comprehensive validation..."
     @echo "   • Code quality (Biome CI - read-only)"
     @echo "   • Type checking"
     @echo "   • Dead code detection (Knip)"
     @echo ""
-    @bunx @biomejs/biome ci ./src ./test ./scripts-v2
-    @bunx tsc --noEmit
-    @bunx knip --no-exit-code || true
+    @just format --check
+    @just lint
+    @bunx --no-install knip --no-exit-code || true
     @echo ""
     @echo "✅ Checks complete!"
     @echo "💡 Knip warnings are informational. Run 'just ci' for strict validation."
 
-# Gate: this repo's own agent-skill lanes (.claude/skills, .agents/skills,
-# .gemini/skills). Every lane entry must resolve to a SKILL.md directory —
-# docs parked in a lane read as broken skills to every scanner (the
-# CONVENTIONS.md incident, fixed 2026-07-05; see .claude/CONVENTIONS.md).
-# Reuses the workspace-wide inventory engine in --project-only mode (project
-# findings only — no machine/golden checks), so this repo's check FAILS on its
-# own lane errors instead of the error rotting in the dashboard ledger.
-# Skips visibly when the config repo or node isn't present (CI containers).
+# Gate this repository's own agent-skill lanes without consulting mutable HOME
+# state or a sibling checkout. Each immediate lane entry must be a directory
+# containing SKILL.md; the mutation test proves malformed lanes turn red.
 _check-skill-lanes:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    engine="$HOME/projects/config/scripts/skills-inventory.mjs"
-    if ! command -v node >/dev/null 2>&1 || [ ! -f "$engine" ]; then
-        echo "⊘ Skipping skill-lane gate (node or config repo not available)"; exit 0
-    fi
-    node "$engine" --project . --project-only --verify
+    @bash scripts-v2/check-skill-lanes.sh .
+
+_test-skill-lanes:
+    @bash test/test-skill-lanes.sh
 
 # Auto-fix code quality issues (format + lint)
 # Pattern: Language-agnostic auto-fix
@@ -234,7 +236,7 @@ fix:
     @echo "🔧 Auto-fixing code quality issues..."
     @echo "   • Formatting and linting (src, test, scripts-v2)..."
     @echo ""
-    @bunx @biomejs/biome check --write ./src ./test ./scripts-v2
+    @bunx --no-install @biomejs/biome check --write ./src ./test ./scripts-v2
     @echo ""
     @echo "✅ All fixable issues resolved!"
     @echo "💡 Run 'just check' to verify remaining issues"
@@ -258,9 +260,9 @@ ready:
 ci:
     @echo "🚀 ci: strict check + test (warnings = errors)"
     @echo ""
-    @bunx @biomejs/biome ci ./src ./test ./scripts-v2
-    @bunx tsc --noEmit
-    @bunx knip
+    @just check
+    @just _test-skill-lanes
+    @bunx --no-install knip
     @echo ""
     @just test-coverage-ci
     @just test-quality
