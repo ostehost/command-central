@@ -2,30 +2,36 @@
 
 Command reference and testing strategy for Command Central development.
 
-## Standard Recipes
+## Workspace-local recipes
 
-Command Central follows the cross-project five-recipe standard. Always prefer `just <recipe>` over running bun/biome/tsc directly.
+Command Central implements the local eight-entrypoint profile. Prefer `just
+<recipe>` over invoking Bun, Biome, or TypeScript directly so repository policy
+remains visible.
 
-| Recipe | What It Does | When to Use |
-|--------|-------------|-------------|
-| `just check` | biome ci + tsc + knip (read-only) | After changes, before committing |
-| `just fix` | Auto-fix lint + format | When biome reports fixable issues |
-| `just test` | Full test suite (~5s) | Before pushing, after significant changes |
-| `just ready` | fix + check + test | One-shot pre-push gate |
-| `just ci` | Strict gate (warnings = errors) | Mirrors what CI runs |
+| Recipe | What it does |
+|---|---|
+| `just install` | Synchronize Bun dependencies |
+| `just format` | Format governed files; `--check` is read-only |
+| `just lint` | Run read-only static analysis |
+| `just test` | Run the complete repository test recipe |
+| `just check` | Run the fast static aggregate without tests |
+| `just ci` | Run strict static and test gates |
+| `just clean` | Remove declared generated artifacts |
+| `just info` | Print argument-free project metadata |
 
-Aliases: `just t` = test, `just f` = fix, `just r` = ready.
+`fix` and `ready` are additional convenience recipes. Aliases remain `t`, `f`,
+and `r`.
 
 ## Test Sub-Commands
 
 For faster iteration during development:
 
-| Command | Time | Scope |
-|---------|------|-------|
-| `just test-unit` | ~0.5s | Unit tests only (450+ tests) |
-| `just test-integration` | ~3s | Integration + discovery E2E |
-| `just test-validate` | <1s | Ensures all tests are in partitions (no orphans) |
-| `just test-watch` | continuous | TDD watch mode |
+| Command | Scope |
+|---|---|
+| `just test-unit` | Unit tests only |
+| `just test-integration` | Integration and discovery E2E |
+| `just test-validate` | Test-partition integrity |
+| `just test-watch` | Continuous TDD mode |
 
 ### Targeted Test Execution
 

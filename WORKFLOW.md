@@ -41,26 +41,25 @@ workroom:
 ---
 # Development Workflow
 
-Command Central is the **reference implementation** of the cross-project recipe
-standard. The contract — what each `just` recipe must do regardless of language
-or tooling — lives in `~/projects/config/WORKFLOW.md`. This file documents
-**how command-central implements** that contract, plus project-specific recipes
-(dist, prerelease, sync, etc.).
+Command Central follows the workspace-local eight-entrypoint profile documented
+in `~/projects/config/WORKFLOW.md`. This file records this repository's
+implementation and project-specific release recipes; it is not a Universal 8
+reference implementation.
 
-## The Five Standard Recipes
+## Local eight entrypoints
 
-Every project (this one included) provides these five recipes with identical
-semantics:
+| Recipe | This repository's behavior |
+|---|---|
+| `just install` | Synchronize Bun dependencies |
+| `just format` | Format governed files; `--check` is read-only |
+| `just lint` | Run read-only Biome and TypeScript checks |
+| `just test` | Run the repository's current complete test recipe |
+| `just check` | Run format-check, lint, and informational Knip without tests |
+| `just ci` | Run strict check, strict Knip, coverage CI, and quality tests |
+| `just clean` | Remove declared generated artifacts |
+| `just info` | Print argument-free project metadata |
 
-| Recipe | Purpose | This project's implementation |
-|---|---|---|
-| `just check` | Read-only validation | `biome ci` + `tsc --noEmit` + `knip` (warnings allowed) |
-| `just fix` | Auto-fix lint + format | `biome check --write` |
-| `just test` | Run full test suite | `bun run test` (1365 tests, ~5s) + `just test-quality` |
-| `just ready` | fix + check + test | One-shot pre-push flow (replaces old `just pre-commit`) |
-| `just ci` | Strict, no leniency | `biome ci` + `tsc` + `knip` (strict, fail on warnings) + `bun run test` |
-
-**Aliases:** `t` (test), `f` (fix), `r` (ready).
+`fix` and `ready` are sanctioned conveniences. Aliases remain `t`, `f`, and `r`.
 
 ## Quick Start
 
@@ -70,7 +69,7 @@ just install
 
 # Daily development
 just dev          # Start with hot reload
-just t            # Run tests during dev (~5s)
+just t            # Run tests during development
 just r            # Before pushing: fix + check + test
 
 # Distribution
@@ -80,7 +79,7 @@ just prerelease   # Run cross-repo gate + build prerelease
 
 ## Project-Specific Recipes
 
-These exist on top of the standard 5 because command-central has unique needs:
+These exist in addition to the local eight because Command Central has unique needs:
 
 ```bash
 # Distribution
@@ -89,7 +88,7 @@ just prerelease   # Runs prerelease-gate cross-repo check, then builds
 just sync-all     # Sync launcher + terminal binaries from dev repos
 
 # Test sub-commands (Tier 3 — names consistent across projects when present)
-just test-unit         # Fast unit subset (~0.5s, 459 tests)
+just test-unit         # Fast unit subset
 just test-integration  # Integration suite + discovery-e2e (isolated process)
 just test-watch        # TDD watch mode
 just test-coverage     # Coverage report
@@ -170,20 +169,16 @@ just prerelease   # Cross-repo gate (runs `just ci` here + check in launcher)
 GitHub Actions does not invoke `just ci` (it calls bun + biome directly for
 incremental control). If you want to reproduce CI locally, run `just ci`.
 
-## Cross-Project Pattern
+## Cross-project contract
 
-If you adopt this same five-recipe contract in another project, the developer
-muscle memory carries over. See `~/projects/config/WORKFLOW.md` for:
-
-- The full recipe contract (what each name must mean)
-- Per-language implementation templates (bash, TypeScript, Rust, Python)
-- Migration guide for existing projects
+See `~/projects/config/WORKFLOW.md` for the workspace-local contract. Other
+repositories may implement the same eight names with different tools; this
+repository is not their reference implementation.
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
 | `just check` slow on first run | Knip's first parse is cold; subsequent runs are fast |
-| `just test` fails on tree-provider tests | 7 known stale assertions — see test/README.md |
 | `just fix` doesn't fix something | Biome's `--write` only applies safe fixes; manual changes for unsafe |
 | `pre-commit install` doesn't work | Need `pip install pre-commit` first (the framework, not the old recipe) |
