@@ -4,7 +4,6 @@
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/oste.command-central)](https://marketplace.visualstudio.com/items?itemName=oste.command-central)
 [![Installs](https://img.shields.io/visual-studio-marketplace/i/oste.command-central)](https://marketplace.visualstudio.com/items?itemName=oste.command-central)
-[![Tests](https://img.shields.io/badge/tests-1160%20in%20suite-brightgreen)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -86,28 +85,28 @@ Open any folder with a Git repository. The Command Central icon appears in the A
 
 ### 3. Monitor Agents
 
-Command Central auto-discovers supported Claude Code, Codex CLI, and Gemini CLI sessions automatically. When you also use Ghostty Launcher or another tool that writes a task registry, Command Central picks those up from standard locations too:
+Command Central combines process discovery with explicitly configured lane
+registries. Active registry rows must carry a Work Registry `project_ref`; stale
+launcher-era rows are quarantined by default.
 
-If you set **Settings → Command Central: Agent Tasks File**, that explicit path
-wins over auto-discovery. Otherwise, auto-discovery uses this order:
-
-| Location | Priority |
-|----------|----------|
-| `${workspaceFolder}/.ghostty-launcher/tasks.json` | 1st (workspace-local) |
-| `~/.config/ghostty-launcher/tasks.json` | 2nd (XDG standard) |
-| `~/.ghostty-launcher/tasks.json` | 3rd (legacy) |
+Configure active registry inputs with `commandCentral.laneRegistry.files`. The
+deprecated `agentTasksFile`/`agentTasksFiles` auto-detection path is read only
+when `commandCentral.legacyLauncherTasks.enabled` is explicitly enabled for
+short-lived diagnostics.
 
 ---
 
 ## How It Works
 
-Command Central combines three sources of truth:
+Command Central combines three evidence sources:
 
-- **Process auto-discovery** for supported Claude Code, Codex CLI, and Gemini CLI sessions
-- **`tasks.json` registry tracking** for launcher-managed sessions and any compatible task writer
-- **OpenClaw background task visibility** for cron runs, background spawns, and CLI work
+- process discovery for supported Claude Code, Codex CLI, and Gemini CLI sessions;
+- Work Registry-backed LaneRef rows from `commandCentral.laneRegistry.files`;
+- OpenClaw background-task projections.
 
-If you already have a `tasks.json` registry, any tool that writes to that format gets full sidebar integration.
+A compatible `tasks.json` file is not sufficient by itself: active rows need a
+`project_ref`. Full launcher-era registry ingestion is deprecated, disabled by
+default, and intended only as a diagnostics escape hatch.
 
 ```jsonc
 // Example tasks.json entry
@@ -117,6 +116,7 @@ If you already have a `tasks.json` registry, any tool that writes to that format
     "agent-myproject-planner": {
       "status": "running",           // running | completed | failed | stopped
       "project": "my-project",
+      "project_ref": "partnerai:my-project",
       "startedAt": "2026-03-22T21:00:00Z",
       "cwd": "/Users/you/projects/my-project",
       "command": "claude --print 'Implement auth module'"
@@ -132,7 +132,7 @@ If you already have a `tasks.json` registry, any tool that writes to that format
 | **Claude Code** (Anthropic) | ✅ Auto-discovery + launcher tracking |
 | **Codex CLI** (OpenAI) | ✅ Auto-discovery + launcher tracking |
 | **Gemini CLI** (Google) | ✅ Auto-discovery + launcher tracking |
-| **Any CLI agent** | ✅ Anything that writes `tasks.json` |
+| **Any CLI agent** | ✅ Process discovery or Work Registry-backed LaneRef input |
 | **OpenClaw background tasks** | ✅ Sidebar visibility + cancel/notify actions |
 | **Ghostty Launcher** | ✅ Full integration (auto-tracking, hooks, notifications) |
 
@@ -162,7 +162,9 @@ All settings are under `commandCentral.*` in VS Code Settings (Cmd+,).
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `agentTasksFile` | `""` (auto-detect) | Path to tasks.json registry |
+| `laneRegistry.files` | managed defaults | Explicit LaneRef registry inputs; active rows require `project_ref` |
+| `legacyLauncherTasks.enabled` | `false` | Deprecated diagnostics-only launcher registry ingestion |
+| `agentTasksFile` | `""` | Deprecated legacy path; ignored unless legacy diagnostics are enabled |
 | `agentStatus.autoRefreshMs` | `5000` | Refresh interval while agents run |
 | `agentStatus.stuckThresholdMinutes` | `15` | Minutes before inactive work is flagged as potentially stuck |
 | `agentStatus.scope` | `"all"` | Show all tracked work or only the current workspace folders |
