@@ -35,7 +35,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUTPUT_DIR="${OUTPUT_DIR:-/tmp/cc-screenshots}"
 DEMO_DIR="/tmp/command-central-demo"
 WORKSPACE_FILE="$DEMO_DIR/demo.code-workspace"
-PROFILE="cc-screenshots"
 
 # VS Code process names (different in different APIs!)
 SYSTEM_EVENTS_PROCESS="Electron"     # What macOS System Events sees

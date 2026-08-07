@@ -17,7 +17,7 @@ default:
     @echo "Standard Recipes (workspace local eight):"
     @echo "  just install     Install dependencies from bun.lock"
     @echo "  just format      Format governed source (--check is read-only)"
-    @echo "  just lint        Biome lint + TypeScript"
+    @echo "  just lint        Biome lint + TypeScript + shellcheck"
     @echo "  just test        Run all tests"
     @echo "  just check       Fast read-only static validation (no tests)"
     @echo "  just ci          Strict validation + tests"
@@ -200,22 +200,67 @@ format *FLAGS:
     esac
 
 # Read-only lint and type validation.
-lint:
+lint: _check-shell
     @bunx --no-install @biomejs/biome lint ./src ./test ./scripts-v2
     @bunx --no-install tsc --noEmit
 
-# Fast repository-input static aggregate; excludes tests.
+# shellcheck this repository's own shell scripts.
+#
+# The file list is explicit and hand-maintained rather than a repo-wide sweep,
+# because resources/bin/ holds ~56 launcher scripts vendored in from
+# ghostty-launcher by `just sync-launcher`. That repo owns and lints them; a
+# find-based sweep would import its lint debt into this gate and make CC's own
+# shell invisible inside the noise. Suppressions belong inline
+# (`# shellcheck disable=SCxxxx` with a reason), never as CLI excludes.
+#
+# `-x --severity=warning` is the fleet's strictest per-push severity.
+#
+# Skipping is a convenience for a developer machine without shellcheck, not a
+# licence for CI to quietly drop a gate: set REQUIRE_SHELLCHECK=1 (CI does) and
+# a missing shellcheck becomes a failure instead of a skip.
+_check-shell:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v shellcheck >/dev/null 2>&1; then
+        if [ -n "${REQUIRE_SHELLCHECK:-}" ]; then
+            echo "lint: shellcheck is required here but not installed" >&2
+            exit 1
+        fi
+        echo "lint: shellcheck not installed, skipping shell lint" >&2
+        exit 0
+    fi
+    # nullglob: a directory that does not exist yet (or holds no .sh) must drop
+    # out of the list, not reach shellcheck as a literal unexpanded pattern.
+    shopt -s nullglob
+    files=(
+        scripts/*.sh
+        scripts-v2/*.sh
+        test/*.sh
+        screenshots/*.sh
+        .claude/skills/command-central-vscode-extension/scripts/*.sh
+    )
+    # If every glob went empty the gate has silently become a no-op — that is a
+    # failure, not a pass.
+    if [ "${#files[@]}" -eq 0 ]; then
+        echo "lint: no repo-owned shell scripts matched — shell gate is a no-op" >&2
+        exit 1
+    fi
+    shellcheck -x --severity=warning "${files[@]}"
+
 # Shared read-only static core for `check` and `ci`: lane gate, format
-# verification, lint. Deliberately excludes knip so each entrypoint runs the
-# dead-code pass exactly once, at its own strictness.
+# verification, lint (which pulls in the shell gate). Deliberately excludes
+# knip so each entrypoint runs the dead-code pass exactly once, at its own
+# strictness.
 _static: _check-skill-lanes
     @just format --check
     @just lint
 
+# Fast repository-input static aggregate; excludes tests.
 check:
     @echo "🔍 Running comprehensive validation..."
     @echo "   • Code quality (Biome - read-only)"
     @echo "   • Type checking"
+    @echo "   • Shell lint (shellcheck)"
     @echo "   • Dead code detection (Knip)"
     @echo ""
     @just _static

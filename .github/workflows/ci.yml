@@ -9,6 +9,11 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      # `just _check-shell` self-skips when shellcheck is absent so a developer
+      # machine without it can still run `just lint`. CI must not inherit that
+      # escape hatch: with this set, a missing shellcheck fails the job.
+      REQUIRE_SHELLCHECK: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -24,6 +29,16 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: bun run build -- --no-install
+
+      # shellcheck ships preinstalled on the ubuntu-latest runner image, so
+      # there is no install step. That is an assumption about someone else's
+      # image, not a guarantee — assert it here rather than relying on it
+      # silently, so a runner image change fails loudly instead of quietly
+      # deleting a lint gate. REQUIRE_SHELLCHECK (job env) is the second layer:
+      # it also turns a missing binary into a `just ci` failure.
+      - name: Assert shellcheck is available
+        run: shellcheck --version
+
       - run: just ci
 
       - name: Upload coverage artifact
