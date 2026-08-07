@@ -205,14 +205,20 @@ lint:
     @bunx --no-install tsc --noEmit
 
 # Fast repository-input static aggregate; excludes tests.
-check: _check-skill-lanes
+# Shared read-only static core for `check` and `ci`: lane gate, format
+# verification, lint. Deliberately excludes knip so each entrypoint runs the
+# dead-code pass exactly once, at its own strictness.
+_static: _check-skill-lanes
+    @just format --check
+    @just lint
+
+check:
     @echo "🔍 Running comprehensive validation..."
-    @echo "   • Code quality (Biome CI - read-only)"
+    @echo "   • Code quality (Biome - read-only)"
     @echo "   • Type checking"
     @echo "   • Dead code detection (Knip)"
     @echo ""
-    @just format --check
-    @just lint
+    @just _static
     @bunx --no-install knip --no-exit-code || true
     @echo ""
     @echo "✅ Checks complete!"
@@ -260,7 +266,7 @@ ready:
 ci:
     @echo "🚀 ci: strict check + test (warnings = errors)"
     @echo ""
-    @just check
+    @just _static
     @just _test-skill-lanes
     @bunx --no-install knip
     @echo ""
