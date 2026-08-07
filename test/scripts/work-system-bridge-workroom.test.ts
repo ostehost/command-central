@@ -132,13 +132,17 @@ describe("bundled work-system-bridge.sh — env-less row-backed workroom/work-it
 		}
 	});
 
-	test("env-sourced refs still win when both env and row carry values", () => {
-		const tmp = mkdtempSync(join(tmpdir(), "cc-bridge-workroom-envwins-"));
+	test("row-backed refs win over conflicting env; env fills only the gaps (PAR-595)", () => {
+		const tmp = mkdtempSync(join(tmpdir(), "cc-bridge-workroom-rowwins-"));
 		try {
-			const taskId = "par239-envwins-test";
+			const taskId = "par595-rowwins-test";
 			const tasksFile = join(tmp, "tasks.json");
 			const outboxPath = join(tmp, "lanes.json");
 
+			// Row carries a workroom_ref but no work_item_ref: the emit entry
+			// points (Stop hook, reaper, kill) routinely inherit ANOTHER lane's
+			// ambient OSTE_* env, so the row is authoritative where it has a
+			// value and env may only fill the gap it leaves.
 			const tasks = {
 				version: 1,
 				tasks: {
@@ -151,7 +155,6 @@ describe("bundled work-system-bridge.sh — env-less row-backed workroom/work-it
 						source_ref: `launcher:${taskId}`,
 						lane_kind: "implementation",
 						workroom_ref: "discord:row-room",
-						work_item_ref: "linear:ROW-00",
 						started_at: "2026-06-20T00:00:00Z",
 						attempts: 1,
 						max_attempts: 3,
@@ -160,7 +163,6 @@ describe("bundled work-system-bridge.sh — env-less row-backed workroom/work-it
 			};
 			writeFileSync(tasksFile, JSON.stringify(tasks));
 
-			// Pass env refs — they must win over the row values.
 			const result = runBridgeEmit(tasksFile, taskId, "completed", outboxPath, {
 				OSTE_WORKROOM_REF: "discord:env-room",
 				OSTE_WORK_ITEM_REF: "linear:ENV-11",
@@ -171,13 +173,31 @@ describe("bundled work-system-bridge.sh — env-less row-backed workroom/work-it
 			const outbox = JSON.parse(readFileSync(outboxPath, "utf-8")) as {
 				lanes: Record<
 					string,
-					{ workroom_ref: string | null; work_item_ref: string | null }
+					{
+						workroom_ref: string | null;
+						work_item_ref: string | null;
+						lineage_scope?: {
+							workroom_source: string;
+							work_item_source: string;
+							env_workroom_conflict: boolean;
+							env_workroom_ref_ignored: string | null;
+						};
+					}
 				>;
 			};
 			const lane = outbox.lanes[`launcher:${taskId}`];
 			expect(lane).toBeDefined();
-			expect(lane?.workroom_ref).toBe("discord:env-room");
+			// Conflicting env workroom loses to the row...
+			expect(lane?.workroom_ref).toBe("discord:row-room");
+			// ...but env fills the work_item gap the row leaves.
 			expect(lane?.work_item_ref).toBe("linear:ENV-11");
+			// The drop is not silent: the ignored env value survives as evidence.
+			expect(lane?.lineage_scope?.workroom_source).toBe("task_row");
+			expect(lane?.lineage_scope?.work_item_source).toBe("env");
+			expect(lane?.lineage_scope?.env_workroom_conflict).toBe(true);
+			expect(lane?.lineage_scope?.env_workroom_ref_ignored).toBe(
+				"discord:env-room",
+			);
 		} finally {
 			rmSync(tmp, { recursive: true, force: true });
 		}
