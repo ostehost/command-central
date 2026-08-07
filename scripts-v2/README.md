@@ -36,11 +36,23 @@ scripts-v2/
 │   └── config.ts          # Central configuration
 │
 ├── dev.ts                 # Development workflow
-├── test-all.ts            # Unified quality + tests
-├── dist-simple.ts         # Smart distribution (v6)
-└── archive/               # Legacy scripts
-    ├── compile.ts         # (replaced by inline builds)
-    └── distribute-old-complex.ts  # (replaced by dist-simple.ts)
+├── dist-simple.ts         # Smart distribution
+├── dist-simple-utils.ts   # Distribution helpers
+│
+├── test-validate.ts       # Test-partition integrity gate
+├── mock-hygiene-gate.ts   # Mock fall-through gate
+├── check-skill-lanes.sh   # Agent skill-lane gate
+├── vsix-content-gate.ts   # VSIX payload gate
+├── prerelease-gate.ts     # Cross-repo prerelease gate
+├── node-execution-guard.ts        # Host-execution guard
+├── preserve-baseline-audit.ts     # Code-preservation audit
+├── verify-vscode-extension-consumption.ts  # Consumption receipt check
+│
+├── preview-status.ts      # cut-preview lifecycle record
+├── release-digest.ts      # Release digest
+├── post-release-digest.sh # Post-release digest
+├── sync-launcher.ts       # Sync launcher from dev repo
+└── sync-terminal.ts       # Sync terminal from dev repo
 ```
 
 ## Commands

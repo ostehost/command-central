@@ -430,15 +430,10 @@ mock-hygiene:
     @bun run scripts-v2/mock-hygiene-gate.ts --dir test
 
 
-# Backup: Partitioned test runner (use if bun test has issues)
-test-backup:
-    @echo "🧪 Running partitioned test suite (backup method)..."
-    @echo "   • Validating test partitions"
-    @echo "   • Auto-fixing code quality"
-    @echo "   • Type checking"
-    @echo "   • Running partitioned tests"
-    @echo ""
-    @bun run scripts-v2/test-validate.ts && bun run scripts-v2/test-all.ts
+# NOTE: the former `test-backup` recipe was removed. It chained
+# scripts-v2/test-all.ts, a file that never existed in this repository's
+# history, so the recipe could not have run for any clone. Use `just test`, or
+# `just test-validate` for partition integrity.
 
 # Validate all tests are properly partitioned (prevents orphaned tests)
 test-validate:
@@ -972,6 +967,9 @@ _preview-rehearsal:
 clean:
     @echo "🧹 Cleaning build artifacts..."
     @rm -rf dist/
+    @rm -rf out/
+    @rm -rf coverage/
+    @rm -rf coverage-ci/
     @rm -rf *.vsix
     @rm -rf releases/*.vsix.dev
     @echo "✅ Clean complete"
