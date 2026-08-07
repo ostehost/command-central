@@ -47,10 +47,14 @@ spawn_guards_emit_openclaw_event() {
 	[[ -n "${OSTE_GUARD_AGENT:-}" ]] && text="${text} agent=${OSTE_GUARD_AGENT}"
 	[[ -n "$detail" ]] && text="${text} detail=$(printf '%s' "$detail" | tr '\n' ' ' | tr -s ' ')"
 
+	local wake_log_file=/tmp/oste-wake-log.txt
+	if [[ "${OSTE_WAKE_LOG_FD:-}" == "9" ]] && { : >&9; } 2>/dev/null; then
+		wake_log_file=/dev/fd/9
+	fi
 	if openclaw system event --text "$text" --mode now --timeout "${OSTE_GUARD_NOTIFY_TIMEOUT_MS:-10000}" >/dev/null 2>&1; then
-		echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) guard=host-routing-blocked reason=${reason} status=ok method=openclaw-system-event" >>/tmp/oste-wake-log.txt
+		echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) guard=host-routing-blocked reason=${reason} status=ok method=openclaw-system-event" >>"$wake_log_file"
 	else
-		echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) guard=host-routing-blocked reason=${reason} status=FAILED method=openclaw-system-event" >>/tmp/oste-wake-log.txt
+		echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) guard=host-routing-blocked reason=${reason} status=FAILED method=openclaw-system-event" >>"$wake_log_file"
 	fi
 }
 
@@ -86,6 +90,27 @@ spawn_guards_host_token_key() {
 	printf '%s' "$value" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cd '[:alnum:]'
 }
 
+# Drop a possessive marker from a host name before keying. macOS defaults
+# ComputerName to "<Owner>’s MacBook Pro", while the paired OpenClaw node is
+# registered under the display identity "<Owner> MacBook Pro" — the same
+# physical node under two spellings. Without this, a remote lane dispatched
+# against the paired display name dies on the correct machine with a
+# wrong_node GUARDRAIL VIOLATION.
+#
+# The rule is deliberately narrow: an alphanumeric, then a run of punctuation
+# bytes (any apostrophe form, including the mojibake variants — every one of
+# their bytes is non-alnum under LC_ALL=C), then a single 's'/'S', then a word
+# boundary. Nothing else is removed: "Mikes MacBook Pro" keeps its 's' (no
+# apostrophe to anchor on) and "Mike’s MacBook Air" stays a distinct host.
+spawn_guards_host_possessive_key() {
+	local value="${1:-}"
+	local stripped
+	# Trailing sentinel space lets one rule cover both mid-string and
+	# end-of-string possessives without a non-portable in-group '$' anchor.
+	stripped=$(printf '%s ' "$value" | LC_ALL=C sed -E 's/([[:alnum:]])[^[:alnum:][:space:]]+[sS]([[:space:]])/\1\2/g')
+	spawn_guards_host_token_key "$stripped"
+}
+
 spawn_guards_host_token_matches() {
 	local actual="${1:-}"
 	local candidate="${2:-}"
@@ -95,7 +120,12 @@ spawn_guards_host_token_matches() {
 	local actual_key candidate_key
 	actual_key=$(spawn_guards_host_token_key "$actual")
 	candidate_key=$(spawn_guards_host_token_key "$candidate")
-	[[ -n "$actual_key" && "$actual_key" == "$candidate_key" ]]
+	[[ -n "$actual_key" && "$actual_key" == "$candidate_key" ]] && return 0
+
+	local actual_possessive candidate_possessive
+	actual_possessive=$(spawn_guards_host_possessive_key "$actual")
+	candidate_possessive=$(spawn_guards_host_possessive_key "$candidate")
+	[[ -n "$actual_possessive" && "$actual_possessive" == "$candidate_possessive" ]]
 }
 
 # Read guard defaults from routing-policy.json into the OSTE_REQUIRE_* env vars.
@@ -290,6 +320,7 @@ spawn_guards_enforce_claude_opus_node() {
 # with stderr including "-1743" or "not authorized" or "assistive access".
 #
 # Usage: spawn_guards_preflight_automation [timeout_sec]
+# shellcheck disable=SC2120  # timeout_sec is an optional API parameter; current callers rely on the default
 spawn_guards_preflight_automation() {
 	[[ "${OSTE_REQUIRE_VISIBLE_TERMINAL:-}" == "1" ]] || return 0
 	[[ "${OSTE_SKIP_AUTOMATION_PREFLIGHT:-}" != "1" ]] || return 0

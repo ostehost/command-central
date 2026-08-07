@@ -85,6 +85,35 @@ node_pending_review_handoff_exists() {
 	[[ "$result" == "yes" ]]
 }
 
+# Fetch a bounded, regular review handoff from a node. The caller supplies the
+# receipt-bound path; symlinks and oversized files are refused before bytes cross
+# the node boundary.
+node_pending_review_fetch_handoff() {
+	local node_id="$1" handoff="$2" max_bytes="${3:-1048576}"
+	[[ -n "$node_id" && "$handoff" == /* && "$max_bytes" =~ ^[1-9][0-9]*$ ]] || return 1
+	local quoted encoded payload
+	quoted=$(_node_pr_q "$handoff")
+	encoded=$(printf '%s' 'import os,stat,sys
+p=sys.argv[1]; maximum=int(sys.argv[2])
+fd=os.open(p,os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
+try:
+ before=os.fstat(fd)
+ if not stat.S_ISREG(before.st_mode) or before.st_size>maximum: raise OSError("unsafe handoff")
+ data=b""
+ while len(data)<=maximum:
+  chunk=os.read(fd,min(65536,maximum+1-len(data)))
+  if not chunk: break
+  data+=chunk
+ after=os.fstat(fd)
+ if len(data)>maximum or (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns): raise OSError("handoff changed")
+ import base64
+ sys.stdout.write(base64.b64encode(data).decode("ascii"))
+finally: os.close(fd)
+' | base64 | tr -d '\n') || return 1
+	payload=$(node_exec "$node_id" "python3 -c \"import base64;exec(base64.b64decode('${encoded}'))\" ${quoted} ${max_bytes}" 2>/dev/null) || return 1
+	printf '%s' "$payload" | python3 -c 'import base64,sys; sys.stdout.buffer.write(base64.b64decode(sys.stdin.buffer.read(), validate=True))'
+}
+
 # Combined truth resolver — prints a single JSON object describing node-side
 # truth so an orchestrator/watchdog can make a routing decision in one shot:
 #   {pending_review: <object|null>, task_row: <object|null>, handoff_present: <bool>}

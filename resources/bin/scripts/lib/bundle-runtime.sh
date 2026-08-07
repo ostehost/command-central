@@ -202,11 +202,10 @@ persist_task_visibility_receipt() {
 	local task_id="$1"
 	local receipt_path="$2"
 	local receipt_json="$3"
-	# shellcheck disable=SC2034  # consumed via dynamic scope by lock_tasks
-	local TASKS_FILE="${4:-${TASKS_FILE:-${HOME}/.config/ghostty-launcher/tasks.json}}"
+	local tasks_file="${4:-${TASKS_FILE:-${HOME}/.config/ghostty-launcher/tasks.json}}"
 
 	[[ -n "$task_id" ]] || return 0
-	[[ -f "$TASKS_FILE" ]] || return 0
+	[[ -f "$tasks_file" ]] || return 0
 	[[ -n "$receipt_json" ]] || return 0
 	jq -e 'type == "object"' >/dev/null 2>&1 <<<"$receipt_json" || return 0
 
@@ -219,14 +218,14 @@ persist_task_visibility_receipt() {
 
 	local _locked=0
 	if declare -F lock_tasks >/dev/null 2>&1; then
-		lock_tasks || return 0
+		lock_tasks "$tasks_file" || return 0
 		_locked=1
 	fi
 
 	local tmp
-	tmp=$(mktemp "${TASKS_FILE}.tmp.XXXXXX") || {
+	tmp=$(mktemp "${tasks_file}.tmp.XXXXXX") || {
 		if [[ "$_locked" == "1" ]]; then
-			unlock_tasks || true
+			unlock_tasks "$tasks_file" || true
 		fi
 		return 0
 	}
@@ -244,14 +243,14 @@ persist_task_visibility_receipt() {
 				receipt_path: (if $path == "" then null else $path end)
 			}
 		 else . end' \
-		"$TASKS_FILE" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-		mv "$tmp" "$TASKS_FILE"
+		"$tasks_file" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+		mv "$tmp" "$tasks_file"
 	else
 		rm -f "$tmp"
 	fi
 
 	if [[ "$_locked" == "1" ]]; then
-		unlock_tasks || true
+		unlock_tasks "$tasks_file" || true
 	fi
 	return 0
 }

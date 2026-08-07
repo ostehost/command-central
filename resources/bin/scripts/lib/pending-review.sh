@@ -494,7 +494,7 @@ pending_review_mark_reviewed() {
 # Usage: pending_review_mark_fixup_requested <task_id> [review_file] [blocker_count]
 pending_review_build_fixup_intent() {
 	local task_id="$1" project_path="$2" review_file="$3" blocker_count="$4" review_attempt_id="$5" attempt="${6:-1}"
-	local fixup_path created_at task_generation receipt_path
+	local fixup_path created_at task_generation receipt_path source_envelope
 	_review_lifecycle_validate_task_id "$task_id" || return 1
 	[[ -n "$project_path" && -n "$review_file" && -n "$review_attempt_id" ]] || return 1
 	[[ "$blocker_count" =~ ^[1-9][0-9]*$ ]] || return 1
@@ -502,6 +502,9 @@ pending_review_build_fixup_intent() {
 	receipt_path=$(review_lifecycle_receipt_path "$task_id") || return 1
 	task_generation=$(jq -r '.task_generation // empty' "$receipt_path" 2>/dev/null || true)
 	[[ -n "$task_generation" ]] || return 1
+	# PAR-595: the intent carries the complete immutable source envelope, so a
+	# consumer never has to reconstruct routing from its own environment.
+	source_envelope=$(review_lifecycle_source_envelope "$task_id" "$task_generation" "$review_attempt_id" "$receipt_path") || return 1
 	fixup_path="${OSTE_PENDING_FIXUP_DIR:-/tmp/oste-pending-fixup}/${task_id}.json"
 	created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 	jq -cn \
@@ -513,7 +516,8 @@ pending_review_build_fixup_intent() {
 		--arg fixup_path "$fixup_path" \
 		--arg created_at "$created_at" \
 		--argjson blocker_count "$blocker_count" \
-		--argjson attempt "$attempt" '
+		--argjson attempt "$attempt" \
+		--argjson source_envelope "$source_envelope" '
 		{
 			version:1,
 			task_id:$task_id,
@@ -521,6 +525,7 @@ pending_review_build_fixup_intent() {
 			review_attempt_id:$review_attempt_id,
 			fixup_path:$fixup_path,
 			created_at:$created_at,
+			source_envelope:$source_envelope,
 			payload:{
 				task_id:$task_id,
 				task_generation:$task_generation,
@@ -529,7 +534,8 @@ pending_review_build_fixup_intent() {
 				blocker_count:$blocker_count,
 				attempt:$attempt,
 				review_attempt_id:$review_attempt_id,
-				created_at:$created_at
+				created_at:$created_at,
+				source_envelope:$source_envelope
 			}
 		}'
 }
@@ -540,7 +546,8 @@ pending_review_build_fixup_intent() {
 # awaiting_fixup task. The review lock prevents an old attempt from publishing
 # after a newer lifecycle generation has settled.
 pending_review_materialize_fixup_intent() {
-	local task_id="$1" receipt_path receipt receipt_generation row_generation intent expected_path destination dispatched_path intent_attempt intent_attempt_id tmp rc=0
+	local task_id="$1" receipt_path receipt receipt_generation row_generation intent expected_path destination intent_attempt intent_attempt_id tmp rc=0
+	local live_envelope settled_dir settled_path settled_state
 	_review_lifecycle_validate_task_id "$task_id" || return 1
 	review_lifecycle_lock_acquire "$task_id" || return 1
 	_review_lifecycle_recover_locked "$task_id" || {
@@ -588,14 +595,47 @@ pending_review_materialize_fixup_intent() {
 		review_lifecycle_lock_release "$task_id"
 		return 1
 	fi
+	# PAR-595: never re-project a partial or drifted envelope. The intent and its
+	# payload must both still equal the envelope the live receipt derives, or the
+	# queue entry would hand a consumer routing the receipt no longer asserts.
+	live_envelope=$(review_lifecycle_source_envelope "$task_id" "$receipt_generation" \
+		"$(jq -r '.review_attempt_id // empty' <<<"$receipt")" "$receipt_path") || {
+		review_lifecycle_lock_release "$task_id"
+		return 3
+	}
+	if ! jq -e --argjson envelope "$live_envelope" '
+		.source_envelope == $envelope and .payload.source_envelope == $envelope
+	' >/dev/null 2>&1 <<<"$intent"; then
+		review_lifecycle_lock_release "$task_id"
+		return 3
+	fi
 	destination=$(jq -r '.fixup_path' <<<"$intent")
 	intent_attempt=$(jq -r '.payload.attempt' <<<"$intent")
 	intent_attempt_id=$(jq -r '.review_attempt_id' <<<"$intent")
-	dispatched_path="$(dirname "$destination")/dispatched/${task_id}-attempt-${intent_attempt}.json"
-	if [[ -f "$dispatched_path" ]] &&
-		[[ "$(jq -r '.review_attempt_id // empty' "$dispatched_path" 2>/dev/null || true)" == "$intent_attempt_id" ]]; then
-		# The orchestrator has already consumed this exact attempt. Do not turn
-		# receipt-backed repair into duplicate delivery on every watchdog tick.
+	# An attempt is consumed once ANY terminal audit projection exists for it.
+	# `dispatched/` is claimed only for verified delivery, so attempts whose
+	# publication was withheld settle under `unpublished/` — both must suppress
+	# re-projection or a failed delivery would be recreated on every tick.
+	for settled_dir in dispatched unpublished; do
+		settled_path="$(dirname "$destination")/${settled_dir}/${task_id}-attempt-${intent_attempt}.json"
+		[[ -f "$settled_path" ]] || continue
+		settled_state=$(jq -r '.review_attempt_id // empty' "$settled_path" 2>/dev/null || true)
+		if [[ "$settled_state" == "$intent_attempt_id" ]]; then
+			# The orchestrator has already consumed this exact attempt. Do not turn
+			# receipt-backed repair into duplicate delivery on every watchdog tick.
+			review_lifecycle_lock_release "$task_id"
+			return 0
+		fi
+	done
+	# PAR-595: a quarantine is a terminal verdict on a document, and re-projecting
+	# it is how that verdict got undone. The orchestrator rejects an unusable
+	# projection into quarantined/ and preserves the durable claim; without this
+	# check the very next tick recreated the identical payload from the receipt,
+	# the orchestrator condemned it again, and the pair churned forever while the
+	# queue entry kept reading as pending work. Repair still works: a projection
+	# that actually differs carries a different digest and is adjudicated afresh.
+	if review_lifecycle_fixup_projection_is_quarantined "$task_id" "$receipt_generation" \
+		"$intent_attempt_id" "$(jq -c '.payload' <<<"$intent" 2>/dev/null || true)"; then
 		review_lifecycle_lock_release "$task_id"
 		return 0
 	fi

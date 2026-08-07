@@ -44,7 +44,11 @@ test_fast_select_suites() {
 		case "$changed_path" in
 			test/test-*.sh) [ -f "$changed_path" ] && want="${want}"$'\n'"${changed_path}" ;;
 		esac
-		bn="$(basename "$changed_path")"
+		# `--` is load-bearing: a repo path may legitimately start with a dash
+		# (e.g. a stray file named `-l`), and without it basename reads the path
+		# as an option, exits non-zero, and aborts the whole selection under the
+		# caller's `set -e` — yielding zero suites, not even the smoke set.
+		bn="$(basename -- "$changed_path")"
 		hits="$(grep -rlF -- "$bn" test/test-*.sh 2>/dev/null || true)"
 		[ -n "$hits" ] && want="${want}"$'\n'"${hits}"
 	done

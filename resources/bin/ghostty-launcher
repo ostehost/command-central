@@ -598,9 +598,14 @@ validate_launcher_eligible_project() {
 # ── Icon generation ──────────────────────────────────────────────────
 
 # Check if input is an emoji
+#
+# 1FA70-1FAFF is Symbols and Pictographs Extended-A (Unicode 12+): the wing
+# U+1FABD, feather U+1FAB6, and every other emoji added since. The ranges below
+# it stop at 1F9FF, so without this block those characters silently fall through
+# to the default folder icon instead of rendering.
 is_emoji() {
 	local input="$1"
-	echo "$input" | perl -CS -ne 'print if /[\x{2190}-\x{21FF}]|[\x{2300}-\x{27BF}]|[\x{2B00}-\x{2BFF}]|[\x{1F300}-\x{1F9FF}]|[\x{1F680}-\x{1F6FF}]|[\x{1F900}-\x{1F9FF}]/' | perl -CS -pe 's/[\x{FE0E}\x{FE0F}]//g'
+	echo "$input" | perl -CS -ne 'print if /[\x{2190}-\x{21FF}]|[\x{2300}-\x{27BF}]|[\x{2B00}-\x{2BFF}]|[\x{1F300}-\x{1F9FF}]|[\x{1F680}-\x{1F6FF}]|[\x{1F900}-\x{1F9FF}]|[\x{1FA70}-\x{1FAFF}]/' | perl -CS -pe 's/[\x{FE0E}\x{FE0F}]//g'
 }
 
 # Generate .icns from emoji using sips + iconutil

@@ -24,6 +24,16 @@ task_id_validate() {
 	fi
 }
 
+# Canonical launcher task terminality. Review admission, stale-attempt recovery,
+# and cleanup must agree so a status produced by the reaper cannot remain active
+# forever in another lifecycle consumer.
+task_status_is_terminal() {
+	case "${1:-}" in
+		completed | completed_dirty | completed_stale | contract_failure | failed | killed | stopped) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
 # Normalize an external identifier before composing it into a task ID. The
 # result is intentionally a component, not a complete ID; callers still run the
 # final value through task_id_validate after adding their prefix/suffix.

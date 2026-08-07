@@ -90,8 +90,10 @@ _persist_make_wrapper() {
 	wrapper=$(mktemp /tmp/cc-persist-wrapper.XXXXXX)
 	cat >"$wrapper" <<'WRAPPER'
 #!/bin/sh
+SELF="$0"
 LOG_FILE="$1"
 shift
+rm -f "$SELF"
 "$@" 2>&1 | tee -a "$LOG_FILE"
 WRAPPER
 	chmod +x "$wrapper"
@@ -116,7 +118,7 @@ persist_session_exists() {
 # Create a new persist session (detached).
 # Usage: persist_new_session <session_id> <command> [args...]
 # Creates socket at $PERSIST_SOCKET_DIR/<session_id>.sock
-# Captures output to /tmp/cc-agent-<session_id>.log via tee.
+# Captures output to $PERSIST_LOG_DIR/cc-agent-<session_id>.log via tee.
 persist_new_session() {
 	local session_id="$1"
 	shift
@@ -155,11 +157,69 @@ persist_new_session() {
 	local wrapper
 	wrapper=$(_persist_make_wrapper "$logfile")
 
-	"$persist_bin" -n "$sock" "$wrapper" "$logfile" "${cmd[@]}"
+	if ! "$persist_bin" -n "$sock" "$wrapper" "$logfile" "${cmd[@]}"; then
+		rm -f "$wrapper"
+		return 1
+	fi
 
-	# Clean up wrapper after persist has forked (daemon reads it immediately)
-	sleep 0.5
+	# The wrapper unlinks itself only once the daemon has actually executed it.
+	# A fixed sleep is unsafe under load: deleting the wrapper before the child is
+	# scheduled prevents socket creation while the parent has already returned 0.
+	# Attempt count is overridable so the timeout path is testable without a
+	# ten-second wait, in the same spirit as PERSIST_BIN/PERSIST_SOCKET_DIR.
+	local _persist_start_wait
+	for _persist_start_wait in $(seq 1 "${PERSIST_START_WAIT_ATTEMPTS:-100}"); do
+		if [[ ! -e "$wrapper" ]] && "$persist_bin" -s "$sock" &>/dev/null; then
+			return 0
+		fi
+		sleep 0.1
+	done
+
+	# Timed out. Returning failure here is only honest if nothing survives it.
+	# The session may still be materializing — the daemon can consume the
+	# wrapper and bind the socket just after the final poll — so a single
+	# negative liveness check would orphan the exact daemon, socket, and child
+	# this call created, with no caller left to reap them.
+	#
+	# Revoke by exact session id and then PROVE the socket is gone.
+	# `persist_kill_session` reports success when it cannot locate the daemon,
+	# so its exit status alone is not evidence of revocation.
+	# Deleting the wrapper revokes a daemon that has not exec'd yet: the wrapper
+	# unlinks itself on exec, so a daemon reaching it later simply fails.
 	rm -f "$wrapper"
+
+	# A daemon that ALREADY exec'd is not revoked by that, and may bind its
+	# socket after the start-wait closed. Watch for late binding across a grace
+	# window instead of concluding from one negative check -- that single check
+	# is what orphaned sessions before.
+	local _persist_revoke_attempt
+	for _persist_revoke_attempt in $(seq 1 "${PERSIST_REVOKE_GRACE_ATTEMPTS:-20}"); do
+		if "$persist_bin" -s "$sock" &>/dev/null; then
+			persist_kill_session "$session_id" --force >/dev/null 2>&1 || true
+			sleep 0.2
+			if ! "$persist_bin" -s "$sock" &>/dev/null; then
+				rm -f "$sock"
+				echo "Error: persist session '$session_id' did not become active" >&2
+				return 1
+			fi
+		fi
+		sleep 0.1
+	done
+
+	# Grace expired with nothing ever observed: the create genuinely produced no
+	# session. A daemon binding after this point is beyond what a detached
+	# launcher can observe, and is why the indeterminate branch below exists.
+	if ! "$persist_bin" -s "$sock" &>/dev/null; then
+		rm -f "$sock"
+		echo "Error: persist session '$session_id' did not become active" >&2
+		return 1
+	fi
+
+	# Could not prove revocation. This is NOT the same as "nothing was created",
+	# and must not be reported as such: a live session still owns this socket.
+	echo "Error: persist session '$session_id' did not become active and could not be revoked;" >&2
+	echo "       socket '$sock' is still live and requires manual reconciliation" >&2
+	return 2
 }
 
 # Send input to a running persist session.

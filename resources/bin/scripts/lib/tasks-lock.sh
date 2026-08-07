@@ -4,6 +4,10 @@
 #
 # Source this file from any script that needs to lock tasks.json.
 # The sourcing script must set TASKS_FILE before calling lock_tasks().
+# One sourced helper instance owns at most one lock at a time. The API is
+# intentionally non-reentrant: acquire/release a registry before locking a
+# different explicit path, because ownership is tracked in one process-global
+# token slot so EXIT traps can release the exact lock that was acquired.
 #
 # Stale lock detection:
 #   - Every new holder records PID + process-start identity + a random token.
@@ -60,7 +64,8 @@ _tasks_lock_new_token() {
 # same stale-age grace as a legacy pid-less lock.
 # Returns 0 on success, 1 on timeout (10 seconds; TASKS_LOCK_MAX_WAIT overrides for tests).
 lock_tasks() {
-	local lockdir="${TASKS_FILE}.lock"
+	local tasks_file="${1:-${TASKS_FILE}}"
+	local lockdir="${tasks_file}.lock"
 	local pidfile="${lockdir}/pid"
 	local ownerfile="${lockdir}/owner"
 	local max_wait="${TASKS_LOCK_MAX_WAIT:-10}" # seconds
@@ -204,7 +209,8 @@ _tasks_lock_stale_check() {
 # Only removes the lock this process actually acquired: a trap that fires
 # after a failed/timed-out lock_tasks must not evict a live foreign holder.
 unlock_tasks() {
-	local lockdir="${TASKS_FILE}.lock"
+	local tasks_file="${1:-${TASKS_FILE}}"
+	local lockdir="${tasks_file}.lock"
 	local owner_pid
 	_tasks_lock_capture_current_pid || return 0
 	owner_pid="$_TASKS_LOCK_CALLER_PID"

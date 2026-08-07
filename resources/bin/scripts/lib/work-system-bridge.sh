@@ -48,6 +48,14 @@ _WORK_SYSTEM_BRIDGE_LOADED=1
 
 readonly WORK_SYSTEM_LANE_PROVIDER="ghostty-launcher"
 
+_work_system_bridge_lib_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if ! declare -f review_projection_phase_program >/dev/null 2>&1 &&
+	[[ -f "${_work_system_bridge_lib_dir}/review-projection.sh" ]]; then
+	# shellcheck source=review-projection.sh
+	source "${_work_system_bridge_lib_dir}/review-projection.sh"
+fi
+unset _work_system_bridge_lib_dir
+
 work_system_bridge_mode() {
 	local mode="${OSTE_WORK_SYSTEM_BRIDGE:-outbox}"
 	case "$mode" in
@@ -393,10 +401,11 @@ work_system_lane_ref_enrich() {
 		if [[ -f "$vis_receipt_path" ]]; then vis_receipt_present="true"; else vis_receipt_present="false"; fi
 	fi
 
-	local backend session socket attach_available="null" attach_reason=""
+	local backend session socket pane attach_available="null" attach_reason=""
 	backend=$(jq -r '.terminal_backend // .agent_backend // empty' <<<"$row" 2>/dev/null) || backend=""
 	session=$(jq -r '.session_id // empty' <<<"$row" 2>/dev/null) || session=""
 	socket=$(jq -r '.tmux_socket // .persist_socket // empty' <<<"$row" 2>/dev/null) || socket=""
+	pane=$(jq -r '.tmux_pane_id // empty' <<<"$row" 2>/dev/null) || pane=""
 	if [[ -z "$session" ]]; then
 		attach_available="false"
 		attach_reason="no-session-recorded"
@@ -417,8 +426,13 @@ work_system_lane_ref_enrich() {
 		attach_reason="unprobed-backend:${backend}"
 	fi
 
-	local now
+	local now phase_program
 	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+	if declare -f review_projection_phase_program >/dev/null 2>&1; then
+		phase_program=$(review_projection_phase_program)
+	else
+		phase_program='def review_phase: "none";'
+	fi
 	jq -c \
 		--argjson row "$row" \
 		--arg writer_host "$writer_host" \
@@ -426,8 +440,13 @@ work_system_lane_ref_enrich() {
 		--argjson vis_receipt_present "$vis_receipt_present" \
 		--argjson attach_available "$attach_available" \
 		--arg attach_reason "$attach_reason" \
+		--arg pane "$pane" \
 		--arg verified_at "$now" \
-		'def str(v): if v == null or v == "" then null else v end;
+		"$phase_program"'def str(v): if v == null or v == "" then null else v end;
+		 ($row.workroom_ref // null) as $row_workroom |
+		 ($row.work_item_ref // null) as $row_work_item |
+		 (.workroom_ref // null) as $env_workroom |
+		 (.work_item_ref // null) as $env_work_item |
 		 .lane_ref += {
 			started_at: ($row.started_at // null),
 			completed_at: ($row.completed_at // null),
@@ -436,13 +455,23 @@ work_system_lane_ref_enrich() {
 		 .review = {
 			state: ($row.review_state // null),
 			status: ($row.review_status // null),
+			phase: ($row | review_phase),
 			revision: ($row.review_revision // null),
 			attempt: ($row.review_attempt // null),
 			attempt_id: ($row.review_attempt_id // null),
+			task_id: ($row.review_task_id // null),
 			task_generation: ($row.review_task_generation // $row.task_generation // null),
 			owner_state: ($row.owner_review_state // null),
+			owner_reason: ($row.owner_review_reason // null),
 			retry_disabled: ($row.retry_disabled // false),
 			blocker_count: ($row.review_blocker_count // null),
+			started_at: ($row.review_started_at // null),
+			dispatch_failed: ($row.review_dispatch_failed // false),
+			dispatch_failed_at: ($row.review_dispatch_failed_at // null),
+			dispatch_failed_reason: ($row.review_dispatch_failed_reason // null),
+			dispatch_failed_detail: ($row.review_dispatch_failed_detail // null),
+			dispatch_failed_log: ($row.review_dispatch_failed_log // null),
+			dispatch_cleared: ($row.review_dispatch_cleared // null),
 			disposition: ($row.review_disposition // null),
 			disposition_reason: ($row.review_disposition_reason // null),
 			receipt_path: ($row.pending_review_path // null),
@@ -457,16 +486,37 @@ work_system_lane_ref_enrich() {
 			backend: ($row.terminal_backend // $row.agent_backend // null),
 			session: ($row.session_id // null),
 			socket: ($row.tmux_socket // $row.persist_socket // null),
+			pane: str($pane),
 			available: $attach_available,
 			verified_at: (if $attach_available == null then null else $verified_at end),
-			reason_if_unavailable: str($attach_reason)
+			reason_if_unavailable: str($attach_reason),
+			# Capability, not just reachability: a workroom needs to know whether it
+			# can FOCUS the lane for a human and whether it can CAPTURE its output.
+			# Both stay null while attach is unprobed rather than claiming an
+			# affordance no evidence supports.
+			can_focus: (if $attach_available == null then null
+				elif $attach_available == false then false
+				else (($row.ghostty_bundle_id // $row.tmux_window_id // $row.tmux_pane_id // null) != null) end),
+			can_capture: (if $attach_available == null then null
+				elif $attach_available == false then false
+				else (($row.tmux_pane_id // $row.session_id // null) != null) end)
 		 } |
 		 .visibility = {
+			# verified/degraded/reason stay the lane s own spawn-time receipt: a
+			# point-in-time probe, never rewritten from later evidence (a lane that
+			# never probed visibility keeps making no claim).
 			verified: $row.visibility.verified,
 			degraded: $row.visibility.degraded,
 			reason: $row.visibility.reason,
 			receipt_path: ($row.visibility_receipt_path // $row.visibility.receipt_path // null),
-			receipt_present: $vis_receipt_present
+			receipt_present: $vis_receipt_present,
+			# Live marker, distinct from the spawn receipt: an unattached terminal is
+			# visibility-degraded NOW because nobody can look at it, whatever the
+			# spawn probe once recorded. Null while attach is unprobed.
+			attach_degraded: (if $attach_available == null then null else ($attach_available == false) end),
+			attach_degraded_reason: (if $attach_available == false
+				then (str($attach_reason) // "terminal_unattached")
+				else null end)
 		 } |
 		 .generation = {
 			task_generation: ($row.task_generation // null),
@@ -478,8 +528,25 @@ work_system_lane_ref_enrich() {
 		 .writer_host = str($writer_host) |
 		 .canonical_project_id = ($row.project_ref.id // $row.project_id // null) |
 		 .canonical_project_dir = ($row.canonical_project_dir // null) |
-		 .work_item_ref = (.work_item_ref // ($row.work_item_ref // null)) |
-		 .workroom_ref = (.workroom_ref // ($row.workroom_ref // null))' \
+		 # Lineage scoping (PAR-595): the TASK ROW is authoritative for which issue
+		 # workroom/work item a lane belongs to. Emission happens from entry points
+		 # (Stop hook, launchd reaper, kill) that routinely inherit ANOTHER lane s
+		 # OSTE_WORKROOM_REF/OSTE_WORK_ITEM_REF, and letting that ambient env win
+		 # published one issue s lane under another issue s workroom. Env now only
+		 # fills a gap the row leaves, and a conflicting env value is dropped from
+		 # the authoritative field while being retained as evidence of the drop.
+		 .work_item_ref = ($row_work_item // $env_work_item) |
+		 .workroom_ref = ($row_workroom // $env_workroom) |
+		 .lineage_scope = {
+			workroom_source: (if $row_workroom != null then "task_row" elif $env_workroom != null then "env" else "none" end),
+			work_item_source: (if $row_work_item != null then "task_row" elif $env_work_item != null then "env" else "none" end),
+			env_workroom_conflict: ($row_workroom != null and $env_workroom != null and $row_workroom != $env_workroom),
+			env_work_item_conflict: ($row_work_item != null and $env_work_item != null and $row_work_item != $env_work_item),
+			env_workroom_ref_ignored: (if ($row_workroom != null and $env_workroom != null and $row_workroom != $env_workroom) then $env_workroom else null end),
+			env_work_item_ref_ignored: (if ($row_work_item != null and $env_work_item != null and $row_work_item != $env_work_item) then $env_work_item else null end),
+			owner_session_key: ($row.session_key // null),
+			source_task_id: ($row.source_task_id // null)
+		 }' \
 		<<<"$update" 2>/dev/null || printf '%s' "$update"
 }
 

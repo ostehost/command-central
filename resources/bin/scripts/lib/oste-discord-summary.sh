@@ -203,6 +203,18 @@ if [[ "${OSTE_TEST_MODE:-}" == "1" ]]; then
 	exit 0
 fi
 
+# PAR-598: this digest runs from the completion wrapper, which executes INSIDE
+# the visible lane's terminal. The terminal is untrusted evidence, never a
+# Discord actor — it has no way to prove which room it is entitled to address,
+# and the ambient OPENCLAW_DISCORD_CHANNEL below is exactly the inherited-env
+# hazard that cross-posts one issue's digest into another issue's room. From a
+# lane, print the digest locally and stop; the daemon owns outward delivery.
+if [[ "${OSTE_TERMINAL_LANE:-0}" == "1" ]]; then
+	echo "$summary"
+	echo "$fingerprint" >"$DEDUP_FILE"
+	exit 0
+fi
+
 # Send via openclaw (channel digest)
 discord_channel="${OPENCLAW_DISCORD_CHANNEL:-channel:1473741285088039115}"
 
