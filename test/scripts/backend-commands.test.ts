@@ -88,4 +88,67 @@ build_agent_command \\
 			"build_agent_command: invalid --max-turns (expected: non-negative integer)",
 		);
 	});
+
+	// The ACP model guards. This file exercises the VENDORED mirror at
+	// resources/bin/scripts/lib/backend-commands.sh, which `just sync-launcher`
+	// copies from ghostty-launcher and which `just ci` does not currently
+	// --check. A mirror that silently drifts past the canonical copy is exactly
+	// how the stripping regresses here while the upstream repo stays green, so
+	// the assertions live in both places on purpose.
+	test("acp-codex strips an Anthropic model instead of forwarding it", () => {
+		const result = runBackendCommands(`
+build_agent_command \\
+  --backend acp-codex \\
+  --interactive \\
+  --prompt-file /tmp/prompt \\
+  --task-id task-acp-codex \\
+  --model "anthropic/claude-sonnet-4-6"
+`);
+
+		expect(result.status).toBe(0);
+		const stdout = result.stdout.trim();
+		expect(stdout).not.toContain("anthropic/claude-sonnet-4-6");
+		expect(stdout).not.toContain("--model");
+		expect(result.stderr).toContain("skipping incompatible model");
+		expect(result.stderr).toContain("acp-codex");
+	});
+
+	test("acp-codex strips a bare Anthropic tier alias", () => {
+		const result = runBackendCommands(`
+build_agent_command \\
+  --backend acp-codex \\
+  --interactive \\
+  --prompt-file /tmp/prompt \\
+  --task-id task-acp-alias \\
+  --model opus
+`);
+
+		expect(result.status).toBe(0);
+		// 'opus' carries no claude- prefix, so a prefix-only guard would leak it.
+		expect(result.stdout.trim()).not.toContain("--model");
+	});
+
+	test("acp backends still forward a compatible model", () => {
+		const codex = runBackendCommands(`
+build_agent_command \\
+  --backend acp-codex \\
+  --interactive \\
+  --prompt-file /tmp/prompt \\
+  --task-id task-acp-ok \\
+  --model o3-mini
+`);
+		expect(codex.status).toBe(0);
+		expect(codex.stdout.trim()).toContain("--model 'o3-mini'");
+
+		const gemini = runBackendCommands(`
+build_agent_command \\
+  --backend acp-gemini \\
+  --interactive \\
+  --prompt-file /tmp/prompt \\
+  --task-id task-acp-gemini-ok \\
+  --model gemini-2.5-pro
+`);
+		expect(gemini.status).toBe(0);
+		expect(gemini.stdout.trim()).toContain("--model 'gemini-2.5-pro'");
+	});
 });
