@@ -63,8 +63,9 @@ export function getTaskDiffStartCommit(t: AgentTask): string | undefined {
 }
 
 export function getTaskDiffEndCommit(t: AgentTask): string | undefined {
-	if (t.end_commit && t.end_commit !== "unknown") {
-		return t.end_commit;
+	const raw = t.end_commit?.trim();
+	if (raw && raw !== "unknown") {
+		return raw;
 	}
 	return undefined;
 }
@@ -90,12 +91,8 @@ export function runGitDiffOutput(
 				buildGitDiffArgs(projectDir, diffFlag, startCommit, endCommit),
 			);
 		} catch {
-			if (!startCommit) return "";
-			output = run(["-C", projectDir, "diff", diffFlag, "HEAD~1..HEAD"]);
-		}
-
-		if (!output && startCommit) {
-			output = run(["-C", projectDir, "diff", diffFlag, "HEAD~1..HEAD"]);
+			// A missing or stale bound is not "whatever HEAD just did".
+			return "";
 		}
 
 		return output;
@@ -154,25 +151,10 @@ export async function computeDiffSummaryAsync(
 		try {
 			output = await runNumstat(primaryArgs);
 		} catch {
-			if (!startCommit) return null;
-			output = await runNumstat([
-				"-C",
-				projectDir,
-				"diff",
-				"--numstat",
-				"HEAD~1..HEAD",
-			]);
+			return null;
 		}
 
-		if (!output && startCommit) {
-			output = await runNumstat([
-				"-C",
-				projectDir,
-				"diff",
-				"--numstat",
-				"HEAD~1..HEAD",
-			]);
-		}
+		if (!output) return null;
 
 		return formatPerFileDiffSummary(parsePerFileDiffsFromNumstat(output));
 	} catch {

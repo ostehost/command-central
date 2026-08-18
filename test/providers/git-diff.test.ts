@@ -71,4 +71,11 @@ describe("git-diff commit-boundary resolution", () => {
 		).toBeUndefined();
 		expect(getTaskDiffEndCommit(makeTask())).toBeUndefined();
 	});
+
+	test("getTaskDiffEndCommit treats blank strings as missing, not a commit", () => {
+		expect(getTaskDiffEndCommit(makeTask({ end_commit: "" }))).toBeUndefined();
+		expect(
+			getTaskDiffEndCommit(makeTask({ end_commit: "   " })),
+		).toBeUndefined();
+	});
 });

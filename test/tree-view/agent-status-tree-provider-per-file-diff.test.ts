@@ -125,21 +125,12 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		expect(result).toEqual([]);
 	});
 
-	test("falls back to HEAD~1..HEAD when startCommit ref is stale", () => {
-		let calls = 0;
+	test("does not substitute HEAD~1..HEAD when startCommit ref is stale", () => {
 		execFileSyncMock.mockReset();
 		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
 			const args = getExecArgs(fnArgs);
-			lastExecArgs = args;
 			execCalls.push(args);
-			calls += 1;
-			if (calls === 1) {
-				throw new Error("bad revision");
-			}
-			if (args.includes("--name-status")) {
-				return "M\tsrc/fallback.ts\n";
-			}
-			return "3\t1\tsrc/fallback.ts\n";
+			throw new Error("bad revision");
 		});
 
 		const result = provider.getPerFileDiffs(
@@ -149,15 +140,43 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		);
 		const gitDiffCalls = execCalls.filter((args) => args[0] === "-C");
 
-		expect(calls).toBe(3);
 		expect(gitDiffCalls).toEqual([
 			["-C", "/tmp/project", "diff", "--numstat", "stale-commit..HEAD"],
-			["-C", "/tmp/project", "diff", "--numstat", "HEAD~1..HEAD"],
-			["-C", "/tmp/project", "diff", "--name-status", "stale-commit..HEAD"],
 		]);
-		expect(result).toEqual([
-			{ filePath: "src/fallback.ts", additions: 3, deletions: 1, status: "M" },
+		expect(gitDiffCalls.some((args) => args.includes("HEAD~1..HEAD"))).toBe(
+			false,
+		);
+		expect(result).toEqual([]);
+	});
+
+	test("does not substitute HEAD~1..HEAD when start..end is empty", () => {
+		execFileSyncMock.mockReset();
+		execFileSyncMock.mockImplementation((...fnArgs: unknown[]) => {
+			const args = getExecArgs(fnArgs);
+			execCalls.push(args);
+			return "";
+		});
+
+		const result = provider.getPerFileDiffs(
+			"/tmp/project",
+			"2f26ae54293cdfe359b7c288a97134642b3a7db2",
+			"2f26ae54293cdfe359b7c288a97134642b3a7db2",
+		);
+		const gitDiffCalls = execCalls.filter((args) => args[0] === "-C");
+
+		expect(gitDiffCalls).toEqual([
+			[
+				"-C",
+				"/tmp/project",
+				"diff",
+				"--numstat",
+				"2f26ae54293cdfe359b7c288a97134642b3a7db2..2f26ae54293cdfe359b7c288a97134642b3a7db2",
+			],
 		]);
+		expect(gitDiffCalls.some((args) => args.includes("HEAD~1..HEAD"))).toBe(
+			false,
+		);
+		expect(result).toEqual([]);
 	});
 
 	test("maps explicit A/M/D statuses from name-status output", () => {
