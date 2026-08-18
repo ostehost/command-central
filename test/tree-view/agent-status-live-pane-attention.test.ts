@@ -384,6 +384,34 @@ describe("CCSYNC-03 — live-pane attention suppression (provider wiring)", () =
 		expect(description).toContain("live REPL · idle (exit to clear)");
 	});
 
+	test("completed + idle REPL detail is settlement cue, not Lifecycle conflict", () => {
+		// PAR-758: row already said "idle (exit to clear)" but the expanded
+		// detail still screamed "Lifecycle conflict". Wait-at-prompt after a
+		// clean complete is the designed visible-lane leftover, not a
+		// premature-finalizer bug.
+		mockInspectTmuxPaneById.mockImplementation(() => "alive");
+		nextSnippet = IDLE_REPL_SNIPPET;
+		const task = makeTerminalTmuxTask({
+			status: "completed",
+			exit_code: 0,
+			session_live: true,
+		});
+		rowDescription(provider, task);
+		const details = provider.getChildren({ type: "task", task });
+		const labels = details
+			.filter((node) => node.type === "detail")
+			.map((node) => node.label);
+		expect(labels).not.toContain("Lifecycle conflict");
+		expect(labels).toContain("Idle REPL after complete");
+		const idle = details.find(
+			(node) =>
+				node.type === "detail" && node.label === "Idle REPL after complete",
+		);
+		expect(
+			idle && idle.type === "detail" ? idle.description : undefined,
+		).toContain("exit the pane to clear");
+	});
+
 	test("PRESERVED: completed_dirty + confirmed-alive + idle REPL pane stays attention", () => {
 		// The clean-completion exception must not leak to failure-ish statuses:
 		// a dirty completion with a confirmed-alive agent is still live-conflict

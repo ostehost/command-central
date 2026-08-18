@@ -5263,15 +5263,36 @@ export class AgentStatusTreeProvider
 				this.effectiveLauncherSessionLive(t),
 			);
 			if (conflict.kind === "live-process-conflict") {
-				details.push({
-					type: "detail",
-					label: conflict.label,
-					value: "",
-					description: conflict.detail,
-					taskId: t.id,
-					icon: conflict.icon,
-					iconColor: conflict.iconColor,
-				});
+				const paneAttention = this.getTerminalTaskPaneAttention(t);
+				const idleAfterCleanComplete =
+					t.status === "completed" && isBenignLivePane(paneAttention);
+				if (idleAfterCleanComplete) {
+					const cue =
+						paneAttention === "idle-agent-repl"
+							? "Lane completed; interactive REPL is idle — exit the pane to clear. Expected wait-at-prompt, not a failed finalizer."
+							: paneAttention === "completed-at-prompt"
+								? "Lane completed; shell is sitting at its prompt — exit the pane to clear."
+								: "Lane completed; leftover shell is idle — exit the pane to clear.";
+					details.push({
+						type: "detail",
+						label: "Idle REPL after complete",
+						value: "",
+						description: cue,
+						taskId: t.id,
+						icon: "info",
+						iconColor: "charts.blue",
+					});
+				} else {
+					details.push({
+						type: "detail",
+						label: conflict.label,
+						value: "",
+						description: conflict.detail,
+						taskId: t.id,
+						icon: conflict.icon,
+						iconColor: conflict.iconColor,
+					});
+				}
 			}
 		} else if (isTerminalStatus && supersededByReset) {
 			// Pre-reset stale terminal app: this lane's Ghostty app/window predates
@@ -8547,9 +8568,11 @@ export class AgentStatusTreeProvider
 					? `**Routing:** $(debug-disconnect) Detached — ${routingInfo.detail}`
 					: null;
 		const lifecycleConflictLine =
-			lifecycleConflict.kind === "live-process-conflict"
+			lifecycleConflict.kind === "live-process-conflict" && !benignLivePane
 				? `**$(warning) Lifecycle conflict:** ${lifecycleConflict.detail}`
-				: null;
+				: lifecycleConflict.kind === "live-process-conflict" && benignLivePane
+					? `**Idle after complete:** exit the pane to clear. Expected wait-at-prompt, not a failed finalizer.`
+					: null;
 		const detachedLivenessLine = livenessUnobservable
 			? `**$(debug-disconnect) Liveness:** Detached — running state not locally observable${
 					livenessUnobservableReason ? ` (${livenessUnobservableReason})` : ""
