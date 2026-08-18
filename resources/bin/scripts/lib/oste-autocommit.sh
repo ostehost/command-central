@@ -242,10 +242,19 @@ _finalize_git_identity_and_commit_metadata() {
 		git -C "$project_dir" config --unset user.email 2>/dev/null || true
 	fi
 	# Capture end_commit / manager_commit (HEAD after any auto-commits); preserve
-	# legacy end_commit for completion consumers that still read it.
+	# legacy end_commit for completion consumers that still read it. Prefer the
+	# issue worktree when the row records a distinct execution_dir.
 	end_commit="unknown"
-	if [[ -n "$project_dir" && -d "$project_dir" ]]; then
-		end_commit=$(git -C "$project_dir" rev-parse HEAD 2>/dev/null || echo "unknown")
+	local git_dir="$project_dir"
+	local exec_dir=""
+	if [[ -f "${TASKS_FILE:-}" ]]; then
+		exec_dir=$(jq -r --arg id "$task_id" '.tasks[$id].execution_dir // .tasks[$id].exec_cwd // empty' "$TASKS_FILE" 2>/dev/null || true)
+	fi
+	if [[ -n "$exec_dir" && -d "$exec_dir" ]] && git -C "$exec_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+		git_dir="$exec_dir"
+	fi
+	if [[ -n "$git_dir" && -d "$git_dir" ]]; then
+		end_commit=$(git -C "$git_dir" rev-parse HEAD 2>/dev/null || echo "unknown")
 	fi
 	# Parse actual_model from the stream file and record it.
 	actual_model=""

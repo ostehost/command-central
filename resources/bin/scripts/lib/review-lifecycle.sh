@@ -562,6 +562,8 @@ _review_lifecycle_task_projection() {
 			agent_commit,
 			manager_commit
 		} | with_entries(select(.value != null and .value != "")) as $metadata
+		| (if (($receipt.files_changed | type) == "array") and (($receipt.files_changed | length) > 0)
+			then {files_changed: $receipt.files_changed} else {} end) as $files
 		| ($receipt | {
 			review_state,
 			review_status,
@@ -618,7 +620,7 @@ _review_lifecycle_task_projection() {
 			review_transition_event,
 			review_transition_at
 		}) as $owned
-		| $metadata + {review_task_generation: ($receipt.task_generation // null)} + $owned + {
+		| $metadata + $files + {review_task_generation: ($receipt.task_generation // null)} + $owned + {
 			review: $owned,
 			fixup_state: (if $owned.review_state == "awaiting_fixup" then "pending" else "none" end)
 		}
