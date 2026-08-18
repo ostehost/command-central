@@ -111,9 +111,11 @@ export const REQUIRED_ENTRIES: readonly string[] = [
 	"extension/package.json",
 	"extension/dist/extension.js",
 	"extension/resources/bin/ghostty-launcher",
-	// bundle-runtime.sh probes windows via this helper; rc51 shipped without
-	// it because sync-launcher only mirrored .sh/.py lib files.
-	"extension/resources/bin/scripts/lib/window-probe.applescript",
+	// rc51 shipped without a helper script because sync-launcher only mirrored
+	// part of `scripts/`. Keep one helper pinned so that class of drop stays a
+	// hard failure. (Was window-probe.applescript until launcher 388bd1bb
+	// deleted it in favor of the AX observer client.)
+	"extension/resources/bin/scripts/oste-steer.sh",
 	"extension/resources/icons/icon.png",
 ];
 

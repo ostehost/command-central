@@ -29,8 +29,8 @@ function cleanEntries(): VsixEntry[] {
 			uncompressedBytes: 4_000,
 		},
 		{
-			path: "extension/resources/bin/scripts/lib/window-probe.applescript",
-			uncompressedBytes: 2_100,
+			path: "extension/resources/bin/scripts/lib/terminal-tmux.sh",
+			uncompressedBytes: 9_100,
 		},
 		{ path: "extension/resources/icons/icon.png", uncompressedBytes: 50_000 },
 		{
@@ -210,11 +210,28 @@ describe("evaluateVsixEntries", () => {
 		).toBe(true);
 	});
 
+	test("flags a dropped launcher helper script", () => {
+		// rc51 regression class: sync-launcher mirrored only part of `scripts/`,
+		// so a helper the launcher execs at runtime silently missed the VSIX.
+		const withoutHelper = cleanEntries().filter(
+			(entry) => entry.path !== "extension/resources/bin/scripts/oste-steer.sh",
+		);
+		const result = evaluateVsixEntries("test.vsix", withoutHelper, 450_000);
+		expect(result.ok).toBe(false);
+		expect(
+			result.violations.some(
+				(violation) =>
+					violation.rule === "missing required entry" &&
+					violation.detail === "extension/resources/bin/scripts/oste-steer.sh",
+			),
+		).toBe(true);
+	});
+
 	test("required entries cover the runtime payload contract", () => {
 		expect(REQUIRED_ENTRIES).toContain("extension/dist/extension.js");
 		expect(REQUIRED_ENTRIES).toContain("extension/package.json");
 		expect(REQUIRED_ENTRIES).toContain(
-			"extension/resources/bin/scripts/lib/window-probe.applescript",
+			"extension/resources/bin/scripts/oste-steer.sh",
 		);
 	});
 
