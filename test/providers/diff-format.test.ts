@@ -4,6 +4,7 @@ import {
 	buildGitDiffArgs,
 	deriveFallbackFileChangeStatus,
 	extractCommitHash,
+	fileDiffsFromReceiptList,
 	formatFileChangeDescription,
 	formatNotificationDiffSummary,
 	formatPerFileDiffSummary,
@@ -76,6 +77,26 @@ describe("diff-format", () => {
 				deletions: 2,
 			}),
 		).toBe("M");
+	});
+
+	test("fileDiffsFromReceiptList lists receipt paths without inventing counts", () => {
+		expect(fileDiffsFromReceiptList(null)).toEqual([]);
+		expect(fileDiffsFromReceiptList([])).toEqual([]);
+		expect(
+			fileDiffsFromReceiptList([
+				"scripts/lib/pending-review.sh",
+				"  ",
+				"CHANGELOG.md",
+			]),
+		).toEqual([
+			{
+				filePath: "scripts/lib/pending-review.sh",
+				additions: 0,
+				deletions: 0,
+				status: "M",
+			},
+			{ filePath: "CHANGELOG.md", additions: 0, deletions: 0, status: "M" },
+		]);
 	});
 
 	test("commit-hash helpers extract and shorten", () => {

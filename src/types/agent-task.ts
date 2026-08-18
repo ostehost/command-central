@@ -224,6 +224,7 @@ export interface AgentTask {
 	start_sha?: string | null;
 	start_commit?: string | null;
 	end_commit?: string | null;
+	files_changed?: string[] | null;
 	attempts: number;
 	max_attempts: number;
 	pr_number?: number | null;

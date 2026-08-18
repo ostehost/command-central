@@ -150,6 +150,14 @@ describe("extracted Agent Status helper modules", () => {
 		expect(normalized?.project_ref?.id).toBe("project-1");
 		expect(normalized?.workroom_ref).toBe("discord:room-1");
 		expect(normalized?.work_item_ref).toBe("linear:PAR-239");
+		expect(normalized?.files_changed).toBeNull();
+		expect(
+			normalizeTask("task-files", {
+				...rawTask,
+				id: "task-files",
+				files_changed: ["scripts/lib/pending-review.sh", "CHANGELOG.md"],
+			})?.files_changed,
+		).toEqual(["scripts/lib/pending-review.sh", "CHANGELOG.md"]);
 		expect(isRegistryBackedLaneTask(normalized ?? makeAgentTask())).toBe(true);
 		expect(normalizeRegistryTasks({ "task-1": rawTask })?.["task-1"]?.id).toBe(
 			"task-1",

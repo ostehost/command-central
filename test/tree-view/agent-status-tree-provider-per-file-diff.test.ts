@@ -227,3 +227,43 @@ describe("AgentStatusTreeProvider.getPerFileDiffs", () => {
 		expect(result).toBe("2 files · +15 / -2");
 	});
 });
+
+describe("AgentStatusTreeProvider file-change children", () => {
+	let h: ProviderHarness;
+	let provider: AgentStatusTreeProvider;
+
+	beforeEach(() => {
+		h = createProviderHarness();
+		provider = h.provider;
+		h.execFileSyncMock.mockReset();
+		h.execFileSyncMock.mockImplementation(() => "");
+	});
+
+	afterEach(() => {
+		disposeHarness(h);
+	});
+
+	test("lists receipt files when the bounded git range is empty", () => {
+		const task: AgentTask = {
+			id: "par-666",
+			status: "completed",
+			project_dir: "/tmp/project",
+			project_name: "ghostty-launcher",
+			session_id: "agent-ghostty-launcher-spoke",
+			bundle_path: "",
+			prompt_file: "",
+			started_at: "2026-08-17T00:00:00Z",
+			attempts: 0,
+			max_attempts: 0,
+			start_sha: "2f26ae54293cdfe359b7c288a97134642b3a7db2",
+			end_commit: "2f26ae54293cdfe359b7c288a97134642b3a7db2",
+			files_changed: ["scripts/lib/pending-review.sh", "CHANGELOG.md"],
+		} as AgentTask;
+
+		const children = provider.getChildren({ type: "task", task });
+		const files = children.filter((c) => c.type === "fileChange");
+		expect(
+			files.map((c) => (c.type === "fileChange" ? c.filePath : "")),
+		).toEqual(["scripts/lib/pending-review.sh", "CHANGELOG.md"]);
+	});
+});

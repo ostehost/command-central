@@ -253,6 +253,7 @@ import {
 import {
 	deriveFallbackFileChangeStatus,
 	extractCommitHash,
+	fileDiffsFromReceiptList,
 	formatFileChangeDescription,
 	formatNotificationDiffSummary,
 	formatPerFileDiffSummary,
@@ -5360,11 +5361,10 @@ export class AgentStatusTreeProvider
 	private getFileChangeChildren(t: AgentTask): FileChangeNode[] {
 		const startCommit = getTaskDiffStartCommit(t);
 		const endCommit = getTaskDiffEndCommit(t);
-		const fileDiffs = this.getPerFileDiffs(
-			t.project_dir,
-			startCommit,
-			endCommit,
-		);
+		let fileDiffs = this.getPerFileDiffs(t.project_dir, startCommit, endCommit);
+		if (fileDiffs.length === 0) {
+			fileDiffs = fileDiffsFromReceiptList(t.files_changed);
+		}
 		return fileDiffs.map((diff) => ({
 			type: "fileChange",
 			taskId: t.id,

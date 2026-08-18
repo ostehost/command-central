@@ -126,6 +126,19 @@ export function deriveFallbackFileChangeStatus(
 	return "M";
 }
 
+/** Named files from a launcher receipt. No invented +/-. Status is M. */
+export function fileDiffsFromReceiptList(
+	files: readonly string[] | null | undefined,
+): PerFileDiff[] {
+	const diffs: PerFileDiff[] = [];
+	for (const raw of files ?? []) {
+		const filePath = raw.trim();
+		if (!filePath) continue;
+		diffs.push({ filePath, additions: 0, deletions: 0, status: "M" });
+	}
+	return diffs;
+}
+
 export function extractCommitHash(value: string): string | undefined {
 	const firstToken = value.trim().split(/\s+/)[0];
 	return firstToken && /^[0-9a-f]{7,40}$/i.test(firstToken)

@@ -57,6 +57,15 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 		: null;
 }
 
+function normalizeFilesChanged(value: unknown): string[] | null {
+	if (!Array.isArray(value)) return null;
+	const files = value.filter(
+		(entry): entry is string =>
+			typeof entry === "string" && entry.trim().length > 0,
+	);
+	return files.length > 0 ? files : null;
+}
+
 /**
  * Coerce a raw `visible_lane_attention` value to the projected
  * {@link VisibleLaneAttention} discriminant. Fail-closed: any token other than
@@ -190,6 +199,7 @@ export function normalizeTask(
 		start_sha: asString(raw["start_sha"]) ?? null,
 		start_commit: asString(raw["start_commit"]) ?? null,
 		end_commit: asString(raw["end_commit"]) ?? null,
+		files_changed: normalizeFilesChanged(raw["files_changed"]),
 		attempts: Math.max(0, asNumber(raw["attempts"], 0)),
 		max_attempts: Math.max(0, asNumber(raw["max_attempts"], 0)),
 		pr_number: asNullableNumber(raw["pr_number"]) ?? null,
