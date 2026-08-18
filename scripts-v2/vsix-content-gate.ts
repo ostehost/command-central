@@ -111,11 +111,17 @@ export const REQUIRED_ENTRIES: readonly string[] = [
 	"extension/package.json",
 	"extension/dist/extension.js",
 	"extension/resources/bin/ghostty-launcher",
-	// rc51 shipped without a helper script because sync-launcher only mirrored
-	// part of `scripts/`. Keep one helper pinned so that class of drop stays a
-	// hard failure. (Was window-probe.applescript until launcher 388bd1bb
-	// deleted it in favor of the AX observer client.)
+	// Two distinct drop classes, so both need a pin:
+	//  - top-level helpers come from sync-launcher's hardcoded
+	//    HELPER_TOP_LEVEL_FILES list, which drops a helper when the list and the
+	//    launcher disagree;
+	//  - `scripts/lib/` is mirrored through an EXTENSION filter
+	//    (isHelperLibEntry), which is how rc51 shipped without its helper. That
+	//    class was left unguarded when window-probe.applescript — the original
+	//    lib pin — was dropped in launcher 388bd1bb for the AX observer client,
+	//    so a VSIX missing the whole lib/ tree passed the gate green.
 	"extension/resources/bin/scripts/oste-steer.sh",
+	"extension/resources/bin/scripts/lib/bundle-runtime.sh",
 	"extension/resources/icons/icon.png",
 ];
 

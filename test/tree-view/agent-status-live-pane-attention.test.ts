@@ -167,6 +167,15 @@ function rowDescription(
 	return String(item.description ?? "");
 }
 
+function rowTooltip(
+	provider: AgentStatusTreeProvider,
+	task: AgentTask,
+): string {
+	const item = provider.getTreeItem({ type: "task", task });
+	const tip = item.tooltip as { value?: string } | string | undefined;
+	return typeof tip === "string" ? tip : (tip?.value ?? "");
+}
+
 describe("CCSYNC-03 — live-pane attention suppression (provider wiring)", () => {
 	let provider: AgentStatusTreeProvider;
 
@@ -410,6 +419,32 @@ describe("CCSYNC-03 — live-pane attention suppression (provider wiring)", () =
 		expect(
 			idle && idle.type === "detail" ? idle.description : undefined,
 		).toContain("exit the pane to clear");
+	});
+
+	test("failed lane with a benign pane keeps the conflict tooltip", () => {
+		// The settlement cue asserts a CLEAN finish ("not a failed finalizer").
+		// The tooltip gated it on `benignLivePane`, which is also true whenever
+		// liveness is merely not-alive — so a failed lane with an idle pane was
+		// told its finalizer did not fail, directly above a detail row that still
+		// read "Lifecycle conflict". The two surfaces must agree.
+		mockInspectTmuxPaneById.mockImplementation(() => "unknown");
+		nextSnippet = IDLE_REPL_SNIPPET;
+		const task = makeTerminalTmuxTask({
+			status: "failed",
+			exit_code: 1,
+			session_live: true,
+		});
+
+		const tooltip = rowTooltip(provider, task);
+		expect(tooltip).not.toContain("Idle after complete");
+		expect(tooltip).not.toContain("not a failed finalizer");
+		expect(tooltip).toContain("Lifecycle conflict");
+
+		const labels = provider
+			.getChildren({ type: "task", task })
+			.filter((node) => node.type === "detail")
+			.map((node) => node.label);
+		expect(labels).not.toContain("Idle REPL after complete");
 	});
 
 	test("PRESERVED: completed_dirty + confirmed-alive + idle REPL pane stays attention", () => {

@@ -32,6 +32,10 @@ function cleanEntries(): VsixEntry[] {
 			path: "extension/resources/bin/scripts/lib/terminal-tmux.sh",
 			uncompressedBytes: 9_100,
 		},
+		{
+			path: "extension/resources/bin/scripts/lib/bundle-runtime.sh",
+			uncompressedBytes: 18_900,
+		},
 		{ path: "extension/resources/icons/icon.png", uncompressedBytes: 50_000 },
 		{
 			path: "extension/resources/icons/activity-bar.svg",
@@ -227,11 +231,35 @@ describe("evaluateVsixEntries", () => {
 		).toBe(true);
 	});
 
+	test("flags a dropped scripts/lib helper", () => {
+		// Distinct from the top-level drop above: `scripts/lib/` is mirrored by an
+		// EXTENSION filter, so a lib helper vanishes whenever the filter and the
+		// launcher's runtime types disagree. That is the actual rc51 mechanism,
+		// and it went unpinned once window-probe.applescript was deleted upstream.
+		const withoutLibHelper = cleanEntries().filter(
+			(entry) =>
+				entry.path !== "extension/resources/bin/scripts/lib/bundle-runtime.sh",
+		);
+		const result = evaluateVsixEntries("test.vsix", withoutLibHelper, 450_000);
+		expect(result.ok).toBe(false);
+		expect(
+			result.violations.some(
+				(violation) =>
+					violation.rule === "missing required entry" &&
+					violation.detail ===
+						"extension/resources/bin/scripts/lib/bundle-runtime.sh",
+			),
+		).toBe(true);
+	});
+
 	test("required entries cover the runtime payload contract", () => {
 		expect(REQUIRED_ENTRIES).toContain("extension/dist/extension.js");
 		expect(REQUIRED_ENTRIES).toContain("extension/package.json");
 		expect(REQUIRED_ENTRIES).toContain(
 			"extension/resources/bin/scripts/oste-steer.sh",
+		);
+		expect(REQUIRED_ENTRIES).toContain(
+			"extension/resources/bin/scripts/lib/bundle-runtime.sh",
 		);
 	});
 

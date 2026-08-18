@@ -5282,7 +5282,14 @@ export class AgentStatusTreeProvider
 				this.effectiveLauncherSessionLive(t),
 			);
 			if (conflict.kind === "live-process-conflict") {
-				const paneAttention = this.getTerminalTaskPaneAttention(t);
+				// The probe is a blocking `execFileSync("tmux", …)` on a cache miss,
+				// and only a completed lane can satisfy `idleAfterCleanComplete`.
+				// Running it for any other status blocks the extension host on a
+				// result that is discarded (createTaskItem gates the same call).
+				const paneAttention =
+					t.status === "completed"
+						? this.getTerminalTaskPaneAttention(t)
+						: ("unknown" as PaneAttentionState);
 				const idleAfterCleanComplete =
 					t.status === "completed" && isBenignLivePane(paneAttention);
 				if (idleAfterCleanComplete) {
@@ -8595,10 +8602,19 @@ export class AgentStatusTreeProvider
 				: routingInfo.kind === "detached"
 					? `**Routing:** $(debug-disconnect) Detached — ${routingInfo.detail}`
 					: null;
+		// "Idle after complete" asserts a CLEAN finish, so it is gated on the same
+		// predicate as the expanded detail row (status === "completed"), not on
+		// `benignLivePane` alone. `benignLivePane` also covers `liveness !==
+		// "alive"`, which admits failed/contract_failure lanes — telling the
+		// operator "not a failed finalizer" about a failed lane, directly above a
+		// detail row that still reads "Lifecycle conflict".
+		const idleAfterCleanComplete =
+			benignLivePane && task.status === "completed";
 		const lifecycleConflictLine =
-			lifecycleConflict.kind === "live-process-conflict" && !benignLivePane
+			lifecycleConflict.kind === "live-process-conflict" &&
+			!idleAfterCleanComplete
 				? `**$(warning) Lifecycle conflict:** ${lifecycleConflict.detail}`
-				: lifecycleConflict.kind === "live-process-conflict" && benignLivePane
+				: lifecycleConflict.kind === "live-process-conflict"
 					? `**Idle after complete:** exit the pane to clear. Expected wait-at-prompt, not a failed finalizer.`
 					: null;
 		const detachedLivenessLine = livenessUnobservable
