@@ -474,4 +474,35 @@ describe("review queue continuation gap", () => {
 			String(provider.getTreeItem({ type: "task", task }).description),
 		).not.toContain("review receipt missing");
 	});
+
+	test("completed + owner_waiting is Needs Review, not History", () => {
+		// PAR-758: workroom must authorize Codex review. A present receipt plus
+		// review_state=owner_waiting is the next process step, not a finished
+		// lane. History/done hid that authorization.
+		__setCurrentMachineHostOverrideForTests("Hub Mac");
+		const dir = makeTmp();
+		const receipt = path.join(dir, "par-758-process-canary-1.json");
+		realFs.writeFileSync(
+			receipt,
+			`${JSON.stringify({
+				status: "completed",
+				review_state: "owner_waiting",
+				end_commit: "7e396289bb3bd8df407b998ed05c04cffa5889e3",
+			})}\n`,
+		);
+		const task = makeTask({
+			id: "par-758-process-canary-1",
+			status: "completed",
+			project_dir: dir,
+			pending_review_path: receipt,
+			review_state: "owner_waiting",
+			end_commit: "7e396289bb3bd8df407b998ed05c04cffa5889e3",
+			exec_mode: "hub",
+			exec_host: "Hub Mac",
+		});
+		expect(groupOf(provider, task)).toBe("limbo");
+		expect(
+			String(provider.getTreeItem({ type: "task", task }).description),
+		).toContain("owner review waiting");
+	});
 });

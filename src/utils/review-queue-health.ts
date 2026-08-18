@@ -37,7 +37,7 @@ export interface ReviewLifecycleShape {
  * Launcher `review_state` values that mean the review cycle is over (or was
  * never expected), so the pending-review receipt has been legitimately
  * consumed/never written. The launcher vocabulary is pending / reviewing /
- * awaiting_fixup / blocked / reviewed / no_review_expected (see
+ * awaiting_fixup / blocked / owner_waiting / reviewed / no_review_expected (see
  * ghostty-launcher oste-complete.sh and oste-review-watchdog-runner.sh).
  */
 const RESOLVED_REVIEW_STATES = new Set(["reviewed", "no_review_expected"]);

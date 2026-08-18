@@ -1304,12 +1304,24 @@ export class AgentStatusTreeProvider
 	/**
 	 * Whether the lane's recorded review metadata advertises a still-pending
 	 * review — either the structured `review_status="pending"` or a launcher
-	 * `review_state` that means "review not yet settled" (pending). Reviewed /
+	 * `review_state` that means "review not yet settled". Reviewed /
 	 * no_review_expected / approved are settled and handled elsewhere.
+	 * `owner_waiting` is workroom authorization, not a finished lane.
 	 */
 	private isReviewPendingProjection(task: AgentTask): boolean {
 		if (task.review_status === "pending") return true;
-		return task.review_state?.trim().toLowerCase() === "pending";
+		const state = task.review_state?.trim().toLowerCase();
+		return (
+			state === "pending" ||
+			state === "owner_waiting" ||
+			state === "reviewing" ||
+			state === "awaiting_fixup" ||
+			state === "blocked"
+		);
+	}
+
+	private isOwnerReviewWaiting(task: AgentTask): boolean {
+		return task.review_state?.trim().toLowerCase() === "owner_waiting";
 	}
 
 	/**
@@ -4169,6 +4181,13 @@ export class AgentStatusTreeProvider
 				return "limbo";
 			}
 			if (node.type === "task" && this.isReviewQueueReceiptMissing(node.task)) {
+				return "limbo";
+			}
+			if (
+				node.type === "task" &&
+				this.isOwnerReviewWaiting(node.task) &&
+				!this.isTaskReviewed(node.task)
+			) {
 				return "limbo";
 			}
 			return "done";
@@ -8365,6 +8384,15 @@ export class AgentStatusTreeProvider
 			this.isReviewQueueReceiptMissing(task);
 		if (reviewQueuePending) {
 			descriptionParts.push("review receipt missing");
+		}
+		if (
+			(task.status === "completed" ||
+				task.status === "completed_dirty" ||
+				task.status === "completed_stale") &&
+			this.isOwnerReviewWaiting(task) &&
+			!this.isTaskReviewed(task)
+		) {
+			descriptionParts.push("owner review waiting");
 		}
 		// PAR-295: honest copy for a running lane surfaced under Needs Review on a
 		// trusted completion marker — "ready text seen" without implying the task

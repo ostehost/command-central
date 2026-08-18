@@ -172,6 +172,9 @@ describe("isReviewLifecycleResolved", () => {
 			false,
 		);
 		expect(isReviewLifecycleResolved({ review_state: "blocked" })).toBe(false);
+		expect(isReviewLifecycleResolved({ review_state: "owner_waiting" })).toBe(
+			false,
+		);
 		expect(isReviewLifecycleResolved({ review_state: "" })).toBe(false);
 	});
 });
