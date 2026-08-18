@@ -3,12 +3,6 @@
 
 # shellcheck source=project-bundle-open.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/project-bundle-open.sh"
-if [[ -z "${BUNDLE_RUNTIME_DIR:-}" ]]; then
-	BUNDLE_RUNTIME_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-fi
-if [[ -z "${BUNDLE_WINDOW_PROBE_SCRIPT:-}" ]]; then
-	BUNDLE_WINDOW_PROBE_SCRIPT="${BUNDLE_RUNTIME_DIR}/window-probe.applescript"
-fi
 
 bundle_process_is_running() {
 	local bundle_id="$1"
@@ -16,35 +10,49 @@ bundle_process_is_running() {
 	osascript -e "application id \"$bundle_id\" is running" 2>/dev/null | grep -q "true"
 }
 
+# AX window observation via the shared oste-ui-observer service — the single
+# Accessibility-granted identity (docs/UI-OBSERVER.md). Env seam:
+# OSTE_UI_OBSERVER_BIN (default: the canonical installed binary at
+# ~/.local/bin/oste-ui-observer). Fail-closed: an absent, unreachable, or
+# malformed observer degrades — every path prints a well-formed 6-field line
+# so a receipt always materializes; there is no osascript fallback.
+#
+# Task binding is corroborated by the SERVICE against its own canonical
+# tasks.json: callers running with a divergent TASKS_FILE (isolated
+# worktrees, fixtures) get task_binding_mismatch on bound probes by design —
+# point OSTE_UI_OBSERVER_BIN at a mock (tests) or probe unbound.
 bundle_window_probe() {
 	local bundle_id="$1"
+	local task_id="${2:-}"
+	local task_generation="${3:-}"
+	local release_generation="${4:-}"
 	[[ -n "$bundle_id" ]] || {
 		echo "false|0|0|0||missing_bundle_id"
 		return 1
 	}
-
-	if [[ -f "$BUNDLE_WINDOW_PROBE_SCRIPT" ]]; then
-		local probe
-		probe=$(osascript "$BUNDLE_WINDOW_PROBE_SCRIPT" "$bundle_id" 2>/dev/null) || {
-			echo "false|0|0|0||probe_failed"
-			return 1
-		}
-		[[ -n "$probe" ]] || probe="false|0|0|0||probe_empty"
-		echo "$probe"
-		return 0
-	fi
-
-	local count
-	count=$(osascript -e "tell application id \"$bundle_id\" to count of windows" 2>/dev/null) || {
-		echo "false|0|0|0||legacy_window_count_failed"
-		return 1
-	}
-	if [[ "${count:-0}" -gt 0 ]]; then
-		echo "true|${count}|${count}|${count}||legacy_ok"
-	else
-		echo "true|0|0|0||legacy_no_windows"
+	# Default to the canonical install path, not bare PATH lookup: spawn-time
+	# probes can run under launchd/bundle environments whose PATH lacks
+	# ~/.local/bin, and that must degrade only when the binary is truly absent.
+	local observer_bin="${OSTE_UI_OBSERVER_BIN:-${HOME}/.local/bin/oste-ui-observer}"
+	if ! command -v "$observer_bin" >/dev/null 2>&1; then
+		echo "false|0|0|0||observer_unavailable"
 		return 1
 	fi
+	local args=(probe --format pipe --bundle-id "$bundle_id")
+	[[ -n "$task_id" ]] && args+=(--task-id "$task_id")
+	[[ -n "$task_generation" ]] && args+=(--task-generation "$task_generation")
+	[[ -n "$release_generation" ]] && args+=(--release-generation "$release_generation")
+	local probe
+	probe=$("$observer_bin" "${args[@]}" 2>/dev/null) || true
+	# Bracket classes, not backslash-escaped pipes: macOS bash 3.2's regex
+	# library does not treat \| as a literal pipe inside [[ =~ ]].
+	local probe_re='^(true|false)[|][0-9]+[|][0-9]+[|][0-9]+[|][0-9]*[|][a-z0-9_]+$'
+	if [[ ! "$probe" =~ $probe_re ]]; then
+		echo "false|0|0|0||observer_bad_response"
+		return 1
+	fi
+	echo "$probe"
+	[[ "$probe" == true\|* ]]
 }
 
 bundle_window_count() {
@@ -144,9 +152,23 @@ bundle_visibility_fields() {
 			;;
 	esac
 
+	# Server-side lane binding context: the observer corroborates the claim
+	# against the canonical row. task_generation is the row's immutable
+	# registration UUID; app_stamp.git_sha travels separately as the optional
+	# release_generation diagnostic — never cross-compared. A row without a
+	# generation gets an unbound (bundle-only) observation instead of a
+	# guaranteed mismatch; this function has already verified row identity.
+	local row_task_generation row_release_generation probe_task_id
+	row_task_generation=$(jq -r --arg id "$task_id" '.tasks[$id].task_generation // empty' "$tasks_file" 2>/dev/null || true)
+	row_release_generation=$(jq -r --arg id "$task_id" '.tasks[$id].app_stamp.git_sha // empty' "$tasks_file" 2>/dev/null || true)
+	probe_task_id="$task_id"
+	[[ -n "$row_task_generation" ]] || probe_task_id=""
+
 	local probe_reason=""
-	IFS='|' read -r process_alive window_count onscreen_count focusable_count pid probe_reason <<<"$(bundle_window_probe "$bundle_id" || true)"
-	if [[ "$tmux_attached" == "true" && "${process_alive:-false}" == "true" && "${onscreen_count:-0}" -gt 0 && "${focusable_count:-0}" -gt 0 ]]; then
+	IFS='|' read -r process_alive window_count onscreen_count focusable_count pid probe_reason <<<"$(bundle_window_probe "$bundle_id" "$probe_task_id" "$row_task_generation" "$row_release_generation" || true)"
+	# reason=="ok" is required locally, not just implied by counts: a probe
+	# line carrying positive counts under any other token must never verify.
+	if [[ "$tmux_attached" == "true" && "${process_alive:-false}" == "true" && "${onscreen_count:-0}" -gt 0 && "${focusable_count:-0}" -gt 0 && "${probe_reason:-}" == "ok" ]]; then
 		verified=true
 		degraded=false
 		reason="ok"
@@ -313,9 +335,15 @@ kill_zombie_bundle() {
 		return 0
 	fi
 
-	local wcount
-	wcount=$(bundle_window_count "$bundle_id")
-	if [[ "$wcount" -gt 0 ]]; then
+	# Quit only on an AFFIRMATIVE zero-window observation (alive +
+	# no_ax_windows). Every degraded token — observer_unavailable/timeout,
+	# ax_not_trusted, task_binding_mismatch, … — also reports 0 windows, and
+	# quitting a live visible lane off missing telemetry would be a
+	# destructive action keyed to a degraded probe.
+	local probe z_alive z_windows _zo _zf _zp z_reason
+	probe=$(bundle_window_probe "$bundle_id" || true)
+	IFS='|' read -r z_alive z_windows _zo _zf _zp z_reason <<<"$probe"
+	if [[ "${z_alive:-false}" != "true" || "${z_reason:-}" != "no_ax_windows" || "${z_windows:-0}" -gt 0 ]]; then
 		return 1
 	fi
 
@@ -380,10 +408,14 @@ attach_bundle_session() {
 		echo "error|no_session_id"
 		return 1
 	}
-	[[ -n "$bundle_path" ]] || {
+	if [[ -z "$bundle_path" ]]; then
+		if [[ -n "$tmux_socket" ]]; then
+			echo "error|headless_tmux: tmux -S ${tmux_socket} attach -t ${session_id}"
+			return 1
+		fi
 		echo "error|no_bundle_path"
 		return 1
-	}
+	fi
 	[[ -d "$bundle_path" ]] || {
 		echo "error|bundle_not_found"
 		return 1

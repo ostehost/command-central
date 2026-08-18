@@ -374,6 +374,20 @@ pending_review_write() {
 
 	pending_review_init
 
+	# Issue-scheduler profile (A29). The reaper reaches this fallback creation
+	# path for lanes whose finalizer never ran, and it is the receipt's ONE
+	# writable moment: issue_scheduler is a frozen lifecycle field, so a receipt
+	# born without it can never acquire it later. Copied from the
+	# registration-bound row; absent/legacy rows stay null and readers keep the
+	# permissive "launcher" default. This is one of three from-scratch receipt
+	# creators that must each bind the profile — the others are oste-complete.sh
+	# _finalize_pending_review_and_review_state (primary) and
+	# oste-dispatch-coder.sh (synchronous OpenClaw coder wrapper).
+	local issue_scheduler=""
+	if [[ -n "${TASKS_FILE:-}" && -f "$TASKS_FILE" ]]; then
+		issue_scheduler=$(jq -r --arg id "$task_id" '.tasks[$id].issue_scheduler // empty' "$TASKS_FILE" 2>/dev/null || true)
+	fi
+
 	local receipt_json
 	# Build the complete base document in memory; publication itself is one
 	# same-directory rename plus a crash-recoverable tasks.json projection.
@@ -392,6 +406,7 @@ pending_review_write() {
 		--arg agent_commit "$agent_commit" \
 		--arg manager_commit "$manager_commit" \
 		--arg task_generation "$expected_task_generation" \
+		--arg issue_scheduler "$issue_scheduler" \
 		'{
 			task_id: $task_id,
 			project: $project,
@@ -399,11 +414,12 @@ pending_review_write() {
 			status: $status,
 			exit_code: ($exit_code | tonumber),
 			completed_at: $completed_at,
-			last_commit: $last_commit,
-			end_commit: $end_commit,
+			last_commit: (if $last_commit == "" then null else $last_commit end),
+			end_commit: (if $end_commit == "" then null else $end_commit end),
 			agent_commit: (if $agent_commit == "" then null else $agent_commit end),
 			manager_commit: (if $manager_commit == "" then null else $manager_commit end),
 			task_generation: (if $task_generation == "" then null else $task_generation end),
+			issue_scheduler: (if $issue_scheduler == "" then null else $issue_scheduler end),
 			actual_model: (if $actual_model == "" then null else $actual_model end),
 			agent_summary: $agent_summary,
 			files_changed: (if ($files_changed | length) == 0 then null else $files_changed end),

@@ -10,6 +10,7 @@
 __OSTE_TASK_ID_SH=1
 
 readonly OSTE_TASK_ID_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+readonly OSTE_TASK_GENERATION_RE='^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})$'
 
 task_id_is_valid() {
 	local task_id="${1:-}"
@@ -22,6 +23,19 @@ task_id_validate() {
 		echo "invalid task-id '${task_id}' (must match [A-Za-z0-9][A-Za-z0-9._-]{0,127})" >&2
 		return 1
 	fi
+}
+
+task_generation_is_valid() {
+	local generation="${1:-}"
+	[[ "$generation" =~ $OSTE_TASK_GENERATION_RE ]] && return 0
+	# Legacy journal tests use human-readable generation labels to make hundreds
+	# of lattice assertions auditable. The relaxation is opt-in, test-only, and
+	# never enabled by a runtime script or the cross-repository traversal.
+	if [[ "${OSTE_TEST_MODE:-0}" == "1" && "${OSTE_TEST_ALLOW_SYMBOLIC_TASK_GENERATIONS:-0}" == "1" ]]; then
+		task_id_is_valid "$generation"
+		return $?
+	fi
+	return 1
 }
 
 # Canonical launcher task terminality. Review admission, stale-attempt recovery,

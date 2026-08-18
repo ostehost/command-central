@@ -170,7 +170,10 @@ _emit_completion_notifications() {
 		notify_title="Task completed"
 		notify_message="${task_id} finished successfully"
 	elif [[ "$status" == "completed_dirty" ]]; then
-		if [[ "$dirty_reason" == "baseline_preserved" ]]; then
+		if [[ "$dirty_reason" == "supervised_retained" ]]; then
+			notify_title="Task completed (supervised, retained)"
+			notify_message="${task_id} completed; auto-commit refused, workspace retained for owner disposition"
+		elif [[ "$dirty_reason" == "baseline_preserved" ]]; then
 			notify_title="Task completed (baseline preserved)"
 			notify_message="${task_id} completed; preexisting dirty files left for owning lane"
 		else

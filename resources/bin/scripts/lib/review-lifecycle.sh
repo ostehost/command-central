@@ -561,7 +561,7 @@ _review_lifecycle_task_projection() {
 			review_end_commit: (.end_commit // null),
 			agent_commit,
 			manager_commit
-		} | with_entries(select(.value != null)) as $metadata
+		} | with_entries(select(.value != null and .value != "")) as $metadata
 		| ($receipt | {
 			review_state,
 			review_status,
@@ -607,7 +607,12 @@ _review_lifecycle_task_projection() {
 			review_recovery_reason,
 			review_failed_attempt_recovery_history,
 			review_autoreview_evidence: (.autoreview_evidence // null),
-			pending_fixup_path: (.fixup_intent.fixup_path // null),
+			# Type gate: every other .fixup_intent consumer gates first, and an
+			# ungated index on a scalar/array aborts this whole projection — both
+			# call sites turn that into `return 1`, failing the entire review
+			# publish for the task with no diagnostic (stderr is swallowed below).
+			pending_fixup_path: (if (.fixup_intent | type) == "object"
+				then (.fixup_intent.fixup_path // null) else null end),
 			review_fixup_intent: (.fixup_intent // null),
 			review_external_adoption: (.external_review_adoption // null),
 			review_transition_event,

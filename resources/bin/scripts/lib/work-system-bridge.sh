@@ -81,7 +81,7 @@ work_system_bridge_outbox_file() {
 # completed_dirty, contract_failure, failed, killed, stopped, ...): the
 # launcher records what it observed; Work System ingesters own any enum
 # normalization. project_ref_json is the slim record persisted in tasks.json
-# (project_ref_record_registered / _unregistered) — invalid JSON degrades to
+# (project_ref_record_registered / _unregistered) — non-object JSON degrades to
 # null. lane_id defaults to the launcher source_ref form "launcher:<task_id>".
 # work_item_ref / workroom_ref are optional string refs from
 # OSTE_WORK_ITEM_REF / OSTE_WORKROOM_REF, null when unset.
@@ -115,7 +115,10 @@ work_system_lane_ref_update() {
 			lane_kind=""
 			;;
 	esac
-	jq -e . >/dev/null 2>&1 <<<"$project_ref_json" || project_ref_json="null"
+	# Schema declares project_ref as object|null. jq -e accepts bare scalars
+	# ("" included) as valid JSON documents, so gate on type, not parseability —
+	# a blank-string row value must not ride into the envelope.
+	jq -e 'type == "object" or . == null' >/dev/null 2>&1 <<<"$project_ref_json" || project_ref_json="null"
 	local now
 	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 	jq -cn \
@@ -298,14 +301,21 @@ work_system_bridge_write_outbox() {
 		'def terminal(s): ["completed", "completed_dirty", "contract_failure", "failed", "killed", "stopped"] | index(s) != null;
 		 .version = 1 |
 		 .kind = "work-system-lanes-projection" |
-		 (.lanes[$id] // null) as $existing |
-		 ($update.generation.task_generation // "") as $update_generation |
-		 ($existing.generation.task_generation // "") as $existing_generation |
+		 # Type gate the STORED entry. A sibling lane whose generation or lane_ref
+		 # is a scalar or array (partial write, hand edit, schema change) aborts
+		 # the merge, and the failure branch silently discards the temp file: this
+		 # lane loses its terminal status update with no error anywhere, and loses
+		 # it on every retry, because the poisoned sibling is never rewritten.
+		 def objn(v): if (v | type) == "object" then v else null end;
+		 objn(.lanes[$id]) as $existing |
+		 (objn($update.generation).task_generation // "") as $update_generation |
+		 (objn($existing.generation).task_generation // "") as $existing_generation |
+		 objn($existing.lane_ref) as $existing_lane_ref |
 		 if $existing != null
-			and terminal($existing.lane_ref.status // "")
+			and terminal($existing_lane_ref.status // "")
 			and (terminal($update.lane_ref.status // "") | not)
 			and ($update_generation == "" or $update_generation == $existing_generation)
-			and (($update.lane_ref.updatedAt // "") <= ($existing.lane_ref.updatedAt // ""))
+			and (($update.lane_ref.updatedAt // "") <= ($existing_lane_ref.updatedAt // ""))
 		 then .
 		 else (.lanes[$id] = $update | .updated_at = $update.lane_ref.updatedAt)
 		 end' \
@@ -354,6 +364,41 @@ _work_system_bridge_transport() {
 }
 
 # Enrich a base lane_ref update with first-class read-model fields derived
+# Normalize a task row for projection. Two distinct corruptions, one gate:
+#
+#   1. Blank strings. tasks.json rows can carry "" where a value was never
+#      resolved, and jq's // treats "" as truthy — a blank row value outranks
+#      a real fallback (execution_dir vs project_dir, terminal_backend vs
+#      agent_backend, row ref vs env ref) and publishes "" where the LaneRef
+#      schema says null.
+#   2. Non-object values in object-valued fields. project_ref/app_stamp/
+#      visibility are the row fields the projection INDEXES into. Any non-object
+#      there ("" but equally "1.2.3", [], 5) raises "Cannot index ... with
+#      string", which aborts the ENTIRE jq program — not just that field — into
+#      the caller's fail-soft path, silently emitting an env-wins envelope with
+#      no lineage_scope at all. Gate on type, not on blankness: "" is only one
+#      shape of this bug and the narrow fix leaves the rest of the class open.
+#
+# Callers must normalize ONCE at row ingress, before any read: the shell
+# evidence probes and the jq projection have to see the same row or one
+# envelope reports raw-read and normalized-read fields side by side.
+# Idempotent. Fail-soft: a jq failure returns the row unchanged.
+_work_system_normalize_task_row() {
+	local row="$1"
+	local normalized
+	if normalized=$(jq -c '
+		def str(v): if v == null or v == "" then null else v end;
+		def obj(v): if (v | type) == "object" then v else null end;
+		walk(str(.))
+		| reduce ("project_ref", "app_stamp", "visibility") as $k
+			(.; if has($k) then .[$k] = obj(.[$k]) else . end)' \
+		<<<"$row" 2>/dev/null) && [[ -n "$normalized" ]]; then
+		printf '%s' "$normalized"
+	else
+		printf '%s' "$row"
+	fi
+}
+
 # from the persisted task row plus cheap local evidence probes, so consumers
 # (Command Central) never have to interpret tasks.json, /tmp receipts, or
 # terminal state themselves. Additive to the schema_version 1 envelope and
@@ -385,6 +430,13 @@ work_system_lane_ref_enrich() {
 		printf '%s' "$update"
 		return 0
 	fi
+
+	# Normalize at ingress (blank strings + non-object object-valued fields) so
+	# both halves of this function — the shell evidence probes and the jq
+	# projection — see the same row. Idempotent, so a caller that already
+	# normalized (work_system_emit_lane_ref_for_task) pays only one extra jq.
+	local str_def='def str(v): if v == null or v == "" then null else v end;'
+	row=$(_work_system_normalize_task_row "$row")
 
 	local writer_host
 	writer_host=$(hostname -s 2>/dev/null) || writer_host=""
@@ -442,11 +494,11 @@ work_system_lane_ref_enrich() {
 		--arg attach_reason "$attach_reason" \
 		--arg pane "$pane" \
 		--arg verified_at "$now" \
-		"$phase_program"'def str(v): if v == null or v == "" then null else v end;
+		"${phase_program}${str_def}"'
 		 ($row.workroom_ref // null) as $row_workroom |
 		 ($row.work_item_ref // null) as $row_work_item |
-		 (.workroom_ref // null) as $env_workroom |
-		 (.work_item_ref // null) as $env_work_item |
+		 str(.workroom_ref) as $env_workroom |
+		 str(.work_item_ref) as $env_work_item |
 		 .lane_ref += {
 			started_at: ($row.started_at // null),
 			completed_at: ($row.completed_at // null),
@@ -471,7 +523,7 @@ work_system_lane_ref_enrich() {
 			dispatch_failed_reason: ($row.review_dispatch_failed_reason // null),
 			dispatch_failed_detail: ($row.review_dispatch_failed_detail // null),
 			dispatch_failed_log: ($row.review_dispatch_failed_log // null),
-			dispatch_cleared: ($row.review_dispatch_cleared // null),
+			dispatch_cleared: $row.review_dispatch_cleared,
 			disposition: ($row.review_disposition // null),
 			disposition_reason: ($row.review_disposition_reason // null),
 			receipt_path: ($row.pending_review_path // null),
@@ -671,6 +723,12 @@ work_system_emit_lane_ref_for_task() {
 	if [[ -f "$tasks_file" ]]; then
 		row=$(jq -c --arg id "$task_id" '.tasks[$id] // {}' "$tasks_file" 2>/dev/null) || row='{}'
 	fi
+	# Normalize BEFORE the shell extractions below, not just inside enrich: these
+	# six values are baked into $update and enrich never rewrites them, so a
+	# late normalization leaves one envelope reporting lane_ref.surface=null
+	# (raw read of terminal_backend:"") next to attach.backend="tmux"
+	# (normalized read of the same key) — the launcher contradicting itself.
+	row=$(_work_system_normalize_task_row "$row")
 	local row_status
 	row_status=$(jq -r '.status // empty' <<<"$row" 2>/dev/null || true)
 	[[ -z "$row_status" ]] || status="$row_status"

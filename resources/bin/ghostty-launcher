@@ -1366,8 +1366,13 @@ BG_CONF
 	fi
 	rm -f "$_ent_file"
 
-	# Verify codesign worked
-	if ! codesign --verify "$temp_app_path" 2>/dev/null; then
+	# Verify codesign worked. The sign above is --deep and its failure is only a
+	# WARNING, so this verify is the real gate — and a shallow `codesign
+	# --verify` does NOT recursively validate nested code (Sparkle.framework and
+	# its XPC services here): a corrupt or unsigned subcomponent passes it. Match
+	# the deep sign with a deep verify, the same contract
+	# scripts/lib/bundle-codesign.sh:bundle_signature_is_valid() already uses.
+	if ! codesign --verify --deep --strict "$temp_app_path" 2>/dev/null; then
 		echo "Error: Bundle codesign verification failed" >&2
 		return 1
 	fi

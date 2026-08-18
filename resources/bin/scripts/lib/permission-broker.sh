@@ -289,7 +289,11 @@ permission_broker_record_reconciliation() {
 		{ts:$ts, epoch:$epoch, event:"permission_reconciliation", task_id:.task_id,
 		 task_generation:(.task_generation // null), input_hash:.input_hash, prompt_id:(.prompt_id // null),
 		 claim_id:.claim_id, decision:.decision, outcome:$state, actor:$actor, reason:$reason,
-		 previous_state:(.reconciled_from_state // null), delivery_ambiguous:(.delivery_ambiguous // true)}
+		 previous_state:(.reconciled_from_state // null),
+		 # Presence-style, not //: claim_finalize stores delivery_ambiguous=false
+		 # for a successful send, and // would collapse that false back to true.
+		 # Absent/null stays true — the fail-safe default for unfinalized claims.
+		 delivery_ambiguous:(if .delivery_ambiguous == null then true else .delivery_ambiguous end)}
 	') || return 1
 	mkdir -p "$OSTE_PERMISSION_PROMPT_DIR" 2>/dev/null || return 1
 	printf '%s\n' "$record" >>"$receipt_file"

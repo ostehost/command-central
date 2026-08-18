@@ -50,21 +50,52 @@ _release_stop_owner_lock() {
 	fi
 }
 
-# Debug logging — append to rolling log (keep last 5 invocations)
-_debug_log="/tmp/oste-stop-hook-debug.log"
+# Debug logging is OFF by default. When enabled, the hook writes one bounded
+# record to fixed reserved fd 19. The environment may request that fixed
+# capability but cannot choose a descriptor: stdout, stderr, and arbitrary
+# numeric fds are never eligible. Openness proves only that fd 19 is usable; it
+# does not prove launcher provenance, so the contract makes no such claim. No
+# production launcher currently provisions fd 19, making production diagnostics
+# disabled unless a future parent explicitly owns and inherits that capability.
+# There is no pathname authority and no shared trim file.
+#
+# The openness probe is DESCRIPTOR-level (`>&19`), never the path test
+# `-w /dev/fd/19`. fd 19 is a capability; /dev/fd is a filesystem. On macOS
+# (fdesc) a path probe answers about the PATH, not the descriptor, and the two
+# disagree in two measured ways. It transiently reports "not writable" for a
+# sound descriptor under concurrency — 50 false negatives in 8000 probes at
+# 20-way concurrency, every one on a descriptor an immediate write then
+# succeeded on — silently dropping a record the caller had every right to
+# expect. And it follows the target's file mode, so chmod 000 on an already-open
+# target flips the probe while writes keep working. `>&19` asks the descriptor
+# itself and can do neither.
+#
+# Residual, deliberately unchanged: the two -ef comparisons remain path tests,
+# because bash has no descriptor-level identity test. An unevaluable comparison
+# fails OPEN there (the `!` reads it as "distinct"), so they cannot reintroduce
+# the dropped-record defect this probe change closes.
+_debug_fd=""
+if [[ "${OSTE_STOP_HOOK_DEBUG_FD:-}" == "19" ]] &&
+	{ true >&19; } 2>/dev/null &&
+	[[ ! /dev/fd/19 -ef /dev/fd/1 && ! /dev/fd/19 -ef /dev/fd/2 ]]; then
+	_debug_fd=19
+fi
+_debug_recorded=0
 _log_debug() {
-	{
-		echo "--- $(date -u +"%Y-%m-%dT%H:%M:%SZ") ---"
-		echo "cwd=${_debug_cwd:-<unset>}"
-		echo "task_id=${_debug_task_id:-<unset>}"
-		echo "outcome=$1"
-		echo ""
-	} >>"$_debug_log" 2>/dev/null || true
-	# Trim to last 5 entries (each entry is 5 lines)
-	if [[ -f "$_debug_log" ]]; then
-		tail -25 "$_debug_log" >"/tmp/oste-stop-hook-debug.tmp" 2>/dev/null &&
-			mv "/tmp/oste-stop-hook-debug.tmp" "$_debug_log" 2>/dev/null || true
-	fi
+	[[ -n "$_debug_fd" ]] || return 0
+	[[ "$_debug_recorded" == "0" ]] || return 0
+	_debug_recorded=1
+	local ts cwd task outcome
+	ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+	cwd="${_debug_cwd:-<unset>}"
+	cwd="${cwd:0:256}"
+	task="${_debug_task_id:-<unset>}"
+	task="${task:0:128}"
+	outcome="${1:0:128}"
+	# One printf, one newline: inherited writers share the same open descriptor
+	# without interleaving a multi-line record assembled from separate writes.
+	printf 'ts=%s cwd=%q task_id=%q outcome=%q\n' "$ts" "$cwd" "$task" "$outcome" \
+		1>&"$_debug_fd" 2>/dev/null || true
 }
 
 # Trap: any unexpected error → log and exit clean
@@ -500,7 +531,8 @@ if [[ "${OSTE_STOP_DETERMINISTIC_COMPLETE:-1}" != "0" && -f "$report_file" ]]; t
 	report_task_id=$(_report_field "$report_file" "task_id")
 	report_status=$(_report_field "$report_file" "status")
 	if [[ -n "$report_task_id" && "$report_task_id" != "$task_id" ]]; then
-		_log_debug "report-task-id-mismatch-fallthrough"
+		# This is an intermediate fallthrough state, not a terminal hook outcome.
+		# Emit exactly one debug record when the eventual contract path settles.
 		report_status="__foreign_report__"
 	fi
 	case "$report_status" in

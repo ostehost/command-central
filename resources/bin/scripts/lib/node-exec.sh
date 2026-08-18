@@ -149,7 +149,25 @@ node_exec() {
 
 	resolved_node_id=$(resolve_node_id "$node_id")
 	shell_argv_json=$(build_node_shell_argv_json "$command")
-	prepare_idem="node-exec-prepare-$$-$(date +%s)"
+	# Additive seam. The default key is minted from pid+second, which is
+	# non-deterministic and collision-prone within one second; a caller that
+	# needs a retried transport frame to be idempotent at the gateway supplies
+	# its own prefix. When the variable is unset the behaviour below is
+	# byte-identical to what it has always been.
+	#
+	# SCOPE, and it is a hard boundary: this environment value is a gateway
+	# DEDUPE LABEL and nothing else. It carries no authorization, no approval,
+	# no digest binding and no request content, and nothing downstream may ever
+	# treat it as any of those. `node_exec`'s request channel is a /bin/sh
+	# command STRING and is unauthenticated end to end; no privileged
+	# structured request may be carried over it (ADR 0004 D2). See the
+	# transport gate in scripts/oste-remote-runner.sh.
+	local idem_prefix="${OSTE_NODE_EXEC_IDEMPOTENCY_PREFIX:-}"
+	if [[ -n "$idem_prefix" ]]; then
+		prepare_idem="${idem_prefix}-prepare"
+	else
+		prepare_idem="node-exec-prepare-$$-$(date +%s)"
+	fi
 	prepare_params=$(jq -cn \
 		--arg nodeId "$resolved_node_id" \
 		--argjson command "$shell_argv_json" \
@@ -164,7 +182,11 @@ node_exec() {
 		return 1
 	}
 
-	run_idem="node-exec-run-$$-$(date +%s)"
+	if [[ -n "$idem_prefix" ]]; then
+		run_idem="${idem_prefix}-run"
+	else
+		run_idem="node-exec-run-$$-$(date +%s)"
+	fi
 	run_params=$(jq -cn \
 		--arg nodeId "$resolved_node_id" \
 		--arg idempotencyKey "$run_idem" \

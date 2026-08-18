@@ -8,8 +8,11 @@
 # dirt and finalizes git identity / commit metadata.
 #
 # Public API:
+#   task_posture_of <task_id>
+#       -> stdout the task row's posture, or empty when absent/unreadable.
 #   attempt_scoped_auto_commit <project_dir> <task_id> <commit_msg>
-#       -> stdout "committed" | "no_owned" | "commit_failed"; 0 on committed.
+#       -> stdout "committed" | "no_owned" | "commit_failed" | "posture_retained";
+#          0 on committed.
 #   _complete_autocommit_and_classify_dirt <task_id> <exit_code> <project_dir> <now> <marker>
 #   _finalize_git_identity_and_commit_metadata <task_id> <project_dir>
 #
@@ -27,9 +30,28 @@
 [[ -n "${_OSTE_AUTOCOMMIT_SH_LOADED:-}" ]] && return 0
 readonly _OSTE_AUTOCOMMIT_SH_LOADED=1
 
+# The task row's posture, or empty when the row, the field or the file is
+# absent. Empty is the legacy answer and keeps legacy behavior: only an
+# explicit `supervised` posture changes anything.
+task_posture_of() {
+	local task_id="$1"
+	[[ -n "${TASKS_FILE:-}" && -f "$TASKS_FILE" ]] || return 0
+	jq -r --arg id "$task_id" '.tasks[$id].posture // empty' "$TASKS_FILE" 2>/dev/null || true
+}
+
 # Scoped auto-commit guard: only stage and commit files that this task can be
 # proven to own, leaving any pre-existing baseline dirt for whichever lane was
 # already editing it before this task started.
+#
+# SUPERVISED POSTURE IS A HARD REFUSAL. ADR 0012 Decision 1 ("no autonomy after
+# the acknowledgement") requires an accepted supervised workspace to be RETAINED
+# until explicit owner disposition, so this entrypoint must never integrate it.
+# The check lives here, at the single staging/commit choke point every finalizer
+# path funnels through, rather than at the call sites: a guard written beside one
+# caller is a guard the next caller can be added without. It answers with its own
+# token — `posture_retained`, never `no_owned` — because "there was nothing to
+# commit" and "committing was refused" are different facts, and only the second
+# one has to be visible to an owner reading the completion output.
 #
 # Ownership rule (hash-based):
 #   • Path NOT in tasks.json[$task_id].dirty_baseline                 → OWNED
@@ -46,12 +68,22 @@ readonly _OSTE_AUTOCOMMIT_SH_LOADED=1
 #   $2 task_id
 #   $3 commit message
 # Stdout: one of "committed", "no_owned" (only baseline-preserved dirt
-#         remained), or "commit_failed" (staging or commit returned non-zero).
+#         remained), "commit_failed" (staging or commit returned non-zero), or
+#         "posture_retained" (supervised row; retained for owner disposition).
 # Returns 0 on "committed", 1 otherwise.
 attempt_scoped_auto_commit() {
 	local project_dir="$1"
 	local task_id="$2"
 	local commit_msg="$3"
+
+	# Posture first, before the tree is even read: the answer does not depend on
+	# what is dirty. A supervised workspace is not this script's to integrate.
+	local posture
+	posture=$(task_posture_of "$task_id")
+	if [[ "$posture" == "supervised" ]]; then
+		echo "posture_retained"
+		return 1
+	fi
 
 	local porcelain
 	porcelain=$(git -C "$project_dir" status --porcelain 2>/dev/null || true)
@@ -161,6 +193,9 @@ _complete_autocommit_and_classify_dirt() {
 				no_owned)
 					echo "Auto-commit skipped: no owned changes (dirty_baseline preserves preexisting files for ${task_id})" >&2
 					;;
+				posture_retained)
+					echo "Refusing auto-commit: supervised posture retains the workspace for explicit owner disposition (${task_id}; ADR 0012 Decision 1)" >&2
+					;;
 				commit_failed | *)
 					: # Tracked below via final tree-state check.
 					;;
@@ -171,7 +206,13 @@ _complete_autocommit_and_classify_dirt() {
 			local final_porcelain
 			final_porcelain=$(git -C "$project_dir" status --porcelain 2>/dev/null || true)
 			if [[ -n "$final_porcelain" ]]; then
-				if [[ "$auto_committed" == true || "$first_result" == "no_owned" ]]; then
+				if [[ "$first_result" == "posture_retained" ]]; then
+					# Not a failure and not baseline dirt: the workspace is being
+					# HELD, intact, for the owner. It gets its own reason so a
+					# reader of the row can tell retention from a failed commit.
+					dirty_reason="supervised_retained"
+					echo "Supervised workspace retained (uncommitted, awaiting owner disposition):" >&2
+				elif [[ "$auto_committed" == true || "$first_result" == "no_owned" ]]; then
 					# Either we already committed everything we could prove
 					# ownership of, or there was nothing to own — the residual
 					# dirt is preexisting baseline state another lane owns.
