@@ -478,6 +478,23 @@ describe("registerAgentDiffCommands", () => {
 			expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
 		});
 
+		test("does not fall back to HEAD for whitespace end_commit", async () => {
+			registerAgentDiffCommands();
+
+			await handler("commandCentral.openFileDiff")({
+				projectDir: "/tmp/project",
+				filePath: "src/app.ts",
+				diffMode: "boundedCommit",
+				startCommit: "abc123",
+				endCommit: "   ",
+			});
+
+			expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+				"No bounded diff is available for this task.",
+			);
+			expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
+		});
+
 		test("ignores legacy taskStatus as a routing signal — no diffMode means bounded-commit", async () => {
 			registerAgentDiffCommands();
 			const repo = makeGitRepo();

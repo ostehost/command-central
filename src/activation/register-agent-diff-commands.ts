@@ -24,6 +24,7 @@ import type {
 	AgentTask,
 } from "../providers/agent-status-tree-provider.js";
 import { buildDiffContentUri } from "../providers/diff-content-provider.js";
+import { normalizeCommitBound } from "../providers/diff-format.js";
 
 export type GitFileReadResult =
 	| { kind: "text"; content: string }
@@ -348,7 +349,9 @@ export function registerAgentDiffCommands(): vscode.Disposable[] {
 				const beforeRef = isWorkingTreeDiff
 					? (node.startCommit ?? "HEAD")
 					: (node.startCommit ?? "HEAD~1");
-				const afterRef = isWorkingTreeDiff ? "Working Tree" : node.endCommit;
+				const afterRef = isWorkingTreeDiff
+					? "Working Tree"
+					: normalizeCommitBound(node.endCommit);
 
 				if (!isWorkingTreeDiff && !afterRef) {
 					vscode.window.showInformationMessage(

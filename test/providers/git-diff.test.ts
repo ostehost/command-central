@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentTask } from "../../src/providers/agent-status-tree-provider.js";
 import {
+	computeDiffSummaryAsync,
 	getTaskDiffEndCommit,
 	getTaskDiffStartCommit,
 } from "../../src/providers/git-diff.js";
@@ -77,5 +81,37 @@ describe("git-diff commit-boundary resolution", () => {
 		expect(
 			getTaskDiffEndCommit(makeTask({ end_commit: "   " })),
 		).toBeUndefined();
+	});
+});
+
+describe("computeDiffSummaryAsync", () => {
+	test("returns null for a terminal task with start and no end, without inventing HEAD", async () => {
+		const result = await computeDiffSummaryAsync(
+			"/tmp/does-not-need-to-exist",
+			makeTask({
+				start_commit: "abc123",
+				end_commit: "",
+				started_at: "",
+			}),
+		);
+		expect(result).toBeNull();
+	});
+
+	test("returns null when a bounded range is stale, not HEAD~1..HEAD", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "cc-diff-async-"));
+		try {
+			const result = await computeDiffSummaryAsync(
+				dir,
+				makeTask({
+					project_dir: dir,
+					start_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					end_commit: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+					started_at: "",
+				}),
+			);
+			expect(result).toBeNull();
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

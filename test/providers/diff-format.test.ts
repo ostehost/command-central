@@ -35,20 +35,16 @@ describe("diff-format", () => {
 		expect(statuses.get("moved.ts")).toBe("M");
 	});
 
-	test("buildGitDiffArgs targets working tree or a commit range", () => {
+	test("buildGitDiffArgs targets working tree or an explicit commit range", () => {
 		expect(buildGitDiffArgs("/repo", "--numstat")).toEqual([
 			"-C",
 			"/repo",
 			"diff",
 			"--numstat",
 		]);
-		expect(buildGitDiffArgs("/repo", "--numstat", "abc")).toEqual([
-			"-C",
-			"/repo",
-			"diff",
-			"--numstat",
-			"abc..HEAD",
-		]);
+		expect(buildGitDiffArgs("/repo", "--numstat", "abc")).toBeNull();
+		expect(buildGitDiffArgs("/repo", "--numstat", "abc", "   ")).toBeNull();
+		expect(buildGitDiffArgs("/repo", "--numstat", "abc", "unknown")).toBeNull();
 		expect(buildGitDiffArgs("/repo", "--name-status", "abc", "def")).toEqual([
 			"-C",
 			"/repo",

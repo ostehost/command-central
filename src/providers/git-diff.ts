@@ -16,6 +16,7 @@ import type { PerFileDiff } from "./agent-status-tree-nodes.js";
 import {
 	buildGitDiffArgs,
 	formatPerFileDiffSummary,
+	normalizeCommitBound,
 	parsePerFileDiffsFromNumstat,
 } from "./diff-format.js";
 
@@ -29,12 +30,10 @@ export function getTaskDiffStartCommit(t: AgentTask): string | undefined {
 	// NOT a bounded start..end range that would render empty.
 	if (t.status === "running" || t.status === "paused") return undefined;
 
-	if (t.start_commit && t.start_commit !== "unknown") {
-		return t.start_commit;
-	}
-	if (t.start_sha && t.start_sha !== "unknown") {
-		return t.start_sha;
-	}
+	const startCommit = normalizeCommitBound(t.start_commit);
+	if (startCommit) return startCommit;
+	const startSha = normalizeCommitBound(t.start_sha);
+	if (startSha) return startSha;
 
 	if (t.started_at) {
 		try {
@@ -63,11 +62,7 @@ export function getTaskDiffStartCommit(t: AgentTask): string | undefined {
 }
 
 export function getTaskDiffEndCommit(t: AgentTask): string | undefined {
-	const raw = t.end_commit?.trim();
-	if (raw && raw !== "unknown") {
-		return raw;
-	}
-	return undefined;
+	return normalizeCommitBound(t.end_commit);
 }
 
 export function runGitDiffOutput(
@@ -85,17 +80,14 @@ export function runGitDiffOutput(
 		}).trim();
 
 	try {
-		let output = "";
+		const args = buildGitDiffArgs(projectDir, diffFlag, startCommit, endCommit);
+		if (!args) return "";
 		try {
-			output = run(
-				buildGitDiffArgs(projectDir, diffFlag, startCommit, endCommit),
-			);
+			return run(args);
 		} catch {
 			// A missing or stale bound is not "whatever HEAD just did".
 			return "";
 		}
-
-		return output;
 	} catch {
 		return "";
 	}
@@ -133,23 +125,17 @@ export async function computeDiffSummaryAsync(
 		const startCommit = getTaskDiffStartCommit(task);
 		const endCommit = getTaskDiffEndCommit(task);
 
-		// Non-running task with no valid end boundary — no diff available.
-		if (startCommit && !endCommit) return null;
-
-		const resolvedEnd = endCommit ?? "HEAD";
-		const primaryArgs = startCommit
-			? [
-					"-C",
-					projectDir,
-					"diff",
-					"--numstat",
-					`${startCommit}..${resolvedEnd}`,
-				]
-			: ["-C", projectDir, "diff", "--numstat"];
+		const args = buildGitDiffArgs(
+			projectDir,
+			"--numstat",
+			startCommit,
+			endCommit,
+		);
+		if (!args) return null;
 
 		let output = "";
 		try {
-			output = await runNumstat(primaryArgs);
+			output = await runNumstat(args);
 		} catch {
 			return null;
 		}

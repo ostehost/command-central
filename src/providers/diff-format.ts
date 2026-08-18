@@ -95,17 +95,26 @@ export function parsePerFileDiffsFromNumstat(output: string): PerFileDiff[] {
 	return diffs;
 }
 
+export function normalizeCommitBound(
+	value?: string | null,
+): string | undefined {
+	const raw = value?.trim();
+	if (raw && raw !== "unknown") return raw;
+	return undefined;
+}
+
 export function buildGitDiffArgs(
 	projectDir: string,
 	diffFlag: "--name-status" | "--numstat",
 	startCommit?: string,
 	endCommit?: string,
-): string[] {
+): string[] | null {
 	if (!startCommit) {
 		return ["-C", projectDir, "diff", diffFlag];
 	}
 
-	const resolvedEnd = endCommit ?? "HEAD";
+	const resolvedEnd = normalizeCommitBound(endCommit);
+	if (!resolvedEnd) return null;
 	return ["-C", projectDir, "diff", diffFlag, `${startCommit}..${resolvedEnd}`];
 }
 
