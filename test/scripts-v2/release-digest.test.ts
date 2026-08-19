@@ -201,6 +201,20 @@ describe("isCutCommit — release boundary detection", () => {
 		);
 	});
 
+	test("rejects release chatter that names an rc and a cut but records neither", () => {
+		// A false boundary silently TRUNCATES the next digest's range, which is
+		// worse than the over-wide range a missed boundary produces. This repo's
+		// history already contains near-misses of this shape.
+		expect(
+			isCutCommit("chore(release): refresh the rc71 digest after the cut"),
+		).toBe(false);
+		expect(
+			isCutCommit(
+				"chore(release): refresh rc71 digest with daemon-shape commit + gate evidence",
+			),
+		).toBe(false);
+	});
+
 	test("rejects non-release subjects that merely mention a cut", () => {
 		expect(isCutCommit("fix(release): repair the rc.88 cut script")).toBe(
 			false,

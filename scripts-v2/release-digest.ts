@@ -75,9 +75,16 @@ export const RELEASE_SUBJECT_PREFIX = "chore(release): ";
  */
 export function isCutCommit(subject: string): boolean {
 	if (subject.startsWith(CUT_SUBJECT_PREFIX)) return true;
+	// "record" is required, not just "cut". Matching any release subject that
+	// merely mentions a cut and an rc would accept chatter like
+	// "chore(release): refresh the rc71 digest after the cut" — this history
+	// already contains near-misses of that shape. A false boundary is worse
+	// than a missed one: it silently TRUNCATES the next digest's range, where a
+	// miss produces a visibly over-wide range instead.
 	return (
 		subject.startsWith(RELEASE_SUBJECT_PREFIX) &&
 		/\bcuts?\b/.test(subject) &&
+		/\brecord(?:ed|ing|s)?\b/.test(subject) &&
 		rcNumber(subject) !== null
 	);
 }

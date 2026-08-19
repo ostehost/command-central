@@ -132,9 +132,18 @@ export const REQUIRED_ENTRIES: readonly string[] = [
 ];
 
 /**
- * The dieted VSIX measures 258KB compressed / 0.88MB / 51 files. Budgets
- * leave 2-3× headroom for organic growth while failing long before a
- * dev-artifact sweep-up (rc50 scale: 2.6MB / 21.2MB / 488 files) ships again.
+ * Sized against the dieted VSIX (258KB compressed / 0.88MB / 51 files) to fail
+ * long before a dev-artifact sweep-up (rc50 scale: 2.6MB / 21.2MB / 488 files)
+ * ships again.
+ *
+ * The "2-3× headroom" this once documented is gone. Measured on rc.90:
+ * 535KB compressed / 1,778,922 uncompressed / 92 files — 89% of the
+ * uncompressed cap, ~221KB of slack, after a single launcher sync added ~292KB
+ * of vendored bash (run-journal.sh 153KB, workspace-alloc.sh 73KB). `gateVsix`
+ * throws in dist-simple.ts, so the next sync of that size fails the release
+ * build rather than warning. Raising the budget is a deliberate decision with
+ * a fresh rationale, not a reflex when a cut goes red — the alternative is
+ * narrowing what sync-launcher mirrors. Tracked in PAR-760.
  */
 export const DEFAULT_BUDGET: VsixGateBudget = {
 	maxCompressedBytes: 600_000,
