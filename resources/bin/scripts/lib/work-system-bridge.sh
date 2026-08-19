@@ -38,8 +38,14 @@
 # Test isolation: with OSTE_TEST_MODE=1, outbox emission requires an explicit
 # OSTE_WORK_SYSTEM_OUTBOX (same convention as OSTE_LAUNCHER_TASK_EVENTS_FILE).
 #
-# Every entry point is fail-soft: emission must never fail a spawn or a
+# Every EMISSION entry point is fail-soft: emission must never fail a spawn or a
 # completion. All emitters return 0.
+#
+# RETRACTION (work_system_retract_lane_refs) is the one deliberate exception. It
+# is reached only from explicit destructive maintenance (oste-archive.sh
+# --clear), where swallowing a failure would let the launcher claim a clean
+# permanent clear while the deleted rows keep resurrecting from the read-model.
+# It reports its outcome and returns non-zero when retraction is not proven.
 
 if [[ -n "${_WORK_SYSTEM_BRIDGE_LOADED:-}" ]]; then
 	return 0
@@ -326,6 +332,184 @@ work_system_bridge_write_outbox() {
 	fi
 	work_system_bridge_unlock_outbox "$lockdir"
 	return 0
+}
+
+# ── Read-model retraction (explicit destructive maintenance) ─────────
+#
+# Lifecycle EMISSION is fail-soft by contract: projecting a lane must never fail
+# a spawn or a completion, so every emitter returns 0. RETRACTION is the exact
+# opposite contract and deliberately does not share that property.
+#
+# It is only ever reached from an explicit destructive maintenance command
+# (`oste-archive.sh --clear`), where a fail-soft swallow is the bug rather than
+# the safety net: the launcher would report a clean permanent drain while the
+# `launcher:<task-id>` rows it just deleted from tasks.json keep resurrecting
+# downstream from the lanes read-model (the 2026-08-18 Command Central defect —
+# 13 cleared tasks still rendered). So this path REPORTS its outcome and the
+# caller is expected to REFUSE rather than half-succeed.
+#
+# Usage: work_system_retract_lane_refs <lane_id> [<lane_id> ...]
+#
+# Returns 0 when the retraction is SETTLED (proven, or explicitly not applicable
+# to the configured transport), 1 when it is NOT PROVEN. Three globals are set
+# on every call so the caller can report the exact outcome:
+#
+#   WORK_SYSTEM_RETRACT_REASON   retracted | nothing-to-retract |
+#                                projection-absent | bridge-off | dry-run |
+#                                http-remote | test-mode-no-outbox |
+#                                projection-unreadable | malformed-projection |
+#                                lock-unavailable | write-failed
+#   WORK_SYSTEM_RETRACT_COUNT    entries actually removed (0 unless "retracted")
+#   WORK_SYSTEM_RETRACT_TARGET   projection path the reason refers to ("" if N/A)
+#
+# Only the `outbox` transport maintains a local lanes read-model, so it is the
+# only mode that can retract one. `off`, `dry-run`, and `http` settle with an
+# explicit reason instead of silently implying a local retraction occurred; the
+# caller surfaces that distinction to the operator.
+WORK_SYSTEM_RETRACT_REASON=""
+WORK_SYSTEM_RETRACT_COUNT=0
+WORK_SYSTEM_RETRACT_TARGET=""
+
+work_system_retract_lane_refs() {
+	WORK_SYSTEM_RETRACT_REASON=""
+	WORK_SYSTEM_RETRACT_COUNT=0
+	WORK_SYSTEM_RETRACT_TARGET=""
+	if [[ $# -eq 0 ]]; then
+		WORK_SYSTEM_RETRACT_REASON="nothing-to-retract"
+		return 0
+	fi
+	local ids_json
+	ids_json=$(printf '%s\n' "$@" | jq -Rc 'select(length > 0)' 2>/dev/null | jq -sc '.' 2>/dev/null) || ids_json=""
+	if [[ -z "$ids_json" || "$ids_json" == "[]" ]]; then
+		WORK_SYSTEM_RETRACT_REASON="nothing-to-retract"
+		return 0
+	fi
+	case "$(work_system_bridge_mode)" in
+		off)
+			WORK_SYSTEM_RETRACT_REASON="bridge-off"
+			return 0
+			;;
+		dry-run)
+			local doc
+			doc=$(jq -cn --argjson ids "$ids_json" --arg provider "$WORK_SYSTEM_LANE_PROVIDER" \
+				'{schema_version: 1, kind: "lane_ref_retract", provider: $provider, lane_ids: $ids}' 2>/dev/null) || doc="$ids_json"
+			echo "WORK_SYSTEM_LANE_REF_RETRACT_DRY_RUN ${doc}" >&2
+			WORK_SYSTEM_RETRACT_REASON="dry-run"
+			return 0
+			;;
+		http)
+			# The remote consumer owns its own read-model. The launcher writes no
+			# local projection in this mode, so there is nothing here to retract
+			# and nothing it can prove about the far side.
+			WORK_SYSTEM_RETRACT_REASON="http-remote"
+			return 0
+			;;
+	esac
+	_work_system_bridge_retract_outbox "$ids_json"
+}
+
+# Retract the named lane ids from the lanes projection. Same lock and
+# same-directory atomic-rename conventions as work_system_bridge_write_outbox —
+# never a hand edit, never a wholesale delete of the document.
+#
+# Ownership guard: an entry is removed only when it is launcher-owned, i.e. its
+# stored lane_ref.provider is "ghostty-launcher" or carries no provider at all
+# (a partial write of a row the launcher itself keyed). An entry that names a
+# DIFFERENT provider survives even when its id is in the retraction set, so a
+# foreign row can never be destroyed by an id collision.
+# shellcheck disable=SC2034  # WORK_SYSTEM_RETRACT_* are the caller-facing outcome
+# report (oste-archive.sh do_clear/report_retraction), not locals.
+_work_system_bridge_retract_outbox() {
+	local ids_json="$1"
+	# Same isolation convention as work_system_bridge_write_outbox: under
+	# OSTE_TEST_MODE the projection is touched only when a path is named
+	# explicitly, so a suite can never drain the operator's real lanes.json.
+	if [[ "${OSTE_TEST_MODE:-}" == "1" && -z "${OSTE_WORK_SYSTEM_OUTBOX:-}" ]]; then
+		WORK_SYSTEM_RETRACT_REASON="test-mode-no-outbox"
+		return 0
+	fi
+	local outbox outbox_dir lockdir tmp now before after
+	outbox="$(work_system_bridge_outbox_file)"
+	WORK_SYSTEM_RETRACT_TARGET="$outbox"
+	# No projection is a successful no-op: there is nothing standing that could
+	# resurrect a cleared task.
+	if [[ ! -e "$outbox" ]]; then
+		WORK_SYSTEM_RETRACT_REASON="projection-absent"
+		return 0
+	fi
+	if [[ ! -r "$outbox" ]]; then
+		WORK_SYSTEM_RETRACT_REASON="projection-unreadable"
+		return 1
+	fi
+	# Preflight the directory before taking the lock. The lock is itself a
+	# mkdir in this directory, so an unwritable projection dir would otherwise
+	# burn the full lock timeout and then report the wrong cause.
+	outbox_dir="$(dirname "$outbox")"
+	if [[ ! -w "$outbox_dir" ]]; then
+		WORK_SYSTEM_RETRACT_REASON="write-failed"
+		return 1
+	fi
+	lockdir="${outbox}.lock"
+	if ! work_system_bridge_lock_outbox "$lockdir"; then
+		WORK_SYSTEM_RETRACT_REASON="lock-unavailable"
+		return 1
+	fi
+	# Re-read state under the lock: a concurrent lifecycle writer may have
+	# created, replaced, or truncated the projection since the preflight.
+	if [[ ! -s "$outbox" ]]; then
+		work_system_bridge_unlock_outbox "$lockdir"
+		WORK_SYSTEM_RETRACT_REASON="projection-absent"
+		return 0
+	fi
+	if ! jq -e 'type == "object" and (.lanes | type == "object")' "$outbox" >/dev/null 2>&1; then
+		# A projection the launcher cannot parse must not be reported as a clean
+		# drain, and must not be replaced wholesale — that would destroy rows
+		# whose shape we never read.
+		work_system_bridge_unlock_outbox "$lockdir"
+		WORK_SYSTEM_RETRACT_REASON="malformed-projection"
+		return 1
+	fi
+	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+	if ! tmp=$(mktemp "${outbox}.retract.XXXXXX" 2>/dev/null); then
+		work_system_bridge_unlock_outbox "$lockdir"
+		WORK_SYSTEM_RETRACT_REASON="write-failed"
+		return 1
+	fi
+	# .version/.kind are normalized exactly as the writer path normalizes them;
+	# every other top-level field is carried through untouched. updated_at moves
+	# only when something was actually removed, so a repeat retraction over an
+	# already-drained projection is byte-identical.
+	if jq -c --argjson ids "$ids_json" --arg provider "$WORK_SYSTEM_LANE_PROVIDER" --arg now "$now" '
+		. as $before
+		| reduce ($ids[]) as $id (.;
+			if (.lanes | has($id)) then
+				(.lanes[$id]
+					| if type == "object" then .lane_ref else null end
+					| if type == "object" then (.provider // null) else null end) as $owner
+				| if ($owner == null or $owner == $provider) then del(.lanes[$id]) else . end
+			else . end)
+		| .version = 1
+		| .kind = "work-system-lanes-projection"
+		| ((($before.lanes | length) - (.lanes | length)) as $removed
+			| if $removed > 0 then .updated_at = $now else . end)' \
+		"$outbox" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+		before=$(jq '.lanes | length' "$outbox" 2>/dev/null) || before=""
+		after=$(jq '.lanes | length' "$tmp" 2>/dev/null) || after=""
+		if [[ ! "$before" =~ ^[0-9]+$ || ! "$after" =~ ^[0-9]+$ ]] || ! mv "$tmp" "$outbox" 2>/dev/null; then
+			rm -f "$tmp"
+			work_system_bridge_unlock_outbox "$lockdir"
+			WORK_SYSTEM_RETRACT_REASON="write-failed"
+			return 1
+		fi
+		work_system_bridge_unlock_outbox "$lockdir"
+		WORK_SYSTEM_RETRACT_COUNT=$((before - after))
+		WORK_SYSTEM_RETRACT_REASON="retracted"
+		return 0
+	fi
+	rm -f "$tmp"
+	work_system_bridge_unlock_outbox "$lockdir"
+	WORK_SYSTEM_RETRACT_REASON="write-failed"
+	return 1
 }
 
 # HTTP transport toward the long-term OpenClaw plugin/API target. Short

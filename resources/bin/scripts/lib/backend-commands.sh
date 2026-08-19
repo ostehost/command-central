@@ -40,6 +40,36 @@ backend_default_claude_model() {
 	printf "%s" "${OSTE_CLAUDE_MODEL:-opus}"
 }
 
+# Single source of truth for the sandbox policy of every headless `codex exec`
+# command the launcher emits (initial dispatch here, steer continuation in
+# oste-steer.sh).
+#
+# codex-cli 0.147.0 removed the `--full-auto` compatibility alias, so every lane
+# that still emitted it died at argv-parse time — `error: unexpected argument
+# '--full-auto' found`, exit 2, zero-byte stream, no review artifact — before
+# reaching auth or the model.
+#
+# SANDBOX SELECTION ONLY. On this CLI, sandbox selection (`-s/--sandbox`) and
+# approval routing (`--approve-for-me`) are separate, independently-selected
+# capabilities, so this function decides exactly one of them. Current OpenAI
+# guidance is to replace the deprecated `--full-auto` with
+# `--sandbox workspace-write`, which is what this emits: the narrowest supported
+# spelling of the workspace-write filesystem boundary the launcher already ran
+# under.
+#
+# Deliberately NOT emitted here: `--approve-for-me` or any other approval-routing
+# flag. Adopting one would be a separate capability decision with its own review,
+# not a side effect of restoring a parseable sandbox flag. Also deliberately NOT
+# `danger-full-access` or `--dangerously-bypass-approvals-and-sandbox`.
+#
+# The boundary is stated on the command line rather than inherited from an
+# ambient ~/.codex/config.toml default — an ambient default is not a boundary the
+# launcher can prove. Kept in one function because this flag had to be right in
+# two emitters at once; test/test-codex-exec-flag-compat.sh pins them together.
+codex_exec_sandbox_flags() {
+	printf '%s' "--sandbox workspace-write"
+}
+
 backend_shell_quote_arg() {
 	local value="$1"
 	local quoted="'"
@@ -363,10 +393,12 @@ build_agent_command() {
 			if [[ -n "$interactive" ]]; then
 				cmd="cat ${prompt_file_arg} | codex -a never${model_flag}${codex_workspace_flags} -"
 			else
+				local codex_sandbox_flags
+				codex_sandbox_flags="$(codex_exec_sandbox_flags)"
 				if [[ -n "$script_dir" ]] && [[ -x "$formatter" ]]; then
-					cmd="cat ${prompt_file_arg} | codex exec --json --full-auto${model_flag}${codex_workspace_flags}${codex_repo_flag} - 2>>${stderr_log_arg} | tee ${stream_file_arg} | ${formatter_arg}"
+					cmd="cat ${prompt_file_arg} | codex exec --json ${codex_sandbox_flags}${model_flag}${codex_workspace_flags}${codex_repo_flag} - 2>>${stderr_log_arg} | tee ${stream_file_arg} | ${formatter_arg}"
 				else
-					cmd="cat ${prompt_file_arg} | codex exec --json --full-auto${model_flag}${codex_workspace_flags}${codex_repo_flag} - 2>>${stderr_log_arg} | tee ${stream_file_arg}"
+					cmd="cat ${prompt_file_arg} | codex exec --json ${codex_sandbox_flags}${model_flag}${codex_workspace_flags}${codex_repo_flag} - 2>>${stderr_log_arg} | tee ${stream_file_arg}"
 				fi
 			fi
 			;;

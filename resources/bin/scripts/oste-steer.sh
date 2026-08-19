@@ -18,6 +18,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 readonly SCRIPT_DIR
 readonly _DEFAULT_TASKS_DIR="${HOME}/.config/ghostty-launcher"
 readonly TASKS_FILE="${TASKS_FILE:-${_DEFAULT_TASKS_DIR}/tasks.json}"
+# shellcheck source=lib/backend-commands.sh
+# Sourced for codex_exec_sandbox_flags: the steer continuation must state the
+# same Codex sandbox boundary as the initial dispatch, from one definition.
+source "${SCRIPT_DIR}/lib/backend-commands.sh"
 # shellcheck source=lib/terminal.sh
 source "${SCRIPT_DIR}/lib/terminal.sh"
 # shellcheck source=lib/agent-backend.sh
@@ -364,16 +368,21 @@ main() {
 	if [[ "$agent_backend" == "gemini" ]]; then
 		continue_cmd="gemini -p --resume latest $(printf '%q' "$text") --approval-mode yolo"
 	elif [[ "$agent_backend" == "codex" ]]; then
+		# Same sandbox boundary as the initial headless dispatch, from the one
+		# definition in lib/backend-commands.sh. The removed --full-auto alias
+		# used to live here and killed continuations at argv-parse time.
+		local codex_sandbox_flags
+		codex_sandbox_flags="$(codex_exec_sandbox_flags)"
 		if [[ -n "$stream_file" ]]; then
 			local stderr_log="/tmp/codex-stderr-${task_id}.log"
 			local formatter="${SCRIPT_DIR}/lib/stream-formatter.py"
 			if [[ -x "$formatter" ]]; then
-				continue_cmd="printf '%s' $(printf '%q' "$text") | codex exec --json --full-auto - 2>>'${stderr_log}' | tee -a '${stream_file}' | '${formatter}'"
+				continue_cmd="printf '%s' $(printf '%q' "$text") | codex exec --json ${codex_sandbox_flags} - 2>>'${stderr_log}' | tee -a '${stream_file}' | '${formatter}'"
 			else
-				continue_cmd="printf '%s' $(printf '%q' "$text") | codex exec --json --full-auto - 2>>'${stderr_log}' | tee -a '${stream_file}'"
+				continue_cmd="printf '%s' $(printf '%q' "$text") | codex exec --json ${codex_sandbox_flags} - 2>>'${stderr_log}' | tee -a '${stream_file}'"
 			fi
 		else
-			continue_cmd="printf '%s' $(printf '%q' "$text") | codex exec --full-auto -"
+			continue_cmd="printf '%s' $(printf '%q' "$text") | codex exec ${codex_sandbox_flags} -"
 		fi
 	else
 		continue_cmd="claude -p --continue $(printf '%q' "$text") --allowedTools 'Bash(*)' 'Read(*)' 'Write(*)' 'Edit(*)'"
