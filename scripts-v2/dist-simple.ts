@@ -26,7 +26,10 @@
 import { spawn } from "bun";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { compareReleaseFileNames } from "./dist-simple-utils.ts";
+import {
+	compareReleaseFileNames,
+	evaluateDigestResult,
+} from "./dist-simple-utils.ts";
 import { formatGateReport, gateVsix } from "./vsix-content-gate.ts";
 
 // Configuration
@@ -278,14 +281,30 @@ async function main() {
 				cmd: ["bun", "run", "scripts-v2/release-digest.ts", "--format", "discord"],
 				cwd: process.cwd(),
 			});
-			const digest = digestProc.stdout.toString().trim();
-			if (digest && digestProc.exitCode === 0) {
+			// Optional-chained: stdout/stderr are Buffers only while piped. If the
+			// spawn is ever switched to "inherit" they are null, and throwing here
+			// would be reported as a generation failure that never happened.
+			const digest = digestProc.stdout?.toString() ?? "";
+			const outcome = evaluateDigestResult(
+				currentVersion,
+				digestProc.exitCode,
+				digest,
+				digestProc.stderr?.toString() ?? "",
+			);
+			for (const warning of outcome.warnings) console.warn(warning);
+			if (outcome.write) {
 				const digestPath = path.join("releases", `digest-v${currentVersion}.md`);
-				await fs.writeFile(digestPath, digest + "\n", "utf-8");
+				await fs.writeFile(digestPath, digest.trim() + "\n", "utf-8");
 				console.log(`\n📝 Release digest: ${digestPath}`);
 				console.log("   → Post to Discord: cat " + digestPath);
 			}
-		} catch { /* digest is optional */ }
+		} catch (error) {
+			console.warn(
+				`\n⚠️  Release digest generation failed for v${currentVersion}: ${
+					error instanceof Error ? error.message : String(error)
+				} — this cut has no release record.`,
+			);
+		}
 
 		// Show releases inventory
 		const releases = await getReleases();
@@ -497,4 +516,6 @@ function getPercentReduction(original: number, reduced: number): number {
 }
 
 // Run it!
-main();
+if (import.meta.main) {
+	main();
+}

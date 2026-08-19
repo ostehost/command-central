@@ -19,6 +19,7 @@ import {
 	rcNumber,
 	resolvePreviousCutBase,
 	selectChangelogSection,
+	shouldWarnMissingChangelogSection,
 } from "../../scripts-v2/release-digest.ts";
 
 const CLI_PATH = path.resolve(
@@ -146,6 +147,31 @@ describe("selectChangelogSection", () => {
 		expect(
 			selectChangelogSection(sections, "0.6.0-rc.99", "0.6.0-rc.90"),
 		).toBeNull();
+	});
+});
+
+describe("shouldWarnMissingChangelogSection", () => {
+	test("stays silent for a preview with no changelog section", () => {
+		// Previews never add a CHANGELOG section by policy. Warning here would
+		// fire on every single cut and train the operator to ignore it.
+		expect(shouldWarnMissingChangelogSection("0.6.0-rc.90", false)).toBe(false);
+	});
+
+	test("warns for a stable version with no changelog section", () => {
+		// A GA digest with no release notes is a real defect, and the old
+		// sections[0] fallback used to hide it behind another release's notes.
+		expect(shouldWarnMissingChangelogSection("0.6.0", false)).toBe(true);
+	});
+
+	test("stays silent whenever a section was found", () => {
+		expect(shouldWarnMissingChangelogSection("0.6.0", true)).toBe(false);
+		expect(shouldWarnMissingChangelogSection("0.6.0-rc.90", true)).toBe(false);
+	});
+
+	test("defers to the CLI's hard error for an explicit --version miss", () => {
+		expect(
+			shouldWarnMissingChangelogSection("0.6.0", false, "0.6.0-rc.99"),
+		).toBe(false);
 	});
 });
 

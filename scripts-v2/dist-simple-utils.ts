@@ -41,3 +41,35 @@ export function compareReleaseFileNames(a: string, b: string): number {
 	if (preB === null) return 1;
 	return preB.localeCompare(preA, undefined, { numeric: true });
 }
+
+/**
+ * Decide what a digest subprocess result means.
+ *
+ * Lives here, not in dist-simple.ts, so tests can import it without pulling in
+ * that script's top-level `main()` call and starting a real distribution run.
+ *
+ * The digest is the release RECORD for a preview cut (CHANGELOG is curated for
+ * stable GA), so "no digest" is never a silent success. This branch used to
+ * swallow every failure: stderr was piped and never read, a non-zero exit wrote
+ * nothing, and a bare catch discarded the error.
+ */
+export type DigestOutcome = { write: boolean; warnings: string[] };
+
+export function evaluateDigestResult(
+	version: string,
+	exitCode: number | null,
+	stdout: string,
+	stderr: string,
+): DigestOutcome {
+	const digest = stdout.trim();
+	const err = stderr.trim();
+	const warnings: string[] = [];
+	if (err) warnings.push(`   ⚠️  release-digest: ${err}`);
+	if (digest && exitCode === 0) return { write: true, warnings };
+	warnings.push(
+		`\n⚠️  Release digest NOT written for v${version} (exit ${exitCode}${
+			digest ? "" : ", empty output"
+		}) — this cut has no release record.`,
+	);
+	return { write: false, warnings };
+}

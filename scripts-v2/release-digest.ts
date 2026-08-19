@@ -107,6 +107,27 @@ export function selectChangelogSection(
 	return sections.find((section) => section.version === target) ?? null;
 }
 
+/**
+ * Whether an omitted changelog body deserves a warning.
+ *
+ * A preview cut legitimately has no CHANGELOG section — CHANGELOG is curated
+ * for stable GA — so warning there would fire on every cut and train the
+ * operator to ignore it. A STABLE version with no section is the real problem:
+ * its digest would render with no release notes at all, and before the body
+ * was resolved strictly by version it silently published some other release's
+ * notes instead. Neither is acceptable quietly.
+ */
+export function shouldWarnMissingChangelogSection(
+	pkgVersion: string,
+	hasSection: boolean,
+	explicitTarget?: string,
+): boolean {
+	if (hasSection) return false;
+	// An explicit --version miss is already a hard error in the CLI.
+	if (explicitTarget) return false;
+	return rcNumber(pkgVersion) === null;
+}
+
 export function parseChangelogSections(changelog: string): ChangelogSection[] {
 	const versionRegex = /^## \[([^\]]+)\]/gm;
 	const raw: { version: string; start: number }[] = [];
@@ -493,6 +514,18 @@ function main(): void {
 		console.error(`Version ${explicitTarget} not found in CHANGELOG.md`);
 		console.error(`Available: ${sections.map((s) => s.version).join(", ")}`);
 		process.exit(1);
+	}
+	if (
+		shouldWarnMissingChangelogSection(
+			pkg.version,
+			targetSection !== null,
+			explicitTarget,
+		)
+	) {
+		// stderr, so it never lands inside the digest artifact itself.
+		console.error(
+			`WARNING: CHANGELOG.md has no section for stable version ${pkg.version} — the digest will carry no release notes.`,
+		);
 	}
 
 	// The git-derived section describes HEAD relative to the previous cut, so
