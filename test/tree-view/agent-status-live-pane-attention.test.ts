@@ -447,6 +447,55 @@ describe("CCSYNC-03 — live-pane attention suppression (provider wiring)", () =
 		expect(labels).not.toContain("Idle REPL after complete");
 	});
 
+	test("no pane probe for a non-completed lane expanding on a cold cache", () => {
+		// The other half of the idle-REPL fix: getChildren gates the pane probe on
+		// status === "completed" because on a cache miss it is a blocking
+		// execFileSync("tmux", ...) on the extension host.
+		//
+		// This must assert the CALL, not the rendered text. A failed lane's
+		// detail row reads "Lifecycle conflict" whether or not the probe ran, so
+		// every text assertion survives removing the guard. It also must not
+		// touch getTreeItem first: createTaskItem gates on the broader
+		// `liveness !== "alive" || completed`, which warms the TTL cache and
+		// makes a later probe free — hiding exactly the regression this pins.
+		// A failed lane whose agent reads "alive" is the one shape createTaskItem
+		// does NOT pre-warm, so the cache is genuinely cold here.
+		mockInspectTmuxPaneById.mockImplementation(() => "alive");
+		nextSnippet = IDLE_REPL_SNIPPET;
+		const task = makeTerminalTmuxTask({
+			status: "contract_failure",
+			exit_code: 1,
+			session_live: true,
+		});
+
+		mockCapturePaneSnippet.mockClear();
+		const details = provider.getChildren({ type: "task", task });
+
+		expect(mockCapturePaneSnippet).not.toHaveBeenCalled();
+		const labels = details
+			.filter((node) => node.type === "detail")
+			.map((node) => node.label);
+		expect(labels).toContain("Lifecycle conflict");
+		expect(labels).not.toContain("Idle REPL after complete");
+	});
+
+	test("completed lane on a cold cache still probes the pane", () => {
+		// The paired positive: the guard must not suppress the probe for the one
+		// status that needs it, or the settlement cue could never fire.
+		mockInspectTmuxPaneById.mockImplementation(() => "alive");
+		nextSnippet = IDLE_REPL_SNIPPET;
+		const task = makeTerminalTmuxTask({
+			status: "completed",
+			exit_code: 0,
+			session_live: true,
+		});
+
+		mockCapturePaneSnippet.mockClear();
+		provider.getChildren({ type: "task", task });
+
+		expect(mockCapturePaneSnippet).toHaveBeenCalled();
+	});
+
 	test("PRESERVED: completed_dirty + confirmed-alive + idle REPL pane stays attention", () => {
 		// The clean-completion exception must not leak to failure-ish statuses:
 		// a dirty completion with a confirmed-alive agent is still live-conflict

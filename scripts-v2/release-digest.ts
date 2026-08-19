@@ -53,14 +53,33 @@ export const MAX_SINCE_ITEMS = 12;
 /** Literal subject prefix of release-cut commits ("chore(release): cut rc52 preview"). */
 export const CUT_SUBJECT_PREFIX = "chore(release): cut ";
 
+/** Coarse pre-filter prefix: every release-boundary subject starts with this. */
+export const RELEASE_SUBJECT_PREFIX = "chore(release): ";
+
 /**
- * Authoritative cut-commit check: the subject must start with the cut prefix.
+ * Authoritative cut-commit check.
+ *
  * `git log --grep` matches body lines too, so grep results are only a coarse
  * pre-filter — a commit that merely mentions a cut in its body must not be
  * selected as the base.
+ *
+ * Recognizing ONLY `CUT_SUBJECT_PREFIX` silently broke the "since previous
+ * cut" range: cuts have also been recorded as "chore(release): record the
+ * rc.88 and rc.89 cuts" and "chore(release): sync launcher and record the
+ * rc.87 cut". No such subject matched, so no boundary was found after rc.85
+ * and every digest from rc.86 through rc.90 re-listed the same growing range
+ * under the heading "Since previous prerelease cut (rc85)". A commit that
+ * records a cut marks the release boundary just as firmly as one that performs
+ * it, so both forms count — but only when the subject actually names an rc,
+ * which is what makes it a boundary rather than release chatter.
  */
 export function isCutCommit(subject: string): boolean {
-	return subject.startsWith(CUT_SUBJECT_PREFIX);
+	if (subject.startsWith(CUT_SUBJECT_PREFIX)) return true;
+	return (
+		subject.startsWith(RELEASE_SUBJECT_PREFIX) &&
+		/\bcuts?\b/.test(subject) &&
+		rcNumber(subject) !== null
+	);
 }
 
 // --- Changelog parsing ---
@@ -110,8 +129,15 @@ export function parseSection(content: string): Map<string, string[]> {
 
 /** Extract an rc number from a version string or cut-commit subject ("0.6.0-rc.52", "cut rc52 preview"). */
 export function rcNumber(text: string): number | null {
-	const match = text.match(/\brc\.?(\d+)\b/);
-	return match ? Number(match[1]) : null;
+	// Highest, not first: a single commit can record more than one cut
+	// ("record the rc.88 and rc.89 cuts"), and the boundary it marks is the
+	// LAST cut it recorded. Taking the first match would resolve that commit to
+	// rc.88 and make the next digest re-list rc.89's commits. Version strings
+	// carry exactly one rc, so they are unaffected.
+	const matches = [...text.matchAll(/\brc\.?(\d+)\b/g)].map((m) =>
+		Number(m[1]),
+	);
+	return matches.length > 0 ? Math.max(...matches) : null;
 }
 
 /**
@@ -178,7 +204,10 @@ export function collectSinceSection(
 		// positives from crowding the real cut out of the candidate window.
 		const cuts = gitLog(repoRoot, [
 			"--fixed-strings",
-			`--grep=${CUT_SUBJECT_PREFIX}`,
+			// Pre-filter on the broader release prefix: grepping the narrow cut
+			// prefix kept every record-style boundary commit out of the candidate
+			// window entirely, so isCutCommit never got the chance to match one.
+			`--grep=${RELEASE_SUBJECT_PREFIX}`,
 			"-n",
 			"50",
 			"--format=%H%x09%s",

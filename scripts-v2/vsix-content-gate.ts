@@ -122,6 +122,12 @@ export const REQUIRED_ENTRIES: readonly string[] = [
 	//    so a VSIX missing the whole lib/ tree passed the gate green.
 	"extension/resources/bin/scripts/oste-steer.sh",
 	"extension/resources/bin/scripts/lib/bundle-runtime.sh",
+	// Third class: the only NON-SHELL runtime input. Both pins above are `.sh`,
+	// so a filter or ignore rule that drops non-shell assets would leave them
+	// green. This file fails OPEN when missing — `ghostty-launcher` falls back
+	// to built-in routing and `spawn-guards.sh` loses every declarative
+	// `guards.<role>` default — with nothing in the payload to notice.
+	"extension/resources/bin/scripts/routing-policy.json",
 	"extension/resources/icons/icon.png",
 ];
 

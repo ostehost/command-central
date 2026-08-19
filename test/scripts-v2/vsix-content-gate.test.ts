@@ -36,6 +36,10 @@ function cleanEntries(): VsixEntry[] {
 			path: "extension/resources/bin/scripts/lib/bundle-runtime.sh",
 			uncompressedBytes: 18_900,
 		},
+		{
+			path: "extension/resources/bin/scripts/routing-policy.json",
+			uncompressedBytes: 582,
+		},
 		{ path: "extension/resources/icons/icon.png", uncompressedBytes: 50_000 },
 		{
 			path: "extension/resources/icons/activity-bar.svg",
@@ -252,6 +256,27 @@ describe("evaluateVsixEntries", () => {
 		).toBe(true);
 	});
 
+	test("flags a dropped non-shell runtime asset", () => {
+		// Third drop class: both other pins are `.sh`, so a rule that strips
+		// non-shell assets from the payload would leave them satisfied. This one
+		// fails open at runtime — the launcher silently reverts to built-in
+		// routing and spawn-guards loses its declarative per-role defaults.
+		const withoutPolicy = cleanEntries().filter(
+			(entry) =>
+				entry.path !== "extension/resources/bin/scripts/routing-policy.json",
+		);
+		const result = evaluateVsixEntries("test.vsix", withoutPolicy, 450_000);
+		expect(result.ok).toBe(false);
+		expect(
+			result.violations.some(
+				(violation) =>
+					violation.rule === "missing required entry" &&
+					violation.detail ===
+						"extension/resources/bin/scripts/routing-policy.json",
+			),
+		).toBe(true);
+	});
+
 	test("required entries cover the runtime payload contract", () => {
 		expect(REQUIRED_ENTRIES).toContain("extension/dist/extension.js");
 		expect(REQUIRED_ENTRIES).toContain("extension/package.json");
@@ -260,6 +285,9 @@ describe("evaluateVsixEntries", () => {
 		);
 		expect(REQUIRED_ENTRIES).toContain(
 			"extension/resources/bin/scripts/lib/bundle-runtime.sh",
+		);
+		expect(REQUIRED_ENTRIES).toContain(
+			"extension/resources/bin/scripts/routing-policy.json",
 		);
 	});
 

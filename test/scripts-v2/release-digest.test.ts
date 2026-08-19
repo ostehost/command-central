@@ -63,6 +63,15 @@ describe("rcNumber", () => {
 		expect(rcNumber("0.6.0")).toBeNull();
 		expect(rcNumber("fix: something unrelated")).toBeNull();
 	});
+
+	test("takes the highest rc when a subject records more than one cut", () => {
+		// A single recording commit can close out two cuts. The boundary it
+		// marks is the last one; taking the first match made the next digest
+		// re-list the later cut's commits.
+		expect(rcNumber("chore(release): record the rc.88 and rc.89 cuts")).toBe(
+			89,
+		);
+	});
 });
 
 describe("parseChangelogSections", () => {
@@ -93,6 +102,40 @@ describe("parseSection", () => {
 	});
 });
 
+describe("isCutCommit — release boundary detection", () => {
+	test("accepts the canonical cut subject", () => {
+		expect(isCutCommit("chore(release): cut rc51 preview")).toBe(true);
+	});
+
+	test("accepts the record-style subjects this repo actually produces", () => {
+		// Regression: recognizing only CUT_SUBJECT_PREFIX meant no boundary was
+		// found after rc.85, so digests for rc.86 through rc.90 all claimed
+		// "Since previous prerelease cut (rc85)" and re-listed a growing range.
+		expect(isCutCommit("chore(release): record the rc.88 and rc.89 cuts")).toBe(
+			true,
+		);
+		expect(
+			isCutCommit("chore(release): sync launcher and record the rc.87 cut"),
+		).toBe(true);
+	});
+
+	test("rejects release chatter that names no rc", () => {
+		// Without an rc the subject cannot anchor a range, so it is not a
+		// boundary — this is what keeps the widened predicate from matching
+		// every release-adjacent chore.
+		expect(isCutCommit("chore(release): tidy up the releases directory")).toBe(
+			false,
+		);
+	});
+
+	test("rejects non-release subjects that merely mention a cut", () => {
+		expect(isCutCommit("fix(release): repair the rc.88 cut script")).toBe(
+			false,
+		);
+		expect(isCutCommit("docs: describe how a cut works")).toBe(false);
+	});
+});
+
 describe("resolvePreviousCutBase", () => {
 	const rc52 = commit({
 		hash: "aaa",
@@ -109,6 +152,22 @@ describe("resolvePreviousCutBase", () => {
 
 	test("uses the most recent cut when it is a different rc", () => {
 		expect(resolvePreviousCutBase([rc51], "0.6.0-rc.52")).toBe(rc51);
+	});
+
+	test("resolves a record-style commit as the previous boundary", () => {
+		const recorded = commit({
+			hash: "ccc",
+			subject: "chore(release): record the rc.88 and rc.89 cuts",
+		});
+		expect(resolvePreviousCutBase([recorded], "0.6.0-rc.90")).toBe(recorded);
+	});
+
+	test("skips a record-style commit for the version being cut", () => {
+		const recorded = commit({
+			hash: "ddd",
+			subject: "chore(release): record the rc.90 cut",
+		});
+		expect(resolvePreviousCutBase([recorded, rc51], "0.6.0-rc.90")).toBe(rc51);
 	});
 
 	test("returns null when no cut commits exist", () => {
