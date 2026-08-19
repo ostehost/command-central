@@ -84,6 +84,29 @@ export function isCutCommit(subject: string): boolean {
 
 // --- Changelog parsing ---
 
+/**
+ * Pick the CHANGELOG section a digest may quote as its body.
+ *
+ * The body must describe the version in the heading or not exist at all. This
+ * used to fall back to `sections[0]` — the newest CHANGELOG entry — whenever
+ * the current version had no section of its own. Preview cuts deliberately
+ * never touch CHANGELOG (the digest is the record; CHANGELOG is curated for
+ * stable GA), so that fallback fired on every preview: rc.87 through rc.90 all
+ * published rc.81's release notes under their own heading.
+ *
+ * Returning null is the correct answer for a preview. The digest still carries
+ * the git-derived "Since previous cut" list and the gate evidence, which are
+ * the parts that actually describe that cut.
+ */
+export function selectChangelogSection(
+	sections: ChangelogSection[],
+	explicitTarget: string | undefined,
+	pkgVersion: string,
+): ChangelogSection | null {
+	const target = explicitTarget ?? pkgVersion;
+	return sections.find((section) => section.version === target) ?? null;
+}
+
 export function parseChangelogSections(changelog: string): ChangelogSection[] {
 	const versionRegex = /^## \[([^\]]+)\]/gm;
 	const raw: { version: string; start: number }[] = [];
@@ -460,15 +483,14 @@ function main(): void {
 	const currentVersion = `v${pkg.version}`;
 
 	const sections = parseChangelogSections(changelog);
-	const targetVersion = versionArg?.replace(/^v/, "") ?? sections[0]?.version;
-	if (!targetVersion) {
-		console.error("No versions found in CHANGELOG.md");
-		process.exit(1);
-	}
-
-	const targetSection = sections.find((s) => s.version === targetVersion);
-	if (!targetSection) {
-		console.error(`Version ${targetVersion} not found in CHANGELOG.md`);
+	const explicitTarget = versionArg?.replace(/^v/, "");
+	const targetSection = selectChangelogSection(
+		sections,
+		explicitTarget,
+		pkg.version,
+	);
+	if (!targetSection && explicitTarget) {
+		console.error(`Version ${explicitTarget} not found in CHANGELOG.md`);
 		console.error(`Available: ${sections.map((s) => s.version).join(", ")}`);
 		process.exit(1);
 	}
@@ -485,14 +507,16 @@ function main(): void {
 	// digesting the current version — same guard as the git-derived section.
 	const gate = includeSince ? collectGateEvidence(projectRoot) : null;
 
-	const categories = parseSection(targetSection.content);
+	const categories = targetSection
+		? parseSection(targetSection.content)
+		: new Map<string, string[]>();
 
 	switch (formatArg) {
 		case "discord":
 			console.log(formatDiscord(categories, currentVersion, since, gate));
 			break;
 		case "markdown":
-			console.log(formatMarkdown(targetSection.content, since, gate));
+			console.log(formatMarkdown(targetSection?.content ?? "", since, gate));
 			break;
 		case "plain":
 			console.log(formatPlain(categories, currentVersion, since, gate));

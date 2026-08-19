@@ -18,6 +18,7 @@ import {
 	parseSection,
 	rcNumber,
 	resolvePreviousCutBase,
+	selectChangelogSection,
 } from "../../scripts-v2/release-digest.ts";
 
 const CLI_PATH = path.resolve(
@@ -99,6 +100,52 @@ describe("parseSection", () => {
 		expect(categories.get("Added")?.[0]).toContain(
 			"Installed VSIX proof harness",
 		);
+	});
+});
+
+describe("selectChangelogSection", () => {
+	const sections = [
+		{
+			version: "0.6.0-rc.81",
+			content: "## [0.6.0-rc.81]\n### Fixed\n- **Icons** — old news",
+		},
+		{
+			version: "0.6.0-rc.80",
+			content: "## [0.6.0-rc.80]\n### Added\n- **Thing** — older",
+		},
+	];
+
+	test("returns no body when the current version has no changelog entry", () => {
+		// The regression: preview cuts never add a CHANGELOG section, and this
+		// fell back to sections[0] — so rc.87 through rc.90 each published
+		// rc.81's notes under their own heading. Null is the correct answer;
+		// the digest's real per-cut content is the git-derived since-section.
+		expect(
+			selectChangelogSection(sections, undefined, "0.6.0-rc.90"),
+		).toBeNull();
+	});
+
+	test("never substitutes a different version's section", () => {
+		const picked = selectChangelogSection(sections, undefined, "0.6.0-rc.90");
+		expect(picked?.version).not.toBe("0.6.0-rc.81");
+	});
+
+	test("returns the matching section when the version is in the changelog", () => {
+		expect(
+			selectChangelogSection(sections, undefined, "0.6.0-rc.81")?.version,
+		).toBe("0.6.0-rc.81");
+	});
+
+	test("honors an explicit target for regenerating an older digest", () => {
+		expect(
+			selectChangelogSection(sections, "0.6.0-rc.80", "0.6.0-rc.90")?.version,
+		).toBe("0.6.0-rc.80");
+	});
+
+	test("returns null for an explicit target that does not exist (caller errors)", () => {
+		expect(
+			selectChangelogSection(sections, "0.6.0-rc.99", "0.6.0-rc.90"),
+		).toBeNull();
 	});
 });
 
